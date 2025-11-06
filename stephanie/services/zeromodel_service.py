@@ -64,36 +64,47 @@ class _TimelineSession:
             clean_rows.append(row)
         return np.asarray(clean_rows, dtype=np.float32)
 
+
 def _rank_intensity(vec: np.ndarray, names: list[str] | None = None):
     """Return sorted indices by mean |intensity| (desc) plus a labeled list."""
     idx = np.argsort(-vec)  # desc
     if names:
-        labeled = [{"metric": names[i], "mean_abs": float(vec[i]), "rank": r+1}
-                   for r, i in enumerate(idx)]
+        labeled = [
+            {"metric": names[i], "mean_abs": float(vec[i]), "rank": r + 1}
+            for r, i in enumerate(idx)
+        ]
     else:
-        labeled = [{"metric": f"metric_{i}", "mean_abs": float(vec[i]), "rank": r+1}
-                   for r, i in enumerate(idx)]
+        labeled = [
+            {"metric": f"metric_{i}", "mean_abs": float(vec[i]), "rank": r + 1}
+            for r, i in enumerate(idx)
+        ]
     return idx.tolist(), labeled
 
 
 def _column_intensity(M: np.ndarray) -> np.ndarray:
     M = np.asarray(M, dtype=np.float64)
-    if M.ndim < 2: M = M.reshape(1, -1)
+    if M.ndim < 2:
+        M = M.reshape(1, -1)
     return np.mean(np.abs(M), axis=0)
+
 
 def _row_intensity(M: np.ndarray) -> np.ndarray:
     M = np.asarray(M, dtype=np.float64)
-    if M.ndim < 2: M = M.reshape(1, -1)
+    if M.ndim < 2:
+        M = M.reshape(1, -1)
     return np.mean(np.abs(M), axis=1)
+
 
 def _canonical_key(colname: str) -> str:
     """
     Map 'hrm.reasoning.score' -> 'reasoning', 'tiny.clarity' -> 'clarity'.
     Keeps only the segment after the first '.' and before the next '.' if present.
     """
-    if not isinstance(colname, str): return ""
+    if not isinstance(colname, str):
+        return ""
     parts = colname.split(".", 2)
     return parts[1] if len(parts) >= 2 else colname
+
 
 def _center_and_whiten(X, eps=1e-6):
     X = np.asarray(X, dtype=np.float32)
@@ -101,6 +112,7 @@ def _center_and_whiten(X, eps=1e-6):
     U, S, Vt = np.linalg.svd(X, full_matrices=False)
     Xw = U @ np.diag(1.0 / (S + eps))  # whitened rows
     return Xw, Vt, S
+
 
 def _cca_shared_projections(A, B, k=20):
     # Whiten both views over the same rows
@@ -110,9 +122,10 @@ def _cca_shared_projections(A, B, k=20):
     C = A0.T @ B0
     U, S, Vt = np.linalg.svd(C, full_matrices=False)  # canonical directions
     k = int(min(k, U.shape[1], Vt.shape[0]))
-    Wa = Va.T @ U[:, :k]         # map A->shared latent
-    Wb = Vb.T @ Vt[:k, :].T      # map B->shared latent
+    Wa = Va.T @ U[:, :k]  # map A->shared latent
+    Wb = Vb.T @ Vt[:k, :].T  # map B->shared latent
     return Wa, Wb, S[:k]
+
 
 def _normalize01(X):
     X = np.nan_to_num(np.asarray(X, dtype=np.float32))
@@ -120,6 +133,7 @@ def _normalize01(X):
         return X
     mx = np.max(np.abs(X)) + 1e-8
     return X / mx
+
 
 def _phos_pack_row(row):
     # sort-desc + square-pack (simple version)
@@ -129,15 +143,20 @@ def _phos_pack_row(row):
     order = np.argsort(v)[::-1]
     v = v[order]
     s = int(np.ceil(np.sqrt(v.size)))
-    pad = s*s - v.size
-    if pad > 0: v = np.pad(v, (0, pad))
+    pad = s * s - v.size
+    if pad > 0:
+        v = np.pad(v, (0, pad))
     return v.reshape(s, s)
+
 
 def _phos_mean_image(M):
     # Average PHOS of rows to show model “energy” distribution
     imgs = [_phos_pack_row(r) for r in M]
     s = imgs[0].shape[0]
-    imgs = [im if im.shape==(s,s) else np.zeros((s,s), dtype=np.float32) for im in imgs]
+    imgs = [
+        im if im.shape == (s, s) else np.zeros((s, s), dtype=np.float32)
+        for im in imgs
+    ]
     return np.mean(np.stack(imgs, axis=0), axis=0)
 
 
@@ -147,8 +166,6 @@ def _pad_square_top_left(img: np.ndarray, side: int) -> np.ndarray:
     out = np.zeros((side, side), dtype=img.dtype)
     out[:h, :w] = img  # keep TL structure; pad BR
     return out
-
-
 
 
 def _save_field_image(
@@ -178,11 +195,17 @@ def _save_field_image(
     plt.close(fig)
     return out_path
 
-def _align_square_phos(A: np.ndarray, B: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+
+def _align_square_phos(
+    A: np.ndarray, B: np.ndarray
+) -> tuple[np.ndarray, np.ndarray]:
     s = max(A.shape[0], B.shape[0])
-    if A.shape != (s, s): A = _pad_square_top_left(A, s)
-    if B.shape != (s, s): B = _pad_square_top_left(B, s)
+    if A.shape != (s, s):
+        A = _pad_square_top_left(A, s)
+    if B.shape != (s, s):
+        B = _pad_square_top_left(B, s)
     return A, B
+
 
 # --------------------------------------------------------------------------- #
 # MAIN SERVICE
@@ -224,7 +247,9 @@ class ZeroModelService(Service):
     def initialize(self, **kwargs) -> None:
         if self._initialized:
             return
-        pipeline_cfg = self.cfg.get("zero_model", {}).get("pipeline") or _DEFAULT_PIPELINE
+        pipeline_cfg = (
+            self.cfg.get("zero_model", {}).get("pipeline") or _DEFAULT_PIPELINE
+        )
         self._pipeline = PipelineExecutor(pipeline_cfg)
         self._evt = EventService(self.cfg, self.memory, self.logger)
         self._evt.initialize()
@@ -275,7 +300,9 @@ class ZeroModelService(Service):
         # ✅ Leave metrics_order empty — will be set on first append
         self._sessions[run_id] = _TimelineSession(
             run_id=run_id,
-            metrics_order=list(metrics) if metrics else [],  # store if caller passed explicit order
+            metrics_order=list(metrics)
+            if metrics
+            else [],  # store if caller passed explicit order
             out_dir=odir,
         )
         log.debug(f"Timeline opened for run_id={run_id}")
@@ -297,18 +324,23 @@ class ZeroModelService(Service):
             sess = self._sessions[run_id]
 
         # ----- validate inputs -----
-        if not isinstance(metrics_columns, list) or not isinstance(metrics_values, list):
-            log.warning("[ZeroModelService] timeline_append_row: bad types for columns/values")
+        if not isinstance(metrics_columns, list) or not isinstance(
+            metrics_values, list
+        ):
+            log.warning(
+                "[ZeroModelService] timeline_append_row: bad types for columns/values"
+            )
             return
         if len(metrics_columns) != len(metrics_values):
             log.warning(
                 "[ZeroModelService] timeline_append_row: length mismatch cols=%d vals=%d",
-                len(metrics_columns), len(metrics_values)
+                len(metrics_columns),
+                len(metrics_values),
             )
             # best-effort truncate to min length
             n = min(len(metrics_columns), len(metrics_values))
             metrics_columns = metrics_columns[:n]
-            metrics_values  = metrics_values[:n]
+            metrics_values = metrics_values[:n]
 
         # ----- scale config (use the same place you read in initialize) -----
         scale_mode = (
@@ -346,14 +378,19 @@ class ZeroModelService(Service):
         # ----- initialize or expand metric order -----
         if not sess.metrics_order:
             sess.metrics_order = list(metrics_columns)
-            log.debug("[ZeroModelService] Metric order initialized → %s", sess.metrics_order)
+            log.debug(
+                "[ZeroModelService] Metric order initialized → %s",
+                sess.metrics_order,
+            )
         if len(metrics_columns) != len(sess.metrics_order):
             expected_set = set(sess.metrics_order)
             received_set = set(metrics_columns)
             log.warning(
                 "[ZeroModelService] Mismatched metrics for run_id=%s (expected=%d got=%d) "
                 "Missing=%s Extra=%s",
-                run_id, len(sess.metrics_order), len(metrics_columns),
+                run_id,
+                len(sess.metrics_order),
+                len(metrics_columns),
                 list(expected_set - received_set) or "None",
                 list(received_set - expected_set) or "None",
             )
@@ -365,17 +402,22 @@ class ZeroModelService(Service):
                     sess.metrics_order.append(name)
             # pad older rows to new width
             for i in range(len(sess.rows)):
-                sess.rows[i] += [0.0] * (len(sess.metrics_order) - len(sess.rows[i]))
+                sess.rows[i] += [0.0] * (
+                    len(sess.metrics_order) - len(sess.rows[i])
+                )
 
         # ----- align and append row -----
-        row = [float(name_to_val.get(name, 0.0)) for name in sess.metrics_order]
+        row = [
+            float(name_to_val.get(name, 0.0)) for name in sess.metrics_order
+        ]
 
         # make 'normalized' from metrics_values
         normalized = []
         for v in metrics_values:
             try:
                 f = float(v)
-                if not np.isfinite(f): f = 0.0
+                if not np.isfinite(f):
+                    f = 0.0
             except Exception:
                 f = 0.0
             # optional scaling switch here...
@@ -383,7 +425,9 @@ class ZeroModelService(Service):
 
         # then map names -> normalized values
         name_to_val = dict(zip(metrics_columns, normalized))
-        row = [float(name_to_val.get(name, 0.0)) for name in sess.metrics_order]
+        row = [
+            float(name_to_val.get(name, 0.0)) for name in sess.metrics_order
+        ]
         sess.rows.append(row)
 
         # quick per-row stats (sanity)
@@ -391,11 +435,14 @@ class ZeroModelService(Service):
             nz = sum(1 for x in row if x != 0.0)
             log.debug(
                 "[ZeroModelService] row appended: cols=%d nonzero=%d min=%.4f max=%.4f mean=%.4f",
-                len(row), nz, float(min(row)), float(max(row)), float(sum(row)/max(1,len(row)))
+                len(row),
+                nz,
+                float(min(row)),
+                float(max(row)),
+                float(sum(row) / max(1, len(row))),
             )
         except Exception:
             pass
-
 
     # ------------------------------------------------------------------ #
     # FINALIZE & RENDER
@@ -407,10 +454,13 @@ class ZeroModelService(Service):
         fps: Optional[int] = None,
         datestamp: bool = True,
         out_path: Optional[str] = "data/vpms",
-        progress_cb: Optional[Callable[[str, int, int], None]] = None, 
+        progress_cb: Optional[Callable[[str, int, int], None]] = None,
     ) -> Dict[str, Any]:
-        if progress_cb: progress_cb("finalize:start", 0, 1)
-        log.debug(f"[ZeroModelService] Finalizing timeline for run_id={run_id}")
+        if progress_cb:
+            progress_cb("finalize:start", 0, 1)
+        log.debug(
+            f"[ZeroModelService] Finalizing timeline for run_id={run_id}"
+        )
         sess = self._sessions.pop(run_id, None)
         if not sess:
             return {"status": "noop", "reason": "no_session"}
@@ -418,30 +468,44 @@ class ZeroModelService(Service):
         mat = sess.as_matrix()
 
         # 🔧 Apply requested timeline scaling here (this was previously only "planned")
-        scale_mode = (self.cfg.get("timeline_scale_mode") or "robust01").lower()
+        scale_mode = (
+            self.cfg.get("timeline_scale_mode") or "robust01"
+        ).lower()
         if scale_mode == "robust01":
             mat = _robust_scale_cols(mat, lo_p=1.0, hi_p=99.0)
         elif scale_mode == "percent_0_100":
             # treat values like "0..100" percentages → normalize to 0..1, clamp
-            mat = np.clip(np.nan_to_num(mat, nan=0.0, posinf=0.0, neginf=0.0) / 100.0, 0.0, 1.0)
+            mat = np.clip(
+                np.nan_to_num(mat, nan=0.0, posinf=0.0, neginf=0.0) / 100.0,
+                0.0,
+                1.0,
+            )
         else:
             # passthrough: at least clean NaN/Inf to zeros
             mat = np.nan_to_num(mat, nan=0.0, posinf=0.0, neginf=0.0)
 
         log.info(
             "[ZeroModelService] finalize scale=%s | shape=%s | min=%.4f max=%.4f mean=%.4f",
-            scale_mode, mat.shape, float(mat.min()), float(mat.max()), float(mat.mean())
+            scale_mode,
+            mat.shape,
+            float(mat.min()),
+            float(mat.max()),
+            float(mat.mean()),
         )
 
         if mat.shape[0] < 3 or mat.shape[1] < 2:
-            log.warning(f"[ZeroModelService] Too few rows ({mat.shape}) for run_id={run_id}, deferring finalize.")
+            log.warning(
+                f"[ZeroModelService] Too few rows ({mat.shape}) for run_id={run_id}, deferring finalize."
+            )
             # Keep session alive for a few more seconds
             self._sessions[run_id] = sess
             await asyncio.sleep(4.0)
             mat = sess.as_matrix()
 
         if mat.size == 0 or mat.shape[0] < 2:
-            log.warning(f"[ZeroModelService] Empty or too small matrix for run_id={run_id}, skipping render.")
+            log.warning(
+                f"[ZeroModelService] Empty or too small matrix for run_id={run_id}, skipping render."
+            )
             return {"status": "empty", "matrix": mat}
 
         log.debug(
@@ -459,7 +523,8 @@ class ZeroModelService(Service):
         gif_path = os.path.join(run_dir, base_name + ".gif")
 
         # Render animated timeline GIF
-        if progress_cb: progress_cb("timeline:render:start", 0, int(mat.shape[0]))
+        if progress_cb:
+            progress_cb("timeline:render:start", 0, int(mat.shape[0]))
         res = self.render_timeline_from_matrix(
             mat,
             gif_path,
@@ -468,20 +533,25 @@ class ZeroModelService(Service):
             options={"panel": "timeline"},
             datestamp=datestamp,
         )
-        if progress_cb: progress_cb("timeline:render:done", int(mat.shape[0]), int(mat.shape[0]))
+        if progress_cb:
+            progress_cb(
+                "timeline:render:done", int(mat.shape[0]), int(mat.shape[0])
+            )
 
         # Write meta JSON
         meta_path = os.path.join(run_dir, base_name + ".json")
         with open(meta_path, "w", encoding="utf-8") as f:
-            f.write(dumps_safe(
-                {
-                    "run_id": run_id,
-                    "timestamp": timestamp,
-                    "metrics": sess.metrics_order,
-                    "shape": res["shape"],
-                },
-                indent=2
-            ))
+            f.write(
+                dumps_safe(
+                    {
+                        "run_id": run_id,
+                        "timestamp": timestamp,
+                        "metrics": sess.metrics_order,
+                        "shape": res["shape"],
+                    },
+                    indent=2,
+                )
+            )
 
         # Render static summary PNG
         summary_path = self.render_static_summary(
@@ -493,7 +563,6 @@ class ZeroModelService(Service):
         )
         log.debug(f"ZeroModelService: summary image saved → {summary_path}")
 
-
         # ------------------------------------------------------------------
         # 🌌 Auto-generate epistemic field (optional)
         # ------------------------------------------------------------------
@@ -501,7 +570,8 @@ class ZeroModelService(Service):
             # Build small contrastive populations from the current matrix
             # Here we treat the first half as "positive" and second half as "negative"
             if mat.size >= 4 and mat.shape[0] > 2:
-                if progress_cb: progress_cb("ef:prepare", 0, 1)
+                if progress_cb:
+                    progress_cb("ef:prepare", 0, 1)
                 midpoint = mat.shape[0] // 2
                 pos_mats = [mat[:midpoint, :]]
                 neg_mats = [mat[midpoint:, :]]
@@ -517,16 +587,20 @@ class ZeroModelService(Service):
                     output_dir=os.path.join(run_dir, "epistemic_fields"),
                     metric_names=metric_names,
                 )
-                if progress_cb: progress_cb("ef:done", 1, 1)
+                if progress_cb:
+                    progress_cb("ef:done", 1, 1)
                 log.debug(
                     f"[ZeroModelService] 🧠 Epistemic field auto-generated "
                     f"(ΔMass={field_meta['delta_mass']:.4f}) → {field_meta['png']}"
                 )
             else:
-                log.warning("[ZeroModelService] Matrix too small for epistemic field generation.")
+                log.warning(
+                    "[ZeroModelService] Matrix too small for epistemic field generation."
+                )
         except Exception as e:
-            log.warning("[ZeroModelService] Epistemic field generation failed: %s", e)
-
+            log.warning(
+                "[ZeroModelService] Epistemic field generation failed: %s", e
+            )
 
         # Publish event
         if self._evt:
@@ -541,7 +615,8 @@ class ZeroModelService(Service):
                     "metrics": sess.metrics_order,
                 },
             )
-        if progress_cb: progress_cb("finalize:done", 1, 1)
+        if progress_cb:
+            progress_cb("finalize:done", 1, 1)
         return {
             "status": "ok",
             "matrix": mat,
@@ -558,7 +633,13 @@ class ZeroModelService(Service):
         run_id: str,
         out_dir: Optional[str] = None,
         steps_per_item: int = 3,
-        dims_for_score: list[str] = ("clarity","coherence","complexity","alignment","coverage"),
+        dims_for_score: list[str] = (
+            "clarity",
+            "coherence",
+            "complexity",
+            "alignment",
+            "coverage",
+        ),
     ) -> dict:
         """
         For each Scorable:
@@ -574,7 +655,9 @@ class ZeroModelService(Service):
         item_root = Path(out_dir) / f"nexus_{run_id}"
         item_root.mkdir(parents=True, exist_ok=True)
 
-        self.timeline_open(run_id, metrics=list(dims_for_score), out_dir=str(item_root))
+        self.timeline_open(
+            run_id, metrics=list(dims_for_score), out_dir=str(item_root)
+        )
 
         manifest = {"run_id": run_id, "items": []}
 
@@ -584,61 +667,80 @@ class ZeroModelService(Service):
             idir.mkdir(parents=True, exist_ok=True)
 
             vpm_u8, meta = self._scorable_to_vpm(s, str(idir))
-            frames = [np.transpose(vpm_u8, (1,2,0))]  # HWC for GIF writer
+            frames = [np.transpose(vpm_u8, (1, 2, 0))]  # HWC for GIF writer
             metrics_rows = []
 
             # step 0 score
             comp = vpm_u8.mean(axis=0)  # simple composite for score_vpm_image
             step0 = self.score_vpm_image(comp, dims=list(dims_for_score))
-            self.timeline_append_row(run_id, metrics_columns=list(dims_for_score),
-                                    metrics_values=[step0["scores"][d] for d in dims_for_score])
+            self.timeline_append_row(
+                run_id,
+                metrics_columns=list(dims_for_score),
+                metrics_values=[step0["scores"][d] for d in dims_for_score],
+            )
             metrics_rows.append({"step": 0, **step0})
 
             cur = vpm_u8.copy()
             for step in range(1, steps_per_item + 1):
                 thought = self._next_thought(step, cur)
                 if thought["op"] == "zoom":
-                    cur = self._apply_zoom(cur, thought["center"], thought["scale"])
+                    cur = self._apply_zoom(
+                        cur, thought["center"], thought["scale"]
+                    )
                 comp = cur.mean(axis=0)
                 sc = self.score_vpm_image(comp, dims=list(dims_for_score))
-                self.timeline_append_row(run_id, metrics_columns=list(dims_for_score),
-                                        metrics_values=[sc["scores"][d] for d in dims_for_score])
-                frames.append(np.transpose(cur, (1,2,0)))
+                self.timeline_append_row(
+                    run_id,
+                    metrics_columns=list(dims_for_score),
+                    metrics_values=[sc["scores"][d] for d in dims_for_score],
+                )
+                frames.append(np.transpose(cur, (1, 2, 0)))
                 metrics_rows.append({"step": step, "thought": thought, **sc})
 
             # save frames + gif + metrics
             import imageio.v2 as iio
+
             gif_path = idir / "filmstrip.gif"
             iio.mimsave(gif_path, frames, fps=1, loop=0)
 
             with open(idir / "metrics.json", "w", encoding="utf-8") as f:
-                f.write(dumps_safe({
-                    "scorable_id": getattr(s, "id", ""),
-                    "target_type": getattr(s, "target_type", "custom"),
-                    "adapter_meta": meta,
-                    "dims": list(dims_for_score),
-                    "rollout": metrics_rows,
-                    "gif": str(gif_path.as_posix()),
-                    "frames": [str((idir / f"frame_{i:02d}.png").as_posix()) for i in range(len(frames))],
-                }, indent=2))
+                f.write(
+                    dumps_safe(
+                        {
+                            "scorable_id": getattr(s, "id", ""),
+                            "target_type": getattr(s, "target_type", "custom"),
+                            "adapter_meta": meta,
+                            "dims": list(dims_for_score),
+                            "rollout": metrics_rows,
+                            "gif": str(gif_path.as_posix()),
+                            "frames": [
+                                str((idir / f"frame_{i:02d}.png").as_posix())
+                                for i in range(len(frames))
+                            ],
+                        },
+                        indent=2,
+                    )
+                )
 
             # also write numbered PNG frames for blog selection
             for fi, arr in enumerate(frames):
                 Image.fromarray(arr).save(idir / f"frame_{fi:02d}.png")
 
-            manifest["items"].append({
-                "item_id": item_id,
-                "gif": str(gif_path.as_posix()),
-                "metrics_json": str((idir / "metrics.json").as_posix()),
-            })
+            manifest["items"].append(
+                {
+                    "item_id": item_id,
+                    "gif": str(gif_path.as_posix()),
+                    "metrics_json": str((idir / "metrics.json").as_posix()),
+                }
+            )
 
         # finalize the global timeline to produce your ZeroModel GIF + static summary
         loop = asyncio.get_event_loop()
-        finalize = loop.run_until_complete(self.timeline_finalize(
-            run_id,
-            out_path=str(item_root),
-            datestamp=True
-        ))
+        finalize = loop.run_until_complete(
+            self.timeline_finalize(
+                run_id, out_path=str(item_root), datestamp=True
+            )
+        )
         manifest["timeline"] = finalize
         with open(item_root / "manifest.json", "w", encoding="utf-8") as f:
             f.write(dumps_safe(manifest, indent=2))
@@ -680,9 +782,13 @@ class ZeroModelService(Service):
         # 2) Diff field aligned on shared shape (rows already aligned by build)
         r = min(hrm_matrix.shape[0], tiny_matrix.shape[0])
         c = min(hrm_matrix.shape[1], tiny_matrix.shape[1])
-        D = np.asarray(hrm_matrix[:r, :c] - tiny_matrix[:r, :c], dtype=np.float64)
+        D = np.asarray(
+            hrm_matrix[:r, :c] - tiny_matrix[:r, :c], dtype=np.float64
+        )
         col_d = _column_intensity(D)
-        d_idx, d_ranked = _rank_intensity(col_d, hrm_metric_names[:c])  # use HRM names slice
+        d_idx, d_ranked = _rank_intensity(
+            col_d, hrm_metric_names[:c]
+        )  # use HRM names slice
         top_cols_diff = d_ranked[:top_k]
         top_rows_diff = np.argsort(-_row_intensity(D))[:top_k].tolist()
 
@@ -690,39 +796,58 @@ class ZeroModelService(Service):
         canon_h = [_canonical_key(n) for n in hrm_metric_names]
         canon_t = [_canonical_key(n) for n in tiny_metric_names]
         common = sorted(set(canon_h) & set(canon_t))
+
         # Build per-dimension aggregates (mean intensity for all columns mapping to that dim)
         def _agg_by_dim(names, intensities):
             grp = defaultdict(list)
             for n, v in zip(names, intensities):
                 grp[_canonical_key(n)].append(float(v))
             return {k: float(np.mean(vs)) for k, vs in grp.items()}
+
         agg_h = _agg_by_dim(hrm_metric_names, col_h)
         agg_t = _agg_by_dim(tiny_metric_names, col_t)
 
         comp = []
         for d in common:
-            comp.append({
-                "dimension": d,
-                "hrm_mean_abs": agg_h.get(d, 0.0),
-                "tiny_mean_abs": agg_t.get(d, 0.0),
-                "delta": float(agg_h.get(d, 0.0) - agg_t.get(d, 0.0)),
-                "ratio": float((agg_h.get(d, 1e-12)) / (agg_t.get(d, 1e-12))),
-            })
+            comp.append(
+                {
+                    "dimension": d,
+                    "hrm_mean_abs": agg_h.get(d, 0.0),
+                    "tiny_mean_abs": agg_t.get(d, 0.0),
+                    "delta": float(agg_h.get(d, 0.0) - agg_t.get(d, 0.0)),
+                    "ratio": float(
+                        (agg_h.get(d, 1e-12)) / (agg_t.get(d, 1e-12))
+                    ),
+                }
+            )
         # rank-based similarity (optional)
         try:
             # ranks over common dims
             rh = np.array([agg_h[d] for d in common])
             rt = np.array([agg_t[d] for d in common])
-            kendall = float(spstats.kendalltau(rh, rt).correlation) if len(common) >= 2 else None
-            spearman = float(spstats.spearmanr(rh, rt).correlation) if len(common) >= 2 else None
+            kendall = (
+                float(spstats.kendalltau(rh, rt).correlation)
+                if len(common) >= 2
+                else None
+            )
+            spearman = (
+                float(spstats.spearmanr(rh, rt).correlation)
+                if len(common) >= 2
+                else None
+            )
         except Exception:
             kendall = spearman = None
 
         report = {
             "summary": {
-                "rows": r, "hrm_cols": len(hrm_metric_names), "tiny_cols": len(tiny_metric_names),
+                "rows": r,
+                "hrm_cols": len(hrm_metric_names),
+                "tiny_cols": len(tiny_metric_names),
                 "top_k": top_k,
-                "rank_corr": {"kendall_tau": kendall, "spearman_rho": spearman},
+                "rank_corr": {
+                    "kendall_tau": kendall,
+                    "spearman_rho": spearman,
+                },
             },
             "hrm": {
                 "top_columns": top_cols_hrm,
@@ -736,7 +861,9 @@ class ZeroModelService(Service):
                 "top_columns": top_cols_diff,
                 "top_rows": top_rows_diff,
             },
-            "by_dimension_common": sorted(comp, key=lambda x: -abs(x["delta"])),
+            "by_dimension_common": sorted(
+                comp, key=lambda x: -abs(x["delta"])
+            ),
         }
 
         out_path = Path(out_dir) / "intensity_report.json"
@@ -757,7 +884,7 @@ class ZeroModelService(Service):
         metrics: Optional[List[str]] = None,
         options: Optional[Dict[str, Any]] = None,
         datestamp: bool = False,
-        progress_cb: Optional[Callable[[str,int,int],None]] = None,
+        progress_cb: Optional[Callable[[str, int, int], None]] = None,
     ) -> Dict[str, Any]:
         assert self._pipeline is not None, "ZeroModelService not initialized"
 
@@ -775,11 +902,11 @@ class ZeroModelService(Service):
             row = M[i : i + 1, :]
             vpm_out, _ = self._pipeline.run(row, {"enable_gif": False})
 
-        # sorted_matrix = self.sort_on_first_index(matrix)
-        # total = int(sorted_matrix.shape[0])
-        # for i in range(total):
-        #     row = sorted_matrix[i : i + 1, :]
-        #     vpm_out, _ = self._pipeline.run(row, {"enable_gif": False})
+            # sorted_matrix = self.sort_on_first_index(matrix)
+            # total = int(sorted_matrix.shape[0])
+            # for i in range(total):
+            #     row = sorted_matrix[i : i + 1, :]
+            #     vpm_out, _ = self._pipeline.run(row, {"enable_gif": False})
             gif.add_frame(
                 vpm_out,
                 metrics={
@@ -792,14 +919,25 @@ class ZeroModelService(Service):
             if progress_cb and ((i % 10) == 0 or (i + 1) == total):
                 progress_cb("timeline:frame", i + 1, total)
             if (i % 25) == 0 or (i + 1) == total:
-                log.debug("[ZeroModelService] frame %d/%d stats: min=%.4f max=%.4f mean=%.4f",
-                    i+1, total, float(row.min()), float(row.max()), float(row.mean()))
-
+                log.debug(
+                    "[ZeroModelService] frame %d/%d stats: min=%.4f max=%.4f mean=%.4f",
+                    i + 1,
+                    total,
+                    float(row.min()),
+                    float(row.max()),
+                    float(row.mean()),
+                )
 
         gif.save_gif(out_path, fps=fps)
-        log.debug(f"ZeroModelService: rendered {len(gif.frames)} frames → {out_path}")
+        log.debug(
+            f"ZeroModelService: rendered {len(gif.frames)} frames → {out_path}"
+        )
 
-        return {"output_path": out_path, "frames": len(gif.frames), "shape": list(matrix.shape)}
+        return {
+            "output_path": out_path,
+            "frames": len(gif.frames),
+            "shape": list(matrix.shape),
+        }
 
     def render_static_summary(
         self,
@@ -823,13 +961,20 @@ class ZeroModelService(Service):
             png_path = os.path.join(out_path, base_name)
 
             fig, ax = plt.subplots(
-                figsize=(max(6, matrix.shape[1] / 4), max(4, matrix.shape[0] / 20))
+                figsize=(
+                    max(6, matrix.shape[1] / 4),
+                    max(4, matrix.shape[0] / 20),
+                )
             )
-            im = ax.imshow(matrix, aspect="auto", cmap=cmap, interpolation="nearest")
+            im = ax.imshow(
+                matrix, aspect="auto", cmap=cmap, interpolation="nearest"
+            )
 
             if metrics:
                 ax.set_xticks(range(len(metrics)))
-                ax.set_xticklabels(metrics, rotation=45, ha="right", fontsize=8)
+                ax.set_xticklabels(
+                    metrics, rotation=45, ha="right", fontsize=8
+                )
             ax.set_yticks([])
             ax.set_title(f"VPM Summary — {label or 'Run'} ({ts})", fontsize=10)
             fig.colorbar(im, ax=ax, fraction=0.02, pad=0.04)
@@ -838,13 +983,17 @@ class ZeroModelService(Service):
             plt.savefig(png_path, dpi=150)
             plt.close(fig)
 
-            log.debug(f"ZeroModelService: static VPM summary saved → {png_path}")
+            log.debug(
+                f"ZeroModelService: static VPM summary saved → {png_path}"
+            )
             return png_path
         except Exception as e:
             log.error(f"render_static_summary failed: {e}")
             return out_path
 
-    def sort_on_first_index(self, matrix: np.ndarray, descending: bool = False) -> np.ndarray:
+    def sort_on_first_index(
+        self, matrix: np.ndarray, descending: bool = False
+    ) -> np.ndarray:
         """
         Sort a 2D NumPy matrix by its first column (index 0).
         Designed for Stephanie VPM matrices where the first column is node_id.
@@ -882,8 +1031,6 @@ class ZeroModelService(Service):
             log.warning("[ZeroModelService] sort_on_first_index failed: %s", e)
             return matrix
 
-
-
     def generate_epistemic_field(
         self,
         pos_matrices: list[np.ndarray],
@@ -898,8 +1045,8 @@ class ZeroModelService(Service):
         cmap: str = "seismic",
         aggregate: bool = False,
         metric_names: Optional[List[str]] = None,
-        save_individual: bool = True, 
-        progress_cb: Optional[Callable[[str,int,int],None]] = None,
+        save_individual: bool = True,
+        progress_cb: Optional[Callable[[str, int, int], None]] = None,
     ) -> dict:
         """
         Generate the ZeroModel Epistemic Field — a contrastive visual intelligence map.
@@ -920,13 +1067,17 @@ class ZeroModelService(Service):
         # -------------------------------
         # 1️⃣ Aggregate or stack matrices
         # -------------------------------
-        if progress_cb: progress_cb("stack", 1, 5)
+        if progress_cb:
+            progress_cb("stack", 1, 5)
+
         def _normalize_field(matrix: np.ndarray) -> np.ndarray:
             matrix = np.nan_to_num(matrix)
             max_val = np.max(np.abs(matrix)) + 1e-8
             return matrix / max_val
 
-        def _align_shapes(A: np.ndarray, B: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        def _align_shapes(
+            A: np.ndarray, B: np.ndarray
+        ) -> tuple[np.ndarray, np.ndarray]:
             """Crop or pad matrices to smallest common shape."""
             rows = min(A.shape[0], B.shape[0])
             cols = min(A.shape[1], B.shape[1])
@@ -943,8 +1094,15 @@ class ZeroModelService(Service):
             X_neg = np.vstack(neg_matrices)
 
         # --- early exit for empty or degenerate matrices ---
-        if X_pos.size == 0 or X_neg.size == 0 or X_pos.shape[0] < 2 or X_neg.shape[0] < 2:
-            log.warning("[ZeroModelService] Skipping epistemic field generation — insufficient data.")
+        if (
+            X_pos.size == 0
+            or X_neg.size == 0
+            or X_pos.shape[0] < 2
+            or X_neg.shape[0] < 2
+        ):
+            log.warning(
+                "[ZeroModelService] Skipping epistemic field generation — insufficient data."
+            )
             return {
                 "timestamp": datetime.now().strftime("%Y%m%d_%H%M%S"),
                 "mass_pos": 0.0,
@@ -959,12 +1117,14 @@ class ZeroModelService(Service):
         # -------------------------------
         # 2️⃣ Learn canonical layout
         # -------------------------------
-        if progress_cb: progress_cb("optimize_layout_start", 2, 5)
+        if progress_cb:
+            progress_cb("optimize_layout_start", 2, 5)
         opt = SpatialOptimizer(Kc=Kc, Kr=Kr, alpha=alpha)
         opt.apply_optimization([X_pos])
         w = opt.metric_weights
         layout = opt.canonical_layout
-        if progress_cb: progress_cb("optimize_layout_done", 3, 5)
+        if progress_cb:
+            progress_cb("optimize_layout_done", 3, 5)
 
         # Build index mapping: old_index -> new_position (based on canonical layout)
         if layout is not None:
@@ -972,16 +1132,18 @@ class ZeroModelService(Service):
             order = np.argsort(flat_layout)
             if metric_names and len(order) > len(metric_names):
                 order = order[: len(metric_names)]
-            index_mapping = {orig_idx: int(new_idx) for new_idx, orig_idx in enumerate(order)}
+            index_mapping = {
+                orig_idx: int(new_idx)
+                for new_idx, orig_idx in enumerate(order)
+            }
         else:
             index_mapping = {i: i for i in range(len(metric_names or []))}
-
-
 
         # -------------------------------
         # 3️⃣ Apply canonical transform
         # -------------------------------
-        if progress_cb: progress_cb("project", 4, 5)
+        if progress_cb:
+            progress_cb("project", 4, 5)
         Y_pos, _, _ = opt.phi_transform(X_pos, w, w)
         Y_neg, _, _ = opt.phi_transform(X_neg, w, w)
 
@@ -999,17 +1161,26 @@ class ZeroModelService(Service):
         delta_mass = mass_pos - mass_neg
 
         # Epistemic overlap (structural coherence)
-        overlap = float(np.sum(np.minimum(Y_pos, Y_neg)) / (np.sum(np.maximum(Y_pos, Y_neg)) + 1e-8))
+        overlap = float(
+            np.sum(np.minimum(Y_pos, Y_neg))
+            / (np.sum(np.maximum(Y_pos, Y_neg)) + 1e-8)
+        )
 
-        log.debug(f"Epistemic field generated: +mass={mass_pos:.4f}, -mass={mass_neg:.4f}, Δ={delta_mass:.4f}, overlap={overlap:.4f}")
+        log.debug(
+            f"Epistemic field generated: +mass={mass_pos:.4f}, -mass={mass_neg:.4f}, Δ={delta_mass:.4f}, overlap={overlap:.4f}"
+        )
 
         # ================================================================
         # 5️⃣ Visualization — side-by-side comparison of transformation steps
         # ================================================================
 
-        def _make_visual_grid(images: List[np.ndarray], titles: List[str], base_path: str):
+        def _make_visual_grid(
+            images: List[np.ndarray], titles: List[str], base_path: str
+        ):
             """Render and save a static grid comparison image."""
-            fig, axes = plt.subplots(1, len(images), figsize=(5 * len(images), 5))
+            fig, axes = plt.subplots(
+                1, len(images), figsize=(5 * len(images), 5)
+            )
             for ax, img, title in zip(axes, images, titles):
                 im = ax.imshow(img, cmap=cmap, aspect="auto")
                 ax.set_title(title, fontsize=10)
@@ -1021,8 +1192,9 @@ class ZeroModelService(Service):
             plt.close(fig)
             return comp_path
 
-
-        def _make_transition_gif(stages: List[np.ndarray], titles: List[str], gif_path: str):
+        def _make_transition_gif(
+            stages: List[np.ndarray], titles: List[str], gif_path: str
+        ):
             """Create animated GIF showing step-by-step transformation (fully in-memory)."""
             giflog = GifLogger(max_frames=100)
 
@@ -1042,8 +1214,12 @@ class ZeroModelService(Service):
                     buf = np.asarray(fig.canvas.buffer_rgba())
                 except AttributeError:
                     # Older Matplotlib (<3.8)
-                    buf = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
-                    buf = buf.reshape(fig.canvas.get_width_height()[::-1] + (3,))
+                    buf = np.frombuffer(
+                        fig.canvas.tostring_rgb(), dtype=np.uint8
+                    )
+                    buf = buf.reshape(
+                        fig.canvas.get_width_height()[::-1] + (3,)
+                    )
 
                 # Ensure 3D RGB array
                 frame = np.array(buf, copy=True)
@@ -1074,25 +1250,36 @@ class ZeroModelService(Service):
                 else:
                     reordered_metric_names.append(metric_names[old_idx])
         else:
-            reordered_metric_names = [f"metric_{i}" for i in range(diff.shape[1])]
+            reordered_metric_names = [
+                f"metric_{i}" for i in range(diff.shape[1])
+            ]
 
-        log.debug(f"[ZeroModelService] Metric reordering preserved {len(reordered_metric_names)} names")
+        log.debug(
+            f"[ZeroModelService] Metric reordering preserved {len(reordered_metric_names)} names"
+        )
 
         # ================================================================
         # 8️⃣ Subfield Extraction — Q(5) vs E(5) + Overlay (SCM-aware, HRM/Tiny fallback)
         # ================================================================
         try:
+
             def _robust01(a: np.ndarray, lo=1, hi=99) -> np.ndarray:
                 a = np.asarray(a, dtype=np.float32)
-                if a.size == 0: return a
+                if a.size == 0:
+                    return a
                 lo_v, hi_v = np.percentile(a, [lo, hi])
-                if not np.isfinite(lo_v) or not np.isfinite(hi_v) or hi_v <= lo_v:
+                if (
+                    not np.isfinite(lo_v)
+                    or not np.isfinite(hi_v)
+                    or hi_v <= lo_v
+                ):
                     return np.zeros_like(a)
                 x = (a - lo_v) / (hi_v - lo_v)
                 return np.clip(x, 0.0, 1.0).astype(np.float32)
 
             # Helpers to find per-dimension "score-like" cols, tolerant of hrm./tiny. prefixes
             CAND_SUFFIXES = ("", ".score", ".aggregate", ".raw", ".value")
+
             def _pick_dim_col(names: list[str], dim: str) -> int | None:
                 # exact SCM first
                 scm_exact = f"scm.{dim}.score01"
@@ -1109,31 +1296,42 @@ class ZeroModelService(Service):
                         return i
                 return None
 
-            dims5 = ["reasoning","knowledge","clarity","faithfulness","coverage"]
+            dims5 = [
+                "reasoning",
+                "knowledge",
+                "clarity",
+                "faithfulness",
+                "coverage",
+            ]
             # 1) Build Q: try SCM first; otherwise per-dimension score columns
             q_idxs = []
             for d in dims5:
                 idx = _pick_dim_col(reordered_metric_names, d)
-                if idx is not None: q_idxs.append(idx)
+                if idx is not None:
+                    q_idxs.append(idx)
 
             if len(q_idxs) == 0:
-                log.warning("[ZeroModelService] No Q columns found; skipping Q/E overlays.")
+                log.warning(
+                    "[ZeroModelService] No Q columns found; skipping Q/E overlays."
+                )
                 q_path = e_path = o_path = None
             else:
-                q_field = diff[:, q_idxs]                 # shape (T, k_q)
+                q_field = diff[:, q_idxs]  # shape (T, k_q)
                 # ensure 2D
                 if q_field.ndim == 1:
                     q_field = q_field.reshape(-1, 1)
 
                 # 2) Build E buckets to 5 dims (configurable; tolerant lookups)
                 E_BUCKETS = {
-                    "reasoning":    ["scm.consistency01", "scm.temp01"],
-                    "knowledge":    ["scm.ood_hat01", "recon_sim"],
-                    "clarity":      ["scm.length_norm01", "aux3_p_bad"],
+                    "reasoning": ["scm.consistency01", "scm.temp01"],
+                    "knowledge": ["scm.ood_hat01", "recon_sim"],
+                    "clarity": ["scm.length_norm01", "aux3_p_bad"],
                     "faithfulness": ["recon_sim", "scm.consistency01"],
-                    "coverage":     ["concept_sparsity", "scm.uncertainty01"],
+                    "coverage": ["concept_sparsity", "scm.uncertainty01"],
                 }
-                name2idx = {n.lower(): i for i, n in enumerate(reordered_metric_names)}
+                name2idx = {
+                    n.lower(): i for i, n in enumerate(reordered_metric_names)
+                }
                 low_names = [n.lower() for n in reordered_metric_names]
 
                 def _find_any(indices_or_names: list[str]) -> list[int]:
@@ -1141,12 +1339,14 @@ class ZeroModelService(Service):
                     for key in indices_or_names:
                         k = key.lower()
                         if k in name2idx:
-                            out.append(name2idx[k]); continue
+                            out.append(name2idx[k])
+                            continue
                         # fuzzy: match if all parts appear
                         parts = k.split(".")
                         for i, n in enumerate(low_names):
                             if all(p in n for p in parts):
-                                out.append(i); break
+                                out.append(i)
+                                break
                     return sorted(set(out))
 
                 e_cols = []
@@ -1179,25 +1379,40 @@ class ZeroModelService(Service):
                 # 4) Overlay (shapes guaranteed compatible)
                 overlay = q_field_norm - e_field_norm
 
-                q_path = _save_field_image(q_field_norm, "Q-Field (5D or fewer)", f"{base}_q_field")
-                e_path = _save_field_image(e_field_norm, "E-Field (5D)",         f"{base}_energy_field")
-                o_path = _save_field_image(overlay,       "Q–E Overlay (Q−E)",   f"{base}_overlay")
+                q_path = _save_field_image(
+                    q_field_norm, "Q-Field (5D or fewer)", f"{base}_q_field"
+                )
+                e_path = _save_field_image(
+                    e_field_norm, "E-Field (5D)", f"{base}_energy_field"
+                )
+                o_path = _save_field_image(
+                    overlay, "Q–E Overlay (Q−E)", f"{base}_overlay"
+                )
 
                 # optional correlation
-                corr = float(np.corrcoef(q_field_norm.ravel(), e_field_norm.ravel())[0,1]) if q_field_norm.size and e_field_norm.size else None
-                log.debug(f"[ZeroModelService] Subfields saved → Q:{bool(q_path)} E:{bool(e_path)} Overlay:{bool(o_path)} Corr={corr}")
+                corr = (
+                    float(
+                        np.corrcoef(
+                            q_field_norm.ravel(), e_field_norm.ravel()
+                        )[0, 1]
+                    )
+                    if q_field_norm.size and e_field_norm.size
+                    else None
+                )
+                log.debug(
+                    f"[ZeroModelService] Subfields saved → Q:{bool(q_path)} E:{bool(e_path)} Overlay:{bool(o_path)} Corr={corr}"
+                )
 
         except Exception as e:
             log.warning("[ZeroModelService] Subfield extraction failed: %s", e)
 
-
-        # ------------------------------- 
+        # -------------------------------
         # Prepare visual stages
         # -------------------------------
         raw_good = _normalize_field(X_pos)
-        raw_bad  = _normalize_field(X_neg)
+        raw_bad = _normalize_field(X_neg)
         opt_good = Y_pos
-        opt_bad  = Y_neg
+        opt_bad = Y_neg
         combined = diff
 
         titles = [
@@ -1213,24 +1428,38 @@ class ZeroModelService(Service):
         comparison_path = _make_visual_grid(images, titles, base)
         transition_gif_path = base + "_transform.gif"
         _make_transition_gif(images, titles, transition_gif_path)
-        log.debug(f"Epistemic field visual comparison saved → {comparison_path}")
-
+        log.debug(
+            f"Epistemic field visual comparison saved → {comparison_path}"
+        )
 
         single_paths = {}
         if save_individual:
-            single_paths["raw_pos_png"] = _save_single(raw_good,  f"Raw {pos_label}",              base + "_raw_pos")
-            single_paths["opt_pos_png"] = _save_single(opt_good,  f"Optimized {pos_label}",         base + "_opt_pos")
-            single_paths["raw_neg_png"] = _save_single(raw_bad,   f"Raw {neg_label}",               base + "_raw_neg")
-            single_paths["opt_neg_png"] = _save_single(opt_bad,   f"Optimized {neg_label}",         base + "_opt_neg")
-            single_paths["diff_png"]    = _save_single(combined,  f"Differential ({pos_label}−{neg_label})", base + "_diff")
-
+            single_paths["raw_pos_png"] = _save_single(
+                raw_good, f"Raw {pos_label}", base + "_raw_pos"
+            )
+            single_paths["opt_pos_png"] = _save_single(
+                opt_good, f"Optimized {pos_label}", base + "_opt_pos"
+            )
+            single_paths["raw_neg_png"] = _save_single(
+                raw_bad, f"Raw {neg_label}", base + "_raw_neg"
+            )
+            single_paths["opt_neg_png"] = _save_single(
+                opt_bad, f"Optimized {neg_label}", base + "_opt_neg"
+            )
+            single_paths["diff_png"] = _save_single(
+                combined,
+                f"Differential ({pos_label}−{neg_label})",
+                base + "_diff",
+            )
 
         # -------------------------------
         # 5️⃣ Render static field image
         # -------------------------------
         fig, ax = plt.subplots(figsize=(10, 6))
         im = ax.imshow(diff, cmap=cmap, aspect="auto")
-        ax.set_title(f"ZeroModel Epistemic Field — ΔMass={delta_mass:.4f}, Overlap={overlap:.4f}")
+        ax.set_title(
+            f"ZeroModel Epistemic Field — ΔMass={delta_mass:.4f}, Overlap={overlap:.4f}"
+        )
         fig.colorbar(im, ax=ax, label="Δ Intensity (Pos−Neg)")
         plt.tight_layout()
         png_path = base + ".png"
@@ -1241,15 +1470,19 @@ class ZeroModelService(Service):
         # 6️⃣ Optional animated timeline
         # -------------------------------
         giflog = GifLogger(max_frames=300)
-        pipeline = PipelineExecutor([
-            {"stage": "normalize", "params": {}},
-            {"stage": "organization", "params": {"strategy": "spatial"}},
-        ])
+        pipeline = PipelineExecutor(
+            [
+                {"stage": "normalize", "params": {}},
+                {"stage": "organization", "params": {"strategy": "spatial"}},
+            ]
+        )
 
         for i in range(diff.shape[0]):
-            row = diff[i:i+1, :]
+            row = diff[i : i + 1, :]
             out, _ = pipeline.run(row, {"enable_gif": False})
-            giflog.add_frame(out, metrics={"step": i, "mass": float(row.mean())})
+            giflog.add_frame(
+                out, metrics={"step": i, "mass": float(row.mean())}
+            )
 
         gif_path = base + ".gif"
         giflog.save_gif(gif_path, fps=fps)
@@ -1270,22 +1503,23 @@ class ZeroModelService(Service):
             "metric_index_mapping": index_mapping,
             "metric_names_original": metric_names,
             "metric_names_reordered": reordered_metric_names,
-            "timeline_scale_mode": (self.cfg.get("timeline_scale_mode") or "robust01"),
+            "timeline_scale_mode": (
+                self.cfg.get("timeline_scale_mode") or "robust01"
+            ),
             "png": base + ".png",
             "gif": gif_path,
             "diff_matrix": diff.tolist(),
             "metric_names": reordered_metric_names,
-            **single_paths,  
+            **single_paths,
         }
 
         meta_path = base + ".json"
-        text=dumps_safe(meta)
+        text = dumps_safe(meta)
         with open(meta_path, "w", encoding="utf-8") as f:
             f.write(text)
 
         log.debug(f"Epistemic field saved → {meta_path}")
         return meta
-
 
     def generate_epistemic_field_phos_ordered(
         self,
@@ -1296,11 +1530,11 @@ class ZeroModelService(Service):
         alpha: float = 0.97,
         pos_label: str = "HRM",
         neg_label: str = "Tiny",
-        iters: int = 4,                 # number of row/col reorder passes
+        iters: int = 4,  # number of row/col reorder passes
         cmap: str = "seismic",
         aggregate: bool = False,
         metric_names: Optional[List[str]] = None,
-        progress_cb: Optional[Callable[[str,int,int],None]] = None,
+        progress_cb: Optional[Callable[[str, int, int], None]] = None,
     ) -> dict:
         """
         PHOS-style 2D ordering: reorder columns and rows to concentrate intensity
@@ -1327,12 +1561,21 @@ class ZeroModelService(Service):
             return np.clip(Y, 0.0, 1.0)
 
         def _stack(mats: list[np.ndarray]) -> np.ndarray:
-            return np.mean(np.stack(mats, axis=0), axis=0) if aggregate else np.vstack(mats)
+            return (
+                np.mean(np.stack(mats, axis=0), axis=0)
+                if aggregate
+                else np.vstack(mats)
+            )
 
         # 1) Build matrices
         X_pos = _stack(pos_matrices)
         X_neg = _stack(neg_matrices)
-        if X_pos.size == 0 or X_neg.size == 0 or X_pos.ndim != 2 or X_neg.ndim != 2:
+        if (
+            X_pos.size == 0
+            or X_neg.size == 0
+            or X_pos.ndim != 2
+            or X_neg.ndim != 2
+        ):
             log.warning("[ZeroModelService] PHOS-ordered: insufficient data.")
             return {"status": "empty"}
 
@@ -1377,11 +1620,16 @@ class ZeroModelService(Service):
         mass_pos = _top_left_mass(Y_pos)
         mass_neg = _top_left_mass(Y_neg)
         delta_mass = mass_pos - mass_neg
-        overlap = float(np.sum(np.minimum(Y_pos, Y_neg)) / (np.sum(np.maximum(Y_pos, Y_neg)) + 1e-8))
+        overlap = float(
+            np.sum(np.minimum(Y_pos, Y_neg))
+            / (np.sum(np.maximum(Y_pos, Y_neg)) + 1e-8)
+        )
 
         # 5) Visuals
         def _grid(images, titles, path_base):
-            fig, axes = plt.subplots(1, len(images), figsize=(5 * len(images), 5))
+            fig, axes = plt.subplots(
+                1, len(images), figsize=(5 * len(images), 5)
+            )
             for ax, img, title in zip(axes, images, titles):
                 im = ax.imshow(img, cmap=cmap, aspect="auto")
                 ax.set_title(title, fontsize=10)
@@ -1404,7 +1652,9 @@ class ZeroModelService(Service):
         # standalone diff
         fig, ax = plt.subplots(figsize=(8, 5))
         im = ax.imshow(diff, cmap=cmap, aspect="auto")
-        ax.set_title(f"PHOS-Ordered Field — ΔMass={delta_mass:.4f}, Overlap={overlap:.4f}")
+        ax.set_title(
+            f"PHOS-Ordered Field — ΔMass={delta_mass:.4f}, Overlap={overlap:.4f}"
+        )
         fig.colorbar(im, ax=ax, label="Δ Intensity (Pos−Neg)")
         plt.tight_layout()
         png_path = base + ".png"
@@ -1437,8 +1687,9 @@ class ZeroModelService(Service):
             f.write(dumps_safe(meta, indent=2))
         return meta
 
-
-    def _scorable_to_vpm(self, scorable, out_dir: str, img_size: int = 256) -> tuple[np.ndarray, dict]:
+    def _scorable_to_vpm(
+        self, scorable, out_dir: str, img_size: int = 256
+    ) -> tuple[np.ndarray, dict]:
         """
         Returns (vpm_uint8 [3,H,W], meta). Tries, in order:
         - scorable.meta['vpm_path'] (assumed HxW(L/RGB) png → 3ch)
@@ -1447,8 +1698,12 @@ class ZeroModelService(Service):
         """
         import numpy as np
         from PIL import Image
+
         Path(out_dir).mkdir(parents=True, exist_ok=True)
-        meta = {"source": getattr(scorable, "target_type", "custom"), "scorable_id": getattr(scorable, "id", "")}
+        meta = {
+            "source": getattr(scorable, "target_type", "custom"),
+            "scorable_id": getattr(scorable, "id", ""),
+        }
 
         vpm_path = (getattr(scorable, "meta", {}) or {}).get("vpm_path")
         if vpm_path:
@@ -1457,7 +1712,10 @@ class ZeroModelService(Service):
                 im = im.convert("L")
             im = im.resize((img_size, img_size), Image.BILINEAR)
             g = np.array(im, dtype=np.uint8)
-            return np.stack([g, g, g], axis=0), {**meta, "adapter": "existing_vpm_path"}
+            return np.stack([g, g, g], axis=0), {
+                **meta,
+                "adapter": "existing_vpm_path",
+            }
 
         img_path = (getattr(scorable, "meta", {}) or {}).get("image_path")
         if img_path:
@@ -1466,7 +1724,10 @@ class ZeroModelService(Service):
                 im = im.convert("L")
             im = im.resize((img_size, img_size), Image.BILINEAR)
             g = np.array(im, dtype=np.uint8)
-            return np.stack([g, g, g], axis=0), {**meta, "adapter": "image_to_vpm_gray3"}
+            return np.stack([g, g, g], axis=0), {
+                **meta,
+                "adapter": "image_to_vpm_gray3",
+            }
 
         # --- Text → lightweight Text-VPM (density / breaks / emphasis) ---
         text = getattr(scorable, "text", "") or ""
@@ -1483,13 +1744,15 @@ class ZeroModelService(Service):
             y = min(gh - 1, li)
             dens = min(1.0, len(line) / 200.0)
             xcells = min(gw, max(1, len(line) // 4))
-            heat[y*ch:(y+1)*ch, :xcells*cw] += dens
-            brks[y*ch:(y+1)*ch, :] += 1.0
+            heat[y * ch : (y + 1) * ch, : xcells * cw] += dens
+            brks[y * ch : (y + 1) * ch, :] += 1.0
             if line:
                 caps = sum(1 for c in line if c.isupper())
                 punc = sum(1 for c in line if c in "!?;:.")
-                ratio = min(1.0, 0.5*caps/len(line) + 0.5*punc/len(line))
-                emph[y*ch:(y+1)*ch, : int(ratio * W)] += ratio
+                ratio = min(
+                    1.0, 0.5 * caps / len(line) + 0.5 * punc / len(line)
+                )
+                emph[y * ch : (y + 1) * ch, : int(ratio * W)] += ratio
 
         def _u8(a):
             a = a - a.min()
@@ -1500,24 +1763,29 @@ class ZeroModelService(Service):
         return vpm, {**meta, "adapter": "text_to_vpm", "text_len": len(text)}
 
     # --- Visual Thought (demo heuristic) ------------------------------------
-    def _apply_zoom(self, vpm: np.ndarray, center: tuple[int,int], scale: float) -> np.ndarray:
+    def _apply_zoom(
+        self, vpm: np.ndarray, center: tuple[int, int], scale: float
+    ) -> np.ndarray:
         """
         vpm: [C,H,W] uint8; returns same shape uint8 after zoom into (center, scale).
         """
         from PIL import Image
+
         C, H, W = vpm.shape
         cx, cy = center
-        cx = int(np.clip(cx, 0, W-1))
-        cy = int(np.clip(cy, 0, H-1))
+        cx = int(np.clip(cx, 0, W - 1))
+        cy = int(np.clip(cy, 0, H - 1))
 
         box_w = int(max(8, W / max(scale, 1.0)))
         box_h = int(max(8, H / max(scale, 1.0)))
-        x0 = int(np.clip(cx - box_w//2, 0, W - box_w))
-        y0 = int(np.clip(cy - box_h//2, 0, H - box_h))
+        x0 = int(np.clip(cx - box_w // 2, 0, W - box_w))
+        y0 = int(np.clip(cy - box_h // 2, 0, H - box_h))
 
         out = np.zeros_like(vpm)
         for c in range(C):
-            crop = Image.fromarray(vpm[c, y0:y0+box_h, x0:x0+box_w], mode="L")
+            crop = Image.fromarray(
+                vpm[c, y0 : y0 + box_h, x0 : x0 + box_w], mode="L"
+            )
             crop = crop.resize((W, H), Image.BILINEAR)
             out[c] = np.array(crop, dtype=np.uint8)
         return out
@@ -1534,7 +1802,8 @@ class ZeroModelService(Service):
 
     def render_frontier_map(
         self,
-        A, B,
+        A,
+        B,
         out_dir,
         *,
         pos_label="HRM",
@@ -1542,7 +1811,7 @@ class ZeroModelService(Service):
         k_latent=20,
         cmap_main="magma",
         cmap_delta="seismic",
-        progress_cb: Optional[Callable[[str,int,int],None]] = None,
+        progress_cb: Optional[Callable[[str, int, int], None]] = None,
     ):
         """
         Frontier Map: a single composite figure showing the 'layer between models'.
@@ -1561,18 +1830,18 @@ class ZeroModelService(Service):
         B = np.asarray(B, dtype=np.float32)
         n = min(A.shape[0], B.shape[0])
         if n < 3:
-            return {"status":"too_few_rows", "n": int(n)}
+            return {"status": "too_few_rows", "n": int(n)}
         A, B = A[:n], B[:n]
 
         # --- 2) Shared latent space via CCA-lite
         Wa, Wb, can_corr = _cca_shared_projections(A, B, k=k_latent)
-        A_lat = A @ Wa        # [n, k]
-        B_lat = B @ Wb        # [n, k]
+        A_lat = A @ Wa  # [n, k]
+        B_lat = B @ Wb  # [n, k]
 
         # --- 3) “Unexplained” layer (residuals) in the shared space
         # We compute both directions; the 'frontier' is what survives in either.
-        resid_A = A_lat - B_lat             # what HRM encodes beyond Tiny
-        resid_B = B_lat - A_lat             # what Tiny encodes beyond HRM
+        resid_A = A_lat - B_lat  # what HRM encodes beyond Tiny
+        resid_B = B_lat - A_lat  # what Tiny encodes beyond HRM
         # Per-sample magnitude (row-wise)
         mag_A = np.linalg.norm(resid_A, axis=1, ord=2)  # [n]
         mag_B = np.linalg.norm(resid_B, axis=1, ord=2)  # [n]
@@ -1593,42 +1862,90 @@ class ZeroModelService(Service):
         A_phos_n, B_phos_n = _align_square_phos(A_phos_n, B_phos_n)
         diff_phos = A_phos_n - B_phos_n
 
-
         # --- 6) Composite figure
         fig = plt.figure(figsize=(16, 9))
-        gs = fig.add_gridspec(2, 3, width_ratios=[1.0, 1.0, 1.1], height_ratios=[1.0, 1.0], wspace=0.2, hspace=0.28)
+        gs = fig.add_gridspec(
+            2,
+            3,
+            width_ratios=[1.0, 1.0, 1.1],
+            height_ratios=[1.0, 1.0],
+            wspace=0.2,
+            hspace=0.28,
+        )
 
         # (a) PHOS energy maps
-        ax1 = fig.add_subplot(gs[0,0]); im1 = ax1.imshow(A_phos_n, cmap=cmap_main, aspect="auto"); ax1.set_title(f"{pos_label} PHOS Energy"); ax1.axis("off"); fig.colorbar(im1, ax=ax1, fraction=0.035, pad=0.04)
-        ax2 = fig.add_subplot(gs[0,1]); im2 = ax2.imshow(B_phos_n, cmap=cmap_main, aspect="auto"); ax2.set_title(f"{neg_label} PHOS Energy"); ax2.axis("off"); fig.colorbar(im2, ax=ax2, fraction=0.035, pad=0.04)
-        ax3 = fig.add_subplot(gs[0,2]); im3 = ax3.imshow(diff_phos, cmap=cmap_delta, aspect="auto", vmin=-1, vmax=1); ax3.set_title(f"PHOS Δ ({pos_label} − {neg_label})"); ax3.axis("off"); fig.colorbar(im3, ax=ax3, fraction=0.035, pad=0.04)
+        ax1 = fig.add_subplot(gs[0, 0])
+        im1 = ax1.imshow(A_phos_n, cmap=cmap_main, aspect="auto")
+        ax1.set_title(f"{pos_label} PHOS Energy")
+        ax1.axis("off")
+        fig.colorbar(im1, ax=ax1, fraction=0.035, pad=0.04)
+        ax2 = fig.add_subplot(gs[0, 1])
+        im2 = ax2.imshow(B_phos_n, cmap=cmap_main, aspect="auto")
+        ax2.set_title(f"{neg_label} PHOS Energy")
+        ax2.axis("off")
+        fig.colorbar(im2, ax=ax2, fraction=0.035, pad=0.04)
+        ax3 = fig.add_subplot(gs[0, 2])
+        im3 = ax3.imshow(
+            diff_phos, cmap=cmap_delta, aspect="auto", vmin=-1, vmax=1
+        )
+        ax3.set_title(f"PHOS Δ ({pos_label} − {neg_label})")
+        ax3.axis("off")
+        fig.colorbar(im3, ax=ax3, fraction=0.035, pad=0.04)
 
         # (b) Latent residual heatmap (the frontier)
-        ax4 = fig.add_subplot(gs[1,0]); im4 = ax4.imshow(resid_n, cmap=cmap_delta, aspect="auto", vmin=-1, vmax=1)
+        ax4 = fig.add_subplot(gs[1, 0])
+        im4 = ax4.imshow(
+            resid_n, cmap=cmap_delta, aspect="auto", vmin=-1, vmax=1
+        )
         ax4.set_title(f"Shared-Latent Residuals ({pos_label} − {neg_label})")
-        ax4.set_xlabel("Latent dimension"); ax4.set_ylabel("Sample (row)")
+        ax4.set_xlabel("Latent dimension")
+        ax4.set_ylabel("Sample (row)")
         fig.colorbar(im4, ax=ax4, fraction=0.035, pad=0.04)
 
         # (c) Per-sample frontier strength
-        ax5 = fig.add_subplot(gs[1,1])
+        ax5 = fig.add_subplot(gs[1, 1])
         ax5.plot(mag_A, label=f"{pos_label} unexplained", linewidth=1.0)
         ax5.plot(mag_B, label=f"{neg_label} unexplained", linewidth=1.0)
         ax5.set_title("Frontier Strength per Sample")
-        ax5.set_xlabel("Sample index"); ax5.set_ylabel("||residual||₂")
+        ax5.set_xlabel("Sample index")
+        ax5.set_ylabel("||residual||₂")
         ax5.legend(loc="upper right", fontsize=8)
 
         # (d) Per-latent frontier strength + canonical corr
-        ax6 = fig.add_subplot(gs[1,2])
+        ax6 = fig.add_subplot(gs[1, 2])
         idx = np.arange(resid_n.shape[1])
-        ax6.bar(idx - 0.2, col_A / (col_A.max()+1e-8), width=0.4, label=f"{pos_label} resid", alpha=0.8)
-        ax6.bar(idx + 0.2, col_B / (col_B.max()+1e-8), width=0.4, label=f"{neg_label} resid", alpha=0.8)
+        ax6.bar(
+            idx - 0.2,
+            col_A / (col_A.max() + 1e-8),
+            width=0.4,
+            label=f"{pos_label} resid",
+            alpha=0.8,
+        )
+        ax6.bar(
+            idx + 0.2,
+            col_B / (col_B.max() + 1e-8),
+            width=0.4,
+            label=f"{neg_label} resid",
+            alpha=0.8,
+        )
         ax6.set_title("Frontier by Latent Axis")
-        ax6.set_xlabel("Latent dimension"); ax6.set_ylabel("Normalized magnitude")
+        ax6.set_xlabel("Latent dimension")
+        ax6.set_ylabel("Normalized magnitude")
         ax6.legend(loc="upper right", fontsize=8)
         # annotate top CCA correlations for context
         if can_corr is not None and can_corr.size:
-            text = "Top canonical corr: " + ", ".join([f"{c:.2f}" for c in can_corr[:5]])
-            ax6.text(0.02, 0.98, text, transform=ax6.transAxes, va="top", ha="left", fontsize=8)
+            text = "Top canonical corr: " + ", ".join(
+                [f"{c:.2f}" for c in can_corr[:5]]
+            )
+            ax6.text(
+                0.02,
+                0.98,
+                text,
+                transform=ax6.transAxes,
+                va="top",
+                ha="left",
+                fontsize=8,
+            )
 
         png_path = base + ".png"
         plt.tight_layout()
@@ -1640,7 +1957,11 @@ class ZeroModelService(Service):
             "timestamp": ts,
             "rows_used": int(n),
             "k_latent": int(min(k_latent, A_lat.shape[1])),
-            "canonical_corr_top5": (can_corr[:5].tolist() if can_corr is not None and can_corr.size else []),
+            "canonical_corr_top5": (
+                can_corr[:5].tolist()
+                if can_corr is not None and can_corr.size
+                else []
+            ),
             "residual_sample_stats": {
                 f"{pos_label}_mean": float(np.mean(mag_A)),
                 f"{pos_label}_max": float(np.max(mag_A)),
@@ -1654,11 +1975,11 @@ class ZeroModelService(Service):
         with open(meta_path, "w", encoding="utf-8") as f:
             json.dump(meta, f, indent=2)
 
-        return {"status":"ok", **meta}
+        return {"status": "ok", **meta}
 
-
-
-    def analyze_differential_field(self, diff_matrix: np.ndarray, metric_names: list[str], output_dir: str):
+    def analyze_differential_field(
+        self, diff_matrix: np.ndarray, metric_names: list[str], output_dir: str
+    ):
         """
         Analyze the differential field (Good - Bad) to identify surviving high-intensity metrics.
         """
@@ -1666,7 +1987,9 @@ class ZeroModelService(Service):
         output_dir.mkdir(parents=True, exist_ok=True)
 
         if diff_matrix is None:
-            log.warning("[PhosAnalyzer] Empty diff_matrix — skipping analysis.")
+            log.warning(
+                "[PhosAnalyzer] Empty diff_matrix — skipping analysis."
+            )
             return {"ranked_metrics": [], "top_indices": [], "top_rows": []}
 
         # Ensure NumPy array
@@ -1690,7 +2013,9 @@ class ZeroModelService(Service):
         sorted_idx = np.argsort(norm_intensities)[::-1]
         ranked_metrics = [
             {
-                "metric": metric_names[i] if i < len(metric_names) else f"metric_{i}",
+                "metric": metric_names[i]
+                if i < len(metric_names)
+                else f"metric_{i}",
                 "mean_intensity": float(intensities[i]),
                 "norm_intensity": float(norm_intensities[i]),
                 "rank": int(rank),
@@ -1702,7 +2027,9 @@ class ZeroModelService(Service):
         json_path = output_dir / "metric_intensity_summary.json"
         with open(json_path, "w") as f:
             f.write(dumps_safe(ranked_metrics, indent=2))
-        log.debug(f"[PhosAnalyzer] Saved metric intensity summary → {json_path}")
+        log.debug(
+            f"[PhosAnalyzer] Saved metric intensity summary → {json_path}"
+        )
 
         # 5️⃣ Plot top metrics
         top_k = 20
@@ -1718,8 +2045,9 @@ class ZeroModelService(Service):
         plt.savefig(output_dir / "metric_intensity_plot.png", dpi=200)
         plt.close()
 
-
-        def extract_top_intensity_indices(diff_matrix, k: int = 5) -> list[int]:
+        def extract_top_intensity_indices(
+            diff_matrix, k: int = 5
+        ) -> list[int]:
             """
             Return indices of the top-K rows by mean absolute intensity.
 
@@ -1770,7 +2098,6 @@ class ZeroModelService(Service):
         # Use fancy indexing safely
         top_rows = diff_matrix[top_idx, :].tolist() if len(top_idx) > 0 else []
 
-
         # Optional: quick-dump to JSON for inspection
         top_path = output_dir / "top_intensity_rows.json"
         # handle both numpy arrays and Python lists safely
@@ -1780,8 +2107,14 @@ class ZeroModelService(Service):
                 top_idx_list = top_idx.tolist()
             else:
                 top_idx_list = list(top_idx)
-            json.dump({"top_indices": top_idx_list, "top_rows": top_rows}, f, indent=2)
-        log.debug(f"[PhosAnalyzer] Extracted top-{top_k} intensity rows → {top_path}")
+            json.dump(
+                {"top_indices": top_idx_list, "top_rows": top_rows},
+                f,
+                indent=2,
+            )
+        log.debug(
+            f"[PhosAnalyzer] Extracted top-{top_k} intensity rows → {top_path}"
+        )
 
         return {
             "ranked_metrics": ranked_metrics,
@@ -1789,18 +2122,17 @@ class ZeroModelService(Service):
             "top_rows": top_rows,
         }
 
-
     def render_intermodel_delta(
         self,
-        A: np.ndarray,                      # HRM matrix (rows=turns, cols=metrics)
-        B: np.ndarray,                      # Tiny matrix
+        A: np.ndarray,  # HRM matrix (rows=turns, cols=metrics)
+        B: np.ndarray,  # Tiny matrix
         *,
         names_A: Optional[List[str]] = None,
         names_B: Optional[List[str]] = None,
         output_dir: str,
         pos_label: str = "HRM",
         neg_label: str = "Tiny",
-        align: str = "canonical",           # "canonical" or "direct"
+        align: str = "canonical",  # "canonical" or "direct"
         alpha: float = 0.97,
         Kc: int = 40,
         Kr: int = 100,
@@ -1824,19 +2156,23 @@ class ZeroModelService(Service):
         #     align_meta = {"metric_weights": None, "canonical_layout": None}
 
         YA, YB, align_meta = self._canonical_align(
-                A, B,
-                names_A=names_A, names_B=names_B,
-                alpha=alpha, Kc=Kc, Kr=Kr
-            )
+            A, B, names_A=names_A, names_B=names_B, alpha=alpha, Kc=Kc, Kr=Kr
+        )
 
         # 2) Δ
         D = YA - YB
-        delta_mass = float(np.mean(D))  # simple summary; keep consistent with other metrics
-        overlap = float(np.sum(np.minimum(YA, YB)) / (np.sum(np.maximum(YA, YB)) + 1e-8))
+        delta_mass = float(
+            np.mean(D)
+        )  # simple summary; keep consistent with other metrics
+        overlap = float(
+            np.sum(np.minimum(YA, YB)) / (np.sum(np.maximum(YA, YB)) + 1e-8)
+        )
 
         # 3) Grid figure (Raw/Optimized naming aligned with your EF API style)
         def _save_grid(images, titles, path):
-            fig, axes = plt.subplots(1, len(images), figsize=(5*len(images), 5))
+            fig, axes = plt.subplots(
+                1, len(images), figsize=(5 * len(images), 5)
+            )
             for ax, img, title in zip(axes, images, titles):
                 im = ax.imshow(img, cmap=cmap, aspect="auto")
                 ax.set_title(title, fontsize=10)
@@ -1849,14 +2185,20 @@ class ZeroModelService(Service):
         comp_path = base + "_comparison.png"
         _save_grid(
             [YA, YB, D],
-            [f"Aligned {pos_label}", f"Aligned {neg_label}", f"Δ Field ({pos_label} − {neg_label})"],
-            comp_path
+            [
+                f"Aligned {pos_label}",
+                f"Aligned {neg_label}",
+                f"Δ Field ({pos_label} − {neg_label})",
+            ],
+            comp_path,
         )
 
         # 4) Standalone Δ heatmap
         fig, ax = plt.subplots(figsize=(10, 6))
         im = ax.imshow(D, cmap=cmap, aspect="auto")
-        ax.set_title(f"Inter-Model Δ Field — {pos_label} − {neg_label} | ΔMass={delta_mass:.4f}, Overlap={overlap:.4f}")
+        ax.set_title(
+            f"Inter-Model Δ Field — {pos_label} − {neg_label} | ΔMass={delta_mass:.4f}, Overlap={overlap:.4f}"
+        )
         fig.colorbar(im, ax=ax, label="Δ intensity")
         plt.tight_layout()
         delta_png = base + "_delta.png"
@@ -1864,7 +2206,9 @@ class ZeroModelService(Service):
         plt.close(fig)
 
         # 5) Intensity ranking
-        ranks = self._rank_intensity(D, metric_names=metric_names, k_rows=20, k_cols=20)
+        ranks = self._rank_intensity(
+            D, metric_names=metric_names, k_rows=20, k_cols=20
+        )
 
         # 6) Write JSON
         meta = {
@@ -1883,16 +2227,22 @@ class ZeroModelService(Service):
             "shape_neg": list(YB.shape),
             "shape_delta": list(D.shape),
             "common_metric_names": align_meta["common_metric_names"],
-            "excluded_in_A": [n for n in (names_A or []) if n not in align_meta["common_metric_names"]],
-            "excluded_in_B": [n for n in (names_B or []) if n not in align_meta["common_metric_names"]],
+            "excluded_in_A": [
+                n
+                for n in (names_A or [])
+                if n not in align_meta["common_metric_names"]
+            ],
+            "excluded_in_B": [
+                n
+                for n in (names_B or [])
+                if n not in align_meta["common_metric_names"]
+            ],
         }
         meta_path = base + ".json"
         with open(meta_path, "w", encoding="utf-8") as f:
             f.write(dumps_safe(meta, indent=2))
 
-
         return meta
-
 
     def _canonical_align(
         self,
@@ -1929,7 +2279,9 @@ class ZeroModelService(Service):
                 A2, B2 = A[:, :d], B[:, :d]
                 common_names = [f"metric_{i}" for i in range(d)]
             else:
-                idx_A = [i for i, n in enumerate(names_A) if n in name_to_idx_B]
+                idx_A = [
+                    i for i, n in enumerate(names_A) if n in name_to_idx_B
+                ]
                 idx_B = [name_to_idx_B[n] for n in common_names]
                 A2 = A[:, idx_A]
                 B2 = B[:, idx_B]
@@ -1940,6 +2292,7 @@ class ZeroModelService(Service):
 
         # 2) optimize on A, reuse for B
         from zeromodel.tools.spatial_optimizer import SpatialOptimizer
+
         opt = SpatialOptimizer(Kc=Kc, Kr=Kr, alpha=alpha)
         opt.apply_optimization([A2])
         w = opt.metric_weights
@@ -1953,13 +2306,17 @@ class ZeroModelService(Service):
             maxv = np.max(np.abs(m)) + 1e-8
             return m / maxv
 
-        return _norm(YA), _norm(YB), {
-            "common_metric_names": common_names,
-            "w": w,
-            "width": len(common_names),
-            "shape_A": A2.shape,
-            "shape_B": B2.shape,
-        }
+        return (
+            _norm(YA),
+            _norm(YB),
+            {
+                "common_metric_names": common_names,
+                "w": w,
+                "width": len(common_names),
+                "shape_A": A2.shape,
+                "shape_B": B2.shape,
+            },
+        )
 
     # --- NEW: direct (no optimizer) alignment helper ----------------------
     def _direct_align(self, A: np.ndarray, B: np.ndarray):
@@ -1979,7 +2336,14 @@ class ZeroModelService(Service):
         return A[:r, :c], B[:r, :c]
 
     # --- NEW: intensity ranking helper -----------------------------------
-    def _rank_intensity(self, D: np.ndarray, *, metric_names: list[str] | None = None, k_rows: int = 20, k_cols: int = 20):
+    def _rank_intensity(
+        self,
+        D: np.ndarray,
+        *,
+        metric_names: list[str] | None = None,
+        k_rows: int = 20,
+        k_cols: int = 20,
+    ):
         D = np.asarray(D, dtype=np.float32)
         if D.ndim < 2:  # safety
             D = np.expand_dims(D, 0)
@@ -1991,7 +2355,11 @@ class ZeroModelService(Service):
         c_idx = np.argsort(col_int)[::-1][:k_cols].tolist()
 
         cols_named = [
-            (metric_names[i] if metric_names and i < len(metric_names) else f"metric_{i}")
+            (
+                metric_names[i]
+                if metric_names and i < len(metric_names)
+                else f"metric_{i}"
+            )
             for i in c_idx
         ]
 
@@ -2003,20 +2371,31 @@ class ZeroModelService(Service):
             "col_intensities": col_int.tolist(),
         }
 
-    def vpm_from_scorable(self, scorable, *, img_size: int = 256) -> tuple[np.ndarray, dict]:
+    def vpm_from_scorable(
+        self, scorable, *, img_size: int = 256
+    ) -> tuple[np.ndarray, dict]:
         """
         Public, stable wrapper for Scorable -> VPM (uint8[3,H,W]) + adapter meta.
         Keeps the 'how' inside ZeroModel.
         """
         out_dir = self._out_dir
-        vpm_u8, meta = self._scorable_to_vpm(scorable, out_dir=out_dir, img_size=img_size)
+        vpm_u8, meta = self._scorable_to_vpm(
+            scorable, out_dir=out_dir, img_size=img_size
+        )
         return vpm_u8, meta
 
-    def vpm_rollout(self,
+    def vpm_rollout(
+        self,
         vpm_u8: np.ndarray,
         *,
         steps: int = 0,
-        dims: list[str] = ("clarity","coherence","complexity","alignment","coverage"),
+        dims: list[str] = (
+            "clarity",
+            "coherence",
+            "complexity",
+            "alignment",
+            "coverage",
+        ),
         strategy: str = "none",
     ) -> tuple[list[np.ndarray], list[dict]]:
         """
@@ -2027,9 +2406,9 @@ class ZeroModelService(Service):
         """
         frames, summaries = [], []
         # initial composite & score
-        comp = vpm_u8.mean(axis=0)                   # gray composite
+        comp = vpm_u8.mean(axis=0)  # gray composite
         s0 = self.score_vpm_image(comp, dims=list(dims))
-        frames.append(np.transpose(vpm_u8, (1,2,0))) # HWC
+        frames.append(np.transpose(vpm_u8, (1, 2, 0)))  # HWC
         summaries.append({**s0, "step": 0, "thought": {"op": "none"}})
 
         if steps <= 0 or strategy == "none":
@@ -2039,13 +2418,25 @@ class ZeroModelService(Service):
         cur = vpm_u8.copy()
         for i in range(1, steps + 1):
             if strategy == "zoom_max":
-                thought = self._next_thought(i, cur)  # uses your existing helper
+                thought = self._next_thought(
+                    i, cur
+                )  # uses your existing helper
                 if thought.get("op") == "zoom":
-                    cur = self._apply_zoom(cur, thought["center"], thought["scale"])
+                    cur = self._apply_zoom(
+                        cur, thought["center"], thought["scale"]
+                    )
             comp = cur.mean(axis=0)
             si = self.score_vpm_image(comp, dims=list(dims))
-            frames.append(np.transpose(cur, (1,2,0)))
-            summaries.append({**si, "step": i, "thought": thought if strategy != "none" else {"op":"none"}})
+            frames.append(np.transpose(cur, (1, 2, 0)))
+            summaries.append(
+                {
+                    **si,
+                    "step": i,
+                    "thought": thought
+                    if strategy != "none"
+                    else {"op": "none"},
+                }
+            )
 
         return frames, summaries
 
@@ -2068,10 +2459,14 @@ class ZeroModelService(Service):
             }
         """
         if vpm_img is None:
-            return {"scores": {}, "overall": 0.5, "meta": {"reason": "no_image"}}
+            return {
+                "scores": {},
+                "overall": 0.5,
+                "meta": {"reason": "no_image"},
+            }
 
         img = np.asarray(vpm_img)
-        if img.ndim == 3 and img.shape[-1] in (1,3):
+        if img.ndim == 3 and img.shape[-1] in (1, 3):
             img = img[..., 0] if img.shape[-1] == 1 else np.mean(img, axis=-1)
         img = img.astype(np.float32)
         if img.max() > 1.0:
@@ -2082,7 +2477,8 @@ class ZeroModelService(Service):
         # helpers
         def _robust01(x):
             x = np.asarray(x, dtype=np.float32).ravel()
-            if x.size == 0: return 0.0
+            if x.size == 0:
+                return 0.0
             lo, hi = np.percentile(x, [5, 95])
             if not np.isfinite(lo) or not np.isfinite(hi) or hi <= lo:
                 return 0.0
@@ -2091,44 +2487,50 @@ class ZeroModelService(Service):
 
         # gradients (simple structure cues)
         gy, gx = np.gradient(img)
-        grad = np.hypot(gx, gy)                           # edge/complexity signal in [0, ~]
+        grad = np.hypot(gx, gy)  # edge/complexity signal in [0, ~]
         grad_n = grad / (grad.max() + 1e-8)
 
         # local entropy (clarity proxy; lower entropy → clearer)
         # compute on 8x8 windows (vectorized-ish)
         ws = max(4, min(h, w) // 16)
-        if ws % 2 == 1: ws += 1
-        if ws < 4: ws = 4
+        if ws % 2 == 1:
+            ws += 1
+        if ws < 4:
+            ws = 4
         # downsampled blocks
         bh = max(1, h // ws)
         bw = max(1, w // ws)
         ent_blocks = []
         for i in range(bh):
             for j in range(bw):
-                block = img[i*ws:(i+1)*ws, j*ws:(j+1)*ws]
-                hist, _ = np.histogram(block, bins=32, range=(0.0, 1.0), density=True)
+                block = img[i * ws : (i + 1) * ws, j * ws : (j + 1) * ws]
+                hist, _ = np.histogram(
+                    block, bins=32, range=(0.0, 1.0), density=True
+                )
                 p = hist + 1e-9
                 p = p / p.sum()
                 ent = -np.sum(p * np.log(p))
                 ent_blocks.append(ent)
         ent_blocks = np.array(ent_blocks, dtype=np.float32)
         # normalize entropy to [0,1] (low entropy ⇒ clarity high)
-        ent_z = (ent_blocks - ent_blocks.min()) / (ent_blocks.max() - ent_blocks.min() + 1e-8)
+        ent_z = (ent_blocks - ent_blocks.min()) / (
+            ent_blocks.max() - ent_blocks.min() + 1e-8
+        )
         clarity = float(1.0 - np.mean(ent_z))
 
         # coherence: how aligned gradients are (anisotropy of structure tensor)
-        Ixx, Iyy, Ixy = (gx*gx).mean(), (gy*gy).mean(), (gx*gy).mean()
+        Ixx, Iyy, Ixy = (gx * gx).mean(), (gy * gy).mean(), (gx * gy).mean()
         trace = Ixx + Iyy
-        det = Ixx*Iyy - Ixy*Ixy
+        det = Ixx * Iyy - Ixy * Ixy
         # eigenvalues of [[Ixx,Ixy],[Ixy,Iyy]]
-        tmp = np.sqrt(max(trace*trace - 4*det, 0.0))
-        l1 = 0.5*(trace + tmp) + 1e-8
-        l2 = 0.5*(trace - tmp) + 1e-8
-        anisotropy = float((l1 - l2) / (l1 + l2))        # 0..1
+        tmp = np.sqrt(max(trace * trace - 4 * det, 0.0))
+        l1 = 0.5 * (trace + tmp) + 1e-8
+        l2 = 0.5 * (trace - tmp) + 1e-8
+        anisotropy = float((l1 - l2) / (l1 + l2))  # 0..1
         coherence = anisotropy
 
         # coverage / sparsity
-        coverage = float(img.mean())                     # how much "mass" is present
+        coverage = float(img.mean())  # how much "mass" is present
         sparsity = 1.0 - coverage
 
         # complexity: average normalized gradient magnitude
@@ -2141,13 +2543,19 @@ class ZeroModelService(Service):
         contradiction = float(_robust01([diff_h, diff_v, grad_n.var()]))
 
         # confidence: strong, consistent activation & clear edges (not noisy)
-        confidence = float(np.clip(0.6*coverage + 0.4*(clarity*(1.0 - contradiction)), 0.0, 1.0))
+        confidence = float(
+            np.clip(
+                0.6 * coverage + 0.4 * (clarity * (1.0 - contradiction)),
+                0.0,
+                1.0,
+            )
+        )
 
         # novelty: if you want true novelty vs bank, wire a reference here.
         novelty = 0.5
 
         # alignment: prefer strong directional structure and clarity
-        alignment = float(np.clip(0.5*anisotropy + 0.5*clarity, 0.0, 1.0))
+        alignment = float(np.clip(0.5 * anisotropy + 0.5 * clarity, 0.0, 1.0))
 
         # coherence already computed; include “relevance” if requested (fallback to coverage)
         candidates = {
@@ -2163,20 +2571,27 @@ class ZeroModelService(Service):
             "relevance": coverage,
         }
 
-        scores = {d: float(np.clip(candidates.get(d, 0.5), 0.0, 1.0)) for d in dims}
+        scores = {
+            d: float(np.clip(candidates.get(d, 0.5), 0.0, 1.0)) for d in dims
+        }
 
         # weighted & order-aware overall
-        overall = self._aggregate_dimension_scores(scores, weights=weights or {}, order=order or [], decay=order_decay)
+        overall = self._aggregate_dimension_scores(
+            scores, weights=weights or {}, order=order or [], decay=order_decay
+        )
 
         return {
             "scores": scores,
             "overall": overall,
             "meta": {
-                "h": int(h), "w": int(w),
+                "h": int(h),
+                "w": int(w),
                 "grad_mean": float(grad_n.mean()),
-                "entropy_mean": float(np.mean(ent_blocks)) if ent_blocks.size else None,
+                "entropy_mean": float(np.mean(ent_blocks))
+                if ent_blocks.size
+                else None,
                 "ws": int(ws),
-            }
+            },
         }
 
     def _aggregate_dimension_scores(
@@ -2195,7 +2610,11 @@ class ZeroModelService(Service):
         if not scores:
             return 0.5
         # geometric order bonus (first gets 1.0, next *decay, etc.)
-        order_boost = {dim: (decay**rank) for rank, dim in enumerate(order)} if order else {}
+        order_boost = (
+            {dim: (decay**rank) for rank, dim in enumerate(order)}
+            if order
+            else {}
+        )
         wsum = 0.0
         ssum = 0.0
         for dim, val in scores.items():
@@ -2204,9 +2623,11 @@ class ZeroModelService(Service):
             ssum += w * float(val)
         return float(ssum / (wsum + 1e-8))
 
+
 def _finite_mask(a: np.ndarray) -> np.ndarray:
     a = np.asarray(a, dtype=np.float32)
     return np.isfinite(a)
+
 
 def _robust_scale_cols(M: np.ndarray, lo_p=1.0, hi_p=99.0) -> np.ndarray:
     """

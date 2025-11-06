@@ -1,7 +1,7 @@
 # stephanie/utils/weight_delta.py
-from __future__ import annotations
 
 """Utilities for computing and applying weight deltas between models"""
+from __future__ import annotations
 
 import hashlib
 import os
