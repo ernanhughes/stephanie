@@ -9,7 +9,7 @@ import pandas as pd
 from tqdm import tqdm
 
 from stephanie.constants import GOAL, GOAL_TEXT
-from stephanie.scoring.scorable import ScorableFactory, ScorableType
+from stephanie.scoring.scorable import ScorableFactory, ScorableType, Scorable
 
 # ---------------------------
 # Helpers
@@ -25,7 +25,7 @@ def _make_scorable(text: str, idx: int):
         return ScorableFactory.from_dict(
             {"text": text, "id": f"resp_{idx}"}, ScorableType.DOCUMENT
         )
-    return SimpleScorable(id=f"resp_{idx}", text=text)
+    return Scorable(id=f"resp_{idx}", text=text, type=ScorableType.CUSTOM)
 
 
 def _robust_minmax(series: pd.Series, lo=10.0, hi=90.0) -> pd.Series:

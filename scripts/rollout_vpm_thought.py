@@ -1,17 +1,14 @@
 # scripts/rollout_vpm_thought.py
 import argparse
 import json
-import os
 import random
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import List, Tuple
 
 import imageio.v2 as iio
-import matplotlib.pyplot as plt
 import networkx as nx
 import numpy as np
 import torch
-import torch.nn.functional as F
 from omegaconf import OmegaConf, DictConfig
 
 from PIL import Image

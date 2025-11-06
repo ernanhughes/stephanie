@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 from datetime import datetime
-from venv import logger
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -11,13 +10,12 @@ from stephanie.memory.memory_tool import MemoryTool
 from sis.routes import arena, db, nexus, pipelines, models, logs, plan_traces, documents, mars, learning
 from sis.routes import casebooks as casebooks_routes
 from sis.routes import chats, cards
-from sis.routes import explore_ui  # add with other route imports
+from sis.routes import explore_ui
 from sis.routes import overnight_ui
 from sis.routes import ssp
 from sis.utils.date_utls import short_dt, datetimeformat
 from stephanie.services.service_container import ServiceContainer
 from stephanie.services.registry_loader import load_services_profile
-# sis/main.py (or wherever you load the cfg)
 from hydra import initialize, compose
 
 def load_sis_cfg(overrides: list[str] | None = None):

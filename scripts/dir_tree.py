@@ -24,8 +24,8 @@ import hashlib
 import json
 import os
 import sys
-from dataclasses import dataclass, asdict
-from typing import List, Dict, Any, Optional, Tuple
+from dataclasses import dataclass
+from typing import List, Dict, Any, Optional
 
 DEFAULT_EXCLUDES = [
     ".git", ".hg", ".svn",

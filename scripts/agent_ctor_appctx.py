@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-import sys, pathlib, libcst as cst
+import sys
+import pathlib
+import libcst as cst
 from libcst import matchers as m
 
 APPCTX_ANNOT = cst.Annotation(cst.Name("AppContext"))

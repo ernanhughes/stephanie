@@ -1,5 +1,6 @@
 from __future__ import annotations
-import json, typer
+import json
+import typer
 from .service import NexusService
 
 app = typer.Typer(add_completion=False)

@@ -1,23 +1,30 @@
 # stephanie/components/nexus/agents/nexus_inline.py
 from __future__ import annotations
+
+import json
+import logging
+import time
+from pathlib import Path
 from typing import Any, Dict
+
 from stephanie.agents.base_agent import BaseAgent
+# add to imports at the top
+from stephanie.components.nexus.graph.builder import (
+    build_edges_enhanced, build_nodes_from_manifest)
+from stephanie.components.nexus.graph.exporters import (export_graph_json,
+                                                        export_pyvis_html)
 from stephanie.components.nexus.graph.layout import compute_positions
+from stephanie.components.nexus.graph.timeline import \
+    build_frames_from_manifest
+from stephanie.components.nexus.manifest import ManifestItem, NexusRunManifest
 from stephanie.constants import PIPELINE_RUN_ID
 from stephanie.scoring.scorable import Scorable, ScorableType
-from stephanie.services.zeromodel_service import ZeroModelService
 from stephanie.services.scoring_service import ScoringService
-from stephanie.services.workers.nexus_workers import NexusVPMWorkerInline, NexusMetricsWorkerInline
-from stephanie.components.nexus.manifest import NexusRunManifest, ManifestItem
-from pathlib import Path
-import json
-import time
-from stephanie.components.nexus.graph.exporters import export_graph_json, export_pyvis_html
-# add to imports at the top
-from stephanie.components.nexus.graph.builder import build_nodes_from_manifest, build_edges_enhanced
+from stephanie.services.workers.nexus_workers import (NexusMetricsWorkerInline,
+                                                      NexusVPMWorkerInline)
+from stephanie.services.zeromodel_service import ZeroModelService
 from stephanie.utils.json_sanitize import dumps_safe  # small helper; see below
-from stephanie.components.nexus.graph.timeline import build_frames_from_manifest
-import logging
+
 log = logging.getLogger(__name__)
 
 class NexusInlineAgent(BaseAgent):

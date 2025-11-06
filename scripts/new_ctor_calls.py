@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-import sys, re, pathlib
+import sys
+import re
+import pathlib
 
 # Heuristic: replace ClassName(cfg, memory, container, logger) -> ClassName(app)
 CALL_RE = re.compile(
