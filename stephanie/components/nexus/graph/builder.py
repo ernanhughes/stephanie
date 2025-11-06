@@ -6,6 +6,8 @@ from stephanie.components.nexus.types import NexusEdge, NexusNode
 from collections import defaultdict
 import math
 
+from stephanie.utils.json_sanitize import dumps_safe
+
 
 # stephanie/components/nexus/graph/builder.py  (patch)
 
@@ -526,11 +528,40 @@ def _z(x: Optional[np.ndarray]) -> Optional[np.ndarray]:
     mu = x.mean(); sd = x.std() + 1e-8
     return (x - mu) / sd
 
-def _jaccard_list(a: Optional[List[str]], b: Optional[List[str]]) -> float:
-    if not a and not b: return 0.0
-    A, B = set(a or []), set(b or [])
-    u = len(A | B); i = len(A & B)
-    return 0.0 if u == 0 else i / u
+def _normalize_token_list(v, *, key: str | None = None) -> list[str]:
+    """
+    Turn a heterogeneous list (strings / dicts / scalars) into a list of
+    lowercase string tokens that are safe to put in a set.
+    If key is provided and an element is a dict, use dict[key] when present,
+    else fall back to a canonical JSON form of the dict.
+    """
+    if v is None:
+        return []
+    if isinstance(v, (str, int, float, bool, dict)):
+        v = [v]  # make it iterable
+
+    out: list[str] = []
+    for item in v:
+        if isinstance(item, str):
+            out.append(item.strip().lower())
+        elif isinstance(item, dict):
+            if key and (key in item) and item[key] is not None:
+                out.append(str(item[key]).strip().lower())
+            else:
+                # canonicalize whole dict to a stable string
+                out.append(dumps_safe(item, sort_keys=True, ensure_ascii=False).lower())
+        elif item is None:
+            continue
+        else:
+            out.append(str(item).strip().lower())
+    return out
+
+def _jaccard_list(a, b, *, key: str | None = None) -> float:
+    A = set(_normalize_token_list(a, key=key))
+    B = set(_normalize_token_list(b, key=key))
+    if not A and not B:
+        return 0.0
+    return len(A & B) / float(len(A | B))
 
 def _char_shingles_jaccard(a: Optional[str], b: Optional[str], k: int = 5, max_len: int = 4000) -> float:
     if not a or not b: return 0.0
@@ -587,8 +618,9 @@ def _pairwise_blend(ids: List[str], nodes: Dict[str, Any], w: Dict[str, float]) 
             s_embed   = _cos(E[i], E[j])
             s_metrics = _cos(Mz[i], Mz[j]) if (Mz[i] is not None and Mz[j] is not None) else 0.0
             s_lex     = _char_shingles_jaccard(T[i], T[j], k=5)
-            s_dom     = _jaccard_list(D[i], D[j])
-            s_ent     = _jaccard_list(G[i], G[j])
+            s_dom = _jaccard_list(D[i], D[j], key="domain")      # domains: [{"domain": "...", "score": ...}, ...]
+            s_ent = _jaccard_list(E[i], E[j], key="text")        # entities: [{"text": "...", "label": ...}, ...]
+
 
             # agreement/stability: use *min* to propagate weakest link
             s_agree   = min(A[i], A[j]) if (A[i] is not None and A[j] is not None) else 0.0

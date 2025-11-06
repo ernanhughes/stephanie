@@ -6,6 +6,33 @@
     <small class="text-muted">{{ base_dir }}</small>
   </div>
 
+  <!-- Quick Compare -->
+  <div class="card shadow-sm mb-3">
+    <div class="card-body py-2">
+      <form class="d-flex flex-wrap gap-2 align-items-end" method="get" action="/nexus/timeline">
+        <div>
+          <label class="form-label mb-0 small">Baseline</label>
+          <select name="baseline" class="form-select form-select-sm" style="min-width: 140px">
+            {% for r in runs %}
+              <option value="{{ r.id }}">{{ r.id }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label class="form-label mb-0 small">Targeted (optional)</label>
+          <select name="targeted" class="form-select form-select-sm" style="min-width: 140px">
+            <option value="">—</option>
+            {% for r in runs %}
+              <option value="{{ r.id }}">{{ r.id }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <button class="btn btn-sm btn-primary">Open timeline</button>
+        <span class="text-muted small ms-auto">Tip: choose two runs to A/B the thought graph.</span>
+      </form>
+    </div>
+  </div>
+
   <div class="card shadow-sm">
     <div class="table-responsive">
       <table class="table table-sm align-middle mb-0">
@@ -15,7 +42,7 @@
             <th>Modified</th>
             <th class="text-end">Nodes</th>
             <th class="text-end">Edges</th>
-            <th></th>
+            <th class="text-end"></th>
           </tr>
         </thead>
         <tbody>
@@ -26,8 +53,12 @@
             <td class="text-end">{{ r.manifest.counts.nodes if r.manifest and r.manifest.counts else "—" }}</td>
             <td class="text-end">{{ r.manifest.counts.edges if r.manifest and r.manifest.counts else "—" }}</td>
             <td class="text-end">
-              <a class="btn btn-sm btn-primary" href="/nexus/run/{{ r.id }}">Open</a>
-              <a class="btn btn-sm btn-outline-secondary" href="/nexus/run/{{ r.id }}/manifest" target="_blank">Manifest</a>
+              <div class="btn-group btn-group-sm">
+                <a class="btn btn-primary" href="/nexus/run/{{ r.id }}">Open</a>
+                <a class="btn btn-outline-secondary" href="/nexus/run/{{ r.id }}/manifest" target="_blank">Manifest</a>
+                <!-- New: Timeline link (prefills baseline) -->
+                <a class="btn btn-outline-success" href="/nexus/timeline?baseline={{ r.id }}">Timeline</a>
+              </div>
             </td>
           </tr>
           {% else %}

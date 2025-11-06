@@ -33,7 +33,22 @@ class NexusEdge:
     dst: NodeId
     type: EdgeType
     weight: float
+    channels: Optional[Dict[str, float]] = field(default=None)  # ← NEW
     extras: Optional[Dict[str, float]] = None
+
+    def to_dict(self) -> Dict[str, any]:
+        d = {
+            "src": self.src,
+            "dst": self.dst,
+            "type": self.type,
+            "weight": self.weight,
+        }
+        if self.channels is not None:
+            d["channels"] = self.channels
+        if self.extras is not None:
+            d["extras"] = self.extras
+        return d
+
 
 @dataclass
 class NexusPath:

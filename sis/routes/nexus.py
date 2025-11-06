@@ -267,10 +267,13 @@ def run_graph_json(run_id: str):
     p = _find_json(d, "graph.json", "nexus_graph.json")
     if not p:
         return JSONResponse({"nodes": [], "edges": []})
+
     data = _load_json(p) or {}
     nodes = data.get("nodes") or []
     edges = data.get("edges") or []
-    return JSONResponse({"nodes": nodes, "edges": edges})
+    resp = JSONResponse({"nodes": nodes, "edges": edges})
+    resp.headers["Cache-Control"] = "public, max-age=300"
+    return resp
 
 @router.get("/nexus/run/{run_id}/artifact/{rel_path:path}")
 def run_artifact(run_id: str, rel_path: str):
@@ -284,3 +287,10 @@ def run_artifact(run_id: str, rel_path: str):
     if not target.exists() or not target.is_file():
         raise HTTPException(status_code=404, detail="artifact not found")
     return FileResponse(target)
+
+@router.get("/nexus/timeline", response_class=HTMLResponse)
+def timeline_page(request: Request, baseline: str | None = None, targeted: str | None = None):
+    return request.app.state.templates.TemplateResponse(
+        "nexus/timeline.html",
+        {"request": request, "baseline": baseline or "", "targeted": targeted or ""},
+    )

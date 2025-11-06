@@ -53,121 +53,208 @@
 <!-- Cytoscape.js (CDN). If you prefer local, drop a copy into /static and change the src -->
 <script src="https://unpkg.com/cytoscape@3.27.0/dist/cytoscape.min.js"></script>
 <script>
-const RUN_ID = {{ run_id | tojson }};
-const cyContainer = document.getElementById('cy');
-const $manifest   = document.getElementById('manifestPre');
-const $selected   = document.getElementById('selectedPre');
-const $btnReload  = document.getElementById('btnReload');
-const $chkKnn     = document.getElementById('chkKnn');
-const $chkTmp     = document.getElementById('chkTemporal');
+document.addEventListener('DOMContentLoaded', () => {
+  const RUN_ID       = {{ run_id | tojson }};
+  const $manifest    = document.getElementById('manifestPre');
+  const $selected    = document.getElementById('selectedPre');
+  const $btnReload   = document.getElementById('btnReload');
+  const $chkKnn      = document.getElementById('chkKnn');
+  const $chkTemporal = document.getElementById('chkTemporal');
+  const $cy          = document.getElementById('cy');
 
-let cy;
-let rawGraph = {nodes:[], edges:[]};
-let manifest = {};
+  if (!$manifest || !$selected || !$cy) return;
 
-async function fetchJSON(url) {
-  const r = await fetch(url);
-  if (!r.ok) throw new Error(`GET ${url} -> ${r.status}`);
-  return await r.json();
-}
+  let cy;
+  let rawGraph = { nodes: [], edges: [] };
 
-function toCyElements(graph) {
-  return [
-    ...graph.nodes,
-    ...graph.edges.filter(e => {
-      const t = e?.data?.type;
-      if (t === 'knn_global' && !$chkKnn.checked) return false;
-      if (t === 'temporal_next' && !$chkTmp.checked) return false;
-      return true;
-    })
-  ];
-}
+  async function fetchJSON(url) {
+    const r = await fetch(url);
+    if (!r.ok) throw new Error(`GET ${url} -> ${r.status}`);
+    return r.json();
+  }
 
-function initCy() {
-  if (cy) { cy.destroy(); cy = null; }
-  cy = cytoscape({
-    container: cyContainer,
-    elements: toCyElements(rawGraph),
-    layout: { name: 'cose', animate: false },
-    style: [
-      { selector: 'node',
-        style: {
-          'background-color': '#5b8def',
-          'label': 'data(label)',
-          'font-size': 9,
-          'text-wrap': 'wrap',
-          'text-max-width': 140,
-          'width': 'mapData(deg, 0, 12, 10, 32)',
-          'height': 'mapData(deg, 0, 12, 10, 32)',
-          'color': '#111'
+  // -- Normalize incoming graph to Cytoscape shape
+  function normalizeGraph(g) {
+    const nodes = (g.nodes || []).map(n => {
+      const d = n.data || n;
+      const hasPos = Number.isFinite(d.x) && Number.isFinite(d.y);
+      return {
+        data: {
+          id: String(d.id),
+          label: d.label ?? String(d.id),
+          type: d.type || 'node',
+          weight: d.weight ?? 0,
+          // deg set later from filtered edges
+        },
+        position: hasPos ? { x: d.x, y: d.y } : undefined,
+      };
+    });
+
+    const edges = (g.edges || []).map(e => {
+      const d = e.data || e;
+      const source = d.source ?? d.src;
+      const target = d.target ?? d.dst;
+      return {
+        data: {
+          id: d.id || `${source}->${target}`,
+          source,
+          target,
+          type: d.type || 'edge',
+          weight: d.weight ?? 0
         }
-      },
-      { selector: 'edge[type = "knn_global"]',
-        style: {'line-color': '#999', 'width': 1, 'opacity': 0.9}
-      },
-      { selector: 'edge[type = "temporal_next"]',
-        style: {'line-color': '#e83e8c', 'width': 2, 'opacity': 0.9, 'target-arrow-shape': 'triangle', 'target-arrow-color':'#e83e8c', 'curve-style':'bezier'}
-      },
-      { selector: ':selected',
-        style: {'border-color': '#f59e0b', 'border-width': 2}
-      }
-    ]
-  });
+      };
+    });
 
-  cy.on('tap', 'node', (evt) => {
-    const n = evt.target.data();
-    const id = n.id;
-    // show best-effort details: node payload may only have label/deg/type
-    const entry = {
-      id,
-      label: n.label,
-      type: n.type,
-      deg: n.deg
+    return { nodes, edges };
+  }
+
+  // -- Rescale preset positions (e.g., -1..1) to canvas pixels so zoom ~ 1
+  function rescalePreset(nodes, padding = 30) {
+    const withPos = nodes.filter(n => n.position && Number.isFinite(n.position.x) && Number.isFinite(n.position.y));
+    if (withPos.length !== nodes.length) return nodes; // not a full preset; bail
+
+    const rect = $cy.getBoundingClientRect();
+    const W = Math.max(10, rect.width  - 2 * padding);
+    const H = Math.max(10, rect.height - 2 * padding);
+
+    let minX = +Infinity, maxX = -Infinity, minY = +Infinity, maxY = -Infinity;
+    withPos.forEach(n => {
+      const {x, y} = n.position;
+      if (x < minX) minX = x; if (x > maxX) maxX = x;
+      if (y < minY) minY = y; if (y > maxY) maxY = y;
+    });
+    const spanX = Math.max(1e-6, maxX - minX);
+    const spanY = Math.max(1e-6, maxY - minY);
+    const scale = 0.9 * Math.min(W / spanX, H / spanY);
+    const cx = (minX + maxX) / 2;
+    const cyy = (minY + maxY) / 2;
+
+    return nodes.map(n => {
+      const p = n.position;
+      return {
+        ...n,
+        position: {
+          x: (p.x - cx) * scale + (W / 2 + padding),
+          y: (p.y - cyy) * scale + (H / 2 + padding),
+        }
+      };
+    });
+  }
+
+  // -- Edge filtering (group knn_* & backbone_mst under "KNN")
+  function filteredElements() {
+    const { nodes, edges } = normalizeGraph(rawGraph);
+
+    const showKnn      = $chkKnn?.checked !== false;
+    const showTemporal = $chkTemporal?.checked !== false;
+
+    const filteredEdges = edges.filter(e => {
+      const t = (e.data.type || '').toLowerCase();
+      const isKnn = t.startsWith('knn_') || t === 'backbone_mst';
+      if (showKnn && isKnn) return true;
+      if (showTemporal && t === 'temporal_next') return true;
+      return false;
+    });
+
+    // degree from visible edges
+    const deg = new Map();
+    filteredEdges.forEach(e => {
+      deg.set(e.data.source, (deg.get(e.data.source) || 0) + 1);
+      deg.set(e.data.target, (deg.get(e.data.target) || 0) + 1);
+    });
+    nodes.forEach(n => n.data.deg = deg.get(n.data.id) || 0);
+
+    // If we have preset positions, rescale them to canvas pixels
+    const allHavePos = nodes.every(n => n.position && Number.isFinite(n.position.x) && Number.isFinite(n.position.y));
+    const nodesRescaled = allHavePos ? rescalePreset(nodes) : nodes;
+
+    return { nodes: nodesRescaled, edges: filteredEdges, usePreset: allHavePos };
+  }
+
+  function initCy() {
+    if (cy) { cy.destroy(); cy = null; }
+
+    const { nodes, edges, usePreset } = filteredElements();
+
+    cy = cytoscape({
+      container: $cy,
+      textureOnViewport: false,
+      wheelSensitivity: 0.2,
+      pixelRatio: window.devicePixelRatio || 1,
+      elements: { nodes, edges },
+      layout: usePreset
+        ? { name: 'preset', fit: false, padding: 0 }     // we already rescaled to canvas
+        : { name: 'cose', fit: true, padding: 30, animate: false },
+      style: [
+        {
+          selector: 'node',
+          style: {
+            'background-color': '#5b8def',
+            'width':  'mapData(deg, 0, 16, 10, 32)',
+            'height': 'mapData(deg, 0, 16, 10, 32)',
+            'label': 'data(label)',
+            'font-size': 9,
+            'text-wrap': 'wrap',
+            'text-max-width': 140,
+            'color': '#111'
+          }
+        },
+        { selector: 'edge', style: { 'line-color': '#aab', 'width': 1, 'opacity': 0.7 } },
+        {
+          selector: 'edge[type = "temporal_next"]',
+          style: {
+            'line-color': '#e83e8c',
+            'width': 2,
+            'opacity': 0.9,
+            'target-arrow-shape': 'triangle',
+            'target-arrow-color': '#e83e8c',
+            'curve-style': 'bezier'
+          }
+        },
+        { selector: ':selected', style: { 'border-color': '#f59e0b', 'border-width': 2 } }
+      ]
+    });
+
+    // Label visibility based on zoom
+    const applyLabelVisibility = () => {
+      const show = cy.zoom() >= 1.2;
+      cy.batch(() => cy.nodes().forEach(n => n.style('label', show ? n.data('label') : '')));
     };
-    $selected.textContent = JSON.stringify(entry, null, 2);
-  });
+    applyLabelVisibility();
+    cy.on('zoom', applyLabelVisibility);
 
-  cy.ready(() => {
-    // try a second pass layout for clarity
-    cy.layout({ name: 'cose', animate: false }).run();
-    cy.fit(cy.elements(), 30);
-  });
-}
-
-async function loadAll() {
-  // 1) Manifest
-  try {
-    manifest = await fetchJSON(`/nexus/run/${encodeURIComponent(RUN_ID)}/manifest`);
-    $manifest.textContent = JSON.stringify(manifest, null, 2);
-  } catch (e) {
-    $manifest.textContent = 'Manifest load error: ' + e.message;
+    cy.on('tap', 'node', evt => {
+      const d = evt.target.data();
+      $selected.textContent = JSON.stringify(
+        { id: d.id, label: d.label, type: d.type, deg: d.deg },
+        null, 2
+      );
+    });
   }
-  // 2) Graph
-  try {
-    rawGraph = await fetchJSON(`/nexus/run/${encodeURIComponent(RUN_ID)}/graph.json`);
-  } catch (e) {
-    rawGraph = {nodes:[], edges:[]};
+
+  async function loadAll() {
+    try {
+      const manifest = await fetchJSON(`/nexus/run/${encodeURIComponent(RUN_ID)}/manifest`);
+      $manifest.textContent = JSON.stringify(manifest, null, 2);
+    } catch (e) {
+      $manifest.textContent = 'Manifest load error: ' + (e?.message || e);
+    }
+
+    try {
+      rawGraph = await fetchJSON(`/nexus/run/${encodeURIComponent(RUN_ID)}/graph.json`);
+    } catch {
+      rawGraph = { nodes: [], edges: [] };
+    }
+
+    initCy();
   }
-  // Add degree metric for sizing (optional)
-  const degCount = {};
-  (rawGraph.edges || []).forEach(e => {
-    const s = e?.data?.source; const t = e?.data?.target;
-    if (s) degCount[s] = (degCount[s] || 0) + 1;
-    if (t) degCount[t] = (degCount[t] || 0) + 1;
-  });
-  (rawGraph.nodes || []).forEach(n => {
-    const id = n?.data?.id;
-    n.data.deg = degCount[id] || 0;
-  });
 
-  initCy();
-}
+  $btnReload?.addEventListener('click', loadAll);
+  $chkKnn?.addEventListener('change', initCy);
+  $chkTemporal?.addEventListener('change', initCy);
 
-$btnReload.onclick = loadAll;
-$chkKnn.onchange = () => initCy();
-$chkTmp.onchange = () => initCy();
-
-loadAll();
+  loadAll();
+});
 </script>
+
 {% endblock %}
-I

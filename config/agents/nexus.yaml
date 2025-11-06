@@ -94,6 +94,52 @@ nexus:
       - implementability
     persist: false
 
+
+  graph:
+    knn_k: 12
+    sim_threshold: 0.35
+    max_edges_per_node: 24
+    add_temporal: true
+    add_mst_backbone: true
+
+    edge_caps:
+      knn_blend: 250000
+      temporal_next: 250000
+      backbone_mst: 100000
+
+    edge_weights:
+      embed: 0.50
+      metrics: 0.25
+      lexical: 0.10
+      domains: 0.08
+      entities: 0.05
+      agreement: 0.02
+      stability: 0.00
+
+  pulse:
+    enabled: true
+    k: 25                 # neighbors per pulse
+    depth: 2              # subgraph ego radius
+    min_sim: 0.35
+    sse_subject: "nexus.pulse"      # UI SSE bus subject
+    expand_workers: 3
+    fanout_limit: 200              # safety valve
+
+  goals:
+    # “identity” goals (raise/lower thresholds per your taste)
+    - id: self_improvement
+      priority: 0.95
+      activation_threshold: 0.70
+      keywords: ["improve", "optimize", "learn", "train", "self-play", "policy"]
+    - id: knowledge_discovery
+      priority: 0.90
+      activation_threshold: 0.65
+      keywords: ["paper", "result", "proof", "novel", "SOTA", "benchmark"]
+    - id: system_preservation
+      priority: 0.85
+      activation_threshold: 0.60
+      keywords: ["error", "outage", "latency", "risk", "hallucination", "health"]
+
   # ------------------------------------------------------------------
   # Visual scoring & rendering (ZeroModel)
   # Used by NexusVPMWorkerInline + ZeroModelService

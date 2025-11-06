@@ -15,7 +15,7 @@ class ManifestItem:
 
     # annotations from prior passes
     domains: List[str] = field(default_factory=list)
-    entities: List[str] = field(default_factory=list)
+    ner: List[str] = field(default_factory=list)
     near_identity: Dict[str, Any] = field(default_factory=dict)
 
     # metrics/timeline

@@ -5,9 +5,11 @@ from typing import Dict, List
 from pyvis.network import Network
 from stephanie.components.nexus.types import NexusNode
 from stephanie.components.nexus.types import NexusEdge
+from stephanie.utils.json_sanitize import dumps_safe
+import pathlib
 
-def export_pyvis_html(nodes: Dict[str, NexusNode], edges: List[NexusEdge], out_path: str):
-    out = Path(out_path)
+def export_pyvis_html(nodes: Dict[str, NexusNode], edges: List[NexusEdge], output_path: str, title:str):
+    out = Path(output_path)
     out.parent.mkdir(parents=True, exist_ok=True)
 
     net = Network(height="100vh", width="100%", directed=True, notebook=False, bgcolor="#111", font_color="#eee")
@@ -32,3 +34,33 @@ def export_pyvis_html(nodes: Dict[str, NexusNode], edges: List[NexusEdge], out_p
 
     net.show(str(out))  # writes HTML with embedded assets
     return str(out)
+
+
+def export_graph_json(path, nodes: Dict[str, NexusNode], edges: List[NexusEdge], positions: dict | None = None):
+    elements = {
+        "nodes": [],
+        "edges": [],
+    }
+    for nid, n in nodes.items():
+        d = {
+            "id": nid,
+            "label": getattr(n, "title", None) or getattr(n, "text", "")[:80] or nid,
+            "type": getattr(n, "target_type", "unknown"),
+            "deg": int(getattr(n, "degree", 0) or 0),
+        }
+        if positions and nid in positions:
+            x, y = positions[nid]
+            d["x"], d["y"] = x, y
+        elements["nodes"].append({"data": d})
+
+    for e in edges:
+        elements["edges"].append({
+            "data": {
+                "id": f"{e.src}->{e.dst}",
+                "source": e.src, "target": e.dst,
+                "type": e.type, "weight": float(getattr(e, "weight", 0.0) or 0.0),
+            }
+        })
+
+    pathlib.Path(path).parent.mkdir(parents=True, exist_ok=True)
+    pathlib.Path(path).write_text(dumps_safe(elements), encoding="utf-8")

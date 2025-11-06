@@ -2,9 +2,9 @@
 from __future__ import annotations
 from typing import Any, Dict
 from stephanie.agents.base_agent import BaseAgent
+from stephanie.components.nexus.graph.layout import compute_positions
 from stephanie.constants import PIPELINE_RUN_ID
 from stephanie.scoring.scorable import Scorable, ScorableType
-from stephanie.scoring.scorable_processor import ScorableFeatures
 from stephanie.services.zeromodel_service import ZeroModelService
 from stephanie.services.scoring_service import ScoringService
 from stephanie.services.workers.nexus_workers import NexusVPMWorkerInline, NexusMetricsWorkerInline
@@ -12,12 +12,14 @@ from stephanie.components.nexus.manifest import NexusRunManifest, ManifestItem
 from pathlib import Path
 import json
 import time
-from stephanie.components.nexus.viewer.exporters import export_pyvis_html
+from stephanie.components.nexus.graph.exporters import export_graph_json, export_pyvis_html
 # add to imports at the top
 from stephanie.components.nexus.graph.builder import build_nodes_from_manifest, build_edges_enhanced
-from stephanie.components.nexus.viewer.cytoscape import to_cytoscape_elements
+from stephanie.components.nexus.graph.cytoscape import to_cytoscape_elements
 from stephanie.utils.json_sanitize import dumps_safe  # small helper; see below
-
+from stephanie.components.nexus.graph.timeline import build_frames_from_manifest
+import logging
+log = logging.getLogger(__name__)
 
 class NexusInlineAgent(BaseAgent):
     def __init__(self, cfg, memory, container, logger):
@@ -59,7 +61,6 @@ class NexusInlineAgent(BaseAgent):
         for idx, s in enumerate(scorables):
             goal = s.get("goal_ref") or context.get("goal")
             merged_context = {**context, "goal": goal}
-            features = ScorableFeatures.from_dict(s)  # validate
             sc = Scorable.from_dict(s)
 
             # A) dense text metrics row (vector + columns)
@@ -87,7 +88,7 @@ class NexusInlineAgent(BaseAgent):
             # expecting: s["embeddings"] = {"global": [...], "goal":[...]} etc.
             embeddings = dict(s.get("embeddings") or {})
             domains    = list(s.get("domains") or [])
-            entities   = list((s.get("entities") or {}).keys()) if isinstance(s.get("entities"), dict) else list(s.get("entities") or [])
+            ner   = list(s.get("ner") or [])
 
             item = ManifestItem(
                 item_id=item_name,
@@ -96,7 +97,7 @@ class NexusInlineAgent(BaseAgent):
                 turn_index=s.get("turn_index"),
                 chat_id=s.get("chat_id"),
                 domains=domains,
-                entities=entities,
+                ner=ner,
                 near_identity=dict(s.get("near_identity") or {}),
                 metrics_columns=list(mx["columns"]),
                 metrics_values=[float(v) for v in mx["values"]],
@@ -116,9 +117,9 @@ class NexusInlineAgent(BaseAgent):
                     "vector": item.metrics_vector,
                     "embeddings": item.embeddings,
                     "domains": item.domains,
-                    "entities": item.entities,
+                    "entities": item.ner,
                     "rollout": item.rollout,
-                }, f, indent=2))
+                }, indent=2))
 
             manifest.append(item)
 
@@ -137,6 +138,7 @@ class NexusInlineAgent(BaseAgent):
         # 2) Build edges (KNN + temporal) from items (pass the raw list/dicts)
         items_list = [mi.to_dict() for mi in manifest.items]   # or manifest.as_dict()["items"]
         edges = build_edges_enhanced(
+            run_id=run_id,
             nodes=nodes,
             items=items_list,
             knn_k=int(self.cfg.get("indexer", {}).get("knn", {}).get("k", 12)),
@@ -145,8 +147,8 @@ class NexusInlineAgent(BaseAgent):
         )
 
         # 3) Save graph.json for the Cytoscape UI
-        cy_graph = to_cytoscape_elements(nodes, edges)
-        (out_dir / "graph.json").write_text(json.dumps(cy_graph, ensure_ascii=False, indent=2), encoding="utf-8")
+        positions = compute_positions(nodes, edges)
+        export_graph_json(Path(out_dir) / "graph.json", nodes, edges, positions)
 
         # 4) Optional: quick PyVis HTML (nice for ad-hoc viewing)
         try:
@@ -157,7 +159,24 @@ class NexusInlineAgent(BaseAgent):
                 title=f"Nexus Graph — {run_id}"
             )
         except Exception as e:
-            self.logger.warning("PyVis export failed: %s", e)
+            log.warning("PyVis export failed: %s", e)
+
+        # 3b) Build a timeline frames.json (progressive reveal by item order)
+        try:
+            frames = build_frames_from_manifest(
+                manifest_items=manifest.items,
+                nodes=nodes,
+                edges=edges,
+                positions=positions,
+                progress=lambda d, t: log.info("timeline %d/%d", d, t),
+                tqdm_progress=False,          # set True if you want a console bar
+                # stream_to_path=(out_dir / "frames.json").as_posix(),  # fastest option
+            )
+            if frames:  # when not streaming
+                with (out_dir / "frames.json").open("w", encoding="utf-8") as f:
+                    json.dump(frames, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            log.warning("timeline frames build failed: %s", e)
 
         # 5) Hand paths to the router / pipeline
         context["nexus_graph_json"] = (out_dir / "graph.json").as_posix()

@@ -1,14 +1,21 @@
 # stephanie/scoring/scorable_processor.py
 from __future__ import annotations
 
-from stephanie.utils.json_sanitize import dumps_safe
 from dataclasses import dataclass, asdict, field
 from typing import Dict, List, Any, Optional, Union
-import numpy as np
 from pathlib import Path
 from hashlib import sha256
 import asyncio
+import time
 
+import numpy as np
+
+from stephanie.utils.json_sanitize import dumps_safe
+
+import logging
+log = logging.getLogger(__name__)
+
+# -------------------- Data types --------------------
 
 @dataclass
 class GoalRef:
@@ -16,38 +23,43 @@ class GoalRef:
     kind: str           # e.g. "turn_user", "system_goal", "case_goal"
     id: Optional[str] = None
 
+
 @dataclass
 class ScorableFeatures:
+    """
+    Canonical, serializable feature record for any scorable.
+    """
     # identity
-    scorable_id: str                     # stable id (row id, uuid, etc.)
+    scorable_id: str
     scorable_type: str                   # "conversation_turn", "goal", "plan_step", ...
-    conversation_id: Optional[int]       # when applicable
-    external_id: Optional[str] = None    # optional cross-ref (github sha, paper id, etc.)
-    order_index: Optional[int] = None    # monotonic index within conversation
+    conversation_id: Optional[int] = None
+    external_id: Optional[str] = None
+    order_index: Optional[int] = None
 
     # core text
-    text: str
+    text: str = ""
     title: Optional[str] = None
     near_identity: Dict[str, Any] = field(default_factory=dict)
 
     # annotations
-    domains: List[Dict[str, Any]] = field(default_factory=list)   # [{domain: "...", score: ...}, ...] ok to be strings too
-    entities: List[Dict[str, Any]] = field(default_factory=list)  # or strings; keep flexible
+    domains: List[Dict[str, Any]] = field(default_factory=list)    # or strings; keep flexible
+    ner: List[Dict[str, Any]] = field(default_factory=list)   # or strings
 
-    # “free” global signals you mentioned
-    ai_score: Optional[float] = None        # 0..100 (normalize internally to 0..1 if needed)
-    star: Optional[int] = None              # user star rating (e.g., -5..+5 or 0..5); we’ll normalize too
-    goal_ref: Optional[GoalRef] = None      # the goal this scorable serves (often the user message for assistant turn)
+    # free global signals
+    ai_score: Optional[float] = None   # typically 0..100
+    star: Optional[float] = None       # -5..+5 or 0..5; keep raw here
+    goal_ref: Optional[GoalRef] = None
 
     # embeddings & metrics
-    embeddings: Dict[str, List[float]] = field(default_factory=dict)   # {"global": [...], "goal": [...], ...}
+    embeddings: Dict[str, List[float]] = field(default_factory=dict)   # {"global":[...], "goal":[...], ...}
+    embed_global: Optional[np.ndarray] = None                           # transient: np.float32 vector (redundant with embeddings["global"])
     metrics_columns: List[str] = field(default_factory=list)
     metrics_values: List[float] = field(default_factory=list)
-    metrics_vector: Dict[str, float] = field(default_factory=dict)     # flattened for fast joins
+    metrics_vector: Dict[str, float] = field(default_factory=dict)
 
     # optional agreement/stability
-    agreement: Optional[float] = None      # 0..1 (e.g., HRM vs Tiny agreement)
-    stability: Optional[float] = None      # 0..1 (inverse halluc/uncertainty)
+    agreement: Optional[float] = None  # 0..1
+    stability: Optional[float] = None  # 0..1
 
     # lineage/context
     chat_id: Optional[int] = None
@@ -57,232 +69,257 @@ class ScorableFeatures:
     vpm_png: Optional[str] = None
     rollout: Dict[str, Any] = field(default_factory=dict)
 
+    # --------- Serialization helpers ---------
+
     def to_manifest_row(self) -> Dict[str, Any]:
         """
-        Convert this feature set into a single row for a manifest report.
-        Handles non-serializable types like numpy arrays.
+        Convert to a JSON-serializable dict. Includes an 'embed_global' list
+        and a copy in embeddings["global"] for redundancy/consistency.
         """
         row = asdict(self)
-        
-        # Convert numpy array to list for JSON serialization
+
+        # GoalRef -> dict
+        if isinstance(self.goal_ref, GoalRef):
+            row["goal_ref"] = asdict(self.goal_ref)
+
+        # Ensure embeddings["global"] is present if embed_global exists
         if self.embed_global is not None:
-            row['embed_global'] = self.embed_global.tolist()
-            
-        # Ensure all values are JSON serializable
-        for key, value in row.items():
-            if isinstance(value, np.ndarray):
-                row[key] = value.tolist()
-            elif isinstance(value, np.floating):
-                row[key] = float(value)
-            elif isinstance(value, np.integer):
-                row[key] = int(value)
-                
+            try:
+                gl = self.embed_global.astype(np.float32).tolist()
+            except Exception:
+                gl = self.embed_global.tolist()  # best effort
+            row["embed_global"] = gl
+            row.setdefault("embeddings", {})
+            if "global" not in row["embeddings"] or not row["embeddings"]["global"]:
+                row["embeddings"]["global"] = gl
+
+        # NumPy -> native
+        for k, v in list(row.items()):
+            if isinstance(v, np.ndarray):
+                row[k] = v.tolist()
+            elif isinstance(v, (np.floating,)):
+                row[k] = float(v)
+            elif isinstance(v, (np.integer,)):
+                row[k] = int(v)
+
         return row
 
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'ScorableFeatures':
-        """
-        Create a ScorableFeatures instance from a dictionary.
-        Handles reconstruction of numpy arrays and ensures type safety.
-        """
-        # Reconstruct numpy array from list if present
-        embed_data = data.get('embed_global')
-        if embed_data is not None and isinstance(embed_data, list):
-            data['embed_global'] = np.array(embed_data, dtype=np.float32)
-        elif embed_data is not None and isinstance(embed_data, np.ndarray):
-            # Already an array, ensure correct type
-            data['embed_global'] = data['embed_global'].astype(np.float32)
-            
-        # Ensure optional fields have correct types or None
-        for field_name in ['agreement', 'stability']:
-            val = data.get(field_name)
-            if val is not None:
-                data[field_name] = float(val)
-                
-        # Provide defaults for lists that might be missing
-        for list_field in ['domains', 'entities', 'metrics_columns', 'metrics_values']:
-            if list_field not in data or data[list_field] is None:
-                data[list_field] = []
-                
-        # Provide defaults for dicts
-        for dict_field in ['near_identity', 'metrics_vector', 'rollout']:
-            if dict_field not in data or data[dict_field] is None:
-                data[dict_field] = {}
-                
-        # Ensure required string fields have a default
-        for str_field in ['scorable_id', 'scorable_type', 'text', 'title']:
-            if str_field not in data or data[str_field] is None:
-                data[str_field] = ""
-                
-        return cls(**data)
-
+# -------------------- Processor --------------------
 
 class ScorableProcessor:
     """
     One stop: turn an arbitrary scorable dict into ScorableFeatures.
-    Wire your existing services here: embeddings, scoring, near-identity, NER/entities, etc.
-    
-    Features:
-    - Caching: Prevents redundant processing of the same scorable.
-    - Manifest Writing: Appends processed features to a running manifest file.
+    Wires embeddings, optional NER/domain/agree/stability, and supports JSONL manifest writes.
     """
 
     def __init__(self, cfg, memory, container, logger):
         self.cfg = cfg
         self.memory = memory
         self.container = container
-        self.log = logger
-        self.scoring  = container.get("scoring")           # ScoringService
-        self.zeromodel= container.get("zeromodel")         # ZeroModelService
-        
-        # optional: entity extractor, domain classifier, agreement estimator…
-        self.entity_extractor = container.get("entity_extractor", None)
-        self.domain_classifier = container.get("domain_classifier", None)
-        self.agreement_estimator = container.get("agreement_estimator", None)
-        self.stability_estimator = container.get("stability_estimator", None)
+        self.logger = logger
+
+        self.scoring     = container.get("scoring")      
+        self.zeromodel   = container.get("zeromodel")    
+        # self.entity_extractor    = container.get("entity_extractor", None)
+        # self.domain_classifier   = container.get("domain_classifier", None)
+        # self.agreement_estimator = container.get("agreement_estimator", None)
+        # self.stability_estimator = container.get("stability_estimator", None)
 
         self._cache: Dict[str, ScorableFeatures] = {}
         self._cache_hits = 0
         self._cache_misses = 0
 
         self._current_manifest_path: Optional[Path] = None
-        self._manifest_lock = asyncio.Lock() # For async safety if used concurrently
+        self._manifest_lock = asyncio.Lock()  # async-safe appends
+
+    # -------- Manifest control --------
 
     def _generate_cache_key(self, scorable: Dict[str, Any]) -> str:
-        """
-        Generate a deterministic cache key based on the scorable's content and id.
-        This ensures identical scorables get the same key.
-        """
-        # Combine scorable ID and a hash of its text/content
         sid = scorable.get("id") or scorable.get("scorable_id") or "unknown"
         text = scorable.get("text") or scorable.get("body") or ""
-        content_hash = sha256(text.encode('utf-8')).hexdigest()[:16]
+        content_hash = sha256(text.encode("utf-8")).hexdigest()[:16]
         return f"{sid}:{content_hash}"
 
     def start_manifest(self, manifest_path: Union[str, Path]):
-        """
-        Initialize a new manifest file at the given path.
-        Creates the directory if it doesn't exist and writes a header.
-        """
         path = Path(manifest_path)
         path.parent.mkdir(parents=True, exist_ok=True)
-        
-        # Write a header or initial metadata
+
         header = {
             "event": "manifest_start",
-            "created_utc": asyncio.get_event_loop().time(),
-            "processor_version": "1.0" # Could be tied to your code version
+            "created_utc": time.time(),
+            "processor_version": "1.0",
         }
-        
-        with open(path, 'w', encoding='utf-8') as f:
-            f.write(dumps_safe(header, indent=2) + '\n')
-            
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(dumps_safe(header, indent=2) + "\n")
+
         self._current_manifest_path = path
-        self.log.info(f"Started manifest at {path}")
+        log.info(f"[ScorableProcessor] Started manifest at {path}")
 
     async def write_to_manifest(self, features: ScorableFeatures):
-        """
-        Append a single ScorableFeatures record to the current manifest file.
-        The manifest is a JSONL (JSON Lines) file, where each line is a separate JSON object.
-        """
         if not self._current_manifest_path:
             raise RuntimeError("No manifest has been started. Call start_manifest() first.")
-            
         async with self._manifest_lock:
-            try:
-                row = features.to_manifest_row()
-                with open(self._current_manifest_path, 'a', encoding='utf-8') as f:
-                    f.write(dumps_safe(row, indent=2) + '\n')
-            except Exception as e:
-                self.log.error(f"Failed to write to manifest {self._current_manifest_path}: {e}")
-                raise
+            row = features.to_manifest_row()
+            with open(self._current_manifest_path, "a", encoding="utf-8") as f:
+                f.write(dumps_safe(row, indent=2) + "\n")
+
+    # -------- Core processing --------
 
     async def process(self, scorable: Dict[str, Any]) -> ScorableFeatures:
         """
-        Process a scorable into features, using cache and optionally writing to a manifest.
+        Process a scorable dict into ScorableFeatures.
+        Populates: embeddings (global), embed_global, domains/entities (if needed),
+        agreement/stability (if available), free signals (ai_score, star, goal_ref), and lineage.
         """
         cache_key = self._generate_cache_key(scorable)
-        
-        # --- Check Cache First ---
         if cache_key in self._cache:
             self._cache_hits += 1
-            features = self._cache[cache_key]
-            self.log.debug(f"Cache HIT for scorable {features.scorable_id}")
-            return features
-            
+            feat = self._cache[cache_key]
+            log.debug(f"[ScorableProcessor] Cache HIT for scorable {feat.scorable_id}")
+            return feat
         self._cache_misses += 1
-        self.log.debug(f"Cache MISS for scorable {scorable.get('id')}")
+        log.debug(f"[ScorableProcessor] Cache MISS for scorable {scorable.get('id')}")
 
-        # --- Process the scorable (your existing logic) ---
-        sid  = scorable.get("id") or scorable.get("scorable_id")
-        text = scorable.get("text") or scorable.get("body") or ""
-        title= (scorable.get("title") or scorable.get("near_identity",{}).get("title")
-                or text[:80] or str(sid))
+        # Identity + text
+        sid   = scorable.get("id") or scorable.get("scorable_id") or ""
+        stype = str(scorable.get("target_type") or scorable.get("type") or "unknown")
+        text  = scorable.get("text") or scorable.get("body") or ""
+        title = (
+            scorable.get("title")
+            or (scorable.get("near_identity") or {}).get("title")
+            or (text[:80] if text else str(sid))
+        )
 
-        # Embeddings
-        embed = await self.memory.embedding.get_or_create(text)  # np.ndarray (float32)
-        
-        # Metrics
+        # Embedding(s)
+        # Prefer existing embeddings if provided; else compute.
+        embeddings: Dict[str, List[float]] = dict(scorable.get("embeddings") or {})
+        embed_global: Optional[np.ndarray] = None
+        if "global" in embeddings and isinstance(embeddings["global"], list):
+            try:
+                embed_global = np.asarray(embeddings["global"], dtype=np.float32)
+            except Exception:
+                embed_global = None
+
+        if embed_global is None:
+            # compute via memory.embedding (your existing embedder)
+            embed_global = await self.memory.embedding.get_or_create(text)  # np.ndarray(float32)
+            embeddings["global"] = embed_global.astype(np.float32).tolist()
+
+        # Metrics (pass-through)
         mx_cols = list(scorable.get("metrics_columns") or [])
         mx_vals = [float(v) for v in (scorable.get("metrics_values") or [])]
         mx_vec  = {k: float(v) for k, v in (scorable.get("metrics_vector") or {}).items()}
 
-        # Domains/entities
+        # Domains
         domains = list(scorable.get("domains") or [])
         if not domains and self.domain_classifier:
-            domains = await self.domain_classifier.predict(text)
+            try:
+                domains = await self.domain_classifier.predict(text)
+            except Exception:
+                pass
 
-        ents = scorable.get("entities")
-        if isinstance(ents, dict): 
-            ents = list(ents.keys())
-        entities = list(ents or [])
+        # Entities
+        ner = scorable.get("ner")
+        if isinstance(ner, dict):
+            ner = list(ner.keys())
+        entities = list(ner or [])
         if not entities and self.entity_extractor:
-            entities = await self.entity_extractor.extract(text)
+            try:
+                entities = await self.entity_extractor.extract(text)
+            except Exception:
+                pass
 
-        # Agreement/stability
-        agreement = scorable.get("agreement") 
+        # Agreement/Stability
+        agreement = scorable.get("agreement")
         if agreement is None and self.agreement_estimator:
-            agreement = await self.agreement_estimator.estimate(scorable)
+            try:
+                agreement = await self.agreement_estimator.estimate(scorable)
+            except Exception:
+                agreement = None
         stability = scorable.get("stability")
         if stability is None and self.stability_estimator:
-            stability = await self.stability_estimator.estimate(scorable)
+            try:
+                stability = await self.stability_estimator.estimate(scorable)
+            except Exception:
+                stability = None
 
-        # --- Create the features object ---
+        # Free signals
+        ai_score = scorable.get("ai_score")
+        star     = scorable.get("star")
+
+        # GoalRef
+        goal_ref_raw = scorable.get("goal_ref")
+        goal_ref: Optional[GoalRef] = None
+        if isinstance(goal_ref_raw, dict) and "text" in goal_ref_raw:
+            goal_ref = GoalRef(
+                text=str(goal_ref_raw.get("text", "")),
+                kind=str(goal_ref_raw.get("kind", "turn_user")),
+                id=goal_ref_raw.get("id"),
+            )
+        elif not goal_ref_raw:
+            # Heuristic: if we have a user message in context, treat as goal
+            umsg = scorable.get("user_text") or scorable.get("goal_text")
+            if isinstance(umsg, str) and umsg.strip():
+                goal_ref = GoalRef(text=umsg.strip(), kind="turn_user")
+
+        # Lineage
+        conversation_id = scorable.get("conversation_id")
+        order_index     = scorable.get("order_index")
+        chat_id         = scorable.get("chat_id", conversation_id)
+        turn_index      = scorable.get("turn_index", order_index)
+
+        # Build features
         features = ScorableFeatures(
-            scorable_id=sid,
-            scorable_type=str(scorable.get("target_type") or scorable.get("type") or "unknown"),
+            scorable_id=str(sid),
+            scorable_type=stype,
+            conversation_id=conversation_id,
+            external_id=scorable.get("external_id"),
+            order_index=order_index,
+
             text=text,
             title=title,
-            chat_id=scorable.get("chat_id"),
-            turn_index=scorable.get("turn_index"),
-            domains=domains,
-            entities=entities,
             near_identity=scorable.get("near_identity") or {},
-            embed_global=embed,
+
+            domains=domains,
+            ner=entities,
+
+            ai_score=(float(ai_score) if ai_score is not None else None),
+            star=(float(star) if star is not None else None),
+            goal_ref=goal_ref,
+
+            embeddings=embeddings,
+            embed_global=embed_global,
+
             metrics_columns=mx_cols,
             metrics_values=mx_vals,
             metrics_vector=mx_vec,
+
             agreement=(float(agreement) if agreement is not None else None),
             stability=(float(stability) if stability is not None else None),
+
+            chat_id=chat_id,
+            turn_index=turn_index,
+
             vpm_png=scorable.get("vpm_png"),
             rollout=scorable.get("rollout") or {},
         )
 
-        # --- Cache the result ---
+        # Cache
         self._cache[cache_key] = features
 
-        # --- Optionally write to the manifest ---
+        # Optional: write JSONL row
         if self._current_manifest_path:
             await self.write_to_manifest(features)
 
         return features
 
-    def get_cache_stats(self) -> Dict[str, int]:
-        """Return hit/miss statistics for monitoring."""
+    # -------- Stats --------
+
+    def get_cache_stats(self) -> Dict[str, float]:
+        total = self._cache_hits + self._cache_misses
         return {
-            "hits": self._cache_hits,
-            "misses": self._cache_misses,
-            "total": self._cache_hits + self._cache_misses,
-            "hit_rate": self._cache_hits / (self._cache_hits + self._cache_misses) if (self._cache_hits + self._cache_misses) > 0 else 0.0
+            "hits": float(self._cache_hits),
+            "misses": float(self._cache_misses),
+            "total": float(total),
+            "hit_rate": (self._cache_hits / total) if total > 0 else 0.0,
         }
- 
