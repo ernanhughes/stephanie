@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import imageio.v2 as imageio
 import numpy as np
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageSequence
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.components.nexus.app.manifest import (ManifestItem,

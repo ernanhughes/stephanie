@@ -1,4 +1,4 @@
-# stephanie/components/nexus/app/manifest.py
+# stephanie/components/nexus/app/ I manifest.py
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field

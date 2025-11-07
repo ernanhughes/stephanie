@@ -970,102 +970,123 @@ class ScoringService(Service):
     # ------------------------------------------------------------------ #
     def evaluate_state(
         self,
-        scorable: Scorable,
-        context: dict,
         *,
-        scorers: list[str] | None = None,
-        dimensions: list[str] | None = None,
+        scorable: "Scorable",
+        context: dict,
+        scorers: list[str],
+        dimensions: list[str],
         scorer_weights: dict[str, float] | None = None,
         dimension_weights: dict[str, float] | None = None,
-        include_llm_heuristic: bool = True,
-        fuse_mode: str = "weighted_mean",   # "weighted_mean" | "median"
+        include_llm_heuristic: bool = False,
+        include_vpm_phi: bool = False,
+        fuse_mode: str = "weighted_mean",   # or "median"
         clamp_01: bool = True,
-        min_sources_for_overall: int = 1,
     ) -> dict:
         """
-        Returns a fused evaluation:
-          {
-            "overall": float,
-            "dims": {dim: float},
-            "sources": {
-              "<scorer>": {"aggregate": float, "dims": {dim: float}},
-              ...
-            }
-          }
-        """
-        # resolve config defaults
-        cfg_block = (self.cfg.get("state_evaluator") if isinstance(self.cfg, dict) else None) or {}
-        dims = list(dimensions or cfg_block.get("dimensions") or [
-            "alignment","faithfulness","coverage","clarity","coherence"
-        ])
-        names = list(scorers or cfg_block.get("scorers") or ["sicql","mrq","hrm"])
-        sw = dict(scorer_weights or cfg_block.get("scorer_weights") or {})
-        dw = dict(dimension_weights or cfg_block.get("dimension_weights") or {})
+        Fuse multiple scorer families (e.g., SICQL/MRQ/HRM) into:
+        - `overall` (scalar)
+        - `dims` (per-dimension fused scores)
+        - `by_scorer` (raw aggregates + per-dimension)
+        - optional components: {'llm_heuristic':..., 'vpm_phi':...}
 
-        # collect sources
-        sources: dict[str, dict] = {}
-        for name in names:
+        Design:
+        fused_dim[d] = sum_i w_sc[i] * s_i[d] * w_dim[d]  / sum_i w_sc[i]
+        overall = weighted mean over dimensions of fused_dim[d] (using w_dim[d])
+        """
+        sw = {k: float(v) for k, v in (scorer_weights or {}).items()}
+        dw = {d: float(v) for d, v in (dimension_weights or {}).items()}
+        dims = list(dimensions or [])
+        if not dims:
+            dims = ["alignment"]
+
+        # --- collect raw scores from each scorer
+        by_scorer = {}
+        per_dim_stack = {d: [] for d in dims}
+        per_dim_weight = {d: 0.0 for d in dims}
+
+        for name in scorers or []:
             try:
                 bundle = self.score(scorer_name=name, scorable=scorable, context=context, dimensions=dims)
-                per_dim = {d: float(bundle.results.get(d).score) for d in dims if d in bundle.results}
-                agg = float(bundle.aggregate()) if hasattr(bundle, "aggregate") else safe_mean(per_dim.values())
-                if clamp_01:
-                    per_dim = {k: clip01(v) for k, v in per_dim.items()}
-                    agg = clip01(agg)
-                sources[name] = {"aggregate": agg, "dims": per_dim}
+                agg = float(bundle.aggregate())
+                # per-dim with graceful fallback to agg
+                per = {d: float(bundle.results.get(d, None).score if d in bundle.results else agg) for d in dims}
+                by_scorer[name] = {"aggregate": agg, "per_dimension": per}
+                wi = sw.get(name, 1.0)
+                for d in dims:
+                    per_dim_stack[d].append((per[d], wi))
             except Exception as e:
-                self.logger and self.logger.log("StateEvalSourceError", {"scorer": name, "error": str(e)})
+                self.logger and self.logger.log("StateEvalScorerError", {"scorer": name, "error": str(e)})
 
-        # optional LLM heuristic (if present)
-        if include_llm_heuristic:
-            llm = None
-            try:
-                llm = getattr(self.container, "get", lambda k: None)("llm_heuristic")
-            except Exception:
-                llm = None
-            if llm:
-                try:
-                    text = getattr(scorable, "text", "") or ""
-                    goal_text = ((context.get("goal") or {}).get("goal_text") or "")
-                    fn = getattr(llm, "score_state", None) or llm
-                    res = fn(text, goal_text, dims) if callable(fn) else None
-                    if res:
-                        per_dim = {d: float(res.get("dims", {}).get(d, 0.0)) for d in dims}
-                        agg = float(res.get("overall", safe_mean(per_dim.values())))
-                        if clamp_01:
-                            per_dim = {k: clip01(v) for k, v in per_dim.items()}
-                            agg = clip01(agg)
-                        sources["llm"] = {"aggregate": agg, "dims": per_dim}
-                except Exception as e:
-                    self.logger and self.logger.log("StateEvalLLMError", {"error": str(e)})
-
-        if not sources:
-            return {"overall": 0.0, "dims": {d: 0.0 for d in dims}, "sources": {}}
-
-        # fuse per dimension across sources
-        fused_dims: dict[str, float] = {}
+        # --- fuse per-dimension
+        fused_dim = {}
         for d in dims:
-            vals, wts = [], []
-            for sname, pack in sources.items():
-                if d in pack["dims"]:
-                    vals.append(float(pack["dims"][d]))
-                    wts.append(float(sw.get(sname, 1.0)))
-            if not vals:
-                fused_dims[d] = 0.0
+            if not per_dim_stack[d]:
+                fused_dim[d] = 0.0
+                continue
+            if fuse_mode == "median":
+                vals = [v for (v, _) in per_dim_stack[d]]
+                fused = float(np.median(vals))
             else:
-                fused_dims[d] = median(vals) if fuse_mode == "median" else weighted_mean(vals, wts)
-                if clamp_01:
-                    fused_dims[d] = clip01(fused_dims[d])
+                # weighted mean
+                num = sum(v * w for (v, w) in per_dim_stack[d])
+                den = sum(w for (_, w) in per_dim_stack[d]) or 1.0
+                fused = float(num / den)
+            # apply dimension weight post-hoc so it influences overall
+            fused_dim[d] = fused * float(dw.get(d, 1.0))
 
-        # overall from fused dims
-        if len(sources) >= int(min_sources_for_overall) or len(sources) > 0:
-            overall = weighted_mean([fused_dims[d] for d in dims], [float(dw.get(d, 1.0)) for d in dims])
-            if clamp_01:
-                overall = clip01(overall)
-        else:
-            overall = safe_mean(fused_dims.values())
+        # optional LLM heuristic (cheap, pluggable)
+        components = {}
+        if include_llm_heuristic:
+            try:
+                # If a heuristic service exists, use it; else fallback to a deterministic cheap prior.
+                hsvc = getattr(self.container, "get", lambda *_: None)("llm_heuristic")
+                if hsvc and hasattr(hsvc, "score"):
+                    llm_h = float(hsvc.score(scorable=scorable, context=context, dimensions=dims))
+                else:
+                    # fallback: soft prior on brevity + structure (keeps us deterministic if no LLM plugged)
+                    txt = getattr(scorable, "text", "") or ""
+                    n = len(txt); nw = len(txt.split())
+                    punct = sum(1 for c in txt if c in ".!?")
+                    llm_h = float(max(0.0, min(1.0, 0.4 + 0.2*(punct>0) + 0.2*(50<=nw<=400))))
+                # mix-in equally across dimensions (light touch)
+                for d in dims:
+                    fused_dim[d] = 0.9 * fused_dim[d] + 0.1 * llm_h
+                components["llm_heuristic"] = llm_h
+            except Exception as e:
+                self.logger and self.logger.log("StateEvalLLMHeuError", {"error": str(e)})
 
-        return {"overall": float(overall), "dims": {k: float(v) for k, v in fused_dims.items()}, "sources": sources}
+        # optional VPM φ (belief/visual) score
+        if include_vpm_phi:
+            try:
+                zm = getattr(self.container, "get", lambda *_: None)("zero_model")  # or "zm"
+                if zm:
+                    # minimal, cheap path: scorable -> VPM -> scalar
+                    vpm_u8, meta = zm.vpm_from_scorable(scorable, img_size=128)
+                    phi = float(zm.score_vpm_image(vpm_u8))  # expected in [0,1]
+                    # light mixing into clarity/coverage if present; else overall
+                    if "clarity" in fused_dim:
+                        fused_dim["clarity"] = 0.9 * fused_dim["clarity"] + 0.1 * phi
+                    if "coverage" in fused_dim:
+                        fused_dim["coverage"] = 0.9 * fused_dim["coverage"] + 0.1 * phi
+                    components["vpm_phi"] = phi
+            except Exception as e:
+                self.logger and self.logger.log("StateEvalVPMError", {"error": str(e)})
+
+        # --- overall from fused_dim (dim-weighted mean)
+        dw_total = sum(abs(dw.get(d, 1.0)) for d in dims) or float(len(dims))
+        overall = float(sum(fused_dim[d] for d in dims) / dw_total)
+
+        if clamp_01:
+            overall = float(max(0.0, min(1.0, overall)))
+            for d in list(fused_dim):
+                fused_dim[d] = float(max(0.0, min(1.0, fused_dim[d])))
+
+        return {
+            "overall": overall,
+            "dims": fused_dim,
+            "by_scorer": by_scorer,
+            "components": components,
+        }
 
     async def evaluate_state_async(self, *args, **kwargs) -> dict:
         """

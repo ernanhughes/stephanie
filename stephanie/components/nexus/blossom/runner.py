@@ -22,6 +22,26 @@ class BlossomRunConfig:
     value_alpha: float = 0.0
     sharpen_top_k: int = 0  # 0 = disabled
 
+def maybe_vpm_mutate_prompt(container, parent_text: str, base_prompt: str) -> str:
+    """
+    Optional novelty injector: derive a tiny visual 'jitter' and feed a hint into the prompt.
+    If ZeroModel (zm) isn't wired, returns the base prompt unchanged.
+    """
+    try:
+        zm = container.get("zero_model")
+        if not zm:
+            return base_prompt
+        # 1) build a compact vpm from the parent scorable text
+        from stephanie.scoring.scorable import Scorable
+        vpm_u8, meta = zm.vpm_from_scorable(Scorable(id=None, text=parent_text, target_type="document"), img_size=96)
+        # 2) apply one cheap visual op (e.g., slight ZOOM or BLUR)
+        vpm2, op = zm.apply_visual_thought(vpm_u8, op="zoom_max")  # or any available op
+        # 3) embed a one-line hint
+        hint = f"\n[VisualJitterHint: applied {op} to emphasize salient regions; prefer crisper structure & key claims]\n"
+        return base_prompt + hint
+    except Exception:
+        return base_prompt
+
 
 class BlossomRunnerAgent(BaseAgent):
     name = "blossom_runner"

@@ -52,8 +52,6 @@ class NexusAgent(BaseAgent):
         self.zm.initialize()
         scorables = context.get("scorables", [])
         
-        # --- NEW: Initialize the Graph Substrate ---
-        # For simplicity, take the first scorable as the seed.
         if not scorables:
             return context
             
