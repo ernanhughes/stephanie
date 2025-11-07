@@ -127,7 +127,7 @@ class SICQLScorer(BaseScorer):
 
         # precompute embeddings once per call
         prompt_emb_np = self.memory.embedding.get_or_create(goal_text)
-        output_emb_np = self.memory.embedding.get_or_create(scorable.text)
+        output_emb_np = self.memory.embedding.get_or_create(scorable.get("text"))
 
         prompt_emb = torch.tensor(prompt_emb_np, dtype=torch.float32, device=self.device).unsqueeze(0)
         output_emb = torch.tensor(output_emb_np, dtype=torch.float32, device=self.device).unsqueeze(0)

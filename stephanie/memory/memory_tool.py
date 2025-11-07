@@ -10,6 +10,7 @@ from pgvector.psycopg2 import register_vector
 from sqlalchemy.orm import sessionmaker
 
 from stephanie.memory.belief_cartridge_store import BeliefCartridgeStore
+from stephanie.memory.blossom_store import BlossomStore
 from stephanie.memory.bus_event_store import BusEventStore
 from stephanie.memory.calibration_event_store import CalibrationEventStore
 from stephanie.memory.cartridge_domain_store import CartridgeDomainStore
@@ -203,6 +204,7 @@ class MemoryTool:
         self.register_store(ReasoningSampleStore(self.session_maker, logger))
         self.register_store(VPMStore(self.session_maker, logger))
         self.register_store(ScorableEntityStore(self.session_maker, logger))
+        self.register_store(BlossomStore(self.session_maker, logger))
 
         if cfg.get("extra_stores"):
             for store_class in cfg.get("extra_stores", []):

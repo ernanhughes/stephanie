@@ -102,7 +102,7 @@ class BaseScorer(ModelLocatorMixin, abc.ABC):
     def _run_plugins_and_merge(self, *, bundle: ScoreBundle, goal: dict, scorable: Scorable) -> ScoreBundle:
         tap = {
             "goal_text": goal.get("goal", {}).get("goal_text", ""),
-            "resp_text": scorable.text or "",
+            "resp_text": scorable.get("text", ""),
             "context": goal,
             "model_alias": getattr(self, "model_alias", self.model_type),
             "attributes": {},
