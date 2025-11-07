@@ -9,7 +9,7 @@ scorable_domain:
     api_base: http://localhost:11434
     api_key: null
   input_keys: ["goal", "hypotheses"]
-  input_key: documents
+  input_key: scorables
   output_key: scorable_domain
   prompt_mode: file
   prompt_file: scorable_domain.txt

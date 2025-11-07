@@ -73,9 +73,8 @@ class PhosAgent(BaseAgent):
                     node_id = self._make_numeric_id(self.run_id, label, idx)
                     metrics = await metrics_worker.score(scorable, goal_text, self.run_id)
                     self.metric_names = metrics["columns"]
-                    await vpm_worker.append(self.run_id, node_id, metrics)
+                    vpm_worker.append(self.run_id, node_id, metrics)
                     pbar.update(1)
-                    await asyncio.sleep(0)  # yield loop
 
             final = await vpm_worker.finalize(self.run_id, out_path)
             results[label] = final

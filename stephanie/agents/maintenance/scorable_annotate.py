@@ -53,7 +53,7 @@ class ScorableAnnotateAgent(BaseAgent):
         )
 
         # Domain classification settings
-        self.max_k = int(cfg.get("max_domains_per_source", 3))  # Max domains per scorable
+        self.top_k = int(cfg.get("max_domains_per_source", 3))  # Max domains per scorable
         self.min_conf = float(cfg.get("min_confidence", 0.10))  # Minimum confidence threshold
 
         # Processing controls
@@ -226,8 +226,8 @@ class ScorableAnnotateAgent(BaseAgent):
         # Use seed classifier (domain-agnostic)
         seed_domains = self.seed_classifier.classify(
             text=text,
-            max_k=self.max_k,
-            min_conf=self.min_conf
+            top_k=self.top_k,
+            min_value=self.min_conf
         )
         
         # Use goal classifier if goal_text is provided
@@ -235,20 +235,18 @@ class ScorableAnnotateAgent(BaseAgent):
         if goal_text:
             goal_domains = self.goal_classifier.classify(
                 text=text,
-                goal=goal_text,
-                max_k=self.max_k,
-                min_conf=self.min_conf
+                top_k=self.top_k,
+                min_value=self.min_conf
             )
         
         # Combine and deduplicate domains
         domain_map = {}
-        for d in seed_domains + goal_domains:
-            domain = d["domain"]
-            if domain not in domain_map or d["score"] > domain_map[domain]["score"]:
+        for domain, score in seed_domains + goal_domains:
+            if domain not in domain_map or score > domain_map[domain]["score"]:
                 domain_map[domain] = {
                     "domain": domain,
-                    "score": d["score"],
-                    "source": d["source"]
+                    "score": score,
+                    "source": "seed" if (domain, score) in seed_domains else "goal"
                 }
         
         return list(domain_map.values())

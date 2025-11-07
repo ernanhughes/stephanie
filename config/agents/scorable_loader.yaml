@@ -1,15 +1,22 @@
 scorable_loader:
   name: scorable_loader
   enabled: true
-  save_prompt: true
-  save_context: false
-  skip_if_completed: false
-  model:
-    name: ollama/qwen3
-    api_base: http://localhost:11434
-    api_key: null
-  input_keys: ["goal"]
-  input_key: goal
   output_key: scorables
-  prompt_mode: file
-  prompt_file: scorable_loader.txt
+  limit: 10000                 # final display/union size is driven by A/B counts
+  include_ner: false        # keep strict in final selection; we’ll relax in preload
+  ab_select:
+    enabled: false
+    n_targeted: 20
+    n_baseline: 20
+    targeted_min_sim: 0.55
+    baseline_max_sim: 0.25
+    relax_steps: 8
+    seed: 0
+  preload:
+    enabled: true
+    total_limit: 30000       # << oversample here
+    include_texts: true
+    require_nonempty_ner: false
+    require_assistant_text: false
+    min_assistant_len: 0
+    order_desc: true

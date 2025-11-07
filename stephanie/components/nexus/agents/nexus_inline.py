@@ -8,6 +8,8 @@ import random
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+from contextlib import contextmanager
+from collections import defaultdict
 
 import imageio.v2 as imageio
 import numpy as np
@@ -35,10 +37,26 @@ from stephanie.services.workers.nexus_workers import (
 from stephanie.services.zeromodel_service import ZeroModelService
 from stephanie.utils.json_sanitize import dumps_safe
 from stephanie.utils.embed_utils import as_list_floats, has_vec, cos_safe
-from collections import defaultdict
 from stephanie.utils.progress_mixin import ProgressMixin
 
 log = logging.getLogger(__name__)
+
+
+# ultra-light timing context
+@contextmanager
+def _stage(logger, name: str, **meta):
+    t0 = time.perf_counter()
+    try:
+        yield
+    finally:
+        dt_ms = (time.perf_counter() - t0) * 1000.0
+        payload = {"stage": name, "ms": round(dt_ms, 2)}
+        payload.update(meta or {})
+        try:
+            logger.log("StageTiming", payload)
+        except Exception:
+            log.info("StageTiming %s: %.2f ms %s", name, dt_ms, meta or {})
+
 
 def _consensus_walk_order(
     scorables: list[dict],
@@ -129,32 +147,35 @@ def _consensus_walk_order(
     return picked
 
 
-def _goal_alignment_stats(manifest, target_vec):
-    # cosine(sim(item, goal)) already computed in frames builder; recompute here robustly
+def _goal_alignment_stats(manifest, target_vec, restrict_to_ids: Optional[set[str]] = None):
+    """
+    Cosine(sim(item, goal)) with a robust fallback. When restrict_to_ids is provided,
+    only items whose item_id is in that set are considered (aligns count with the graph).
+    """
     def _l2(v):
         return math.sqrt(sum(x * x for x in v)) or 1.0
 
     def _cos(a, b):
         if not a or not b:
             return 0.0
-        a = list(a)
-        b = list(b)
+        a = list(a); b = list(b)
         return sum(x * y for x, y in zip(a, b)) / (_l2(a) * _l2(b))
 
-    sims = []
+    sims: List[float] = []
     for mi in manifest.items:
+        if restrict_to_ids and mi.item_id not in restrict_to_ids:
+            continue
         v = (mi.embeddings or {}).get("global")
         if v and isinstance(v, (list, tuple)):
             sims.append(_cos(v, target_vec))
         elif mi.metrics_vector:
             sims.append(_cos(list(mi.metrics_vector.values()), target_vec))
         else:
-            sims.append(0.0)
+            sims.append(0.0)  # keep counts aligned even if missing vectors
 
-    sims = [float(x) for x in sims if x is not None]
     if not sims:
-        return {"mean": 0.0, "median": 0.0, "p90": 0.0}
-    s = sorted(sims)
+        return {"mean": 0.0, "median": 0.0, "p90": 0.0, "count": 0}
+    s = sorted(float(x) for x in sims)
     n = len(s)
 
     def pct(p):
@@ -162,8 +183,8 @@ def _goal_alignment_stats(manifest, target_vec):
         return s[i]
 
     return {
-        "mean": sum(sims) / n,
-        "median": s[n // 2] if n else 0.0,
+        "mean": sum(s) / n,
+        "median": s[n // 2],
         "p90": pct(0.90),
         "count": n,
     }
@@ -213,11 +234,9 @@ def _approx_clustering_coefficient(adj):
         k = len(nbrs)
         if k < 2:
             continue
-        # count neighbor-neighbor edges
         nn = 0
         nbrs_set = nbrs
         for a in nbrs_set:
-            # only count a<b to avoid double
             for b in nbrs_set:
                 if a >= b:
                     continue
@@ -356,18 +375,46 @@ class NexusInlineAgent(BaseAgent, ProgressMixin):
         )
         self.use_ab = bool(self.cfg.get("ab_compare", {}).get("enabled", True))
 
+        # Optional toggles (default True)
+        self.enable_html = bool(
+            self.cfg.get("graph", {}).get("export_html", True)
+        )
+        self.enable_rich = bool(
+            self.cfg.get("graph", {}).get("export_html_rich", True)
+        )
+        self.enable_filmstrip = bool(
+            self.cfg.get("vpm", {}).get("filmstrip_enabled", True)
+        )
+
     async def run(self, context: Dict[str, Any]) -> Dict[str, Any]:
-        self.zm.initialize()
+        # progress + one-time init
+        self._init_progress(self.container, self.logger)
+        with _stage(self.logger, "ZeroModel.initialize"):
+            self.zm.initialize()
 
         run_id_root = context.get(PIPELINE_RUN_ID)
-        # if both sets exist, emit two runs and return
-        if context.get("scorables_targeted") and context.get("scorables_baseline"):
-            tgt_ctx = await self._emit_single_run(run_id=f"{run_id_root}-targeted",
-                                                scorables=context["scorables_targeted"],
-                                                context=context)
-            bl_ctx  = await self._emit_single_run(run_id=f"{run_id_root}-baseline",
-                                                scorables=context["scorables_baseline"],
-                                                context=context)
+
+        # If both sets exist, emit two runs and return
+        if context.get("scorables_targeted") and context.get(
+            "scorables_baseline"
+        ):
+                # ensure vectors exist (normalizes numpy etc.)
+            await self._ensure_embeddings_global(context["scorables_targeted"])
+            await self._ensure_embeddings_global(context["scorables_baseline"])
+
+            # build a goal vector (same source as the A/B split)
+            gx = (context.get("goal") or {}).get("goal_text") or ""
+            target_vec = as_list_floats(self.memory.embedding.get_or_create(gx)) if gx else []
+            tgt_ctx = await self._emit_single_run(
+                run_id=f"{run_id_root}-targeted",
+                scorables=context["scorables_targeted"],
+                context=context,
+            )
+            bl_ctx = await self._emit_single_run(
+                run_id=f"{run_id_root}-baseline",
+                scorables=context["scorables_baseline"],
+                context=context,
+            )
             # publish A/B paths for GAP
             context["ab_targeted_run_dir"] = tgt_ctx["nexus_run_dir"]
             context["ab_baseline_run_dir"] = bl_ctx["nexus_run_dir"]
@@ -376,7 +423,20 @@ class NexusInlineAgent(BaseAgent, ProgressMixin):
         scorables: List[Dict[str, Any]] = list(context.get("scorables", []))
 
         # Ensure each scorable has embeddings.global (computed from text if missing)
-        await self._ensure_embeddings_global(scorables)
+        with _stage(
+            self.logger, "Nexus.ensure_embeddings", count=len(scorables)
+        ):
+            task = f"nexus:embeds:{context.get(PIPELINE_RUN_ID, 'na')}"
+            self.pstart(
+                task=task,
+                total=len(scorables),
+                meta={"phase": "ensure_embeddings"},
+            )
+            await self._ensure_embeddings_global(
+                scorables,
+                progress=lambda i, n: self.ptick(task=task, done=i, total=n),
+            )
+            self.pdone(task=task)
 
         # Build a goal/target vector for similarity trace & A/B selection
         goal_text = context.get("goal", {}).get("goal_text", "")
@@ -390,9 +450,23 @@ class NexusInlineAgent(BaseAgent, ProgressMixin):
             top_k = int(ab_cfg.get("top_k", 40))
             seed = int(ab_cfg.get("seed", 0))
 
-            baseline_ids, targeted_ids = self._plan_ab_from_scorables(
-                scorables, target_vec, top_k=top_k, seed=seed
-            )
+            with _stage(
+                self.logger, "Nexus.ab_plan", k=top_k, n=len(scorables)
+            ):
+                task_plan = (
+                    f"nexus:ab_plan:{context.get(PIPELINE_RUN_ID, 'na')}"
+                )
+                self.pstart(
+                    task=task_plan,
+                    total=1,
+                    meta={"k": top_k, "n": len(scorables)},
+                )
+                baseline_ids, targeted_ids = self._plan_ab_from_scorables(
+                    scorables, target_vec, top_k=top_k, seed=seed
+                )
+                self.ptick(task=task_plan, done=1, total=1)
+                self.pdone(task=task_plan)
+
             baseline_scorables = [scorables[i] for i in baseline_ids]
             targeted_scorables = [scorables[i] for i in targeted_ids]
 
@@ -442,8 +516,7 @@ class NexusInlineAgent(BaseAgent, ProgressMixin):
                     vb = b[key][subkey] if subkey else b[key]
                     # report improvement where "higher is better" except mean_edge_len (lower is better)
                     if key == "spatial" and subkey == "mean_edge_len":
-                        # lower is tighter, so improvement = (va - vb)/va
-                        return (va - vb) / max(1e-9, va)
+                        return (va - vb) / max(1e-9, va)  # lower is better
                     return (vb - va) / max(1e-9, abs(va) + 1e-9)
 
                 report = {
@@ -460,7 +533,7 @@ class NexusInlineAgent(BaseAgent, ProgressMixin):
                         "clustering_coeff": diff(mb, mt, "clustering_coeff"),
                         "spatial.mean_edge_len": diff(
                             mb, mt, "spatial", "mean_edge_len"
-                        ),  # lower is better
+                        ),
                         "largest_component": diff(mb, mt, "largest_component"),
                         "avg_degree": diff(mb, mt, "avg_degree"),
                         "mean_edge_weight": diff(mb, mt, "mean_edge_weight"),
@@ -468,13 +541,11 @@ class NexusInlineAgent(BaseAgent, ProgressMixin):
                     "baseline": mb,
                     "targeted": mt,
                 }
-                with (parent / f"{run_id_root}_ab_compare.json").open(
-                    "w", encoding="utf-8"
-                ) as f:
+                ab_report_path = parent / f"{run_id_root}_ab_compare.json"
+                with ab_report_path.open("w", encoding="utf-8") as f:
                     json.dump(report, f, indent=2)
                 log.info(
-                    "A/B compare written to %s",
-                    (parent / "ab_compare.json").as_posix(),
+                    "A/B compare written to %s", ab_report_path.as_posix()
                 )
             except Exception as e:
                 log.warning("A/B compare build failed: %s", e)
@@ -501,12 +572,47 @@ class NexusInlineAgent(BaseAgent, ProgressMixin):
         context: Dict[str, Any],
         target_vec: Optional[List[float]] = None,
     ) -> Dict[str, Any]:
+        if not scorables:
+            out_dir = Path(self.vpm_out) / run_id
+            out_dir.mkdir(parents=True, exist_ok=True)
+
+            # minimal manifest
+            manifest = NexusRunManifest(
+                run_id=run_id,
+                created_utc=time.time(),
+                extras={"goal": context.get("goal"), "source": context.get("source"), "count_scorables": 0},
+            )
+            manifest.save(out_dir)
+
+            # empty run_metrics + frames so downstream GAP/renderer don't choke
+            with (out_dir / "run_metrics.json").open("w", encoding="utf-8") as f:
+                json.dump({
+                    "nodes": 0, "edges": 0, "avg_degree": 0.0, "mean_edge_weight": 0.0,
+                    "connected_components": 0, "largest_component": 0,
+                    "clustering_coeff": 0.0, "mutual_knn_frac": 0.0,
+                    "spatial": {"mean_edge_len": 0.0, "p10": 0.0, "p90": 0.0},
+                    "goal_alignment": {"mean": 0.0, "median": 0.0, "p90": 0.0, "count": 0},
+                }, f, indent=2)
+            with (out_dir / "frames.json").open("w", encoding="utf-8") as f:
+                json.dump([], f)
+
+            log.warning("NexusInlineAgent: run %s had 0 scorables; wrote empty artifacts.", run_id)
+            return {
+                "nexus_graph_json": (out_dir / "graph.json").as_posix(),  # may not exist; fine
+                "nexus_graph_html": (out_dir / "graph.html").as_posix(),  # may not exist; fine
+                "nexus_manifest_path": (out_dir / "manifest.json").as_posix(),
+                "nexus_run_dir": out_dir.as_posix(),
+            }
+
         dims_for_vpm = self.dimensions
         out_dir = Path(self.vpm_out) / run_id
         out_dir.mkdir(parents=True, exist_ok=True)
 
         # Start a new ZeroModel/VPM run
-        self.vpmw.start_run(run_id, metrics=dims_for_vpm, out_dir=str(out_dir))
+        with _stage(log, "Nexus.vpm.start_run", run=run_id):
+            self.vpmw.start_run(
+                run_id, metrics=dims_for_vpm, out_dir=str(out_dir)
+            )
 
         manifest = NexusRunManifest(
             run_id=run_id,
@@ -521,117 +627,163 @@ class NexusInlineAgent(BaseAgent, ProgressMixin):
         # optionally reorder to "think" across time
         strategy = (self.rollout_strategy or "none").lower()
         if strategy == "consensus-walk":
-            # goal_vec from caller (we already pass target_vec to _write_frames_and_gif)
             goal_vec = target_vec or []
-            order = _consensus_walk_order(
-                scorables,
-                goal_vec=goal_vec,
-                alpha=float(self.cfg.get("ab_compare", {}).get("alpha", 0.7)),
-            )
+            with _stage(log, "Nexus.consensus_walk_order", n=len(scorables)):
+                order = _consensus_walk_order(
+                    scorables,
+                    goal_vec=goal_vec,
+                    alpha=float(
+                        self.cfg.get("ab_compare", {}).get("alpha", 0.7)
+                    ),
+                )
             scorables = [scorables[i] for i in order]
 
         # Per-item metrics + VPM tiles
-        for idx, s in enumerate(scorables):
-            goal_for_item = s.get("goal_ref") or context.get("goal")
-            merged_context = {**context, "goal": goal_for_item}
-            sc = Scorable.from_dict(s)
+        task_items = f"nexus:items:{run_id}"
+        self.pstart(
+            task=task_items, total=len(scorables), meta={"phase": "items"}
+        )
+        with _stage(log, "Nexus.items", count=len(scorables), run=run_id):
+            for idx, s in enumerate(scorables):
+                goal_for_item = s.get("goal_ref") or context.get("goal")
+                merged_context = {**context, "goal": goal_for_item}
+                sc = Scorable.from_dict(s)
 
-            mx = await self.mxw.score_and_append(
-                self.zm, sc, context=merged_context, run_id=run_id
-            )
-
-            item_name = sc.id or f"item-{idx:04d}"
-            item_dir = out_dir / item_name
-            item_dir.mkdir(parents=True, exist_ok=True)
-
-            vpm_rec = await self.vpmw.run_item(
-                run_id,
-                sc,
-                out_dir=str(item_dir),
-                dims_for_score=dims_for_vpm,
-                rollout_steps=int(self.rollout_steps),
-                rollout_strategy=self.rollout_strategy,
-                save_channels=False,
-                name_hint=item_name,
-            )
-
-            embeddings = dict(s.get("embeddings") or {})
-            # Normalize embeddings.global to List[float] if present
-            if "global" in embeddings:
-                embeddings["global"] = as_list_floats(embeddings["global"])
-
-            domains = list(s.get("domains") or [])
-            ner = list(s.get("ner") or [])
-
-            item = ManifestItem(
-                item_id=item_name,
-                scorable_id=sc.id or item_name,
-                scorable_type=str(sc.target_type),
-                turn_index=s.get("turn_index"),
-                chat_id=s.get("chat_id"),
-                domains=domains,
-                ner=ner,
-                near_identity=dict(s.get("near_identity") or {}),
-                metrics_columns=list(mx["columns"]),
-                metrics_values=[float(v) for v in mx["values"]],
-                metrics_vector={k: float(v) for k, v in mx["vector"].items()},
-                embeddings={
-                    k: as_list_floats(v) for k, v in embeddings.items()
-                },
-                vpm_png=str((item_dir / "vpm.png").as_posix())
-                if (item_dir / "vpm.png").exists()
-                else None,
-                rollout=vpm_rec or {},
-            )
-
-            with (item_dir / "metrics.json").open("w", encoding="utf-8") as f:
-                f.write(
-                    dumps_safe(
-                        {
-                            "item": item.item_id,
-                            "scores": mx.get("scores", {}),
-                            "metrics_columns": item.metrics_columns,
-                            "metrics_values": item.metrics_values,
-                            "vector": item.metrics_vector,
-                            "embeddings": item.embeddings,
-                            "domains": item.domains,
-                            "entities": item.ner,
-                            "rollout": item.rollout,
-                        },
-                        indent=2,
+                with _stage(log, "Nexus.score_and_append"):
+                    mx = await self.mxw.score_and_append(
+                        self.zm, sc, context=merged_context, run_id=run_id
                     )
+
+                item_name = sc.id or f"item-{idx:04d}"
+                item_dir = out_dir / item_name
+                item_dir.mkdir(parents=True, exist_ok=True)
+
+                with _stage(log, "Nexus.vpm.run_item", item=item_name):
+                    vpm_rec = await self.vpmw.run_item(
+                        run_id,
+                        sc,
+                        out_dir=str(item_dir),
+                        dims_for_score=dims_for_vpm,
+                        rollout_steps=int(self.rollout_steps),
+                        rollout_strategy=self.rollout_strategy,
+                        save_channels=False,
+                        name_hint=item_name,
+                    )
+
+                embeddings = dict(s.get("embeddings") or {})
+                if "global" in embeddings:
+                    embeddings["global"] = as_list_floats(embeddings["global"])
+
+                domains = list(s.get("domains") or [])
+                ner = list(s.get("ner") or [])
+
+                item = ManifestItem(
+                    item_id=item_name,
+                    scorable_id=sc.id or item_name,
+                    scorable_type=str(sc.target_type),
+                    turn_index=s.get("turn_index"),
+                    chat_id=s.get("chat_id"),
+                    domains=domains,
+                    ner=ner,
+                    near_identity=dict(s.get("near_identity") or {}),
+                    metrics_columns=list(mx["columns"]),
+                    metrics_values=[float(v) for v in mx["values"]],
+                    metrics_vector={
+                        k: float(v) for k, v in mx["vector"].items()
+                    },
+                    embeddings={
+                        k: as_list_floats(v) for k, v in embeddings.items()
+                    },
+                    vpm_png=str((item_dir / "vpm.png").as_posix())
+                    if (item_dir / "vpm.png").exists()
+                    else None,
+                    rollout=vpm_rec or {},
                 )
 
-            manifest.append(item)
+                with (item_dir / "metrics.json").open(
+                    "w", encoding="utf-8"
+                ) as f:
+                    f.write(
+                        dumps_safe(
+                            {
+                                "item": item.item_id,
+                                "scores": mx.get("scores", {}),
+                                "metrics_columns": item.metrics_columns,
+                                "metrics_values": item.metrics_values,
+                                "vector": item.metrics_vector,
+                                "embeddings": item.embeddings,
+                                "domains": item.domains,
+                                "entities": item.ner,
+                                "rollout": item.rollout,
+                            },
+                            indent=2,
+                        )
+                    )
+
+                manifest.append(item)
+                self.ptick(task=task_items, done=idx + 1, total=len(scorables))
+        self.pdone(task=task_items)
 
         # Finalize ZeroModel run
-        await self.vpmw.finalize(run_id, out_dir=str(out_dir))
+        with _stage(log, "Nexus.vpm.finalize", run=run_id):
+            await self.vpmw.finalize(run_id, out_dir=str(out_dir))
 
         # Persist manifest
-        manifest.save(out_dir)
+        with _stage(log, "Nexus.manifest.save"):
+            manifest.save(out_dir)
 
         # Graph build
-        nodes = build_nodes_from_manifest(manifest)
-        items_list = [mi.to_dict() for mi in manifest.items]
-        edges = build_edges_enhanced(
-            run_id=run_id,
-            nodes=nodes,
-            items=items_list,
-            knn_k=int(self.cfg.get("indexer", {}).get("knn", {}).get("k", 12)),
-            add_temporal=bool(
-                self.cfg.get("pathfinder", {}).get("backtrack", True)
-            ),
-            sim_threshold=float(
-                self.cfg.get("indexer", {})
-                .get("knn", {})
-                .get("edge_threshold", 0.35)
-            ),
-        )
+        with _stage(log, "Nexus.graph.nodes"):
+            nodes = build_nodes_from_manifest(manifest)
 
-        positions = compute_positions(nodes, edges)
-        export_graph_json(
-            Path(out_dir) / "graph.json", nodes, edges, positions
-        )
+        items_list = [mi.to_dict() for mi in manifest.items]
+
+        with _stage(log, "Nexus.graph.edges", nodes=len(nodes)):
+            # --- Small-N guard to avoid saturated cliques ---
+            n = len(nodes)
+            k_cfg = int(self.cfg.get("indexer", {}).get("knn", {}).get("k", 12))
+            edge_thr_cfg = float(
+                self.cfg.get("indexer", {}).get("knn", {}).get("edge_threshold", 0.35)
+            )
+
+            # Clamp K to something sensible for tiny graphs, and bump threshold a bit.
+            # Example: with n=10 → k ≈ 3, and min threshold 0.50 to avoid full connectivity
+            k_clamped = max(2, min(k_cfg, max(3, n // 3))) if n > 0 else 2
+            edge_thr = edge_thr_cfg
+            if n <= 20:
+                edge_thr = max(edge_thr_cfg, 0.50)
+
+            # Optional: expose overrides via config
+            k_clamped = int(self.cfg.get("indexer", {}).get("knn", {}).get("k_effective", k_clamped))
+            edge_thr = float(self.cfg.get("indexer", {}).get("knn", {}).get("edge_threshold_effective", edge_thr))
+
+            self.logger.log("NexusKNNParams", {
+                "n_nodes": n,
+                "k_cfg": k_cfg,
+                "k_effective": k_clamped,
+                "edge_threshold_cfg": edge_thr_cfg,
+                "edge_threshold_effective": edge_thr,
+            })
+
+            edges = build_edges_enhanced(
+                run_id=run_id,
+                nodes=nodes,
+                items=items_list,
+                knn_k=k_clamped,
+                add_temporal=bool(self.cfg.get("pathfinder", {}).get("backtrack", True)),
+                sim_threshold=edge_thr,
+            )
+
+        with _stage(
+            log, "Nexus.graph.layout", nodes=len(nodes), edges=len(edges)
+        ):
+            positions = compute_positions(nodes, edges)
+
+        with _stage(log, "Nexus.graph.export.json"):
+            export_graph_json(
+                Path(out_dir) / "graph.json", nodes, edges, positions
+            )
+
         run_metrics = _compute_run_metrics(
             manifest=manifest,
             nodes=nodes,
@@ -641,36 +793,63 @@ class NexusInlineAgent(BaseAgent, ProgressMixin):
         )
         with (out_dir / "run_metrics.json").open("w", encoding="utf-8") as f:
             json.dump(run_metrics, f, indent=2)
+
+        # HTML exports (optional toggles)
         try:
-            export_pyvis_html(
-                output_path=(out_dir / "graph.html").as_posix(),
-                nodes=nodes,
-                edges=edges,
-                title=f"Nexus Graph — {run_id}",
-            )
-            export_pyvis_html_rich(
-                output_path=(out_dir / "graph_rich.html").as_posix(),
-                nodes=nodes,
-                edges=edges,
-                positions=positions,
-                title=f"Nexus Graph — {run_id}",
-            )
-            print(
-                f"Exported rich PyVis HTML to {(out_dir / 'graph.html').as_posix()}"
-            )
+            task = f"nexus:exports:{run_id}"
+            total_exports = int(self.enable_html) + int(self.enable_rich)
+            if total_exports:
+                self.pstart(
+                    task=task, total=total_exports, meta={"phase": "exports"}
+                )
+                done = 0
+                if self.enable_html:
+                    with _stage(log, "Nexus.graph.export.pyvis"):
+                        export_pyvis_html(
+                            output_path=(out_dir / "graph.html").as_posix(),
+                            nodes=nodes,
+                            edges=edges,
+                            title=f"Nexus Graph — {run_id}",
+                        )
+                    done += 1
+                    self.ptick(task=task, done=done, total=total_exports)
+                if self.enable_rich:
+                    with _stage(log, "Nexus.graph.export.pyvis_rich"):
+                        export_pyvis_html_rich(
+                            output_path=(
+                                out_dir / "graph_rich.html"
+                            ).as_posix(),
+                            nodes=nodes,
+                            edges=edges,
+                            positions=positions,
+                            title=f"Nexus Graph — {run_id}",
+                        )
+                    done += 1
+                    self.ptick(task=task, done=done, total=total_exports)
+                self.pdone(task=task)
+                print(
+                    f"Exported PyVis HTML to {(out_dir / 'graph.html').as_posix()}"
+                    + (", and graph_rich.html" if self.enable_rich else "")
+                )
         except Exception as e:
             log.warning("PyVis export failed: %s", e)
 
         # Build timeline frames (plus optional filmstrip GIF from VPM tiles)
         try:
-            await _write_frames_and_gif(
-                out_dir=out_dir,
-                manifest=manifest,
-                nodes=nodes,
-                edges=edges,
-                positions=positions,
-                target_vec=target_vec,
-            )
+            if self.enable_filmstrip:
+                task = f"nexus:frames:{run_id}"
+                self.pstart(task=task, total=1, meta={"phase": "frames"})
+                with _stage(log, "Nexus.frames+gif", run=run_id):
+                    await _write_frames_and_gif(
+                        out_dir=out_dir,
+                        manifest=manifest,
+                        nodes=nodes,
+                        edges=edges,
+                        positions=positions,
+                        target_vec=target_vec,
+                    )
+                self.ptick(task=task, done=1, total=1)
+                self.pdone(task=task)
         except Exception as e:
             log.warning("timeline frames build failed: %s", e)
 
@@ -687,18 +866,20 @@ class NexusInlineAgent(BaseAgent, ProgressMixin):
 
     # ---------- HELPERS ----------
     async def _ensure_embeddings_global(
-        self, scorables: List[Dict[str, Any]]
+        self, scorables: List[Dict[str, Any]], progress=None
     ) -> None:
         """
         Ensure each scorable has embeddings.global; compute from text when missing.
         Coerce any present vector to List[float].
         """
-        for s in scorables:
+        n = len(scorables)
+        for i, s in enumerate(scorables, 1):
             emb_map = s.get("embeddings") or {}
             g = emb_map.get("global")
             if has_vec(g):
-                # normalize in place
                 s.setdefault("embeddings", {})["global"] = as_list_floats(g)
+                if progress:
+                    progress(i, n)
                 continue
 
             txt = s.get("text") or s.get("title") or s.get("payload") or ""
@@ -706,6 +887,8 @@ class NexusInlineAgent(BaseAgent, ProgressMixin):
                 self.memory.embedding.get_or_create(str(txt)[:4096])
             )
             s.setdefault("embeddings", {})["global"] = vec
+            if progress:
+                progress(i, n)
 
     def _plan_ab_from_scorables(
         self,
@@ -757,7 +940,6 @@ class NexusInlineAgent(BaseAgent, ProgressMixin):
 def _annotate_with_sim(tile: Image.Image, sim: float | None) -> Image.Image:
     if sim is None:
         return tile
-    # clamp to [0,1]
     s = max(0.0, min(1.0, float(sim)))
     w, h = tile.size
     bar_h = 10
@@ -884,7 +1066,7 @@ async def _write_frames_and_gif(
     for mi, sim in zip(manifest.items, sims):
         if mi.vpm_png and Path(mi.vpm_png).exists():
             tile = Image.open(mi.vpm_png).convert("RGB").resize((256, 256))
-            tile = _annotate_with_sim(tile, sim)  # <-- add the bar
+            tile = _annotate_with_sim(tile, sim)  # add the similarity bar
             frames_png.append(np.array(tile))
     if frames_png:
         gif_path = out_dir / "filmstrip.gif"

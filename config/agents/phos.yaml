@@ -8,8 +8,7 @@ phos:
     name: ollama/qwen3
     api_base: http://localhost:11434
     api_key: null
-  input_keys: ["goal", "hypotheses"]
-  input_key: documents
+  input_key: scorables
   output_key: phos
   prompt_mode: file
   prompt_file: phos.txt

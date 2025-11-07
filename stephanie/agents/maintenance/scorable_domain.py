@@ -1,4 +1,4 @@
-# stephanie/agents/scorable_domain.py
+# stephanie/agents/maintenance/scorable_domain.py
 from __future__ import annotations
 
 import traceback
@@ -114,7 +114,7 @@ class ScorableDomainAgent(BaseAgent):
 
     async def _enrich_with_multi_source_domains(
         self, sc: Scorable, goal: Optional[str], pipeline_id: str
-    ) -> List[Tuple[str, float]]:
+    ) -> List[Tuple[str, float]]: 
         """
         Returns list of (domain, score) tuples with source tagging.
         """

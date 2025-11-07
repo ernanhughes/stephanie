@@ -7,8 +7,7 @@ defaults:
   - scorer: all  
 
   - agents/nexus_scorable_loader
-  - agents/chat_analyze
-  - agents/universal_scorer
+  - agents/scorable_annotate
   - agents/nexus
   - agents/gap
 
@@ -27,7 +26,6 @@ goal:
     - "symbolic_prompt_plan"
     - "stepwise_reasoning_trace"
     - "annotated_score_vector"
-
 paths:
   prompts: ${hydra:runtime.cwd}/prompts
 
@@ -46,16 +44,10 @@ pipeline:
        enabled: true
        iterations: 1    
 
-     - name: chat_analyze
-       description: "Analyze chat history for relevant information"
-       cls: stephanie.agents.knowledge.chat_analyze.ChatAnalyzeAgent
-       enabled: false
-
-     - name: universal_scorer
-       cls: stephanie.agents.universal_scorer.UniversalScorerAgent
-       enabled: false 
-       iterations: 1
-
+     - name: scorable_annotate
+       description: "Annotate the loaded conversation turns with scores"
+       cls: stephanie.agents.maintenance.scorable_annotate.ScorableAnnotateAgent
+       enabled: true
      - name: nexus
        description: "Generate a memory graph"
        cls: stephanie.components.nexus.agents.nexus_inline.NexusInlineAgent

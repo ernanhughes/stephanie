@@ -1,0 +1,12 @@
+scorable_embedding:
+  name: scorable_embedding
+  enabled: true
+  save_prompt: false
+  save_context: false
+  skip_if_completed: false
+
+  scorable_type: conversation_turn
+  embed_full_document: true
+
+  input_key: scorables
+  output_key: scorable_embedding

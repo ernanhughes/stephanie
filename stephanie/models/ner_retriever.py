@@ -187,7 +187,6 @@ class NERRetrieverEmbedder:
     ):
         self.device = device
         self.logger = logger
-        self.logger.log("Warning", {"ner", "initializing"})
         self.memory = memory
         self.cfg = cfg or {}
 
@@ -263,13 +262,10 @@ class NERRetrieverEmbedder:
 
             # ✅ Clamp layer index if too high
             if self.layer >= available_layers:
-                self.logger.log(
-                    "NERLayerAdjusted",
-                    {
-                        "requested": self.layer,
-                        "available": available_layers - 1,
-                        "using": available_layers - 1,
-                    },
+                log.info(
+                    f"NERLayerAdjusted requested: {self.layer}, "
+                    f"available: {available_layers - 1}, "
+                    f"using: {available_layers - 1}"
                 )
                 self.layer = available_layers - 1
 
@@ -386,15 +382,12 @@ class NERRetrieverEmbedder:
                     vec = H[b, st : et + 1, :].mean(dim=0)
                 except Exception as e:
                     # Log the issue
-                    self.logger.log(
-                        "NEREmbeddingFallback",
-                        {
-                            "reason": str(e),
-                            "text_idx": b,
-                            "span": (cs, ce),
-                            "token_span": (st, et),
-                            "seq_length": H.shape[1],
-                        },
+                    log.error(
+                        f"NEREmbeddingFallback reason: {str(e)}, "
+                        f"text_idx: {b}, "
+                        f"span: {(cs, ce)}, "
+                        f"token_span: {(st, et)}, "
+                        f"seq_length: {H.shape[1]}",
                     )
 
                     # Tiered fallback strategy
@@ -433,7 +426,7 @@ class NERRetrieverEmbedder:
                     idx += len(sublist)
                 batch_vecs = projected_vecs
             except Exception as e:
-                self.logger.log("ProjectionError", {"error": str(e)})
+                log.error(f"ProjectionError: {str(e)}")
                 # Continue with non-projected vectors
 
         out = []
@@ -541,21 +534,12 @@ class NERRetrieverEmbedder:
                     total_entities += 1
 
             except Exception as e:
-                self.logger.log(
-                    "NERIndexingError",
-                    {"scorable_id": scorable.id, "error": str(e)},
-                )
+                log.error(f"NERIndexingError: {str(e)}")
 
         if new_embeddings:
             self.index.add(np.array(new_embeddings), new_metadata, save=True)
 
-        self.logger.log(
-            "NERIndexingComplete",
-            {
-                "scorables_processed": len(scorables),
-                "entities_indexed": total_entities,
-            },
-        )
+        log.info(f"NERIndexingComplete: {len(scorables)} scorables processed, {total_entities} entities indexed")
 
         return total_entities
 
@@ -571,8 +555,7 @@ class NERRetrieverEmbedder:
                 )
                 return kv
         except Exception as e:
-            if self.logger:
-                self.logger.log("NERKVUnavailable", {"error": str(e)})
+            log.error(f"NERKVUnavailable: {str(e)}")
         return None
 
     def _cache_key(self, query: str, k: int, domain: str) -> str:
@@ -597,8 +580,7 @@ class NERRetrieverEmbedder:
                 return None
             return doc.get("results")
         except Exception as e:
-            if self.logger:
-                self.logger.log("NERKVGetError", {"error": str(e)})
+            log.error(f"NERKVGetError: {str(e)}")
         return None
 
     def _kv_put(self, key: str, results: List[Dict]):
@@ -607,13 +589,9 @@ class NERRetrieverEmbedder:
         try:
             payload = {"ts": time.time(), "results": results}
             self._kv.put(key, json.dumps(payload).encode("utf-8"))
-            if self.logger:
-                self.logger.log(
-                    "NERKVStored", {"key": key, "items": len(results)}
-                )
+            log.info(f"NERKVStored: key={key}, items={len(results)}")
         except Exception as e:
-            if self.logger:
-                self.logger.log("NERKVPu tError", {"error": str(e)})
+            log.error(f"NERKVPutError: {str(e)}")   
 
     def _process_batch(self, texts, spans_list, scorables, new_embs, new_meta):
         all_spans = [[(a, b) for a, b, _ in spans] for spans in spans_list]
@@ -664,16 +642,18 @@ class NERRetrieverEmbedder:
         # 1) Check KV cache first
         kv_hit = self._kv_get(key)
         if kv_hit:
-            if self.logger:
-                self.logger.log(
-                    "NERCacheHit",
-                    {
-                        "backend": "nats_kv",
-                        "items": len(kv_hit),
-                        "query": query[:50],
-                    },
-                )
+            log.info(f"NERCacheHit: {len(kv_hit)} items found for query: {query[:50]}")
             return kv_hit
+
+        # Preprocess and embed the query
+        query_emb = self.embed_type_query(query)
+
+        # Search index
+        results = self.index.search(query_emb, top_k * 2)
+
+        # Apply domain-specific calibration
+        if domain is None:
+            domain = self._get_current_domain(query)
 
         # Preprocess and embed the query
         query_emb = self.embed_type_query(query)
@@ -939,17 +919,13 @@ class NERRetrieverEmbedder:
             self._save_calibration_entry(calibration_entry)
 
         # Log for monitoring
-        self.logger.log(
-            "CalibrationDataCollected",
-            {
-                "query": query[:50] + "..." if len(query) > 50 else query,
-                "domain": domain,
-                "total_results": len(results),
-                "relevant_count": sum(
-                    1 for r in results if str(r["id"]) in ground_truth
-                ),
-            },
+        log.info(
+            "CalibrationDataCollected"
+            f"domain: {domain}, "
+            f"total_results: {len(results)}, "
+            f"relevant_count: {sum(1 for r in results if str(r['id']) in ground_truth)}"
         )
+
 
     def _save_calibration_entry(self, entry: Dict):
         """Save calibration entry to persistent storage"""
@@ -997,10 +973,7 @@ class NERRetrieverEmbedder:
                         }
                     )
             except Exception as e:
-                self.logger.log(
-                    "CalibrationDataLoadFailed",
-                    {"error": str(e), "file": filename},
-                )
+                log.error(f"CalibrationDataLoadFailed: {str(e)}, file: {filename}")
 
         return historical_data
 
@@ -1013,10 +986,7 @@ class NERRetrieverEmbedder:
                 with open(domain_path, "r") as f:
                     return json.load(f)
             except Exception as e:
-                self.logger.log(
-                    "DomainCalibrationLoadFailed",
-                    {"error": str(e), "domain": domain},
-                )
+                log.error(f"DomainCalibrationLoadFailed: {str(e)}, domain: {domain}")
 
         # Try general calibration
         general_path = "data/calibration/general_calibration.json"
@@ -1024,15 +994,13 @@ class NERRetrieverEmbedder:
             try:
                 with open(general_path, "r") as f:
                     calibration = json.load(f)
-                    self.logger.log(
-                        "UsingFallbackCalibration",
-                        {"domain": domain, "fallback": "general"},
+                    log.info(
+                        "UsingFallbackCalibration"
+                        f"domain: {domain}, fallback: general"
                     )
                     return calibration
             except Exception as e:
-                self.logger.log(
-                    "GeneralCalibrationLoadFailed", {"error": str(e)}
-                )
+                log.error(f"GeneralCalibrationLoadFailed: {str(e)}")
 
         # Default to identity function
         log.debug(f"UsingDefaultCalibration for domain: {domain}")
@@ -1115,9 +1083,7 @@ class NERRetrieverEmbedder:
                     ),
                 )
             except Exception as e:
-                self.logger.error(
-                    f"Failed to initialize domain classifier: {e}"
-                )
+                log.error(f"Failed to initialize domain classifier: {e}")
                 # Fallback to simple keyword-based domain detection
                 return self._keyword_based_domain_detection(query)
 
@@ -1190,9 +1156,7 @@ class NERRetrieverEmbedder:
                 if datetime.now() - last_train > timedelta(days=7):
                     return True
         except Exception as e:
-            self.logger.log(
-                "CalibrationTimestampCheckFailed", {"error": str(e)}
-            )
+            log.error(f"CalibrationTimestampCheckFailed: {str(e)}")
             return True
 
         # Check if enough new data has accumulated
@@ -1264,16 +1228,14 @@ class NERRetrieverEmbedder:
             * 100
         )
 
-        self.logger.log(
-            "CalibrationEvaluation",
-            {
-                "domain": domain,
-                "semantic_rmse": semantic_rmse,
-                "ner_rmse": ner_rmse,
-                "baseline_rmse": baseline_rmse,
-                "improvement_pct": improvement,
-                "test_size": test_size,
-            },
+        log.info(
+            "CalibrationEvaluation"
+                f"domain: {domain}"
+                f"semantic_rmse: {semantic_rmse}"
+                f"ner_rmse: {ner_rmse}"
+                f"baseline_rmse: {baseline_rmse}"
+                f"improvement_pct: {improvement}"
+                f"test_size: {test_size}"
         )
 
         return {
@@ -1510,13 +1472,11 @@ class NERRetrieverEmbedder:
 
         # Alert if calibration is causing excessive shifts
         if abs(metrics["mean_delta"]) > 0.2:
-            self.logger.log(
-                "CalibrationWarning",
-                {
-                    "message": "Calibration causing large mean shift",
-                    "domain": domain,
-                    "mean_delta": metrics["mean_delta"],
-                },
+            log.warning(
+                "CalibrationWarning"
+                "message: Calibration causing large mean shift"
+                f"domain: {domain}"
+                f"mean_delta: {metrics['mean_delta']}"
             )
 
     def train_projection(
@@ -1580,8 +1540,8 @@ class NERRetrieverEmbedder:
                 )
 
             avg_loss = total_loss / max(1, len(triplets) / batch_size)
-            self.logger.info(f"Epoch {epoch + 1}: avg loss {avg_loss:.4f}")
+            log.info(f"Epoch {epoch + 1}: avg loss {avg_loss:.4f}")
 
         progress_bar.close()
         self.projection.eval()
-        self.logger.info("Projection network training completed")
+        log.info("Projection network training completed")

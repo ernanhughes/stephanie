@@ -175,7 +175,7 @@ class ScoreNormalizer:
         try:
             v = float(value)
         except Exception:
-            logug(f"Invalid score value: {value}, defaulting to 0.0")
+            log.error(f"Invalid score value: {value}, defaulting to 0.0")
             return 0.0
             
         rng = self._get_range(self.score_ranges, source, dimension)

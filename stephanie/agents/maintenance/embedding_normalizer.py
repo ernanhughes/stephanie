@@ -1,4 +1,4 @@
-# stephanie/agents/embedding_normalizer.py
+# stephanie/agents/maintenance/embedding_normalizer.py
 """
 This agent retroactively **normalizes all stored embeddings** across Stephanie’s
 embedding tables (HNet, HuggingFace, Ollama, etc.) so that every vector

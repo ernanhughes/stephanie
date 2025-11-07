@@ -223,7 +223,7 @@ class HRMScorer(BaseScorer):
                     weight=1.0,
                     attributes=attributes,
                 )
-                logug(
+                log.debug(
                     "HRMScorerEvaluated "
                     f"dimension={dimension} goal_id={goal.get('id', 'unknown')} "
                     f"scorable_id={scorable.id} raw_score={raw_score} "

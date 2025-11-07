@@ -112,7 +112,7 @@ class PhosAgent(BaseAgent):
         self.ensure_embedding(medium)
         # --- 3. OPPOSITE: inverse semantic
         opposite_rows = self.memory.embedding.search_unrelated_scorables(
-            goal_text, ScorableType.RESPONSE, top_k=300
+            goal_text, ScorableType.CONVERSATION_TURN, top_k=300
         )
         opposite = [
             self._make_scorable(
@@ -248,7 +248,7 @@ class PhosAgent(BaseAgent):
                 iters=4  # tweak for more/less compaction
             )
             results["good_vs_bad"] = meta
-            logug(
+            log.debug(
                 "ΔMass=%s, Overlap=%s",
                 meta["delta_mass"],
                 meta["overlap_score"],

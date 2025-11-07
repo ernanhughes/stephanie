@@ -1,4 +1,4 @@
-# stephanie/agents/scorable_entity.py
+# stephanie/agents/maintenance/scorable_entity.py
 from __future__ import annotations
 
 import traceback

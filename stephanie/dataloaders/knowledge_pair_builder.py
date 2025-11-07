@@ -231,7 +231,7 @@ class KnowledgePairBuilder:
 
             # Logging
             if (pi + 1) % 1000 == 0:
-                logug(f"Processed {pi+1} positives → pairs={len(pairs)}")
+                log.debug(f"Processed {pi+1} positives → pairs={len(pairs)}")
 
         log.debug(f"✅ Built {len(pairs)} contrastive pairs.")
         return pairs
