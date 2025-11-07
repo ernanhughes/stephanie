@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+
 class ProgressMixin:
     def _init_progress(self, container, logger=None):
         self._progress = None

@@ -3,40 +3,34 @@ from __future__ import annotations
 
 import json
 import logging
-import math
 import random
 import time
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
-from contextlib import contextmanager
-from collections import defaultdict
 
 import imageio.v2 as imageio
 import numpy as np
 from PIL import Image, ImageDraw
 
 from stephanie.agents.base_agent import BaseAgent
+from stephanie.components.nexus.app.manifest import (ManifestItem,
+                                                     NexusRunManifest)
 from stephanie.components.nexus.graph.builder import (
-    build_edges_enhanced,
-    build_nodes_from_manifest,
-)
-from stephanie.components.nexus.graph.exporters import (
-    export_graph_json,
-    export_pyvis_html,
-    export_pyvis_html_rich,
-)
+    build_edges_enhanced, build_nodes_from_manifest)
+from stephanie.components.nexus.graph.exporters import (export_graph_json,
+                                                        export_pyvis_html,
+                                                        export_pyvis_html_rich)
 from stephanie.components.nexus.graph.layout import compute_positions
-from stephanie.components.nexus.manifest import ManifestItem, NexusRunManifest
 from stephanie.constants import PIPELINE_RUN_ID
 from stephanie.scoring.scorable import Scorable, ScorableType
 from stephanie.services.scoring_service import ScoringService
-from stephanie.services.workers.nexus_workers import (
-    NexusMetricsWorkerInline,
-    NexusVPMWorkerInline,
-)
+from stephanie.services.workers.nexus_workers import (NexusMetricsWorkerInline,
+                                                      NexusVPMWorkerInline)
 from stephanie.services.zeromodel_service import ZeroModelService
+from stephanie.utils.embed_utils import as_list_floats, cos_safe, has_vec
+from stephanie.utils.graph_utils import compute_run_metrics
 from stephanie.utils.json_sanitize import dumps_safe
-from stephanie.utils.embed_utils import as_list_floats, has_vec, cos_safe
 from stephanie.utils.progress_mixin import ProgressMixin
 
 log = logging.getLogger(__name__)
@@ -56,6 +50,40 @@ def _stage(logger, name: str, **meta):
             logger.log("StageTiming", payload)
         except Exception:
             log.info("StageTiming %s: %.2f ms %s", name, dt_ms, meta or {})
+
+
+def _first_frame_from_gif(gif_path: Path) -> Optional[Image.Image]:
+    try:
+        im = Image.open(gif_path)
+        for frame in ImageSequence.Iterator(im):
+            return frame.convert("RGB")
+    except Exception:
+        return None
+    return None
+
+def _find_tile_path(item_dir: Path) -> Optional[Path]:
+    """
+    Find a representative VPM tile for an item:
+    1) any vpm*.png anywhere under item_dir (handles vpm_gray.png, vpm.png, etc.)
+    2) fallback: first frame of filmstrip.gif saved to item_dir/vpm_from_gif.png
+    """
+    # 1) recursive search for vpm*.png
+    for p in item_dir.rglob("vpm*.png"):
+        if p.is_file():
+            return p
+
+    # 2) fallback to per-item filmstrip.gif (if present)
+    gif = next((p for p in item_dir.rglob("filmstrip.gif") if p.is_file()), None)
+    if gif:
+        fr = _first_frame_from_gif(gif)
+        if fr:
+            out = item_dir / "vpm_from_gif.png"
+            try:
+                fr.save(out)
+                return out
+            except Exception:
+                return None
+    return None
 
 
 def _consensus_walk_order(
@@ -146,193 +174,6 @@ def _consensus_walk_order(
 
     return picked
 
-
-def _goal_alignment_stats(manifest, target_vec, restrict_to_ids: Optional[set[str]] = None):
-    """
-    Cosine(sim(item, goal)) with a robust fallback. When restrict_to_ids is provided,
-    only items whose item_id is in that set are considered (aligns count with the graph).
-    """
-    def _l2(v):
-        return math.sqrt(sum(x * x for x in v)) or 1.0
-
-    def _cos(a, b):
-        if not a or not b:
-            return 0.0
-        a = list(a); b = list(b)
-        return sum(x * y for x, y in zip(a, b)) / (_l2(a) * _l2(b))
-
-    sims: List[float] = []
-    for mi in manifest.items:
-        if restrict_to_ids and mi.item_id not in restrict_to_ids:
-            continue
-        v = (mi.embeddings or {}).get("global")
-        if v and isinstance(v, (list, tuple)):
-            sims.append(_cos(v, target_vec))
-        elif mi.metrics_vector:
-            sims.append(_cos(list(mi.metrics_vector.values()), target_vec))
-        else:
-            sims.append(0.0)  # keep counts aligned even if missing vectors
-
-    if not sims:
-        return {"mean": 0.0, "median": 0.0, "p90": 0.0, "count": 0}
-    s = sorted(float(x) for x in sims)
-    n = len(s)
-
-    def pct(p):
-        i = min(n - 1, max(0, int(round(p * (n - 1)))))
-        return s[i]
-
-    return {
-        "mean": sum(s) / n,
-        "median": s[n // 2],
-        "p90": pct(0.90),
-        "count": n,
-    }
-
-
-def _build_adjacency(edges):
-    adj = defaultdict(set)
-    ew = {}
-    for e in edges:
-        src = str(getattr(e, "src", getattr(e, "source", "")))
-        dst = str(getattr(e, "dst", getattr(e, "target", "")))
-        if not src or not dst or src == dst:
-            continue
-        w = float(getattr(e, "weight", 0.0) or 0.0)
-        adj[src].add(dst)
-        adj[dst].add(src)
-        ew[(src, dst)] = w
-        ew[(dst, src)] = w
-    return adj, ew
-
-
-def _connected_components(adj):
-    seen = set()
-    comps = []
-    for u in list(adj.keys()):
-        if u in seen:
-            continue
-        stack = [u]
-        seen.add(u)
-        comp = []
-        while stack:
-            v = stack.pop()
-            comp.append(v)
-            for w in adj[v]:
-                if w not in seen:
-                    seen.add(w)
-                    stack.append(w)
-        comps.append(comp)
-    return comps
-
-
-def _approx_clustering_coefficient(adj):
-    # simple undirected clustering coefficient
-    N = 0
-    S = 0.0
-    for u, nbrs in adj.items():
-        k = len(nbrs)
-        if k < 2:
-            continue
-        nn = 0
-        nbrs_set = nbrs
-        for a in nbrs_set:
-            for b in nbrs_set:
-                if a >= b:
-                    continue
-                if a in adj[b]:
-                    nn += 1
-        possible = k * (k - 1) / 2
-        S += nn / possible
-        N += 1
-    return (S / N) if N else 0.0
-
-
-def _mutual_knn_fraction(edges):
-    # fraction of KNN edges that are reciprocal
-    knn = set()
-    for e in edges:
-        et = str(getattr(e, "type", ""))
-        if "knn" in et.lower():
-            s = str(getattr(e, "src", getattr(e, "source", "")))
-            t = str(getattr(e, "dst", getattr(e, "target", "")))
-            if s and t and s != t:
-                knn.add((s, t))
-    if not knn:
-        return 0.0
-    mutual = sum(1 for (a, b) in knn if (b, a) in knn)
-    return mutual / len(knn)
-
-
-def _spatial_tightness(positions, edges):
-    # mean edge length using preset positions
-    lens = []
-    for e in edges:
-        s = str(getattr(e, "src", getattr(e, "source", "")))
-        t = str(getattr(e, "dst", getattr(e, "target", "")))
-        if s not in positions or t not in positions:
-            continue
-        x1, y1 = positions[s]
-        x2, y2 = positions[t]
-        if x1 is None or y1 is None or x2 is None or y2 is None:
-            continue
-        dx = x1 - x2
-        dy = y1 - y2
-        lens.append(math.sqrt(dx * dx + dy * dy))
-    if not lens:
-        return {"mean_edge_len": 0.0, "p10": 0.0, "p90": 0.0}
-    lens.sort()
-    n = len(lens)
-
-    def pct(p):
-        i = min(n - 1, max(0, int(round(p * (n - 1)))))
-        return lens[i]
-
-    return {"mean_edge_len": sum(lens) / n, "p10": pct(0.10), "p90": pct(0.90)}
-
-
-def _compute_run_metrics(manifest, nodes, edges, positions, target_vec):
-    # 1) goal alignment of items
-    align = _goal_alignment_stats(manifest, target_vec)
-
-    # 2) graph structure
-    adj, ew = _build_adjacency(edges)
-    comps = _connected_components(adj)
-    largest_cc = max((len(c) for c in comps), default=0)
-    n_nodes = len(nodes)
-    n_edges = len(
-        {
-            (
-                str(getattr(e, "src", getattr(e, "source", ""))),
-                str(getattr(e, "dst", getattr(e, "target", ""))),
-            )
-            for e in edges
-        }
-    )
-    avg_deg = (2.0 * n_edges / n_nodes) if n_nodes else 0.0
-    mean_w = 0.0
-    ws = [float(getattr(e, "weight", 0.0) or 0.0) for e in edges]
-    if ws:
-        mean_w = sum(ws) / len(ws)
-
-    cluster_c = _approx_clustering_coefficient(adj)
-    mutual_knn = _mutual_knn_fraction(edges)
-    tight = _spatial_tightness(positions, edges)
-
-    return {
-        "nodes": n_nodes,
-        "edges": n_edges,
-        "avg_degree": avg_deg,
-        "mean_edge_weight": mean_w,
-        "connected_components": len(comps),
-        "largest_component": largest_cc,
-        "clustering_coeff": cluster_c,
-        "mutual_knn_frac": mutual_knn,
-        "spatial": tight,
-        "goal_alignment": align,
-    }
-
-
 class NexusInlineAgent(BaseAgent, ProgressMixin):
     """
     Builds a Nexus run (manifest → graph → frames) and, when enabled,
@@ -409,11 +250,13 @@ class NexusInlineAgent(BaseAgent, ProgressMixin):
                 run_id=f"{run_id_root}-targeted",
                 scorables=context["scorables_targeted"],
                 context=context,
+                target_vec=target_vec,
             )
             bl_ctx = await self._emit_single_run(
                 run_id=f"{run_id_root}-baseline",
                 scorables=context["scorables_baseline"],
                 context=context,
+                target_vec=target_vec,
             )
             # publish A/B paths for GAP
             context["ab_targeted_run_dir"] = tgt_ctx["nexus_run_dir"]
@@ -676,7 +519,7 @@ class NexusInlineAgent(BaseAgent, ProgressMixin):
 
                 domains = list(s.get("domains") or [])
                 ner = list(s.get("ner") or [])
-
+                tile = _find_tile_path(item_dir)
                 item = ManifestItem(
                     item_id=item_name,
                     scorable_id=sc.id or item_name,
@@ -694,9 +537,7 @@ class NexusInlineAgent(BaseAgent, ProgressMixin):
                     embeddings={
                         k: as_list_floats(v) for k, v in embeddings.items()
                     },
-                    vpm_png=str((item_dir / "vpm.png").as_posix())
-                    if (item_dir / "vpm.png").exists()
-                    else None,
+                    vpm_png = str(tile.as_posix()) if tile else None,
                     rollout=vpm_rec or {},
                 )
 
@@ -784,12 +625,18 @@ class NexusInlineAgent(BaseAgent, ProgressMixin):
                 Path(out_dir) / "graph.json", nodes, edges, positions
             )
 
-        run_metrics = _compute_run_metrics(
+        run_metrics = compute_run_metrics(
             manifest=manifest,
             nodes=nodes,
             edges=edges,
             positions=positions,
             target_vec=target_vec or [],
+            params={
+                "knn_k_effective": int(k_clamped),
+                "edge_threshold_effective": float(edge_thr),
+                "knn_k_cfg": int(k_cfg),
+                "edge_threshold_cfg": float(edge_thr_cfg),
+            }
         )
         with (out_dir / "run_metrics.json").open("w", encoding="utf-8") as f:
             json.dump(run_metrics, f, indent=2)
@@ -1064,14 +911,31 @@ async def _write_frames_and_gif(
     # Optional: build animated filmstrip from per-item VPMs
     frames_png = []
     for mi, sim in zip(manifest.items, sims):
-        if mi.vpm_png and Path(mi.vpm_png).exists():
-            tile = Image.open(mi.vpm_png).convert("RGB").resize((256, 256))
-            tile = _annotate_with_sim(tile, sim)  # add the similarity bar
-            frames_png.append(np.array(tile))
+        tile_path = mi.vpm_png
+        tile_img = None
+
+        if tile_path and Path(tile_path).exists():
+            tile_img = Image.open(tile_path).convert("RGB")
+        else:
+            # try to locate something under this item's dir
+            item_dir = Path(out_dir) / mi.item_id
+            # 1) look for any vpm*.png
+            cand = next((p for p in item_dir.rglob("vpm*.png") if p.is_file()), None)
+            if cand:
+                tile_img = Image.open(cand).convert("RGB")
+            else:
+                # 2) fallback to first frame of any per-item filmstrip.gif
+                gif = next((p for p in item_dir.rglob("filmstrip.gif") if p.is_file()), None)
+                if gif:
+                    tile_img = _first_frame_from_gif(gif)
+
+        if tile_img:
+            tile_img = tile_img.resize((256, 256))
+            tile_img = _annotate_with_sim(tile_img, sim)
+            frames_png.append(np.array(tile_img))
+
     if frames_png:
         gif_path = out_dir / "filmstrip.gif"
-        imageio.mimsave(
-            gif_path, [np.array(im) for im in frames_png], duration=0.35
-        )
+        imageio.mimsave(gif_path, frames_png, duration=0.35)
         return str(gif_path)
     return None

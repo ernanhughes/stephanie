@@ -1,10 +1,12 @@
 # stephanie/agents/maintenance/scorable_embedding.py
 from __future__ import annotations
+
 from dataclasses import asdict
 
 from tqdm import tqdm
 
 from stephanie.agents.base_agent import BaseAgent
+from stephanie.data.text_item import TextItem
 from stephanie.models.casebook import CaseORM
 from stephanie.models.chat import ChatTurnORM
 from stephanie.models.document import DocumentORM
@@ -13,7 +15,6 @@ from stephanie.models.plan_trace import PlanTraceORM
 from stephanie.models.prompt import PromptORM
 from stephanie.scoring.scorable import ScorableFactory, ScorableType
 from stephanie.utils.progress_mixin import ProgressMixin
-from stephanie.data.text_item import TextItem
 
 
 class ScorableEmbeddingAgent(BaseAgent, ProgressMixin):

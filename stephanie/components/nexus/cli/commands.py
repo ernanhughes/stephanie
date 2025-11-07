@@ -6,8 +6,8 @@ from pathlib import Path
 
 import click
 
+from stephanie.components.nexus.app.protocol import NexusProtocol
 from stephanie.components.nexus.graph.builder import build_graph_from_manifest
-from stephanie.components.nexus.protocol.protocol import NexusProtocol
 
 
 @click.group()

@@ -3,10 +3,8 @@ from __future__ import annotations
 
 import json
 import math
-from typing import Any, List
-
-from typing import Callable, Optional
 import random
+from typing import Any, Callable, List, Optional
 
 import numpy as np  # optional; code works if NumPy isn't installed
 

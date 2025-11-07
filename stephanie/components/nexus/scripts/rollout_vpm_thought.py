@@ -13,10 +13,14 @@ from PIL import Image
 
 from scripts.train_vpm_thought_model import (  # Reuse model definition
     DEFAULT_CONFIG, VPMThoughtModel)
+from stephanie.components.nexus.utils.visual_thought import (VisualThoughtOp,
+                                                             VisualThoughtType)
+from stephanie.components.nexus.vpm.state_machine import (Thought,
+                                                          ThoughtExecutor,
+                                                          VPMGoal, VPMState,
+                                                          compute_phi)
 from stephanie.services.graph_layout import render_multi_layout_vpm
-from stephanie.utils.visual_thought import VisualThoughtOp, VisualThoughtType
-from stephanie.vpm.state_machine import (Thought, ThoughtExecutor, VPMGoal,
-                                         VPMState, compute_phi)
+from stephanie.vpm.metrics import compute_vpm_metrics
 
 
 # --------------------------- Helpers ---------------------------

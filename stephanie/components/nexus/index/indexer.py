@@ -8,8 +8,8 @@ import numpy as np
 from stephanie.scoring.scorable import ScorableFactory
 from stephanie.tools.hnet_embedder import get_embedding
 
-from ..store.dict_store import NexusGraphStore
-from ..types import NexusEdge, NexusNode
+from ..app.types import NexusEdge, NexusNode
+from ..stores.dict_store import NexusGraphStore
 
 
 class NexusIndexer:

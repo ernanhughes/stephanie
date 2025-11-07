@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import Any, Dict, List
 
-
 # Expect NexusNode/NexusEdge to be simple dataclasses or objects with attributes used below
 
 

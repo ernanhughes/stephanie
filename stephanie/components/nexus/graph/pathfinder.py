@@ -5,8 +5,8 @@ from typing import Callable, List, Tuple
 
 import numpy as np
 
-from ..store.dict_store import NexusGraphStore
-from ..types import NexusNode, NexusPath
+from ..app.types import NexusNode, NexusPath
+from ..stores.dict_store import NexusGraphStore
 
 
 class NexusPathFinder:

@@ -8,7 +8,7 @@ from typing import Dict, List
 def extract_hypotheses(text: str):
     # First attempt: Try precise regex-based extraction
     pattern = re.compile(
-        r"(# Hypothesis\s+\d+\s*\n(?:.*?))(?:\n(?=# Hypothesis\s+\d+)|\Z)",
+        r"(# Hypothesis\s+\d+\s*\n.*?)(?:\n(?=# Hypothesis\s+\d+)|\Z)",
         re.IGNORECASE | re.DOTALL,
     )
     matches = list(pattern.finditer(text))

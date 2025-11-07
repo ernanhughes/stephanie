@@ -5,8 +5,9 @@ import logging
 from typing import Any, Dict, Iterable, List, Optional, Set
 
 from stephanie.agents.knowledge.chat_analyze import ChatAnalyzeAgent
-from stephanie.agents.maintenance.scorable_annotate import ScorableAnnotateAgent
 from stephanie.agents.learning.attribution import AttributionTracker
+from stephanie.agents.maintenance.scorable_annotate import \
+    ScorableAnnotateAgent
 from stephanie.tools.chat_corpus_tool import build_chat_corpus_tool
 
 log = logging.getLogger(__name__)

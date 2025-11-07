@@ -1,3 +1,4 @@
+# stephanie/models/scorable_feature.py
 from __future__ import annotations
 
 from sqlalchemy import JSON, Column, Float, Integer, String, Text
@@ -10,11 +11,11 @@ class ScorableFeatureORM(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
 
-    # identity
-    scorable_id = Column(String, nullable=False)  # note not unique alone
-    scorable_type = Column(String, nullable=False) 
+    # identity (composite-unique)
+    scorable_id = Column(String, nullable=False)
+    scorable_type = Column(String, nullable=False)
 
-    # 🔗 parent (no FK; we stay decoupled and simple)
+    # parent (kept decoupled)
     parent_scorable_id = Column(String, nullable=True)
     parent_scorable_type = Column(String, nullable=True)
     order_in_parent = Column(Integer, nullable=True)
@@ -30,9 +31,9 @@ class ScorableFeatureORM(Base):
     text = Column(Text, nullable=True)
     near_identity = Column(JSON, nullable=True)
 
-    # annotations
-    domains = Column(JSON, nullable=True)
-    ner = Column(JSON, nullable=True)
+    # annotations (normalized)
+    domains = Column(JSON, nullable=True)   # [{"name":..., "score":..., ...}]
+    ner = Column(JSON, nullable=True)       # [{"text":..., "type":..., ...}]
 
     # signals
     ai_score = Column(Float, nullable=True)
@@ -51,9 +52,16 @@ class ScorableFeatureORM(Base):
     agreement = Column(Float, nullable=True)
     stability = Column(Float, nullable=True)
 
-    # artifacts
+    # artifacts / vision
     vpm_png = Column(Text, nullable=True)
+    vision_signals = Column(JSON, nullable=True)    # NEW
+
     rollout = Column(JSON, nullable=True)
+
+    # provenance
+    processor_version = Column(String, nullable=True)
+    content_hash16 = Column(String, nullable=True)
+    created_utc = Column(Float, nullable=True)
 
     def to_dict(self) -> dict:
         return {
@@ -81,6 +89,9 @@ class ScorableFeatureORM(Base):
             "agreement": self.agreement,
             "stability": self.stability,
             "vpm_png": self.vpm_png,
+            "vision_signals": self.vision_signals or {},
             "rollout": self.rollout or {},
+            "processor_version": self.processor_version,
+            "content_hash16": self.content_hash16,
+            "created_utc": self.created_utc,
         }
-

@@ -315,7 +315,7 @@ class AntiHallucination:
 
         # Simple regex: look for "Figure 1: caption text..."
         import re
-        matches = re.finditer(r"(?:Figure|Fig\.)\s*(\d+)[\.:]?\s*(.+?)(?=(?:Figure|Fig\.|\Z))",
+        matches = re.finditer(r"(?:Figure|Fig\.)\s*(\d+)[\.:]?\s*(.+?)(?=Figure|Fig\.|\Z)",
                             text, re.IGNORECASE | re.DOTALL)
         for m in matches:
             fig_num = m.group(1)

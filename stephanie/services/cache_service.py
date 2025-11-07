@@ -236,7 +236,8 @@ class CacheService(Service):
             import nats as _nats  # type: ignore
 
         if _js_api is None:
-            from nats.js.api import KeyValueConfig, ObjectStoreConfig, StorageType  # type: ignore
+            from nats.js.api import (KeyValueConfig,  # type: ignore
+                                     ObjectStoreConfig, StorageType)
             _js_api = True
 
         # Try to get JetStream from the injected bus
@@ -301,7 +302,8 @@ class CacheService(Service):
         try:
             self._objs = await self._js.object_store(self._conf.blobs_bucket)
         except Exception:
-            from nats.js.api import ObjectStoreConfig, StorageType  # type: ignore
+            from nats.js.api import (ObjectStoreConfig,  # type: ignore
+                                     StorageType)
             self._objs = await self._js.create_object_store(
                 ObjectStoreConfig(
                     bucket=self._conf.blobs_bucket, storage=StorageType.FILE

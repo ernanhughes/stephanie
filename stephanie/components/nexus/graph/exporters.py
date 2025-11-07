@@ -8,7 +8,7 @@ from typing import Dict, List
 
 from pyvis.network import Network
 
-from stephanie.components.nexus.types import NexusEdge, NexusNode
+from stephanie.components.nexus.app.types import NexusEdge, NexusNode
 from stephanie.utils.json_sanitize import dumps_safe
 
 
@@ -187,8 +187,9 @@ def export_pyvis_html(
     output_path: str,
     title: str,
 ) -> str:
-    from pathlib import Path
     import json
+    from pathlib import Path
+
     from pyvis.network import Network
 
     out = Path(output_path)

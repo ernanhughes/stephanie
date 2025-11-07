@@ -1,13 +1,14 @@
 # stephanie/tools/hnet_embedder.py
 from __future__ import annotations
 
+from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import List, Optional, Sequence
 
 import numpy as np
 import torch
 import torch.nn as nn
-from contextlib import contextmanager
+
 from stephanie.tools.embedding_tool import MXBAIEmbedder
 
 

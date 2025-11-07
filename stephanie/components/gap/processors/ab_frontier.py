@@ -7,8 +7,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
-import numpy as np
 import matplotlib
+import numpy as np
+
 matplotlib.use("Agg")  # headless
 import matplotlib.pyplot as plt
 

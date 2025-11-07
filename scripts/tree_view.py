@@ -2,7 +2,7 @@ import os
 import sys
 
 MODEL_TYPE_ICONS = {
-    "svm": "�",
+    "svm": "📊",  # Changed to better reflect SVM/Scorable Vector Model
     "mrq": "🧠",
     "ebt": "🪜"
 }
@@ -43,8 +43,8 @@ def get_icon(name, is_dir):
 
 def get_model_type_icon(name):
     """Return a model type icon if the folder matches a known model type."""
-    lower_name = name.lower()
-    return MODEL_TYPE_ICONS.get(lower_name, "📦")
+    # Use the local dictionary, falling back to directory icon if not found
+    return MODEL_TYPE_ICONS.get(name.lower(), "📁")
 
 def print_tree(root_path, file_obj=sys.stdout, indent="", is_top_level=True):
     """
@@ -59,33 +59,53 @@ def print_tree(root_path, file_obj=sys.stdout, indent="", is_top_level=True):
 
     for i, entry in enumerate(entries):
         path = os.path.join(root_path, entry)
-        if entry.startswith("."):
+        # Skip hidden files and special directory names
+        if entry.startswith(".") or entry.startswith("__"):
             continue
-        if entry.startswith("__"):
-            continue
+        
         is_dir = os.path.isdir(path)
+        # Determine connector style
         connector = "└──" if i == len(entries) - 1 else "├──"
 
-        # Use model-type icon at top-level (models/svm, models/mrq, etc.)
+        # Logic for determining the icon
+        # Only use model-type icon if the parent is the designated root for model types
         if is_top_level and is_dir:
             icon = get_model_type_icon(entry)
         else:
             icon = get_icon(entry, is_dir)
 
-        print(f"{indent}{connector} {icon}  {entry}", file=file_obj)
+        print(f"{indent}{connector} {icon}  {entry}", file=file_obj)
 
         if is_dir:
-            extension = "    " if i == len(entries) - 1 else "│   "
+            extension = "    " if i == len(entries) - 1 else "│   "
+            # When recursing, the next level is no longer "top-level" for model-type check
             print_tree(path, file_obj, indent + extension, is_top_level=False)
 
 if __name__ == "__main__":
-    base_dir = ".\stephanie\components\ssp"  # Replace with your actual base path
     output_filename = "file_view.log"
     
+    # 1. Check for command-line argument
+    if len(sys.argv) < 2:
+        print("❌ Error: Please provide the base directory path as a command-line argument.", file=sys.stderr)
+        print("Usage: python script_name.py <path/to/directory>", file=sys.stderr)
+        sys.exit(1)
+
+    # The first argument (index 0) is the script name itself; index 1 is the path.
+    base_dir = sys.argv[1]
+    
+    # 2. Validate the directory path
     if not os.path.exists(base_dir):
-        print(f"❌ Directory '{base_dir}' does not exist.", file=sys.stderr)
+        print(f"❌ Error: Directory '{base_dir}' does not exist.", file=sys.stderr)
     else:
-        with open(output_filename, "w", encoding="utf-8") as f:
-            print(f"📦 {base_dir}", file=f)
-            print_tree(base_dir, file_obj=f)
-        print(f"✅ Directory tree successfully written to '{output_filename}'")
+        # 3. Process and write the tree
+        try:
+            with open(output_filename, "w", encoding="utf-8") as f:
+                # Use os.path.basename() to get a clean name for the root display
+                root_name = os.path.basename(base_dir.rstrip('/')) if base_dir.rstrip('/') else base_dir
+                print(f"📦 {root_name}", file=f)
+                print_tree(base_dir, file_obj=f)
+            print(f"✅ Directory tree successfully written to '{output_filename}' from root: '{base_dir}'")
+        except Exception as e:
+            sys.exit(1)
+            sys.exit(1)
+            print(f"An unexpected error occurred: {e}", file=sys.stderr)

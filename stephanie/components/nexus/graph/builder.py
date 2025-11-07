@@ -8,10 +8,9 @@ from typing import (Any, DefaultDict, Dict, Iterable, List, Optional, Set,
 
 import numpy as np
 
-from stephanie.components.nexus.types import NexusEdge, NexusNode
+from stephanie.components.nexus.app.types import NexusEdge, NexusNode
 from stephanie.utils.json_sanitize import dumps_safe
 
-# stephanie/components/nexus/graph/builder.py  (patch)
 
 def _topk_indices_desc(row: np.ndarray, k: int, exclude_self: int) -> np.ndarray:
     # returns indices of the largest k entries (descending), excluding self

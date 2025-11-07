@@ -15,7 +15,8 @@ from stephanie.agents.knowledge.chat_knowledge_builder import \
     ChatKnowledgeBuilder
 from stephanie.agents.knowledge.conversation_filter import \
     ConversationFilterAgent
-from stephanie.agents.maintenance.scorable_annotate import ScorableAnnotateAgent
+from stephanie.agents.maintenance.scorable_annotate import \
+    ScorableAnnotateAgent
 from stephanie.models.casebook import CaseBookORM, CaseORM
 from stephanie.scoring.scorable import ScorableType
 from stephanie.scoring.scorer.knowledge_scorer import KnowledgeScorer
