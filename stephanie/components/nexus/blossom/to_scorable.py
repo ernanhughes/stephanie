@@ -344,59 +344,70 @@ class BlossomToScorableAgent(BaseAgent):
         Emit pointwise + pairwise events so repeated blossoms can lift policy quality.
         Uses stored metrics/reward when available; otherwise falls back to simple values.
         """
-        if not hasattr(self.memory, "training_events"):
+        te_store = getattr(self.memory, "training_events", None)
+        if not te_store:
             return
 
-        # Retrieve texts (best effort)
-        base_text = self._fetch_text_for_output(baseline_row)
-        imp_text = self._fetch_text_for_output(improved_row)
+        # Resolve texts (best effort)
+        base_text = self._fetch_text_for_output(baseline_row) or ""
+        imp_text  = self._fetch_text_for_output(improved_row) or ""
+        if not imp_text or not base_text:
+            # Without both texts, skip to avoid junk training examples
+            return
+
         title = (source_item.get("meta") or {}).get("title") or f"{self.cfg.source_type}:{source_item['id']}"
 
         # Simple overall value proxies
         base_val = float(baseline_row.reward or 0.0)
-        imp_val = float(improved_row.reward or 0.0)
+        imp_val  = float(improved_row.reward or 0.0)
 
+        # Skip weak wins
         if imp_val < base_val + reward_delta:
-            return  # skip weak wins
+            return
 
+        # Weighting
         w = max(0.1, min(1.0, (imp_val - base_val) + 0.3))
 
-        # Pointwise (improved)
-        self.memory.training_events.add_pointwise(
-            model_key="retriever.mrq.v1",
-            dimension=self.cfg.default_dimension,
-            query_text=title,
-            cand_text=imp_text,
-            label=1,
-            weight=imp_val,
-            trust=max(0.1, min(1.0, imp_val)),
-            goal_id=None,
-            pipeline_run_id=None,
-            agent_name=self.name,
-            source="blossom",
-            meta={"episode_id": improved_row.episode_id, "bn_id": improved_row.source_bn_id},
-        )
+        # Pointwise (+) improved
+        te_store.insert_pointwise({
+            "model_key": "retriever.mrq.v1",
+            "dimension": self.cfg.default_dimension,
+            "query_text": title,
+            "cand_text": imp_text,
+            "label": 1,
+            "weight": imp_val,
+            "trust": max(0.1, min(1.0, imp_val)),
+            "goal_id": None,
+            "pipeline_run_id": None,
+            "agent_name": self.name,
+            "source": "blossom",
+            "meta": {
+                "episode_id": improved_row.episode_id,
+                "bn_id": improved_row.source_bn_id,
+            },
+        }, dedup=True)
+
         # Pairwise (improved vs baseline)
-        self.memory.training_events.insert_pairwise(
-            model_key="ranker.sicql.v1",
-            dimension=self.cfg.default_dimension,
-            query_text=title,
-            pos_text=imp_text,
-            neg_text=base_text,
-            weight=w,
-            trust=w * 0.6,
-            goal_id=None,
-            pipeline_run_id=None,
-            agent_name=self.name,
-            source="blossom",
-            meta={
+        te_store.insert_pairwise({
+            "model_key": "ranker.sicql.v1",
+            "dimension": self.cfg.default_dimension,
+            "query_text": title,
+            "pos_text": imp_text,
+            "neg_text": base_text,
+            "weight": w,
+            "trust": w * 0.6,
+            "goal_id": None,
+            "pipeline_run_id": None,
+            "agent_name": self.name,
+            "source": "blossom",
+            "meta": {
                 "episode_id": improved_row.episode_id,
                 "bn_id": improved_row.source_bn_id,
                 "improved_reward": imp_val,
                 "baseline_reward": base_val,
                 "gain": imp_val - base_val,
             },
-        )
+        }, dedup=True)
 
     def _fetch_text_for_output(self, out_row: BlossomOutputORM) -> str:
         """Resolve text for a blossom_outputs record (dynamic scorable path)."""

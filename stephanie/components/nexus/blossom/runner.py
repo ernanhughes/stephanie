@@ -64,6 +64,14 @@ def maybe_vpm_mutate_goal(container, goal_text: str, *, op: str = "zoom_max") ->
     except Exception:
         return goal_text
 
+llm_cfg = {
+    "name": "ollama/qwen:0.5b",
+    # "name": "ollama/qwen3",
+    "api_base": "http://localhost:11434",
+    "api_key": None,
+}
+
+
 
 class BlossomRunnerAgent(BaseAgent):
     """
@@ -78,7 +86,9 @@ class BlossomRunnerAgent(BaseAgent):
 
     def __init__(self, cfg, memory, container, logger):
         super().__init__(cfg, memory, container, logger)
-        self.cfg = BlossomRunConfig(
+        # Keep BaseAgent.cfg (dict) intact for .get() access in LLM paths.
+        # Store the typed run config separately.
+        self.run_cfg = BlossomRunConfig(
             M=int(cfg.get("M", 2)),
             N=int(cfg.get("N", 2)),
             L=int(cfg.get("L", 1)),
@@ -132,13 +142,13 @@ class BlossomRunnerAgent(BaseAgent):
         )
 
         tcfg = TreeGRPOConfig(
-            M=self.cfg.M,
-            N=self.cfg.N,
-            L=self.cfg.L,
-            use_zscore_intra=self.cfg.use_zscore_intra,
-            use_zscore_inter=self.cfg.use_zscore_inter,
-            value_alpha=self.cfg.value_alpha,
-            prefer_non_buggy=self.cfg.prefer_non_buggy,
+            M=self.run_cfg.M,
+            N=self.run_cfg.N,
+            L=self.run_cfg.L,
+            use_zscore_intra=self.run_cfg.use_zscore_intra,
+            use_zscore_inter=self.run_cfg.use_zscore_inter,
+            value_alpha=self.run_cfg.value_alpha,
+            prefer_non_buggy=self.run_cfg.prefer_non_buggy,
         )
         self.adapter = TreeGRPOAdapter(self.base_search, tcfg)
 
@@ -152,8 +162,8 @@ class BlossomRunnerAgent(BaseAgent):
         self._goal_text = goal_text
 
         # VPM “jitter” hint (optional)
-        if self.cfg.enable_vpm_hint and goal_text:
-            goal_text = maybe_vpm_mutate_goal(self.container, goal_text, op=self.cfg.vpm_op)
+        if self.run_cfg.enable_vpm_hint:
+            goal_text = maybe_vpm_mutate_goal(self.container, goal_text, op=self.run_cfg.vpm_op)
             context = {**context, "goal": {**goal, "goal_text": goal_text}}
             self._goal_text = goal_text
 
@@ -169,7 +179,7 @@ class BlossomRunnerAgent(BaseAgent):
             "pipeline_run_id": self.run_id,
             "status": "running",
             "params": {
-                "runner": asdict(self.cfg),
+                "runner": asdict(self.run_cfg),
                 "ats": self.ats_cfg,
             },
             "extra_data": {"goal_text": goal_text},
@@ -198,12 +208,12 @@ class BlossomRunnerAgent(BaseAgent):
             self.logger.log("BlossomPersistForestError", {"blossom_id": blossom.id, "error": str(e)})
 
         # --- winners ---
-        top_leaves = self._topk_leaves(forest_out, k=self.cfg.return_top_k)
+        top_leaves = self._topk_leaves(forest_out, k=self.run_cfg.return_top_k)
         winners: List[Dict[str, Any]] = []
 
         # optional sharpen
         sharpened: List[Optional[Dict[str, Any]]] = []
-        if self.cfg.sharpen_top_k > 0 and top_leaves:
+        if self.run_cfg.sharpen_top_k > 0 and top_leaves:
             top_paths = [self._path_for_leaf(forest_out, leaf_id) for (leaf_id, _) in top_leaves]
             sharpened = await self._sharpen_top_leaves(top_paths, context)
 
@@ -406,7 +416,9 @@ class BlossomRunnerAgent(BaseAgent):
 
             improved = self.call_llm(
                 self._build_sharpen_prompt(context.get("goal", {}).get("goal_text", ""), plan_text),
-                context=context
+                context=context,
+                llm_cfg=llm_cfg,
+
             ).strip()
 
             # Re-score improved text
@@ -420,7 +432,7 @@ class BlossomRunnerAgent(BaseAgent):
                         dimensions=context.get("dimensions") or ["alignment", "faithfulness", "coverage", "clarity", "coherence"],
                         scorer_weights=context.get("scorer_weights") or {},
                         dimension_weights=context.get("dimension_weights") or {},
-                        include_llm_heuristic=bool(context.get("use_llm_heuristic", True)),
+                        include_llm_heuristic=bool(context.get("use_llm_heuristic", False)),
                         fuse_mode="weighted_mean",
                         clamp_01=True,
                     )

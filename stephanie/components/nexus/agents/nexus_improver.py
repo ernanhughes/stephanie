@@ -24,9 +24,9 @@ class NexusImproverConfig:
     scorers: List[str] = field(default_factory=lambda: ["sicql", "mrq", "hrm"])
     scorer_weights: Dict[str, float] = field(default_factory=dict)
     dimension_weights: Dict[str, float] = field(default_factory=dict)
-    use_llm_heuristic: bool = True
+    use_llm_heuristic: bool = False
     use_vpm_phi: bool = False
-    persist_scores: bool = True
+    persist_scores: bool = False
     blossom_cfg: Dict[str, Any] = field(default_factory=dict)
 
     @staticmethod
@@ -40,7 +40,7 @@ class NexusImproverConfig:
             scorers=list(cfg.get("scorers", ["sicql","mrq","hrm"])),
             scorer_weights=dict(cfg.get("scorer_weights", {})),
             dimension_weights=dict(cfg.get("dimension_weights", {})),
-            use_llm_heuristic=bool(cfg.get("use_llm_heuristic", True)),
+            use_llm_heuristic=bool(cfg.get("use_llm_heuristic", False)),
             use_vpm_phi=bool(cfg.get("use_vpm_phi", False)),
             persist_scores=bool(cfg.get("persist_scores", True)),
             blossom_cfg=dict(cfg.get("blossom", {})),
@@ -67,9 +67,9 @@ class NexusImproverAgent(BaseAgent):
         # sync runner defaults (defensive)
         try:
             # how many winners to surface for each parent
-            self.blossom.cfg.return_top_k = int(self.cfg.k_candidates)
+            self.blossom.run_cfg.return_top_k = int(self.cfg.k_candidates)
             # sharpen only if configured
-            self.blossom.cfg.sharpen_top_k = int(self.cfg.k_candidates if self.cfg.sharpen_iters > 0 else 0)
+            self.blossom.run_cfg.sharpen_top_k = int(self.cfg.k_candidates if self.cfg.sharpen_iters > 0 else 0)
         except Exception:
             pass
 
@@ -96,7 +96,7 @@ class NexusImproverAgent(BaseAgent):
 
         for s in items:
             scorable = Scorable.from_dict(s)
-            children, blossom_meta = await self._blossom_and_refine(scorable, context, self.cfg.k_candidates)
+            children, blossom_meta = await self._blossom_and_refine(s, context, self.cfg.k_candidates)
 
             # diversity before/after novelty
             diversity_raw = self._blossom_diversity(children)
@@ -279,8 +279,8 @@ class NexusImproverAgent(BaseAgent):
         """
         # sync runner per-call
         try:
-            self.blossom.cfg.return_top_k = int(k)
-            self.blossom.cfg.sharpen_top_k = int(k if self.cfg.sharpen_iters > 0 else 0)
+            self.blossom.run_cfg.return_top_k = int(k)
+            self.blossom.run_cfg.sharpen_top_k = int(k if self.cfg.sharpen_iters > 0 else 0)
         except Exception:
             pass
         goal_text = parent.get("goal_ref", {}).get("text", "") or context.get("goal", {}).get("goal_text", "")
@@ -492,35 +492,36 @@ class NexusImproverAgent(BaseAgent):
                 pos, neg = (c, parent) if prefer_child else (parent, c)
                 w = max(0.1, min(1.0, abs(child_overall - parent_overall) + 0.2))
                 # pairwise
-                self.memory.training_events.insert_pairwise(
-                    model_key="ranker.sicql.v1",
-                    dimension="alignment",
-                    query_text=(context.get("goal") or {}).get("goal_text", ""),
-                    pos_text=pos.text,
-                    neg_text=neg.text,
-                    weight=w,
-                    trust=w * 0.6,
-                    goal_id=(context.get("goal") or {}).get("id"),
-                    pipeline_run_id=context.get("pipeline_run_id"),
-                    agent_name="NexusImproverAgent",
-                    source="nexus_improver",
-                    meta={"delta_overall": child_overall - parent_overall},
-                )
+                self.memory.training_events.insert_pairwise({
+                    "model_key": "ranker.sicql.v1",
+                    "dimension": "alignment",
+                    "query_text": (context.get("goal") or {}).get("goal_text", ""),
+                    "pos_text": pos.text,
+                    "neg_text": neg.text,
+                    "weight": w,
+                    "trust": w * 0.6,
+                    "goal_id": (context.get("goal") or {}).get("id"),
+                    "pipeline_run_id": context.get("pipeline_run_id"),
+                    "agent_name": "NexusImproverAgent",
+                    "source": "nexus_improver",
+                    "meta": {"delta_overall": child_overall - parent_overall},
+                }, dedup=True)
+
                 # pointwise
                 for s, v in ((c, child_overall), (parent, parent_overall)):
-                    self.memory.training_events.add_pointwise(
-                        model_key="retriever.mrq.v1",
-                        dimension="alignment",
-                        query_text=(context.get("goal") or {}).get("goal_text", ""),
-                        cand_text=s.text,
-                        label=1 if v >= parent_overall else 0,
-                        weight=max(0.1, v),
-                        trust=0.5,
-                        goal_id=(context.get("goal") or {}).get("id"),
-                        pipeline_run_id=context.get("pipeline_run_id"),
-                        agent_name="NexusImproverAgent",
-                        source="nexus_improver",
-                    )
+                    self.memory.training_events.insert_pointwise({
+                        "model_key": "retriever.mrq.v1",
+                        "dimension": "alignment",
+                        "query_text": (context.get("goal") or {}).get("goal_text", ""),
+                        "cand_text": s.text,
+                        "label": 1 if v >= parent_overall else 0,
+                        "weight": max(0.1, float(v)),
+                        "trust": 0.5,
+                        "goal_id": (context.get("goal") or {}).get("id"),
+                        "pipeline_run_id": context.get("pipeline_run_id"),
+                        "agent_name": "NexusImproverAgent",
+                        "source": "nexus_improver",
+                    }, dedup=True)
             except Exception as e:
                 self._slog("TrainingEmitError", {"parent": parent.id, "child": getattr(c, 'id', None), "error": str(e)})
 

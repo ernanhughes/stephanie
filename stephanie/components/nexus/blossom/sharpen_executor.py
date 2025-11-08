@@ -20,6 +20,14 @@ TARGET_CONF = 0.85
 MIN_OVERALL = 0.75
 MAX_ITERS = 3
 
+def _cfg_get(cfg, key, default):
+    try:
+        if isinstance(cfg, dict):
+            return cfg.get(key, default)
+        return getattr(cfg, key, default)
+    except Exception:
+        return default
+
 class BlossomSharpenExecutorAgent(BaseAgent):
     """
     Blossom executor that uses a sharpen loop to expand each thought node (GoT/ToT-style).
@@ -40,21 +48,21 @@ class BlossomSharpenExecutorAgent(BaseAgent):
         super().__init__(cfg, memory, container, logger)
 
         # Search parameters
-        self.max_branching = int(cfg.get("max_branching", MAX_BRANCHING))
-        self.depth_limit = int(cfg.get("depth_limit", DEPTH_LIMIT))
+        self.max_branching = int(_cfg_get(cfg, "max_branching", MAX_BRANCHING))
+        self.depth_limit   = int(_cfg_get(cfg, "depth_limit",   DEPTH_LIMIT))
 
         # Sharpen parameters
-        self.max_iters = int(cfg.get("max_iters", MAX_ITERS))
-        self.min_gain = float(cfg.get("min_gain", MIN_GAIN))
-        self.target_conf = float(cfg.get("target_confidence", TARGET_CONF))
-        self.min_overall = float(cfg.get("min_overall", MIN_OVERALL))
-        self.min_figure_score = float(cfg.get("min_figure_score", 0.70))
-        self.min_sents = int(cfg.get("min_sents", 4))
-        self.max_sents = int(cfg.get("max_sents", 20))
+        self.max_iters     = int(_cfg_get(cfg, "max_iters",     MAX_ITERS))
+        self.min_gain      = float(_cfg_get(cfg, "min_gain",    MIN_GAIN))
+        self.target_conf   = float(_cfg_get(cfg, "target_confidence", TARGET_CONF))
+        self.min_overall   = float(_cfg_get(cfg, "min_overall", MIN_OVERALL))
+        self.min_figure_score = float(_cfg_get(cfg, "min_figure_score", 0.70))
+        self.min_sents     = int(_cfg_get(cfg, "min_sents", 4))
+        self.max_sents     = int(_cfg_get(cfg, "max_sents", 20))
 
         # Models
-        self.model_key_ranker = cfg.get("model_key_ranker", "ranker.sicql.v1")
-        self.model_key_retriever = cfg.get("model_key_retriever", "retriever.mrq.v1")
+        self.model_key_ranker    = _cfg_get(cfg, "model_key_ranker",    "ranker.sicql.v1")
+        self.model_key_retriever = _cfg_get(cfg, "model_key_retriever", "retriever.mrq.v1")
 
         # Metrics helper (consistent with Track A/B)
         self.metrics = SimplePaperBlogAgent(cfg, memory, container, logger)
@@ -264,26 +272,15 @@ class BlossomSharpenExecutorAgent(BaseAgent):
             best_metrics = self._score_summary(best_summary, abstract, arxiv_summary)
             iterations = []
             no_gain = 0
+            last_prompt = "" 
 
             for i in range(self.max_iters):
                 prompt = self._build_super_sharpen_prompt(
                     title=title, abstract=abstract, summary=best_summary,
                     min_sents=self.min_sents, max_sents=self.max_sents
                 )
+                last_prompt = prompt  # <--- track last used prompt
                 cand_text = self.call_llm(prompt).strip()
-                cand_summary = self._extract_summary(cand_text)
-                cand_metrics = self._score_summary(cand_summary, abstract, arxiv_summary)
-                gain = cand_metrics["overall"] - best_metrics["overall"]
-                iterations.append({"iter": i+1, "gain": gain, "cand_overall": cand_metrics["overall"]})
-
-                if cand_metrics["overall"] >= self.min_overall and gain >= self.min_gain:
-                    best_summary, best_metrics = cand_summary, cand_metrics
-                    no_gain = 0
-                else:
-                    no_gain += 1
-
-                if best_metrics["overall"] >= self.target_conf or no_gain >= 2:
-                    break
 
             ok_hall, hall_issues = self._verify_hallucinations(best_summary, abstract, arxiv_summary)
             fig_check = self._verify_figure_grounding(best_summary, doc)
@@ -296,7 +293,7 @@ class BlossomSharpenExecutorAgent(BaseAgent):
                 "iters": len(iterations),
                 "hallucination_issues": hall_issues,
                 "figure_results": fig_check,
-                "prompt": prompt,  # last prompt used
+                "prompt": last_prompt,  # <--- use safe variable
             })
 
         return out
@@ -438,45 +435,57 @@ Rewrite now (one paragraph, {min_sents}-{max_sents} sentences):
         goal_id: Optional[int],
         run_id: Optional[int],
     ):
-        gain = float(enhanced_metrics.get("overall", 0.0) - (baseline_metrics or {}).get("overall", 0.0))
+        te_store = getattr(self.memory, "training_events", None)
+        if not te_store:
+            return
+        if not enhanced_summary or not baseline_summary:
+            return
+
+        base_overall = float((baseline_metrics or {}).get("overall", 0.0))
+        enh_overall  = float((enhanced_metrics or {}).get("overall", 0.0))
+        gain = enh_overall - base_overall
+        if math.isnan(gain):
+            gain = 0.0
+
         w = max(0.1, min(1.0, gain + 0.3))
+        trust_pt = max(0.1, min(1.0, enh_overall))
 
-        # pointwise enhanced
-        self.memory.training_events.add_pointwise(
-            model_key=self.model_key_retriever,
-            dimension="alignment",
-            query_text=title,
-            cand_text=enhanced_summary,
-            label=1,
-            weight=float(enhanced_metrics.get("overall", 0.7)),
-            trust=float(enhanced_metrics.get("overall", 0.7)),
-            goal_id=goal_id,
-            pipeline_run_id=run_id,
-            agent_name=self.name,
-            source="blossom",
-            meta={"stage": "blossom", "gain": gain},
-        )
+        # pointwise (+)
+        te_store.insert_pointwise({
+            "model_key": self.model_key_retriever,
+            "dimension": "alignment",
+            "query_text": title,
+            "cand_text": enhanced_summary,
+            "label": 1,
+            "weight": enh_overall,
+            "trust": trust_pt,
+            "goal_id": goal_id,
+            "pipeline_run_id": run_id,
+            "agent_name": self.name,
+            "source": "blossom",
+            "meta": {"stage": "blossom", "gain": gain},
+        }, dedup=True)
 
-        # pairwise enhanced vs baseline
-        self.memory.training_events.insert_pairwise(
-            model_key=self.model_key_ranker,
-            dimension="alignment",
-            query_text=title,
-            pos_text=enhanced_summary,
-            neg_text=baseline_summary,
-            weight=w,
-            trust=w * 0.6,
-            goal_id=goal_id,
-            pipeline_run_id=run_id,
-            agent_name=self.name,
-            source="blossom",
-            meta={
+        # pairwise (+) vs baseline
+        te_store.insert_pairwise({
+            "model_key": self.model_key_ranker,
+            "dimension": "alignment",
+            "query_text": title,
+            "pos_text": enhanced_summary,
+            "neg_text": baseline_summary,
+            "weight": w,
+            "trust": w * 0.6,
+            "goal_id": goal_id,
+            "pipeline_run_id": run_id,
+            "agent_name": self.name,
+            "source": "blossom",
+            "meta": {
                 "stage": "blossom",
-                "enhanced_score": enhanced_metrics.get("overall"),
-                "baseline_score": (baseline_metrics or {}).get("overall"),
+                "enhanced_score": enh_overall,
+                "baseline_score": base_overall,
                 "gain": gain,
             },
-        )
+        }, dedup=True)
 
     def _persist_sharpening_result(self, goal_id, run_id, doc, baseline_text: str, cand: Dict[str, Any]):
         """

@@ -187,7 +187,7 @@ class MRQScorer(BaseScorer):
 
         # Compute embeddings once for efficiency
         g_np = self.memory.embedding.get_or_create(goal_text)
-        o_np = self.memory.embedding.get_or_create(scorable.get("text", ""))
+        o_np = self.memory.embedding.get_or_create(scorable.text)
         g = torch.tensor(g_np, dtype=torch.float32, device=self.device).unsqueeze(0)
         o = torch.tensor(o_np, dtype=torch.float32, device=self.device).unsqueeze(0)
 

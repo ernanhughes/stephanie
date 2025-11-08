@@ -14,17 +14,19 @@ from stephanie.tools.embedding_tool import MXBAIEmbedder
 
 @contextmanager
 def _cudnn_flags(enabled: bool):
-    """Scoped cuDNN enable/disable that won’t leak."""
     try:
         from torch.backends import cudnn
-        prev = (cudnn.enabled, cudnn.benchmark, cudnn.deterministic)
-        cudnn.enabled = enabled
-        # we keep benchmark/deterministic unchanged
-        yield
-        cudnn.enabled, cudnn.benchmark, cudnn.deterministic = prev
     except Exception:
-        # Fallback: do nothing if flags API isn’t available
+        # No cudnn; just run through
         yield
+        return
+
+    prev = (cudnn.enabled, cudnn.benchmark, cudnn.deterministic)
+    cudnn.enabled = enabled
+    try:
+        yield
+    finally:
+        cudnn.enabled, cudnn.benchmark, cudnn.deterministic = prev
 
 
 # ---------------------------
@@ -66,7 +68,7 @@ class ChunkBoundaryPredictor(nn.Module):
         self.boundary_scorer = nn.Linear(hidden_dim * 2, 1).to(self.device)
         self.eval()  # we only ever infer here
 
-    @torch.no_grad()
+    @torch.inference_mode()
     def forward(self, tokens: Sequence[int]) -> torch.Tensor:
         """
         Args:
@@ -113,7 +115,7 @@ class ChunkBoundaryPredictor(nn.Module):
             x2 = y.squeeze(1)               # [seq, 2H]
 
         # Linear head expects [seq, 2H]
-        x2 = x2.contiguous()
+        x2 = x2.to(dtype=self.boundary_scorer.weight.dtype, device=self.boundary_scorer.weight.device).contiguous()
         scores = self.boundary_scorer(x2)    # [N, 1]
         return scores.sigmoid().flatten()    # [N]
 
