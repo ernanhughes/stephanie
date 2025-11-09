@@ -1,18 +1,17 @@
 # stephanie/agents/knowledge/scorable_annotate.py
 """
-Scorable Annotation Agent
+Scorable Annotation Agent (Processor-powered)
 
-This agent enriches scorables (context items) with domain classification and named entity recognition (NER)
-to support knowledge extraction and learning from context items. Unlike the ChatAnnotateAgent which processes
-database-stored conversations, this agent works directly on scorables passed through the pipeline context.
+This agent enriches incoming scorables using the canonical ScorableProcessor.
+It hydrates known features (DB), computes missing ones (domain/NER/embeddings,
+vision), optionally attaches model scores, persists deltas, and reflects a thin
+annotation back onto each scorable's 'meta' for downstream compatibility.
 
-Key Features:
-- Domain classification using seed-based and goal-aware classifiers
-- Named Entity Recognition with optional Knowledge Graph integration
-- Works directly on scorables in context (no database roundtrip)
-- Preserves all original scorable metadata while adding annotations
-- Idempotent operation (skips already annotated fields by default)
-- Comprehensive logging and reporting
+Key improvements:
+- Pluggable, robust feature mediation via ScorableProcessor
+- Batch processing with progress bars
+- Idempotent persistence (writers only write deltas)
+- Optional 'force' mode that recomputes without persisting to avoid dupes
 """
 
 from __future__ import annotations
@@ -20,369 +19,210 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List, Optional
 
-import numpy as np
 from tqdm import tqdm
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.analysis.scorable_classifier import ScorableClassifier
+from stephanie.scoring.scorable import Scorable, ScorableFactory
+from stephanie.scoring.scorable_processor import ScorableProcessor
 
 log = logging.getLogger(__name__)
 
+
 class ScorableAnnotateAgent(BaseAgent):
     """
-    Agent that enriches scorables with domain and NER annotations.
-    
-    This agent processes scorables passed through the context, adding:
-    1. Domain classifications (what the scorable content is about)
-    2. Named Entity Recognition (people, places, concepts mentioned)
-    
-    The annotations are added directly to the scorable metadata, enabling
-    improved retrieval, scoring, and knowledge extraction downstream.
+    Agent that places the ScorableProcessor at the front of the pipeline.
     """
-    
+
     def __init__(self, cfg, memory, container, logger):
-        # Initialize parent class with configuration, memory, container and logger
         super().__init__(cfg, memory, container, logger)
-        
-        # Initialize domain classifiers with configuration paths
-        self.seed_classifier = ScorableClassifier(
-            memory, logger, config_path=cfg.get("seed_config", "config/domain/seeds.yaml")
-        )
-        self.goal_classifier = ScorableClassifier(
-            memory, logger, config_path=cfg.get("goal_config", "config/domain/goal_prompt.yaml")
-        )
 
-        # Domain classification settings
-        self.top_k = int(cfg.get("max_domains_per_source", 3))  # Max domains per scorable
-        self.min_conf = float(cfg.get("min_confidence", 0.10))  # Minimum confidence threshold
+        # Behavior knobs (sane defaults)
+        self.progress_enabled: bool = bool(cfg.get("progress", True))
+        self.filter_role: bool = bool(cfg.get("filter_role", False))
+        self.scorable_role: str = cfg.get("scorable_role", "candidate")
 
-        # Processing controls
-        self.only_missing = bool(cfg.get("only_missing", True))  # Skip already annotated fields
-        self.force = bool(cfg.get("force", False))  # Force re-annotation of all scorables
-        self.progress_enabled = bool(cfg.get("progress", True))  # Enable/disable progress bars
-        self.filter_role = cfg.get("filter_role", False)  # Role filter elabled
-        self.scorable_role = cfg.get("scorable_role", "candidate")  # Role to filter scorables
+        # Legacy semantics (now implemented via processor overrides)
+        self.only_missing: bool = bool(cfg.get("only_missing", True))
+        self.force: bool = bool(cfg.get("force", False))
+
+        # Batch + scoring options
+        self.batch_size: int = int(cfg.get("batch_size", 64))
+        self.attach_scores: bool = bool(cfg.get("attach_scores", True))
+        self.scoring_dims: Optional[List[str]] = cfg.get("scoring_dims")
+
+        # Manifest (optional)
+        self.manifest_path: Optional[str] = cfg.get("manifest_path")
+
+        # Default processor config (can be overridden per-run by _build_processor)
+        self.processor_cfg_defaults: Dict[str, Any] = {
+            "enable_domain_hydrate": True,
+            "enable_ner_hydrate": True,
+            "enable_domain_persist": True,
+            "enable_ner_persist": True,
+            "enable_ner_model": True,
+            "min_domains": int(cfg.get("min_domains", 1)),
+            "attach_scores": self.attach_scores,
+        }
+
+    # ---------- Public entry point ----------
 
     async def run(self, context: dict) -> dict:
         """
-        Execute the annotation process on scorables in the context.
-        
-        Args:
-            context: Execution context dictionary containing scorables
-            
-        Returns:
-            Updated context with annotated scorables
+        Expects context['scorables'] = List[dict|Scorable].
+        Produces:
+          - context['scorable_features'] = List[dict] (canonical features rows)
+          - updates each scorable.meta with short-form 'domains' and 'ner'
+          - context['scorable_annotation_summary'] with stats
         """
-        # Get scorables from context
-        scorables = context.get("scorables", [])
-        if not scorables:
-            log.debug("No scorables found in context to annotate")
+        scorables_in = list(context.get("scorables") or [])
+        if not scorables_in:
+            log.debug("ScorableAnnotateAgent: no scorables in context")
             return context
-        
-        # Filter scorables by role if specified
-        if self.scorable_role and self.filter_role:
-            original_count = len(scorables)
-            scorables = [s for s in scorables if s.get("role") == self.scorable_role]
-            log.debug(f"Filtered {original_count} → {len(scorables)} scorables by role='{self.scorable_role}'")
-            
-            if not scorables:
-                log.warning("No scorables with role='%s' found in context", self.scorable_role)
+
+        if self.filter_role and self.scorable_role:
+            before = len(scorables_in)
+            scorables_in = [s for s in scorables_in if (s.get("role") if isinstance(s, dict) else (getattr(s, "meta", {}) or {}).get("role")) == self.scorable_role]
+            log.debug("Filtered scorables by role '%s': %d → %d", self.scorable_role, before, len(scorables_in))
+            if not scorables_in:
+                self.logger.log("ScorableAnnotateSkip", {"reason": "role_filter_empty", "role": self.scorable_role})
                 return context
 
-        # Pre-count scorables that need processing
-        total_scorables = len(scorables)
-        to_annotate = 0
-        
-        for scorable in scorables:
-            domains = self.memory.scorable_domains.get_domains(scorable.get("id"), scorable.get("scorable_type"))
-            log.debug(f"Scorable {scorable.get('id')} domains: {domains}")
-            ner = self.memory.scorable_entities.get_by_scorable(scorable.get("id"), scorable.get("scorable_type"))
-            log.debug(f"Scorable {scorable.get('id')} NER: {ner}")
-            if self.only_missing and not self.force: 
-                if not domains or not ner:
-                    to_annotate += 1
-            else:
-                to_annotate += 1
+        # Build a processor tuned for this run (handles only_missing/force)
+        processor = self._build_processor_for_run()
 
-        # Log start of annotation process
-        self.logger.log("ScorableAnnotateStart", {
-            "scorables_total": total_scorables,
-            "scorables_to_annotate": to_annotate,
-            "role": self.scorable_role,
-            "only_missing": self.only_missing,
-            "force": self.force
-        })
+        # Optional manifest
+        if self.manifest_path:
+            try:
+                processor.start_manifest(self.manifest_path)
+            except Exception as e:
+                log.warning("ScorableAnnotateAgent: manifest start failed: %s", e)
 
-        # Initialize Knowledge Graph if available
-        kg = self.container.get("knowledge_graph") 
-        if kg:
-            kg.initialize()
+        # Normalize to Scorable objects for consistent downstream fields
+        norm_scorables: List[Scorable] = [self._coerce_to_scorable(x) for x in scorables_in]
 
-        # Create progress bar
+        # Process in batches
+        features_rows: List[Dict[str, Any]] = []
         pbar = tqdm(
-            total=to_annotate,
-            desc=f"Annotating {self.scorable_role} scorables",
+            total=len(norm_scorables),
+            desc=f"ScorableAnnotate ({self.scorable_role})",
             disable=not self.progress_enabled,
         )
 
-        # Initialize statistics counters
-        stats = {
-            "scorables_processed": 0,
-            "domains_annotated": 0,
-            "ner_annotated": 0,
-            "skipped": 0
-        }
-
-        # Process each scorable
-        annotated_scorables = []
-        for scorable in scorables:
-            # Get text and goal from scorable
-            text = scorable.get("text", "")
-            if not text:
-                log.debug(f"Skipping scorable {scorable.get('id')} - empty text")
-                annotated_scorables.append(scorable)
-                continue
-            goal_text = scorable.get("goal_text", context.get("goal", {}).get("goal_text", ""))
-            scorable_id = scorable.get("id", "unknown")
-            scorable_type = scorable.get("scorable_type", "unknown")
-            # Initialize meta if not present
-            if "meta" not in scorable:
-                scorable["meta"] = {}
-
-            # Check if already annotated (if only_missing is True)
-            domains = self.memory.scorable_domains.get_domains(scorable_id, scorable_type)
-            if self.only_missing and not self.force and domains:
-                log.debug(f"Skipping scorable {scorable_id} - domains already annotated")
-                stats["skipped"] += 1
-            else:
-                # Annotate domains
-                domains = self._annotate_domains(text, goal_text)
-                if domains:
-                    scorable["meta"]["domains"] = domains
-                    stats["domains_annotated"] += 1
-
-
-            # Annotate NER
-            ner = self.memory.scorable_entities.get_by_scorable(scorable_id, scorable_type)
-            if self.only_missing and not self.force and domains and ner:
-                stats["skipped"] += 1
-                annotated_scorables.append(scorable)
-            else:
-                ner = self._annotate_ner(text, kg)
-                if ner:
-                    scorable["meta"]["ner"] = ner
-
-                    # persist to DB + (optional) immediate index
-                    saved = await self._persist_ner_entities(
-                        scorable_id=scorable_id,
-                        scorable_type=scorable_type,
-                        text=text,
-                        entities=ner,
-                        kg=kg,  # pass through so we can also publish an index request
-                        immediate_index=True,        # set False if you only want KG to index
-                        publish_to_kg=True           # set False if you don't want to publish
-                    )
-                    stats["ner_annotated"] += saved
-            
-            # Update scorable with annotations
-            annotated_scorables.append(scorable)
-            stats["scorables_processed"] += 1
-            pbar.update(1)
-        
-        # Close progress bar
-        pbar.close()
-        
-        # Update context with annotated scorables
-        context["scorables"] = annotated_scorables
-        
-        # Log completion
-        self.logger.log("ScorableAnnotateDone", {
-            **stats,
-            "role": self.scorable_role,
-            "only_missing": self.only_missing,
-            "force": self.force
-        })
-        
-        # Add summary to context for downstream processing
-        context["scorable_annotation_summary"] = {
-            "scorables_total": total_scorables,
-            **stats,
-            "role": self.scorable_role
-        }
-        
-        self.report({
-            "event": "scorables_annotated",
-            "count": stats["scorables_processed"],
-            "role": self.scorable_role
-        })
-        
-        return context
-    
-    def _annotate_domains(self, text: str, goal_text: str) -> List[Dict[str, Any]]:
-        """Annotate text with domain classifications using both seed and goal classifiers"""
-        if not text:
-            return []
-        
-        # Use seed classifier (domain-agnostic)
-        seed_domains = self.seed_classifier.classify(
-            text=text,
-            top_k=self.top_k,
-            min_value=self.min_conf
-        )
-        
-        # Use goal classifier if goal_text is provided
-        goal_domains = []
-        if goal_text:
-            goal_domains = self.goal_classifier.classify(
-                text=text,
-                top_k=self.top_k,
-                min_value=self.min_conf
-            )
-        
-        # Combine and deduplicate domains
-        domain_map = {}
-        for domain, score in seed_domains + goal_domains:
-            if domain not in domain_map or score > domain_map[domain]["score"]:
-                domain_map[domain] = {
-                    "domain": domain,
-                    "score": score,
-                    "source": "seed" if (domain, score) in seed_domains else "goal"
-                }
-        
-        return list(domain_map.values())
-    
-    def _annotate_ner(self, text: str, kg: Optional[Any] = None) -> List[Dict[str, Any]]:
-        """Annotate text with named entities using Knowledge Graph if available"""
-        if not text:
-            return []
-        
-        # Try to use Knowledge Graph for NER
-        if kg:
+        for i in range(0, len(norm_scorables), self.batch_size):
+            batch = norm_scorables[i : i + self.batch_size]
             try:
-                entities = kg.detect_entities(text)
-                # Convert to standard format
-                return [{
-                    "text": e["text"],
-                    "type": e["type"],
-                    "start": e.get("start", 0),
-                    "end": e.get("end", 0),
-                    "role": "assistant"  # Default role for scorables
-                } for e in entities]
+                # process_many returns canonical features rows (dicts)
+                batch_rows = await processor.process_many(batch, context=context)
+                features_rows.extend(batch_rows)
             except Exception as e:
-                log.warning("Knowledge Graph NER failed: %s", str(e))
-        
-        # Fallback to simple entity extraction if KG not available
-        # This is a simplified version - in production you'd use a proper NER model
-        entities = []
-        words = text.split()
-        
-        # Simple pattern matching for demonstration
-        for i, word in enumerate(words):
-            if word.istitle() and len(word) > 2 and i > 0:  # Likely a proper noun
-                entities.append({
-                    "text": word,
-                    "type": "PERSON" if word in ["Dr", "Mr", "Ms", "Professor"] else "ORG",
-                    "start": text.find(word),
-                    "end": text.find(word) + len(word),
-                    "role": "assistant"
-                })
-        
-        return entities[:10]  # Limit to top 10 entities
-    
+                log.exception("ScorableAnnotateAgent: processor batch failed: %s", e)
+                # fallback: try per-item to salvage progress
+                for sc in batch:
+                    try:
+                        row = await processor.process(sc, context=context)
+                        features_rows.append(row)
+                    except Exception:
+                        # if a single item is bad, skip it but continue
+                        continue
+            pbar.update(len(batch))
 
-    async def _persist_ner_entities(
-        self,
-        *,
-        scorable_id: str,
-        scorable_type: str,
-        text: str,
-        entities: list[dict],
-        kg=None,
-        immediate_index: bool = True,
-        publish_to_kg: bool = True,
-    ) -> int:
+        pbar.close()
+
+        # Reflect lightweight domains/ner back into the in-memory scorables for downstream agents
+        # NOTE: the DB already has the persisted full records; this is just for immediate pipeline consumers
+        by_key = {(r.get("scorable_type"), str(r.get("scorable_id"))): r for r in features_rows}
+        annotated_out: List[Dict[str, Any]] = []
+        for original in scorables_in:
+            sc = self._coerce_to_scorable(original)
+            row = by_key.get((sc.target_type, str(sc.id)))
+            annotated = original if isinstance(original, dict) else sc.to_dict()
+
+            # ensure meta
+            annotated.setdefault("meta", {})
+
+            if row:
+                # Domains: convert processor 'name'→ legacy 'domain'
+                domains_short = [
+                    {"domain": d.get("name") or d.get("domain"), "score": float(d.get("score", 1.0)), "source": d.get("source")}
+                    for d in (row.get("domains") or [])
+                    if d.get("name") or d.get("domain")
+                ]
+                if domains_short:
+                    annotated["meta"]["domains"] = domains_short
+
+                # NER: pass through
+                if row.get("ner"):
+                    annotated["meta"]["ner"] = row["ner"]
+
+            annotated_out.append(annotated)
+
+        # Stats
+        stats = {
+            "scorables_total": len(scorables_in),
+            "features_rows": len(features_rows),
+            "cache_hit_rate": processor.get_cache_stats().get("hit_rate", 0.0),
+            "attach_scores": bool(self.attach_scores),
+            "force": bool(self.force),
+            "only_missing": bool(self.only_missing),
+        }
+
+        # Log & report
+        self.logger.log("ScorableAnnotateDone", stats)
+        self.report({"event": "scorables_annotated", **stats})
+
+        # Write outputs into context
+        context["scorable_features"] = features_rows
+        context["scorables"] = annotated_out
+        context["scorable_annotation_summary"] = stats
+        return context
+
+    # ---------- Helpers ----------
+
+    def _coerce_to_scorable(self, x: Any) -> Scorable:
+        if isinstance(x, Scorable):
+            return x
+        if isinstance(x, dict):
+            # Normalize flexible incoming shapes via the factory
+            return ScorableFactory.from_dict(x, target_type=x.get("scorable_type") or x.get("target_type"))
+        # Last resort: treat as text-only custom
+        return ScorableFactory.from_dict({"text": str(x or ""), "target_type": "custom"})
+
+    def _build_processor_for_run(self) -> ScorableProcessor:
         """
-        Upsert entities into ScorableEntityStore, and optionally:
-        - immediately index into the shared HNSW for retrieval
-        - publish a KG index_request so nodes/edges are created
-        Returns: number of entities saved.
+        Compose a per-run processor config to honor only_missing/force semantics.
+
+        - only_missing=True (default): allow hydration; model fills gaps; writers persist deltas.
+        - force=True: recompute fresh (disable hydration) and DO NOT persist to avoid duplicates.
         """
-        if not entities:
-            return 0
+        cfg = dict(self.processor_cfg_defaults)
 
-        saved = 0
+        if self.attach_scores:
+            cfg["attach_scores"] = True
 
-        # --- 1) Save to the DB store (upsert)
-        try:
-            store = getattr(self.memory, "scorable_entities", None)
-            for e in entities:
-                if not e.get("text"):
-                    continue
-                payload = {
-                    "scorable_id": str(scorable_id),
-                    "scorable_type": scorable_type,
-                    "entity_text": e["text"],
-                    "entity_type": e.get("type", "UNKNOWN"),
-                    "start": int(e.get("start", -1) or -1),
-                    "end": int(e.get("end", -1) or -1),
-                    "similarity": float(e.get("score", 0.0) or 0.0),
-                    "source_text": text[:100] + "...",
-                }
-                if store:
-                    store.insert(payload)
-                    saved += 1
-        except Exception as ex:
-            log.error("ScorableAnnotateAgent.persist_ner_entities: DB insert failed: %s", str(ex))
+        if self.only_missing and not self.force:
+            # Keep defaults: hydrate → compute gaps → persist deltas
+            pass
+        elif self.force:
+            # Recompute without reading from DB; also don't write to DB to avoid dupes
+            cfg.update({
+                "enable_domain_hydrate": False,
+                "enable_ner_hydrate": False,
+                "enable_domain_persist": False,
+                "enable_ner_persist": False,
+                # still OK to compute with models
+                "enable_ner_model": True,
+                "min_domains": int(self.cfg.get("min_domains", 1)),
+            })
 
-        # --- 2) Immediate ANN indexing (optional, same embedder space as retriever)
-        if immediate_index:
+        # Build processor with memory/container; logger reused
+        processor = ScorableProcessor(cfg, self.memory, self.container, self.logger)
+
+        # If you want to hard-pin scoring dims for this agent, you can set them on the scoring_service via container
+        scoring_service = getattr(processor, "scoring_service", None)
+        if scoring_service and hasattr(scoring_service, "default_dims") and self.scoring_dims:
             try:
-                retr = store.retriever if store else None
-                if retr:
-                    # batch embed all spans
-                    spans = [(int(e.get("start", -1) or -1), int(e.get("end", -1) or -1)) for e in entities]
-                    # keep only valid spans
-                    valid_pairs = [(e, s) for e, s in zip(entities, spans) if s[0] >= 0 and s[1] > s[0] and s[1] <= len(text)]
-                    if valid_pairs:
-                        ents_valid, spans_valid = zip(*valid_pairs)
-                        vecs_nested = retr.embed_entities_for_batch([text], [list(spans_valid)])
-                        vecs = vecs_nested[0] if vecs_nested else []
+                scoring_service.default_dims = list(self.scoring_dims)
+            except Exception:
+                pass
 
-                        new_meta = []
-                        new_embs = []
-                        for e, emb, (cs, ce) in zip(ents_valid, vecs, spans_valid):
-                            meta = {
-                                "scorable_id": str(scorable_id),
-                                "scorable_type": scorable_type,
-                                "entity_text": e["text"],
-                                "start": cs,
-                                "end": ce,
-                                "entity_type": e.get("type", "UNKNOWN"),
-                                "source_text": text[:100] + "...",
-                            }  
-                            new_meta.append(meta)
-                            new_embs.append(emb)
-                        if new_embs:
-                            retr.index.add(np.asarray(new_embs, dtype=np.float32), new_meta, save=True)
-            except Exception as ex:
-                log.warning("ScorableAnnotateAgent.persist_ner_entities: immediate index skipped: %s", str(ex))
-
-        # --- 3) Publish to KG so it adds nodes/edges (optional)
-        if publish_to_kg:
-            try:
-                bus = getattr(self.memory, "bus", None)
-                if bus and hasattr(bus, "publish"):
-                    await bus.publish("knowledge_graph.index_request", {
-                        "scorable_id": str(scorable_id),
-                        "scorable_type": scorable_type,
-                        "text": text,
-                        "entities": entities,
-                        # if you stored domains in scorable["meta"]["domains"], include them:
-                        "domains": (getattr(self, "last_domains", None) or
-                                    (scorable.get("meta", {}).get("domains", []) if isinstance(scorable := locals().get("scorable", {}), dict) else []))
-                    })
-            except Exception as ex:
-                log.warning("ScorableAnnotateAgent.persist_ner_entities: KG publish failed: %s", str(ex))
-
-        return saved
-    
+        return processor

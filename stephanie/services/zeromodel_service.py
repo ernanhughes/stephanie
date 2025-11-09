@@ -2440,6 +2440,69 @@ class ZeroModelService(Service):
 
         return frames, summaries
 
+    async def to_vpm_array(
+        self,
+        metrics: dict[str, float] | list[float],
+        metrics_order: list[str] | None = None,
+        *,
+        normalize: str = "passthrough",
+    ) -> np.ndarray:
+        """
+        Convert a single metrics vector to a VPM image using the ZeroModel pipeline.
+
+        Returns: HxWxC float32 in [0,1] (HWC), ready for downstream vision.
+        - dict input: supply `metrics_order` for stable column alignment; otherwise keys are sorted.
+        - list input: used as-is in that order.
+        """
+        if not self._initialized:
+            self.initialize()
+
+        # ---- build a single-row matrix ----
+        if isinstance(metrics, dict):
+            cols = metrics_order or sorted(metrics.keys())
+            row = [float(metrics.get(k, 0.0)) for k in cols]
+        else:
+            row = [float(x) if np.isfinite(x) else 0.0 for x in metrics]
+            cols = [f"metric_{i}" for i in range(len(row))]
+
+        X = np.asarray(row, dtype=np.float32)[None, :]  # shape (1, D)
+
+        # optional normalization like your timeline finalize
+        if normalize == "percent_0_100":
+            X = np.clip(X / 100.0, 0.0, 1.0)
+        elif normalize == "robust01":
+            X = _robust_scale_cols(X, lo_p=1.0, hi_p=99.0)
+
+        # ---- run the ZeroModel pipeline ----
+        assert self._pipeline is not None, "ZeroModelService not initialized"
+        vpm_out, _ = self._pipeline.run(X, {"enable_gif": False})
+        # vpm_out is HxWxC uint8 or float; convert to float32 [0,1]
+        arr = np.asarray(vpm_out, dtype=np.float32)
+        if arr.max() > 1.0:
+            arr = arr / 255.0
+        arr = np.nan_to_num(arr, nan=0.0, posinf=0.0, neginf=0.0)
+        return arr  # HxWxC float32
+
+    def to_vpm_chw_uint8(
+        self,
+        metrics: dict[str, float] | list[float],
+        metrics_order: list[str] | None = None,
+    ) -> np.ndarray:
+        """
+        Convenience for VPMWorkerInline.add_vpm(...)
+        Returns: uint8[3, H, W]
+        """
+        arr = asyncio.get_event_loop().run_until_complete(
+            self.to_vpm_array(metrics, metrics_order)
+        )  # HxWxC float32
+        if arr.ndim == 2:
+            arr = arr[..., None]
+        if arr.shape[-1] == 1:
+            arr = np.repeat(arr, 3, axis=-1)
+        u8 = np.clip(arr * 255.0, 0, 255).astype(np.uint8)  # HxWx3
+        chw = np.transpose(u8, (2, 0, 1))  # 3xHxW
+        return chw
+
     def score_vpm_image(
         self,
         vpm_img: np.ndarray,

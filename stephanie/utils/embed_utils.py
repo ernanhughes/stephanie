@@ -95,6 +95,24 @@ def cos_safe(a: Any, b: Any) -> float:
     num = sum(x * y for x, y in zip(va, vb))
     return num / (l2_norm(va) * l2_norm(vb))
 
+def cos1d(a, b) -> float:
+    """
+    Compute cosine similarity between two 1D vectors.
+    
+    Args:
+        a: First vector
+        b: Second vector
+        
+    Returns:
+        Cosine similarity value between the vectors
+    """
+    a = np.asarray(a, dtype=float)
+    b = np.asarray(b, dtype=float)
+    na = np.linalg.norm(a)
+    nb = np.linalg.norm(b)
+    if np.isclose(na, 0.0) or np.isclose(nb, 0.0):
+        return 0.0
+    return float(np.dot(a, b) / (na * nb))
 
 def normalize_unit(v: Any) -> List[float]:
     """Return unit-norm version of v; [] stays []."""

@@ -113,7 +113,7 @@ class ScorableEntityStore(BaseSQLAlchemyStore):
         3) Map results back to conversation turns (via scorable metadata).
         4) Merge, de-dup, score by max calibrated_similarity.
         """
-        ents = self.get_by_scorable(scorable_id, scorable_type="document")
+        ents = self.find(scorable_id, scorable_type="document")
         if not ents: return []
 
         hits = []
@@ -147,7 +147,7 @@ class ScorableEntityStore(BaseSQLAlchemyStore):
         ranked = sorted(by_key.values(), key=lambda x: x["score"], reverse=True)
         return ranked[:k]
 
-    def get_by_scorable(self, scorable_id: str, scorable_type: str) -> List[ScorableEntityORM]:
+    def find(self, scorable_id: str, scorable_type: str) -> List[ScorableEntityORM]:
         """Get all entities linked to a scorable."""
         def op(s):
             return (

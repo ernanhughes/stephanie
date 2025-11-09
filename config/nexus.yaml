@@ -82,7 +82,7 @@ pipeline:
      - name: nexus_improver
        description: "Improve the nexus using multi-dimensional scoring"
        cls: stephanie.components.nexus.agents.nexus_improver.NexusImproverAgent
-       enabled: true
+       enabled: false
        iterations: 1
 
      - name: gap

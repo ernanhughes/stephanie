@@ -1096,21 +1096,3 @@ class ScoringService(Service):
         return await asyncio.get_event_loop().run_in_executor(None, lambda: self.evaluate_state(*args, **kwargs))
 
 
-    def _cos1d(self, a, b) -> float:
-        """
-        Compute cosine similarity between two 1D vectors.
-        
-        Args:
-            a: First vector
-            b: Second vector
-            
-        Returns:
-            Cosine similarity value between the vectors
-        """
-        a = np.asarray(a, dtype=float)
-        b = np.asarray(b, dtype=float)
-        na = np.linalg.norm(a)
-        nb = np.linalg.norm(b)
-        if np.isclose(na, 0.0) or np.isclose(nb, 0.0):
-            return 0.0
-        return float(np.dot(a, b) / (na * nb))

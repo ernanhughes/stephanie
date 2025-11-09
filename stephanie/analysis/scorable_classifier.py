@@ -82,10 +82,11 @@ class ScorableClassifier:
             f"bus_available: {bool(bus)}"
             "message: Initializing domain classifier"
         )
-        
+
+        self.config_path = config_path
         try:
             # Load domain configuration from YAML file
-            with open(config_path, "r") as f:
+            with open(self.config_path, "r") as f:
                 self.domain_config = yaml.safe_load(f)
             
             self.domains = self.domain_config.get("domains", {})
