@@ -152,21 +152,19 @@ class ScorableProcessor:
                 f.write(dumps_safe(features_row) + "\n")
 
     def finish_manifest(self, *, result: Dict[str, Any] | None = None) -> None:
-        """Mark run finished and log final paths."""
         if not (self.manifest and self.manifest_mgr):
             log.debug("[SP:manifest] finish requested but no active manifest")
             return
         run_id = self.manifest.run_id
         self.manifest_mgr.finish_run(run_id, result or {})
-        log.debug("[SP:manifest] complete → %s",
-                self.manifest_mgr.manifest_path(run_id))
+        man_p = self.manifest_mgr.manifest_path(run_id)
+        log.info("[SP:manifest] complete → %s", man_p)
         if self._manifest_features_path:
             try:
                 size = self._manifest_features_path.stat().st_size
             except Exception:
                 size = "?"
-            log.debug("[SP:manifest] features.jsonl saved → %s (size=%s)",
-                    self._manifest_features_path, size)
+            log.info("[SP:manifest] features.jsonl → %s (size=%s)", self._manifest_features_path, size)
 
     # ---------- Utilities ----------
 
@@ -341,9 +339,10 @@ class ScorableProcessor:
             t0 = time.perf_counter()
             log.debug("[SP:embed] computing global id=%s", scorable.id)
             emb = self.memory.embedding.get_or_create(text)
-            if emb is not None:
+            floats = self._ensure_float_list(emb)
+            if floats is not None:
                 acc.setdefault("embeddings", {})
-                acc["embeddings"]["global"] = emb.astype(np.float32).tolist()
+                acc["embeddings"]["global"] = floats
                 log.debug("[SP:embed] ok dim=%d in %s",
                          len(acc['embeddings']['global']), self._t(t0))
             else:
@@ -448,7 +447,7 @@ class ScorableProcessor:
                 log.warning("[SP:persist] %s failed: %s", name, e)
 
         # 6) Manifest
-        if self._current_manifest_path:
+        if self._manifest_features_path:
             await self.write_to_manifest(row)
 
         # 7) Cache + return
@@ -550,3 +549,18 @@ class ScorableProcessor:
         except Exception:
             pass
         return type(x).__name__
+
+    def _ensure_float_list(self, emb: Any) -> Optional[List[float]]:
+        """Return a flat list[float] for any embedding input (np.ndarray, list, scalar)."""
+        if emb is None:
+            return None
+        try:
+            arr = np.asarray(emb, dtype=np.float32)
+            if arr.ndim == 0:
+                return [float(arr)]
+            if arr.ndim > 1:
+                arr = arr.reshape(-1)
+            return arr.astype(np.float32, copy=False).tolist()
+        except Exception as e:
+            log.warning("[SP:embed] normalize failed: %s (type=%s)", e, type(emb).__name__)
+            return None

@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import logging
 from typing import Any, Dict, List, Optional
-
+import asyncio
 from tqdm import tqdm
 
 from stephanie.agents.base_agent import BaseAgent
@@ -50,7 +50,14 @@ class ScorableAnnotateAgent(BaseAgent):
         self.attach_scores: bool = bool(cfg.get("attach_scores", True))
         self.scoring_dims: Optional[List[str]] = cfg.get("scoring_dims")
 
-        # Manifest (optional)
+        # progress/concurrency knobs
+        self.max_concurrency: int = int(cfg.get("max_concurrency", 8))
+        self.progress_log_every: int = int(cfg.get("progress_log_every", 25))
+        self.progress_leave: bool = bool(cfg.get("progress_leave", True))
+        self.progress_position: int = int(cfg.get("progress_position", 0))
+
+        # Manifest
+        self.manifest_cfg: Optional[Dict[str, Any]] = cfg.get("manifest")  # expect dict: {run_id, dataset, models, base_root}
         self.manifest_path: Optional[str] = cfg.get("manifest_path")
 
         # Default processor config (can be overridden per-run by _build_processor)
@@ -106,25 +113,29 @@ class ScorableAnnotateAgent(BaseAgent):
             total=len(norm_scorables),
             desc=f"ScorableAnnotate ({self.scorable_role})",
             disable=not self.progress_enabled,
+            leave=self.progress_leave,
+            position=self.progress_position,
         )
 
         for i in range(0, len(norm_scorables), self.batch_size):
             batch = norm_scorables[i : i + self.batch_size]
             try:
-                # process_many returns canonical features rows (dicts)
-                batch_rows = await processor.process_many(batch, context=context)
+                batch_rows = await self._process_batch_concurrent(processor, batch, context, pbar)
                 features_rows.extend(batch_rows)
             except Exception as e:
                 log.exception("ScorableAnnotateAgent: processor batch failed: %s", e)
-                # fallback: try per-item to salvage progress
+                # Per-item salvage with live progress
                 for sc in batch:
                     try:
                         row = await processor.process(sc, context=context)
                         features_rows.append(row)
                     except Exception:
-                        # if a single item is bad, skip it but continue
-                        continue
-            pbar.update(len(batch))
+                        pass
+                    finally:
+                        pbar.update(1)
+                        pbar.refresh()
+                        if self.progress_log_every and (pbar.n % self.progress_log_every == 0):
+                            log.info("ScorableAnnotate progress: %d/%d", pbar.n, pbar.total)
 
         pbar.close()
 
@@ -170,6 +181,18 @@ class ScorableAnnotateAgent(BaseAgent):
         self.logger.log("ScorableAnnotateDone", stats)
         self.report({"event": "scorables_annotated", **stats})
 
+
+        try:
+            if getattr(processor, "manifest_mgr", None) and getattr(processor, "manifest", None):
+                processor.finish_manifest(result={"rows": len(features_rows)})
+                run_id = processor.manifest.run_id
+                man_path = processor.manifest_mgr.manifest_path(run_id)
+                feat_path = processor.manifest_mgr.features_jsonl_path(run_id, name="features.jsonl")
+                log.info("ScorableAnnotate: manifest saved → %s", man_path)
+                log.info("ScorableAnnotate: features.jsonl saved → %s", feat_path)
+        except Exception as e:
+            log.warning("ScorableAnnotate: manifest finish failed: %s", e)
+            
         # Write outputs into context
         context["scorable_features"] = features_rows
         context["scorables"] = annotated_out
@@ -226,3 +249,36 @@ class ScorableAnnotateAgent(BaseAgent):
                 pass
 
         return processor
+
+    async def _process_batch_concurrent(
+        self,
+        processor: ScorableProcessor,
+        batch: List[Scorable],
+        context: Dict[str, Any],
+        pbar
+    ) -> List[Dict[str, Any]]:
+        sem = asyncio.Semaphore(self.max_concurrency)
+        rows: List[Dict[str, Any]] = []
+
+        async def _run_one(sc: Scorable):
+            async with sem:
+                return await processor.process(sc, context=context)
+
+        tasks = [asyncio.create_task(_run_one(sc)) for sc in batch]
+
+        completed = 0
+        for fut in asyncio.as_completed(tasks):
+            row = None
+            try:
+                row = await fut
+            except Exception as e:
+                log.debug("ScorableAnnotate: item failed: %s", e)
+            if row is not None:
+                rows.append(row)
+            completed += 1
+            pbar.update(1)
+            pbar.refresh()
+            if self.progress_log_every and (pbar.n % self.progress_log_every == 0):
+                log.info("ScorableAnnotate progress: %d/%d", pbar.n, pbar.total)
+
+        return rows

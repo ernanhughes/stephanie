@@ -154,12 +154,12 @@ class BaseEmbeddingStore(BaseSQLAlchemyStore):
     # --------------- embedding storage ---------------
 
     def get_or_create(self, text: str):
-        """Return embedding vector for text, caching both id + embedding."""
         text_hash = self.get_text_hash(text)
         cached = self._cache.get(text_hash)
-        if cached:
-            return cached[1]  # embedding vector
+        if cached is not None:                      # avoid truthiness surprises
+            return cached[1]
 
+        # --- fetch path ---
         try:
             with self.conn.cursor() as cur:
                 cur.execute(
@@ -169,14 +169,15 @@ class BaseEmbeddingStore(BaseSQLAlchemyStore):
                 row = cur.fetchone()
                 if row:
                     embedding_id, embedding = row
+                    embedding = _normalize_vector(embedding)     # ← normalize on read
                     self._cache.set(text_hash, (embedding_id, embedding))
                     return embedding
         except Exception as e:
             self.logger and self.logger.log("EmbeddingFetchFailed", {"error": str(e)})
 
-        # Not found → create
+        # --- create path ---
         embedding = self.embed_fn(text, self.cfg)
-        embedding = _normalize_vector(embedding)
+        embedding = _normalize_vector(embedding)                 # ← normalize on create
         embedding_id = None
         try:
             with self.conn.cursor() as cur:
@@ -196,7 +197,6 @@ class BaseEmbeddingStore(BaseSQLAlchemyStore):
         except Exception as e:
             log.error(f"EmbeddingInsertFailed error: {str(e)}")
 
-        # Fall back: lookup id if INSERT didn't return
         if embedding_id is None:
             embedding_id = self.get_id_for_text(text)
 
@@ -967,12 +967,22 @@ class BaseEmbeddingStore(BaseSQLAlchemyStore):
             })
             return []
 
-def _normalize_vector(vec):
-    """Return a safely normalized numpy vector without mutating DB storage."""
-    if vec is None:
-        return vec
-    arr = np.asarray(vec, dtype=np.float32)
-    norm = np.linalg.norm(arr)
-    if norm > 2.0 or norm < 0.5:  # only normalize if clearly off-scale
-        arr = arr / (norm + 1e-8)
-    return arr.tolist()
+def _normalize_vector(x) -> list[float]:
+    if x is None:
+        return []
+    # pgvector (psycopg) may return a Vector or plain list
+    try:
+        # memoryview/bytes → float32 buffer
+        if isinstance(x, (bytes, memoryview)):
+            arr = np.frombuffer(x, dtype=np.float32)
+        else:
+            arr = np.asarray(x, dtype=np.float32)
+    except Exception:
+        # last-ditch: iterate and cast
+        return [float(v) for v in x]
+
+    if arr.ndim == 0:
+        arr = arr.reshape(1)
+    elif arr.ndim > 1:
+        arr = arr.reshape(-1)
+    return arr.astype(np.float32, copy=False).tolist()

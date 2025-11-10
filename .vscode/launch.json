@@ -38,6 +38,18 @@
             ]
         },
         {
+            "name": "nexus2",
+            "type": "debugpy",
+            "request": "launch",
+            "console": "integratedTerminal",
+            "module": "stephanie.main",
+            "python": "${workspaceFolder}\\venv\\Scripts\\python", // Linux/macOS
+            "args": [
+                "--config-name",
+                "nexus2",
+            ]
+        },
+        {
             "name": "nexus",
             "type": "debugpy",
             "request": "launch",

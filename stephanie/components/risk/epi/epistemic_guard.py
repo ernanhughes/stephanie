@@ -11,7 +11,7 @@ from typing import Any, Dict, Optional, Tuple
 
 import numpy as np
 
-from stephanie.tools.time_utils import now_iso
+from stephanie.utils.time_utils import now_iso
 
 try:
     from PIL import Image, ImageDraw, ImageFont

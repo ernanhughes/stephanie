@@ -266,37 +266,43 @@ def _nearest_delim(bytes_buf: bytes, idx: int, search_radius: int = 64) -> int:
                 best_dist = d
     return best
 
+import unicodedata
+
 def _left_adjust_utf8_safe(tokens: List[int], end_idx: int, adjust_chars: int = 4) -> int:
     """
     Ensure we don't end on a UTF-8 continuation byte or leave trailing combining marks.
     We can only move <= adjust_chars back (bounded) and never forward (to respect max_bytes).
+    Returns a byte index (inclusive).
     """
+    n = len(tokens)
+    if n == 0:
+        return 0
+
+    # Clamp so we never index tokens[n]
+    if end_idx >= n:
+        end_idx = n - 1
+    if end_idx < 0:
+        end_idx = 0
+
     # 1) avoid continuation-byte cut
     i = end_idx
-    # move left while byte is 10xxxxxx
-    while i >= 0 and (tokens[i] & 0b1100_0000) == 0b1000_0000:
+    while i > 0 and (tokens[i] & 0b1100_0000) == 0b1000_0000:
         i -= 1
-    # If we moved, i now points to the start of a codepoint; fine.
-    end_idx = i if i >= 0 else 0
+    end_idx = i
 
     # 2) avoid leaving trailing combining mark at the boundary
-    # Decode a small tail region to examine last codepoint categories
     tail_left = max(0, end_idx - 8 * adjust_chars)
     tail = bytes(tokens[tail_left:end_idx + 1]).decode("utf-8", errors="ignore")
     if not tail:
         return end_idx
 
-    # If last char is a combining mark, step left a few chars to finish the base grapheme
-    for k in range(min(adjust_chars, len(tail))):
-        ch = tail[-1] if tail else ""
-        if not ch or unicodedata.category(ch) != "Mn":
+    for _ in range(min(adjust_chars, len(tail))):
+        ch = tail[-1]
+        if unicodedata.category(ch) != "Mn":
             break
-        # drop one codepoint from the end by moving the byte index left accordingly
-        # Find where tail[:-1] ends in the original byte buffer
-        new_tail = tail[:-1]
-        new_bytes = new_tail.encode("utf-8")
-        end_idx = tail_left + len(new_bytes) - 1
-        tail = new_tail
+        tail = tail[:-1]
+        end_idx = tail_left + len(tail.encode("utf-8")) - 1
+
     return max(0, end_idx)
 
 def _binary_search_threshold(probs: torch.Tensor, target_count: int, lo=0.05, hi=0.95, iters=10) -> float:

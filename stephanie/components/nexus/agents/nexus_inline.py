@@ -14,19 +14,27 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageSequence
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.components.nexus.app.manifest import (ManifestItem,
-                                                     NexusRunManifest)
+from stephanie.components.nexus.app.manifest import (
+    ManifestItem,
+    NexusRunManifest,
+)
 from stephanie.components.nexus.graph.builder import (
-    build_edges_enhanced, build_nodes_from_manifest)
-from stephanie.components.nexus.graph.exporters import (export_graph_json,
-                                                        export_pyvis_html,
-                                                        export_pyvis_html_rich)
+    build_edges_enhanced,
+    build_nodes_from_manifest,
+)
+from stephanie.components.nexus.graph.exporters import (
+    export_graph_json,
+    export_pyvis_html,
+    export_pyvis_html_rich,
+)
 from stephanie.components.nexus.graph.layout import compute_positions
 from stephanie.constants import PIPELINE_RUN_ID
 from stephanie.scoring.scorable import Scorable, ScorableType
 from stephanie.services.scoring_service import ScoringService
-from stephanie.services.workers.nexus_workers import (NexusMetricsWorkerInline,
-                                                      NexusVPMWorkerInline)
+from stephanie.services.workers.nexus_workers import (
+    NexusMetricsWorkerInline,
+    NexusVPMWorkerInline,
+)
 from stephanie.services.zeromodel_service import ZeroModelService
 from stephanie.utils.embed_utils import as_list_floats, cos_safe, has_vec
 from stephanie.utils.graph_utils import compute_run_metrics
@@ -46,8 +54,8 @@ def _stage(logger, name: str, **meta):
         dt_ms = (time.perf_counter() - t0) * 1000.0
         payload = {"stage": name, "ms": round(dt_ms, 2)}
         payload.update(meta or {})
-        try:
-            logger.log("StageTiming", payload)
+        try: 
+            log.info("StageTiming %s", payload)
         except Exception:
             log.info("StageTiming %s: %.2f ms %s", name, dt_ms, meta or {})
 
@@ -60,6 +68,7 @@ def _first_frame_from_gif(gif_path: Path) -> Optional[Image.Image]:
     except Exception:
         return None
     return None
+
 
 def _find_tile_path(item_dir: Path) -> Optional[Path]:
     """
@@ -174,6 +183,7 @@ def _consensus_walk_order(
 
     return picked
 
+
 class NexusInlineAgent(BaseAgent, ProgressMixin):
     """
     Builds a Nexus run (manifest → graph → frames) and, when enabled,
@@ -227,6 +237,9 @@ class NexusInlineAgent(BaseAgent, ProgressMixin):
             self.cfg.get("vpm", {}).get("filmstrip_enabled", True)
         )
 
+        # Snapshot file handle (set per run)
+        self._snap_path: Optional[Path] = None
+
     async def run(self, context: Dict[str, Any]) -> Dict[str, Any]:
         # progress + one-time init
         self._init_progress(self.container, self.logger)
@@ -239,7 +252,7 @@ class NexusInlineAgent(BaseAgent, ProgressMixin):
         if context.get("scorables_targeted") and context.get(
             "scorables_baseline"
         ):
-                # ensure vectors exist (normalizes numpy etc.)
+            # ensure vectors exist (normalizes numpy etc.)
             await self._ensure_embeddings_global(context["scorables_targeted"])
             await self._ensure_embeddings_global(context["scorables_baseline"])
 
@@ -415,10 +428,11 @@ class NexusInlineAgent(BaseAgent, ProgressMixin):
         context: Dict[str, Any],
         target_vec: Optional[List[float]] = None,
     ) -> Dict[str, Any]:
-        if not scorables:
-            out_dir = Path(self.vpm_out) / run_id
-            out_dir.mkdir(parents=True, exist_ok=True)
+        out_dir = Path(self.vpm_out) / run_id
+        out_dir.mkdir(parents=True, exist_ok=True)
+        self._init_snapshots(out_dir)
 
+        if not scorables:
             # minimal manifest
             manifest = NexusRunManifest(
                 run_id=run_id,
@@ -448,8 +462,6 @@ class NexusInlineAgent(BaseAgent, ProgressMixin):
             }
 
         dims_for_vpm = self.dimensions
-        out_dir = Path(self.vpm_out) / run_id
-        out_dir.mkdir(parents=True, exist_ok=True)
 
         # Start a new ZeroModel/VPM run
         with _stage(log, "Nexus.vpm.start_run", run=run_id):
@@ -537,7 +549,7 @@ class NexusInlineAgent(BaseAgent, ProgressMixin):
                     embeddings={
                         k: as_list_floats(v) for k, v in embeddings.items()
                     },
-                    vpm_png = str(tile.as_posix()) if tile else None,
+                    vpm_png=str(tile.as_posix()) if tile else None,
                     rollout=vpm_rec or {},
                 )
 
@@ -562,6 +574,18 @@ class NexusInlineAgent(BaseAgent, ProgressMixin):
                     )
 
                 manifest.append(item)
+
+                # lightweight step snapshot
+                self._append_snapshot(
+                    step=idx + 1,
+                    total=len(scorables),
+                    item_id=item.item_id,
+                    meta={
+                        "goal_preview": (context.get("goal") or {}).get("goal_text", "")[:160],
+                        "has_tile": bool(tile),
+                    },
+                )
+
                 self.ptick(task=task_items, done=idx + 1, total=len(scorables))
         self.pdone(task=task_items)
 
@@ -700,6 +724,18 @@ class NexusInlineAgent(BaseAgent, ProgressMixin):
         except Exception as e:
             log.warning("timeline frames build failed: %s", e)
 
+        # final snapshot (post-graph)
+        self._append_snapshot(
+            step="final",
+            total=len(manifest.items),
+            item_id=None,
+            meta={
+                "nodes": len(nodes),
+                "edges": len(edges),
+                "run_dir": out_dir.as_posix(),
+            },
+        )
+
         run_ctx = {
             "nexus_graph_json": (out_dir / "graph.json").as_posix(),
             "nexus_graph_html": (out_dir / "graph.html").as_posix(),
@@ -782,6 +818,31 @@ class NexusInlineAgent(BaseAgent, ProgressMixin):
         tgt_ids = [i for i, _ in scores[:k]]
 
         return base_ids, tgt_ids
+
+    # ---------- snapshot helpers ----------
+    def _init_snapshots(self, run_dir: Path) -> None:
+        try:
+            self._snap_path = run_dir / "snapshots.jsonl"
+            if self._snap_path.exists():
+                self._snap_path.unlink()
+        except Exception:
+            self._snap_path = None
+
+    def _append_snapshot(self, *, step: Any, total: int, item_id: Optional[str], meta: Dict[str, Any]) -> None:
+        if not self._snap_path:
+            return
+        rec = {
+            "ts": int(time.time()),
+            "step": step,
+            "total": int(total),
+            "item_id": item_id,
+            "meta": meta or {},
+        }
+        try:
+            with self._snap_path.open("a", encoding="utf-8") as f:
+                f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+        except Exception:
+            pass
 
 
 def _annotate_with_sim(tile: Image.Image, sim: float | None) -> Image.Image:
