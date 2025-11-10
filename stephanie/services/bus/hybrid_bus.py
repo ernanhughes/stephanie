@@ -401,7 +401,7 @@ class HybridKnowledgeBus(BusProtocol):
         log.debug("[HybridBus] ensure_stream stream=%s subjects=%s backend=%s", stream, subjects, self._backend)
         try:
             ok = await self._bus.ensure_stream(stream, subjects)  # type: ignore[attr-defined]
-            log.info("[HybridBus] ensure_stream delegated -> %s", ok)
+            log.debug("[HybridBus] ensure_stream delegated -> %s", ok)
             return bool(ok)
         except Exception as e:
             log.warning("[HybridBus] ensure_stream delegate failed: %s", e)

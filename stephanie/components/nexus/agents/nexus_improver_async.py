@@ -14,6 +14,7 @@ import numpy as np
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.components.nexus.blossom.runner import BlossomRunnerAgent
+from stephanie.scoring import scorable
 from stephanie.services.scoring_service import ScoringService
 from stephanie.scoring.scorable import Scorable
 from stephanie.utils.progress_mixin import ProgressMixin
@@ -104,7 +105,7 @@ class NexusImproverAsyncAgent(ProgressMixin, BaseAgent):
         base_evals: Dict[str, float] = {}
         base_vectors: Dict[str, Dict[str, float]] = {}
 
-        for s in items:
+        for idx, s in enumerate(items):
             scorable = Scorable.from_dict(s)
             eval_res = self._eval_state(scorable, context, use_vpm_phi=use_vpm_phi)
             sid = str(getattr(scorable, "id", None) or f"tmp-{idx}")
@@ -120,9 +121,17 @@ class NexusImproverAsyncAgent(ProgressMixin, BaseAgent):
 
         decisions: List[Dict[str, Any]] = []
         total = len(items)
+        run_dir = self._run_dir(context)
 
         for idx, s in enumerate(items, start=1):
             scorable = Scorable.from_dict(s)
+
+            # ---- emit garden event ----
+            pid = getattr(scorable, "blossom_node_id", None) or getattr(scorable, "id", None)
+            self._emit_garden_event(run_dir, "episode_start",
+                parent_id=str(pid), 
+                parent_text_len=len(scorable.text or ""),
+                parent_overall=base_evals[str(getattr(scorable, "id", None))])
 
             # ---- per-episode subtask ----
             ep_task = self._task_episode_name(getattr(scorable, "id", "unknown"))
@@ -177,12 +186,49 @@ class NexusImproverAsyncAgent(ProgressMixin, BaseAgent):
                 if self.cfg.persist_scores:
                     self._persist_dims(c, res, context)
 
+            # emit garden events for candidates
+            for c, res in cand_evals:
+                pid = getattr(scorable, "blossom_node_id", None) or getattr(scorable, "id", None)
+                nid = getattr(c, "blossom_node_id", None) or getattr(c, "id", None)
+                self._emit_garden_event(run_dir, "add_node",
+                                        node_id=str(nid),
+                                        parent_id=str(pid),
+                                        overall=float(res.get("overall", 0.0)),
+                                        dims=res.get("dims", {}),
+                                        text_len=len(getattr(c, "text", "") or ""))
+                self._emit_garden_event(run_dir, "add_edge",
+                                        source=str(pid),
+                                        target=str(nid),
+                                        edge_type="blossom")
+
+
             parent_overall = float(base_evals[str(getattr(scorable, "id", None))])
-            winner, win_eval = self._select_winner(
-                scorable, parent_overall, cand_evals, margin=self.cfg.promote_margin
-            )
+
+            # compute merits then pick best
+            parent_len = len(scorable.text or "")
+            best = None
+            for c, res in cand_evals:
+                m = self._merit(base_vectors[str(getattr(scorable, "id", None))], res,
+                                text_len=len(c.text or ""), base_len=parent_len)
+                if best is None or m > best[2]:
+                    best = (c, res, m)
+
+            winner, win_eval = best[0], best[1]
+            if float(win_eval.get("overall", 0.0)) - parent_overall < self.cfg.promote_margin:
+                winner, win_eval = scorable, {"overall": parent_overall, "dims": {}}
+
+
+            wid = getattr(winner, "blossom_node_id", None) or getattr(winner, "id", None) if winner else None
+            pid = getattr(scorable, "blossom_node_id", None) or getattr(scorable, "id", None)
+
             winner_overall = float((win_eval or {}).get("overall", parent_overall))
             lift = float(winner_overall - parent_overall)
+            if winner and lift >= self.cfg.promote_margin:
+                self._emit_garden_event(run_dir, "promote",
+                                        parent_id=str(pid),
+                                        child_id=str(wid),
+                                        lift=float(lift))
+
 
             # blossom linkage summary for the decision
             decisions.append({
@@ -201,6 +247,14 @@ class NexusImproverAsyncAgent(ProgressMixin, BaseAgent):
                 "blossom_winner_paths": [w.get("path") for w in blossom_meta.get("winners", [])],
                 "blossom_top_reward": float(blossom_meta.get("top_reward", 0.0)),
             })
+
+            self._emit_garden_event(run_dir, "decision",
+                parent_id=str(pid),
+                winner_id=str(wid) if wid is not None else None,
+                lift=float(lift),
+                k_generated=len(children),
+                k_after_novelty=len(filtered_children)
+            )
 
             # persist episode meta
             context["blossom_runs"].append(blossom_meta)
@@ -258,6 +312,8 @@ class NexusImproverAsyncAgent(ProgressMixin, BaseAgent):
 
         self.pdone(task_run)
         context[self.output_key] = report
+
+        self._write_garden_frames(run_dir, baseline_graph_json=context.get("nexus_graph_json"))
 
         return context
 
@@ -593,6 +649,19 @@ class NexusImproverAsyncAgent(ProgressMixin, BaseAgent):
         except Exception as e:
             self._slog("PersistDimsError", {"id": getattr(scorable, "id", None), "error": str(e)})
 
+    def _merit(self, parent_vec, child_res, *, text_len, base_len):
+        # weights are illustrative; tune later
+        overall = float(child_res.get("overall", 0.0))
+        dims = child_res.get("dims", {})
+        # damp length blow-up
+        len_ratio = max(1.0, float(text_len) / max(1.0, float(base_len)))
+        length_penalty = 0.08 * math.log(len_ratio)  # grows slowly
+        # encourage clarity/faithfulness, discourage uncertainty if present
+        clarity = float(dims.get("clarity", overall))
+        faithful = float(dims.get("faithfulness", overall))
+        merit = 0.55*overall + 0.2*clarity + 0.2*faithful - length_penalty
+        return merit
+
     def _safe_link_and_promote(self, parent: Scorable, candidates: List[Scorable], winner: Optional[Scorable], lift: float):
         def _to_int(x) -> Optional[int]:
             try:
@@ -688,6 +757,15 @@ class NexusImproverAsyncAgent(ProgressMixin, BaseAgent):
             except Exception as e:
                 self._slog("TrainingEmitError", {"parent": parent.id, "child": getattr(c, 'id', None), "error": str(e)})
 
+    def _emit_garden_event(self, run_dir: Path, kind: str, **data):
+        rec = {"ts": int(time.time()), "kind": kind, **data}
+        try:
+            with (run_dir / "garden_events.jsonl").open("a", encoding="utf-8") as f:
+                f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+        except Exception:
+            pass
+
+
     # --------------------------- METRICS / UTIL ---------------------------
 
     def _blossom_diversity(self, children: List[Scorable]) -> float:
@@ -762,6 +840,87 @@ class NexusImproverAsyncAgent(ProgressMixin, BaseAgent):
         d = root / f"run-{rid}"
         d.mkdir(parents=True, exist_ok=True)
         return d
+
+    def _write_garden_frames(self, run_dir: Path, *, baseline_graph_json: Optional[str] = None):
+        # 1) load baseline nodes/positions if present
+        base_pos = {}
+        base_nodes = set()
+        base_edges = set()
+        if baseline_graph_json and Path(baseline_graph_json).exists():
+            g = json.loads(Path(baseline_graph_json).read_text(encoding="utf-8"))
+            for n in g.get("nodes", []):
+                nid = n["data"]["id"]
+                base_nodes.add(nid)
+                pos = (n.get("position") or {})
+                if "x" in pos and "y" in pos:
+                    base_pos[nid] = (pos["x"], pos["y"])
+            for e in g.get("edges", []):
+                base_edges.add((e["data"]["source"], e["data"]["target"]))
+
+        # 2) read garden events
+        evs = []
+        ge = run_dir / "garden_events.jsonl"
+        if ge.exists():
+            with ge.open("r", encoding="utf-8") as f:
+                for line in f:
+                    try:
+                        evs.append(json.loads(line))
+                    except Exception:
+                        continue
+
+        # 3) incremental garden state
+        nodes = {nid: {"id": nid, "position": {"x": base_pos.get(nid, (0, 0))[0],
+                                            "y": base_pos.get(nid, (0, 0))[1]}}
+                for nid in base_nodes}
+        edges = set(base_edges)
+        frames = []
+
+        # radial placement helper
+        def place_children_radial(pid, child_ids, base_r=90.0):
+            px, py = base_pos.get(pid, (0.0, 0.0))
+            n = max(1, len(child_ids))
+            for k, cid in enumerate(child_ids):
+                theta = 2 * math.pi * (k / n)
+                r = base_r
+                nodes[cid] = {"id": cid, "position": {"x": px + r * math.cos(theta),
+                                                    "y": py + r * math.sin(theta)}}
+
+        pending_children = {}
+        for ev in evs:
+            kind = ev.get("kind")
+            if kind == "add_node":
+                pid = ev.get("parent_id"); cid = ev.get("node_id")
+                pending_children.setdefault(pid, []).append(cid)
+                edges.add((pid, cid))
+            elif kind in ("episode_end", "decision", "promote"):
+                # place any pending children when episode closes
+                pid = ev.get("parent_id")
+                if pid and pid in pending_children:
+                    place_children_radial(pid, pending_children.pop(pid))
+            # snapshot a frame
+            frames.append({
+                "nodes": [{"data": {"id": nid}, "position": nd.get("position")}
+                        for nid, nd in nodes.items()],
+                "edges": [{"data": {"id": f"{s}->{t}", "source": s, "target": t}} for (s, t) in edges],
+                "metrics": {"event": kind, "t": ev.get("ts")}
+            })
+
+        # 4) write artifacts
+        (run_dir / "garden_frames.json").write_text(json.dumps(frames, indent=2), encoding="utf-8")
+        graph = {
+            "nodes": [{"data": {"id": nid}, "position": nd.get("position")} for nid, nd in nodes.items()],
+            "edges": [{"data": {"id": f"{s}->{t}", "source": s, "target": t}} for (s, t) in edges],
+        }
+        (run_dir / "graph_improved.json").write_text(json.dumps(graph, indent=2), encoding="utf-8")
+
+        # 5) optional HTML (if your PyVis exporter is available)
+        try:
+            from stephanie.components.nexus.graph.exporters import export_pyvis_html
+            export_pyvis_html(output_path=(run_dir / "garden.html").as_posix(),
+                            nodes=graph["nodes"], edges=graph["edges"],
+                            title="Nexus Garden — Blossoms")
+        except Exception:
+            pass
 
     def _slog(self, event: str, payload: Dict[str, Any]):
         try:
