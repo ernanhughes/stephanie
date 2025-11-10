@@ -23,3 +23,9 @@ telemetry:
 health:
   base: "health"
 
+scoring:
+  eval: "scoring.eval"
+
+
+
+

@@ -28,7 +28,6 @@ from stephanie.scoring.adapters.db_writers import (
     EntityDBWriter,
 )
 from stephanie.core.manifest import ManifestManager, Manifest
-
 log = logging.getLogger(__name__)
 
 
@@ -88,7 +87,7 @@ class ScorableProcessor:
                     else "cpu",
                 )
             )
-            self.logger.info("NER detector loaded.")
+            log.debug("NER detector loaded.")
         except Exception as e:
             self.entity_extractor = None   # <- keep same name
             log.error(f"Failed to initialize EntityDetector: {e}")
@@ -141,8 +140,8 @@ class ScorableProcessor:
         if not features_path.exists():
             features_path.write_text("", encoding="utf-8")
         self._manifest_features_path = features_path
-        log.info("[SP:manifest] started → %s", self.manifest_mgr.manifest_path(run_id))
-        log.info("[SP:manifest] features.jsonl → %s", self._manifest_features_path)
+        log.debug("[SP:manifest] started → %s", self.manifest_mgr.manifest_path(run_id))
+        log.debug("[SP:manifest] features.jsonl → %s", self._manifest_features_path)
 
     async def write_to_manifest(self, features_row: Dict[str, Any]) -> None:
         """Append one JSON object per line to features.jsonl."""
@@ -155,18 +154,18 @@ class ScorableProcessor:
     def finish_manifest(self, *, result: Dict[str, Any] | None = None) -> None:
         """Mark run finished and log final paths."""
         if not (self.manifest and self.manifest_mgr):
-            log.info("[SP:manifest] finish requested but no active manifest")
+            log.debug("[SP:manifest] finish requested but no active manifest")
             return
         run_id = self.manifest.run_id
         self.manifest_mgr.finish_run(run_id, result or {})
-        log.info("[SP:manifest] complete → %s",
+        log.debug("[SP:manifest] complete → %s",
                 self.manifest_mgr.manifest_path(run_id))
         if self._manifest_features_path:
             try:
                 size = self._manifest_features_path.stat().st_size
             except Exception:
                 size = "?"
-            log.info("[SP:manifest] features.jsonl saved → %s (size=%s)",
+            log.debug("[SP:manifest] features.jsonl saved → %s (size=%s)",
                     self._manifest_features_path, size)
 
     # ---------- Utilities ----------
@@ -306,11 +305,11 @@ class ScorableProcessor:
 
         if cache_key in self._cache:
             self._cache_hits += 1
-            log.info("[SP:process] cache HIT key=%s hit_rate=%.2f",
+            log.debug("[SP:process] cache HIT key=%s hit_rate=%.2f",
                      cache_key, self.get_cache_stats()["hit_rate"])
             return self._cache[cache_key]
         self._cache_misses += 1
-        log.info("[SP:process] cache MISS key=%s", cache_key)
+        log.debug("[SP:process] cache MISS key=%s", cache_key)
 
         scorable = (
             input_data
@@ -318,7 +317,7 @@ class ScorableProcessor:
             else ScorableFactory.from_dict(input_data)
         )
         text = scorable.text or ""
-        log.info("[SP:process] start id=%s type=%s text_len=%d ctx.run=%s",
+        log.debug("[SP:process] start id=%s type=%s text_len=%d ctx.run=%s",
                  scorable.id, scorable.target_type, len(text), context.get("pipeline_run_id"))
 
         acc: Dict[str, Any] = {}
@@ -327,10 +326,10 @@ class ScorableProcessor:
         for provider in self.providers:
             t0 = time.perf_counter()
             name = provider.__class__.__name__
-            log.info("[SP:hydrate] start %s id=%s", name, scorable.id)
+            log.debug("[SP:hydrate] start %s id=%s", name, scorable.id)
             try:
                 acc.update(await provider.hydrate(scorable))
-                log.info("[SP:hydrate] done %s in %s keys_now=%d",
+                log.debug("[SP:hydrate] done %s in %s keys_now=%d",
                          name, self._t(t0), len(acc))
             except Exception as e:
                 log.warning("[SP:hydrate] %s failed: %s", name, e)
@@ -340,15 +339,15 @@ class ScorableProcessor:
         gl = (acc.get("embeddings") or {}).get("global")
         if not (isinstance(gl, list) and gl) and text:
             t0 = time.perf_counter()
-            log.info("[SP:embed] computing global id=%s", scorable.id)
+            log.debug("[SP:embed] computing global id=%s", scorable.id)
             emb = self.memory.embedding.get_or_create(text)
             if emb is not None:
                 acc.setdefault("embeddings", {})
                 acc["embeddings"]["global"] = emb.astype(np.float32).tolist()
-                log.info("[SP:embed] ok dim=%d in %s",
+                log.debug("[SP:embed] ok dim=%d in %s",
                          len(acc['embeddings']['global']), self._t(t0))
             else:
-                log.info("[SP:embed] skipped/none")
+                log.debug("[SP:embed] skipped/none")
 
         # Domains
         need_domains = not acc.get("domains") or len(acc["domains"]) < int(
@@ -356,45 +355,45 @@ class ScorableProcessor:
         )
         if need_domains:
             t0 = time.perf_counter()
-            log.info("[SP:domain] inferring id=%s", scorable.id)
+            log.debug("[SP:domain] inferring id=%s", scorable.id)
             inferred = self.domain_classifier.classify(text)
             for name, score in inferred:
                 acc.setdefault("domains", []).append({"name": name, "score": score})
-            log.info("[SP:domain] inferred %d in %s", len(acc.get("domains") or []), self._t(t0))
+            log.debug("[SP:domain] inferred %d in %s", len(acc.get("domains") or []), self._t(t0))
         else:
-            log.info("[SP:domain] hydrated %d", len(acc.get("domains") or []))
+            log.debug("[SP:domain] hydrated %d", len(acc.get("domains") or []))
 
         # NER
         need_ner = not acc.get("ner") and bool(self.cfg.get("enable_ner_model", True))
         if need_ner and self.entity_extractor:
             t0 = time.perf_counter()
-            log.info("[SP:ner] detecting entities id=%s", scorable.id)
+            log.debug("[SP:ner] detecting entities id=%s", scorable.id)
             try:
                 ner = self.entity_extractor.detect_entities(text)
                 acc["ner"] = ner or []
-                log.info("[SP:ner] found %d in %s", len(acc["ner"]), self._t(t0))
+                log.debug("[SP:ner] found %d in %s", len(acc["ner"]), self._t(t0))
             except Exception as e:
                 log.warning("[SP:ner] failed: %s", e)
         else:
-            log.info("[SP:ner] skipped (hydrated=%s, enabled=%s, has_detector=%s)",
+            log.debug("[SP:ner] skipped (hydrated=%s, enabled=%s, has_detector=%s)",
                      bool(acc.get("ner")), bool(self.cfg.get("enable_ner_model", True)),
                      bool(self.entity_extractor))
 
         # Vision/VPM
         if self.zm and not acc.get("vision_signals"):
             t0 = time.perf_counter()
-            log.info("[SP:vpm] building VPM id=%s", scorable.id)
+            log.debug("[SP:vpm] building VPM id=%s", scorable.id)
             try:
                 vpm_u8_chw, meta = self.zm.vpm_from_scorable(scorable)
                 acc["vision_signals"] = vpm_u8_chw
                 acc["vision_signals_meta"] = meta
                 shape_desc = self._shape_dtype(vpm_u8_chw)
-                log.info("[SP:vpm] ok %s in %s (meta keys=%d)",
+                log.debug("[SP:vpm] ok %s in %s (meta keys=%d)",
                          shape_desc, self._t(t0), len(meta or {}))
             except Exception as e:
-                log.info("[SP:vpm] unavailable/failed: %s", e)
+                log.debug("[SP:vpm] unavailable/failed: %s", e)
         else:
-            log.info("[SP:vpm] skipped (has_zm=%s, already=%s)", bool(self.zm), bool(acc.get("vision_signals")))
+            log.debug("[SP:vpm] skipped (has_zm=%s, already=%s)", bool(self.zm), bool(acc.get("vision_signals")))
 
         # 3) Scores
         if self.scoring and self.cfg.get("attach_scores", True):
@@ -403,11 +402,11 @@ class ScorableProcessor:
             run_id = context.get("pipeline_run_id")
             ctx = {"goal": goal, "pipeline_run_id": run_id}
             vector = {}
-            log.info("[SP:score] start scorers=%s dims=%s", self.scorers, self.dimensions)
+            log.debug("[SP:score] start scorers=%s dims=%s", self.scorers, self.dimensions)
 
             for name in self.scorers:
                 t0 = time.perf_counter()
-                log.info("[SP:score] → %s", name)
+                log.debug("[SP:score] → %s", name)
                 bundle = (self.scoring.score_and_persist if self.persist else self.scoring.score)(
                     scorer_name=name, scorable=scorable, context=ctx, dimensions=self.dimensions
                 )
@@ -417,21 +416,21 @@ class ScorableProcessor:
                 for k, v in flat.items():
                     vector[f"{model_alias}.{k}"] = float(v)
                 vector[f"{model_alias}.aggregate"] = agg
-                log.info("[SP:score] ← %s alias=%s agg=%.4f added=%d in %s",
+                log.debug("[SP:score] ← %s alias=%s agg=%.4f added=%d in %s",
                          name, model_alias, agg, len(flat) + 1, self._t(t0))
                 await asyncio.sleep(0)
 
             acc["metrics_vector"] = vector
-            log.info("[SP:score] done total_keys=%d in %s",
+            log.debug("[SP:score] done total_keys=%d in %s",
                      len(vector), self._t(t0_scores))
         else:
-            log.info("[SP:score] skipped (scoring=%s attach=%s)",
+            log.debug("[SP:score] skipped (scoring=%s attach=%s)",
                      bool(self.scoring), bool(self.cfg.get("attach_scores", True)))
 
         # 4) Row build
         t0 = time.perf_counter()
         row = self._build_features_row(scorable, acc)
-        log.info("[SP:row] built metrics=%d domains=%d ner=%d in %s",
+        log.debug("[SP:row] built metrics=%d domains=%d ner=%d in %s",
                  len(row.get("metrics_columns") or []),
                  len(row.get("domains") or []),
                  len(row.get("ner") or []),
@@ -441,10 +440,10 @@ class ScorableProcessor:
         for writer in self.writers:
             t0w = time.perf_counter()
             name = writer.__class__.__name__
-            log.info("[SP:persist] start %s id=%s", name, scorable.id)
+            log.debug("[SP:persist] start %s id=%s", name, scorable.id)
             try:
                 await writer.persist(scorable, acc)
-                log.info("[SP:persist] done %s in %s", name, self._t(t0w))
+                log.debug("[SP:persist] done %s in %s", name, self._t(t0w))
             except Exception as e:
                 log.warning("[SP:persist] %s failed: %s", name, e)
 
@@ -454,9 +453,12 @@ class ScorableProcessor:
 
         # 7) Cache + return
         self._cache[cache_key] = row
-        log.info("[SP:process] done id=%s in %s (cache.size=%d hit_rate=%.2f)",
+        log.debug("[SP:process] done id=%s in %s (cache.size=%d hit_rate=%.2f)",
                  scorable.id, self._t(t_all), len(self._cache),
                  self.get_cache_stats()["hit_rate"])
+        
+
+
         return row
 
     async def process_many(
@@ -464,7 +466,7 @@ class ScorableProcessor:
     ) -> List[Dict[str, Any]]:
         t_all = time.perf_counter()
         n = len(inputs)
-        log.info("[SP:many] start batch_size=%d ctx.run=%s", n, context.get("pipeline_run_id"))
+        log.debug("[SP:many] start batch_size=%d ctx.run=%s", n, context.get("pipeline_run_id"))
 
         # Normalize to Scorable & spot texts for prebatch
         texts_to_embed: List[str] = []
@@ -478,7 +480,7 @@ class ScorableProcessor:
                 texts_to_embed.append(sc.text)
                 idxs.append(i)
 
-        log.info("[SP:many] prebatch candidates=%d has_batch_fn=%s",
+        log.debug("[SP:many] prebatch candidates=%d has_batch_fn=%s",
                  len(idxs), bool(getattr(self.embed, 'get_or_create_batch', None)))
 
         # Batch embeddings only
@@ -491,19 +493,19 @@ class ScorableProcessor:
                 for i, arr in zip(idxs, arrs):
                     if arr is not None:
                         batched[i] = np.asarray(arr, dtype=np.float32).tolist()
-                log.info("[SP:many] prebatch ok count=%d in %s",
+                log.debug("[SP:many] prebatch ok count=%d in %s",
                          len(batched), self._t(t0))
             except Exception as e:
-                log.info("[SP:many] prebatch failed: %s", e)
+                log.debug("[SP:many] prebatch failed: %s", e)
         else:
-            log.info("[SP:many] prebatch skipped")
+            log.debug("[SP:many] prebatch skipped")
 
         # Process items
         out: List[Dict[str, Any]] = []
         for i, sc in enumerate(norm):
             t0i = time.perf_counter()
             if i in batched:
-                log.info("[SP:many:item] %d/%d id=%s (with prebatched embed)", i+1, n, sc.id)
+                log.debug("[SP:many:item] %d/%d id=%s (with prebatched embed)", i+1, n, sc.id)
                 row = await self.process(
                     {
                         "id": sc.id,
@@ -517,13 +519,13 @@ class ScorableProcessor:
                     context,
                 )
             else:
-                log.info("[SP:many:item] %d/%d id=%s", i+1, n, sc.id)
+                log.debug("[SP:many:item] %d/%d id=%s", i+1, n, sc.id)
                 row = await self.process(sc, context)
 
             out.append(row)
-            log.info("[SP:many:item] %d/%d done in %s", i+1, n, self._t(t0i))
+            log.debug("[SP:many:item] %d/%d done in %s", i+1, n, self._t(t0i))
 
-        log.info("[SP:many] done batch_size=%d in %s", n, self._t(t_all))
+        log.debug("[SP:many] done batch_size=%d in %s", n, self._t(t_all))
         return out
 
     def get_cache_stats(self) -> Dict[str, float]:

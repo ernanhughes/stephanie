@@ -117,7 +117,7 @@ class HybridKnowledgeBus(BusProtocol):
                     self._bus = nats_bus
                     self._backend = "nats"
                     self._idem_store = getattr(nats_bus, "idempotency_store", None)
-                    self.logger.info("Hybrid bus connected to NATS JetStream.")
+                    log.info("Hybrid bus connected to NATS JetStream.")
                     return True
             except asyncio.TimeoutError:
                 log.warning("Hybrid bus: NATS connection timed out (<= %ss).", timeout)
@@ -139,13 +139,13 @@ class HybridKnowledgeBus(BusProtocol):
                             log.warning("Hybrid bus using in-process fallback (NATS unavailable).")
                             return True
                     except Exception as e:
-                        self.logger.error("Hybrid bus: InProc fallback connect error: %s", e)
+                        log.error("Hybrid bus: InProc fallback connect error: %s", e)
 
             # No usable backend
             self._bus = None
             self._backend = "none"
             self._idem_store = None
-            self.logger.error("Hybrid bus: no backend available (NATS down, fallback disabled).")
+            log.error("Hybrid bus: no backend available (NATS down, fallback disabled).")
             return False
 
         elif cfg["backend"] == "inproc":
@@ -156,10 +156,10 @@ class HybridKnowledgeBus(BusProtocol):
                     self._bus = inproc
                     self._backend = "inproc"
                     self._idem_store = getattr(inproc, "idempotency_store", None)
-                    self.logger.info("Hybrid bus using in-process backend.")
+                    log.info("Hybrid bus using in-process backend.")
                     return True
             except Exception as e:
-                self.logger.error("Hybrid bus: InProc connect error: %s", e)
+                log.error("Hybrid bus: InProc connect error: %s", e)
             self._bus = None
             self._backend = "none"
             self._idem_store = None
@@ -219,7 +219,7 @@ class HybridKnowledgeBus(BusProtocol):
                         await self._bus.publish(subject, payload)                  # type: ignore[misc]
                     return
                 except Exception as e2:
-                    self.logger.error("Hybrid bus: publish retry failed on %s: %s", subject, e2)
+                    log.error("Hybrid bus: publish retry failed on %s: %s", subject, e2)
             # Final: drop silently (your requirement)
             # If you prefer visibility, switch to raise BusPublishError here.
             return
@@ -273,7 +273,7 @@ class HybridKnowledgeBus(BusProtocol):
                 try:
                     await self._bus.subscribe(subject, handler, **filtered)  # type: ignore[misc]
                 except Exception as e2:
-                    self.logger.error("Hybrid bus: subscribe retry failed on %s: %s", subject, e2)
+                    log.error("Hybrid bus: subscribe retry failed on %s: %s", subject, e2)
             return
 
     async def request(self, subject: str, payload: Dict[str, Any], timeout: float = 5.0) -> Optional[Dict[str, Any]]:
@@ -290,7 +290,7 @@ class HybridKnowledgeBus(BusProtocol):
                 try:
                     return await self._bus.request(subject, payload, timeout)  # type: ignore[misc]
                 except Exception as e2:
-                    self.logger.error("Hybrid bus: request retry failed on %s: %s", subject, e2)
+                    log.error("Hybrid bus: request retry failed on %s: %s", subject, e2)
             return None  # non-fatal
 
     def health_check(self) -> dict:
@@ -375,6 +375,73 @@ class HybridKnowledgeBus(BusProtocol):
         self._bus = None
         self._backend = "none"
         self._idem_store = None
+
+
+    # ---------------------- Stream/Consumer helpers ----------------------
+
+    async def wait_ready(self, timeout: float = 5.0) -> bool:
+        log.debug("[HybridBus] wait_ready(start) timeout=%.2fs", timeout)
+        if not await self._ensure_connected_for_use():
+            log.warning("[HybridBus] wait_ready: no backend available")
+            return False
+        try:
+            ok = await self._bus.wait_ready(timeout)  # type: ignore[attr-defined]
+            log.info("[HybridBus] wait_ready -> %s (backend=%s)", ok, self._backend)
+            return bool(ok)
+        except Exception as e:
+            log.warning("[HybridBus] wait_ready delegate failed: %s", e)
+        # If backend lacks the method, consider the active connection as "ready"
+        log.info("[HybridBus] wait_ready: assuming ready (backend=%s)", self._backend)
+        return True
+
+    async def ensure_stream(self, stream: str, subjects: List[str]) -> bool:
+        if not await self._ensure_connected_for_use():
+            log.warning("[HybridBus] ensure_stream dropped (no backend): stream=%s", stream)
+            return False
+        log.debug("[HybridBus] ensure_stream stream=%s subjects=%s backend=%s", stream, subjects, self._backend)
+        try:
+            ok = await self._bus.ensure_stream(stream, subjects)  # type: ignore[attr-defined]
+            log.info("[HybridBus] ensure_stream delegated -> %s", ok)
+            return bool(ok)
+        except Exception as e:
+            log.warning("[HybridBus] ensure_stream delegate failed: %s", e)
+        # If backend does not support it, treat as success (no-op)
+        log.warning("[HybridBus] ensure_stream not supported by backend=%s; continuing", self._backend)
+        return True
+
+    async def ensure_consumer(
+        self,
+        stream: str,
+        subject: str,
+        durable: str,
+        *,
+        ack_wait: Optional[int] = None,
+        max_deliver: Optional[int] = None,
+        deliver_group: Optional[str] = None,
+        deliver_policy: Optional[Any] = None,
+    ) -> bool:
+        if not await self._ensure_connected_for_use():
+            log.warning("[HybridBus] ensure_consumer dropped (no backend): stream=%s durable=%s", stream, durable)
+            return False
+        log.debug("[HybridBus] ensure_consumer stream=%s subject=%s durable=%s backend=%s",
+                          stream, subject, durable, self._backend)
+        try:
+            ok = await self._bus.ensure_consumer(
+                stream=stream,
+                subject=subject,
+                durable=durable,
+                ack_wait=ack_wait,
+                max_deliver=max_deliver,
+                deliver_group=deliver_group,
+                deliver_policy=deliver_policy,
+            )  # type: ignore[attr-defined]
+            log.info("[HybridBus] ensure_consumer delegated -> %s", ok)
+            return bool(ok)
+        except Exception as e:
+            log.warning("[HybridBus] ensure_consumer delegate failed: %s", e)
+        # If backend does not support it, treat as success (no-op)
+        log.warning("[HybridBus] ensure_consumer not supported by backend=%s; continuing", self._backend)
+        return True
 
     # --------------------- flush / drain passthrough ---------------------
 

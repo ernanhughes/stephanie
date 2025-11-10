@@ -5,6 +5,7 @@ from dataclasses import dataclass, asdict
 from typing import Any, Dict, List, Optional, Tuple
 import time
 import logging
+import asyncio
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.components.tree.core import AgenticTreeSearch
@@ -71,6 +72,16 @@ llm_cfg = {
     "api_key": None,
 }
 
+# stephanie/components/nexus/blossom/runner.py (top of file)
+
+BUS_STREAM = "stephanie"  # JetStream name
+SUBJ = {
+    "PROMPT_REQ":  "stephanie.blossom.prompt.request",
+    "RESP_READY":  "stephanie.blossom.prompt.responses.available",
+    # (optional) DLQ/metrics/etc. keep here for one place to change
+    "PROMPT_DLQ":  "stephanie.blossom.prompt.request.DLQ",
+}
+
 
 
 class BlossomRunnerAgent(BaseAgent):
@@ -119,9 +130,8 @@ class BlossomRunnerAgent(BaseAgent):
         self.scoring = container.get("scoring")
 
         # Telemetry
-        self.msubj_req = "blossom.prompt.request"
-        self.ats_report = "blossom.prompt.responses.available"
-
+        self.msubj_req = SUBJ["PROMPT_REQ"]
+        self.ats_report = SUBJ["RESP_READY"]
         # Runtime
         self.run_id: Optional[str] = None
         self._goal_text: str = ""
@@ -156,6 +166,7 @@ class BlossomRunnerAgent(BaseAgent):
     # Public entry
     # ------------------------------------------------------------------ #
     async def run(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        await self._ensure_bus_ready()
         goal = context.get("goal", {}) or {}
         goal_text = (goal.get("goal_text") or "").strip()
         self.run_id = context.get("pipeline_run_id")
@@ -277,17 +288,67 @@ class BlossomRunnerAgent(BaseAgent):
         }
         return context
 
+
+
+    async def _ensure_bus_ready(self) -> None:
+        """
+        Idempotent: make sure JetStream stream exists, subjects are bound,
+        and a health round-trip works before we start emitting.
+        """
+
+        await self.memory.bus.wait_ready(timeout=8.0)  # health RPC round-trip
+        # else: best effort, continue
+
+        # 2) Ensure stream + subjects (declare-on-use, idempotent)
+        await self.memory.bus.ensure_stream(BUS_STREAM, subjects=[
+                SUBJ["PROMPT_REQ"],
+                SUBJ["RESP_READY"],
+                SUBJ["PROMPT_DLQ"],  # harmless if you keep a DLQ
+            ])
+
+    async def _ensure_result_consumer(self):
+        await self.memory.bus.ensure_consumer(
+            stream=BUS_STREAM,
+            subject=SUBJ["RESP_READY"],
+            durable="d_blossom_resp_ready",
+            ack_wait=30,
+            max_deliver=5,
+        )
+
+    async def _bus_publish_safe(self, subject: str, payload: Dict[str, Any], *, retries: int = 4):
+        bus = self.memory.bus
+        encoded = payload  # your bus publishes dict→json internally; if not, json.dumps here
+
+        await bus.ensure_stream(BUS_STREAM, subjects=[subject])
+
+        # Retry with jitter; on final failure, park in DLQ if present
+        backoff = 0.2
+        for attempt in range(retries + 1):
+            try:
+                return await bus.publish(subject=subject, payload=encoded)
+            except Exception as e:
+                if attempt == retries:
+                    try:
+                        if SUBJECT := SUBJ.get("PROMPT_DLQ"):
+                            await bus.publish(subject=SUBJECT, payload={
+                                "subject": subject, "payload": payload, "error": str(e)
+                            })
+                    finally:
+                        # don't raise; the caller should continue (telemetry best-effort)
+                        return None
+                await asyncio.sleep(min(3.0, backoff))
+                backoff *= 2.0
+
     # ------------------------------------------------------------------ #
     # Telemetry sinks
     # ------------------------------------------------------------------ #
     async def _timeline_sink(self, event: str, payload: Dict[str, Any]) -> None:
-        """Emit to bus; never raise."""
         if not self.run_id:
             return
         try:
             if event == "node":
                 node = payload.get("node", payload)
-                await self.memory.bus.publish(
+                await self._bus_publish_safe(
                     subject=self.msubj_req,
                     payload={
                         "run_id": self.run_id,
@@ -302,9 +363,8 @@ class BlossomRunnerAgent(BaseAgent):
                     },
                 )
             elif event == "report":
-                await self.memory.bus.publish(
-                    subject=self.ats_report,
-                    payload={"run_id": self.run_id},
+                await self._bus_publish_safe(
+                    subject=self.ats_report, payload={"run_id": self.run_id}
                 )
         except Exception as e:
             log.warning("Blossom timeline sink failed: %s", e)

@@ -22,7 +22,7 @@ from stephanie.utils.progress_mixin import ProgressMixin
 # --------------------------- CONFIG ---------------------------
 
 @dataclass
-class NexusImproverConfig:
+class NexusImproverAsyncConfig:
     k_candidates: int = 2
     sharpen_iters: int = 1
     novelty_tau: float = 0.12
@@ -37,8 +37,8 @@ class NexusImproverConfig:
     blossom_cfg: Dict[str, Any] = field(default_factory=dict)
 
     @staticmethod
-    def from_cfg(cfg: Dict[str, Any]) -> "NexusImproverConfig":
-        return NexusImproverConfig(
+    def from_cfg(cfg: Dict[str, Any]) -> NexusImproverAsyncConfig:
+        return NexusImproverAsyncConfig(
             k_candidates=int(cfg.get("k_candidates", 2)),
             sharpen_iters=int(cfg.get("sharpen_iters", 1)),
             novelty_tau=float(cfg.get("novelty_tau", 0.12)),
@@ -56,7 +56,7 @@ class NexusImproverConfig:
 
 # --------------------------- AGENT ---------------------------
 
-class NexusImproverAgent(ProgressMixin, BaseAgent):
+class NexusImproverAsyncAgent(ProgressMixin, BaseAgent):
     """
     Improves a cohort of Scorables via Blossom (generate -> refine -> select),
     evaluates lift, persists training events, and reports progress in real time.
@@ -69,7 +69,7 @@ class NexusImproverAgent(ProgressMixin, BaseAgent):
     def __init__(self, cfg: Dict[str, Any], memory, container, logger):
         super().__init__(cfg, memory, container, logger)
         self._init_progress(container, logger)
-        self.cfg = NexusImproverConfig.from_cfg(cfg or {})
+        self.cfg = NexusImproverAsyncConfig.from_cfg(cfg or {})
         self.scoring: ScoringService = container.get("scoring")
         self.blossom = BlossomRunnerAgent(self.cfg.blossom_cfg, memory, container, logger)
 
@@ -107,7 +107,7 @@ class NexusImproverAgent(ProgressMixin, BaseAgent):
         for s in items:
             scorable = Scorable.from_dict(s)
             eval_res = self._eval_state(scorable, context, use_vpm_phi=use_vpm_phi)
-            sid = str(getattr(scorable, "id", None))
+            sid = str(getattr(scorable, "id", None) or f"tmp-{idx}")
             base_evals[sid] = float(eval_res["overall"])
             base_vectors[sid] = dict(eval_res["dims"])
             if self.cfg.persist_scores:
@@ -128,6 +128,29 @@ class NexusImproverAgent(ProgressMixin, BaseAgent):
             ep_task = self._task_episode_name(getattr(scorable, "id", "unknown"))
             est_total = max(1, self.cfg.k_candidates * max(1, self.cfg.sharpen_iters))
             self.pstart(ep_task, total=est_total)
+
+            offload = bool(self.cfg.blossom_cfg.get("offload_prompts", False))
+            if offload:
+                tickets = await self._offload_candidate_prompts(
+                    scorable,
+                    {**context, "progress_task": ep_task},
+                    k=self.cfg.k_candidates,
+                    model=self.cfg.blossom_cfg.get("model", "gpt-4o-mini"),
+                    target_pool=self.cfg.blossom_cfg.get("target_pool", "provider"),
+                )
+                # record and move on; don't wait
+                context.setdefault("pending_prompt_tickets", []).extend(tickets)
+                # mark this episode as pending
+                decisions.append({
+                    "parent_id": getattr(scorable, "id", None),
+                    "status": "pending_prompts",
+                    "k_requested": self.cfg.k_candidates
+                })
+                self.pstep(task_run, n=1)
+                self.pdone(ep_task)  # ← add this
+
+                # skip sync blossom path
+                continue
 
             children, blossom_meta = await self._blossom_and_refine(
                 s,
@@ -184,8 +207,9 @@ class NexusImproverAgent(ProgressMixin, BaseAgent):
 
             # link & promote
             self._safe_link_and_promote(
-                scorable, [getattr(c, "id", None) for c, _ in cand_evals], winner, lift
+                scorable, [c for c, _ in cand_evals], winner, lift
             )
+
 
             # training events
             self._safe_emit_training(
@@ -236,6 +260,48 @@ class NexusImproverAgent(ProgressMixin, BaseAgent):
         context[self.output_key] = report
 
         return context
+
+
+    # inside NexusImproverAsyncAgent
+    async def _offload_candidate_prompts(
+        self,
+        parent: Scorable,
+        context: Dict[str, Any],
+        *,
+        k: int,
+        model: str,
+        target_pool: str,
+    ) -> List[Dict[str, str]]:
+        """
+        Publish K prompt jobs for this parent and return a list of tickets:
+        [{job_id, return_topic, parent_id, k_index}, ...]
+        """
+        from stephanie.prompts.prompt_client import PromptClient
+
+        # Build K prompts (you likely already have a prompt template in Blossom)
+        prompts = []
+        for i in range(k):
+            prompts.append({
+                "messages": [
+                    {"role": "system", "content": "You are a careful refiner."},
+                    {"role": "user", "content": f"Refine this answer for goal:\n{(context.get('goal') or {}).get('goal_text','')}\n\n---\n{parent.text}\n"}
+                ],
+                # you can pour per-prompt params here
+            })
+
+        client = PromptClient()
+        tickets = await client.offload_many(
+            scorable_id=str(parent.id),
+            prompts=prompts,
+            model=model,
+            target_pool=target_pool,
+            priority="high",
+            group_key=f"nexus:{context.get('pipeline_run_id')}",
+            meta={"purpose": "nexus_blossom_refine", "parent_id": str(parent.id)},
+            response_format="text",
+        )
+        # normalize for context
+        return [{"job_id": jid, "return_topic": rt, "parent_id": str(parent.id), "k_index": str(i)} for i,(jid,rt) in enumerate(tickets)]
 
     # --------------------------- CORE HELPERS ---------------------------
 
@@ -358,6 +424,7 @@ class NexusImproverAgent(ProgressMixin, BaseAgent):
         top_reward = float(winners[0]["reward"]) if winners else 0.0
 
         # resolve texts for each winner
+        # resolve texts for each winner
         resolved_children: List[Scorable] = []
         resolved_winners: List[Dict[str, Any]] = []
 
@@ -366,11 +433,36 @@ class NexusImproverAgent(ProgressMixin, BaseAgent):
             if not text:
                 continue
 
+            node_id = resolved_node_id
+
+            # If we don't have a DB node for this text, create one so we get a real integer id
+            if node_id is None:
+                try:
+                    if hasattr(self.memory, "blossoms") and hasattr(self.memory.blossoms, "create_node"):
+                        node = self.memory.blossoms.create_node(
+                            blossom_id=int(episode_id) if str(episode_id).isdigit() else episode_id,
+                            state_text=text,
+                            # NB: If your schema expects "parent is a NODE id", you may need to resolve that separately.
+                            # Using a scorable id here only if it's actually a node id in your system.
+                            # parent_id=None  # safer default unless you truly have the node id
+                        )
+                        node_id = int(node.id)
+                except Exception as e:
+                    self._slog("BlossomCreateNodeError", {"episode_id": episode_id, "error": str(e)})
+
+            # Build the child once, with a stable id (prefer the real node id)
+            scorable_id = str(node_id) if isinstance(node_id, int) else f"blossom:{episode_id}:{resolved_node_id or i}"
             child = Scorable(
-                id=f"blossom:{episode_id}:{resolved_node_id or i}",
+                id=scorable_id,
                 text=str(text),
                 target_type=getattr(parent, "target_type", "document"),
             )
+            # Persist the true DB node id (if any) for later linking/promote
+            try:
+                setattr(child, "blossom_node_id", node_id if isinstance(node_id, int) else None)
+            except Exception:
+                pass
+
             resolved_children.append(child)
 
             resolved_winners.append({
@@ -380,6 +472,7 @@ class NexusImproverAgent(ProgressMixin, BaseAgent):
                 "path": w.get("path"),
                 "sharpened_meta": (w.get("sharpened") or {}),
                 "text_len": len(text or ""),
+                "node_id": node_id if isinstance(node_id, int) else None,
             })
 
         blossom_meta = {
@@ -500,36 +593,49 @@ class NexusImproverAgent(ProgressMixin, BaseAgent):
         except Exception as e:
             self._slog("PersistDimsError", {"id": getattr(scorable, "id", None), "error": str(e)})
 
-    def _safe_link_and_promote(self, parent: Scorable, child_ids: List[str], winner: Optional[Scorable], lift: float):
+    def _safe_link_and_promote(self, parent: Scorable, candidates: List[Scorable], winner: Optional[Scorable], lift: float):
+        def _to_int(x) -> Optional[int]:
+            try:
+                if isinstance(x, int):
+                    return x
+                if isinstance(x, str) and x.isdigit():
+                    return int(x)
+            except Exception:
+                pass
+            return None
+
         # link parent->children using only integer node ids
         try:
-            int_child_ids = []
-            for cid in child_ids:
-                try:
-                    int_child_ids.append(int(cid))
-                except Exception:
-                    continue  # skip non-integer ids (e.g., "blossom:127:0")
+            int_child_ids: List[int] = []
+            for c in candidates:
+                nid = getattr(c, "blossom_node_id", None)
+                if not isinstance(nid, int):
+                    nid = _to_int(getattr(c, "id", None))
+                if isinstance(nid, int):
+                    int_child_ids.append(nid)
 
-            if int_child_ids and hasattr(self.memory, "blossoms") and hasattr(self.memory.blossoms, "link_parent_children"):
-                self.memory.blossoms.link_parent_children(
-                    parent_id=int(parent.id) if isinstance(parent.id, (int,)) or str(parent.id).isdigit() else None,
-                    child_ids=int_child_ids
-                )
+            pid = getattr(parent, "blossom_node_id", None)
+            if not isinstance(pid, int):
+                pid = _to_int(getattr(parent, "id", None))
+
+            if int_child_ids and pid is not None and hasattr(self.memory, "blossoms") and hasattr(self.memory.blossoms, "link_parent_children"):
+                self.memory.blossoms.link_parent_children(parent_id=pid, child_ids=int_child_ids)
         except Exception as e:
             self._slog("BlossomLinkError", {"parent": getattr(parent, "id", None), "error": str(e)})
 
         # promote only if winner maps to a real integer node id
         try:
             if winner and lift >= self.cfg.promote_margin and hasattr(self.memory, "nexus") and hasattr(self.memory.nexus, "promote"):
-                try:
-                    wid = int(getattr(winner, "id", -1))
-                except Exception:
-                    wid = None
-                if wid is not None:
-                    self.memory.nexus.promote(parent_id=getattr(parent, "id", None), child_id=wid, reason="local_improvement")
+                wid = getattr(winner, "blossom_node_id", None)
+                if not isinstance(wid, int):
+                    wid = _to_int(getattr(winner, "id", None))
+                pid = getattr(parent, "blossom_node_id", None)
+                if not isinstance(pid, int):
+                    pid = _to_int(getattr(parent, "id", None))
+                if isinstance(wid, int) and isinstance(pid, int):
+                    self.memory.nexus.promote(parent_id=pid, child_id=wid, reason="local_improvement")
         except Exception as e:
             self._slog("NexusPromoteError", {"parent": getattr(parent, "id", None), "error": str(e)})
-
 
     def _safe_emit_training(
         self,

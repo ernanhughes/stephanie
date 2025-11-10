@@ -123,6 +123,7 @@ class NatsKnowledgeBus(BusProtocol):
         self._stream_subjects: List[str] = [f"{self.stream}.>"]
         self._stopping: bool = False
 
+
     # ---------- Connection management ----------
 
     async def connect(self, force: bool = False) -> bool:
@@ -155,7 +156,7 @@ class NatsKnowledgeBus(BusProtocol):
 
             # If forcing, drain old connection
             if self._nc and not self._nc.is_closed and force:
-                with contextlib.suppress(Exception):
+                with contextlib.suppress(Exception): 
                     await self._nc.drain()
 
             # Establish a fresh connection and only commit on full readiness
@@ -651,6 +652,140 @@ class NatsKnowledgeBus(BusProtocol):
 
     async def _on_error_cb(self, e):
         log.error(f"NATSLowLevelError error: {repr(e)}")
+
+
+    # ---------- Stream / Consumer helpers (JetStream) ----------
+
+    # ------------- Readiness helpers / ensure APIs -------------
+
+    @property
+    def is_connected(self) -> bool:
+        return bool(self._connected and self._nc and not self._nc.is_closed)
+
+    async def wait_ready(self, timeout: float = 5.0) -> bool:
+        """
+        Consider NATS 'ready' when:
+          - TCP connected and not closed
+          - JetStream available
+          - Stream exists (auto-created if missing)
+          - A tiny publish on '<stream>.health' succeeds
+        """
+        try:
+            await self._ensure_connected()
+            if not self.is_connected or not self._js:
+                return False
+
+            # Ensure stream with current subject set
+            try:
+                await asyncio.wait_for(self._js.stream_info(self.stream), timeout=timeout)
+            except Exception:
+                cfg = StreamConfig(name=self.stream, subjects=self._stream_subjects,
+                                   retention=RetentionPolicy.Limits)
+                await asyncio.wait_for(self._js.add_stream(cfg), timeout=timeout)
+
+            # Health ping
+            ok = False
+            try:
+                await asyncio.wait_for(self._js.publish(f"{self.stream}.health", b"ping"), timeout=timeout)
+                ok = True
+            except Exception as e:
+                log.error("NATS wait_ready health publish failed: %r", e)
+            return ok
+        except Exception:
+            return False
+
+    async def ensure_stream(self, stream: str, subjects: List[str]) -> bool:
+        """
+        Ensure a JetStream stream with the provided subject list exists.
+        Idempotent: will create if missing, update subjects if needed.
+        """
+        await self._ensure_connected()
+        if not self.is_connected or not self._js:
+            return False
+
+        # cache locally for future connects
+        self._stream_subjects = subjects or [f"{stream}.>"]
+        if stream != self.stream:
+            # Allow temporary ensure of a different stream (keeps internal default)
+            pass
+
+        try:
+            si = await self._js.stream_info(stream)
+            # If subjects differ, try to update (best-effort; some servers disallow)
+            have = set(getattr(si.config, "subjects", []) or [])
+            want = set(self._stream_subjects)
+            if have != want:
+                try:
+                    cfg = StreamConfig(name=stream, subjects=list(want),
+                                       retention=RetentionPolicy.Limits)
+                    # Some servers require delete+recreate; try update first:
+                    await self._js.update_stream(cfg)  # may not exist on older libs
+                except Exception:
+                    # fallback: delete and recreate (danger: purges data)
+                    try:
+                        await self._js.delete_stream(stream)
+                    except Exception:
+                        pass
+                    cfg = StreamConfig(name=stream, subjects=list(want),
+                                       retention=RetentionPolicy.Limits)
+                    await self._js.add_stream(cfg)
+            return True
+        except Exception:
+            # create new
+            try:
+                cfg = StreamConfig(name=stream, subjects=self._stream_subjects,
+                                   retention=RetentionPolicy.Limits)
+                await self._js.add_stream(cfg)
+                return True
+            except Exception as e:
+                log.error("NATS ensure_stream failed: %r", e)
+                return False
+
+    async def ensure_consumer(
+        self,
+        stream: str,
+        subject: str,
+        durable: str,
+        *,
+        ack_wait: Optional[int] = None,
+        max_deliver: Optional[int] = None,
+        deliver_group: Optional[str] = None,
+        deliver_policy: Optional[DeliverPolicy] = None,
+    ) -> bool:
+        """
+        Ensure a durable consumer that filters on the given subject.
+        deliver_group is advisory for your subscribe() call (queue group).
+        """
+        await self._ensure_connected()
+        if not self.is_connected or not self._js:
+            return False
+
+        # Convert ack_wait seconds -> timedelta
+        ack_td = _as_timedelta(ack_wait, default_seconds=(self.timeout * 5))
+        cfg = ConsumerConfig(
+            durable_name=durable,                      # nats-py accepts either durable_name or durable
+            filter_subject=f"{stream}.{subject}",
+            deliver_policy=deliver_policy or DeliverPolicy.ALL,
+            ack_wait=ack_td,
+            max_deliver=(self.max_retries + 1) if max_deliver is None else int(max_deliver),
+        )
+
+        try:
+            # If consumer exists, this will return info; else add it.
+            try:
+                await self._js.consumer_info(stream, durable)
+                # Consider updating if needed (best-effort; many servers disallow updates)
+                try:
+                    await self._js.update_consumer(stream, cfg)  # may not exist on older libs
+                except Exception:
+                    pass
+                return True
+            except Exception:
+                await self._js.add_consumer(stream, cfg)
+                return True
+        except Exception as e:
+            log.error("NATS ensure_consumer failed: %r", e)
+            return False
 
     # Monitors
 

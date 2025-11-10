@@ -228,6 +228,23 @@ class MemoryTool:
                 return
             ok = await self.bus.connect()
             if ok:
+
+                await self.bus.wait_ready(timeout=5)
+                # Ensure your stream & key subjects exist
+                await self.bus.ensure_stream("stephanie", [
+                    "stephanie.blossom.prompt.request",
+                    "stephanie.blossom.prompt.responses.available",
+                    "stephanie.health",
+                ])
+                # Ensure a durable for the responses channel (so you don’t miss replays)
+                await self.bus.ensure_consumer(
+                    stream="stephanie",
+                    subject="blossom.prompt.responses.available",  # Hybrid adds stream where needed
+                    durable="d_blossom_resp_ready",
+                    ack_wait=30,
+                    max_deliver=5,
+                )
+
                 self._bus_connected_evt.set()
                 self.logger.info("KnowledgeBusReady", {"backend": self.bus.get_backend()})
                 return

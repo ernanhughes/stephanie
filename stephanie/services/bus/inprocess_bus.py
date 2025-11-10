@@ -64,92 +64,8 @@ class InProcessKnowledgeBus(BusProtocol):
         self._connected = False
         self._loop = asyncio.get_event_loop()
 
-    async def connect(self) -> bool:
-        """
-        Connect to the in-process bus.
-        
-        Returns:
-            bool: Always returns True (in-process bus is always available)
-        """
-        self._connected = True
-        log.debug("Connected to in-process event bus (development mode)")
-        return True
-        
-    async def publish(self, subject: str, payload: Dict[str, Any]) -> None:
-        """
-        Publish an event to all subscribers.
-        
-        Wraps the payload in a standard envelope with metadata before
-        delivering to subscribers.
-        
-        Args:
-            subject: Event subject/topic
-            payload: Event data payload
-        """
-        if not self._connected:
-            if not await self.connect():
-                return
-                
-        # Create standard event envelope
-        envelope = {
-            "event_id": f"{subject}-{uuid.uuid4().hex}",
-            "timestamp": time.time(),
-            "subject": subject,
-            "payload": payload,
-        }
-
-        # 1) broadcast to non-group subscribers
-        for handler in self._subscribers.get(subject, []):
-            if asyncio.iscoroutinefunction(handler):
-                asyncio.create_task(handler(envelope["payload"]))
-            else:
-                asyncio.create_task(self._loop.run_in_executor(None, handler, envelope["payload"]))
-
-        # 2) queue-group delivery: one handler per group (round-robin)
-        for group in self._groups_by_subject.get(subject, []):
-            key = (subject, group)
-            meta = self._qgroups.get(key)
-            if not meta or not meta["handlers"]:
-                continue
-            idx = meta["rr"] % len(meta["handlers"])
-            meta["rr"] = (meta["rr"] + 1) % max(1, len(meta["handlers"]))
-            handler = meta["handlers"][idx]
-            if asyncio.iscoroutinefunction(handler):
-                asyncio.create_task(handler(envelope["payload"]))
-            else:
-                asyncio.create_task(self._loop.run_in_executor(None, handler, envelope["payload"]))
-                
-    async def subscribe(
-        self,
-        subject: str,
-        handler: Callable[[Dict[str, Any]], None],
-        queue_group: Optional[str] = None,      # ← add
-    ) -> None:
-        """
-        Subscribe to events on a subject.
-        
-        Args:
-            subject: Event subject/topic to subscribe to
-            handler: Callback function to handle events
-        """
-        if not self._connected:
-            if not await self.connect():
-                return
-
-        if queue_group:
-            key = (subject, queue_group)
-            meta = self._qgroups.setdefault(key, {"handlers": [], "rr": 0})
-            meta["handlers"].append(handler)
-            self._groups_by_subject.setdefault(subject, []).append(queue_group) \
-                if queue_group not in self._groups_by_subject.get(subject, []) else None
-            log.debug(f"[inproc] Subscribed to {subject} in group '{queue_group}' "
-                          f"({len(meta['handlers'])} handlers in group)")
-            return
-
-        self._subscribers.setdefault(subject, []).append(handler)
-        log.debug(f"[inproc] Subscribed to {subject} "
-                      f"({len(self._subscribers[subject])} non-group handlers)")
-
+       
+    
     async def request(self, subject: str, payload: Dict[str, Any], timeout: float = 5.0) -> Optional[Dict[str, Any]]:
         """
         Send a request and wait for a reply.
@@ -178,6 +94,134 @@ class InProcessKnowledgeBus(BusProtocol):
         """Return the active backend name."""
         return "inprocess"
         
+    # ---------- Compatibility helpers (no-op / emulated) ----------
+
+
+    @property
+    def is_connected(self) -> bool:
+        return bool(self._connected)
+
+    async def connect(self) -> bool:
+        self._connected = True
+        log.debug("[inproc] connected")
+        return True
+
+    async def publish(self, subject: str, payload: Dict[str, Any], headers: Optional[Dict[str, str]] = None) -> None:
+        # headers accepted for parity, ignored
+        if not self._connected:
+            if not await self.connect():
+                return
+        envelope = {
+            "event_id": f"{subject}-{uuid.uuid4().hex}",
+            "timestamp": time.time(),
+            "subject": subject,
+            "payload": payload,
+        }
+        # broadcast to non-group handlers
+        for handler in self._subscribers.get(subject, []):
+            if asyncio.iscoroutinefunction(handler):
+                asyncio.create_task(handler(envelope["payload"]))
+            else:
+                asyncio.create_task(self._loop.run_in_executor(None, handler, envelope["payload"]))
+        # group (round-robin)
+        for group in self._groups_by_subject.get(subject, []):
+            key = (subject, group)
+            meta = self._qgroups.get(key)
+            if not meta or not meta["handlers"]:
+                continue
+            idx = meta["rr"] % len(meta["handlers"])
+            meta["rr"] = (meta["rr"] + 1) % max(1, len(meta["handlers"]))
+            handler = meta["handlers"][idx]
+            if asyncio.iscoroutinefunction(handler):
+                asyncio.create_task(handler(envelope["payload"]))
+            else:
+                asyncio.create_task(self._loop.run_in_executor(None, handler, envelope["payload"]))
+
+    async def subscribe(
+        self,
+        subject: str,
+        handler: Callable[[Dict[str, Any]], None],
+        *,
+        queue: Optional[str] = None,
+        queue_group: Optional[str] = None,
+        deliver_group: Optional[str] = None,
+        durable: Optional[str] = None,
+        ack_wait: Optional[int] = None,
+        max_deliver: Optional[int] = None,
+        deliver_policy: Optional[Any] = None,
+    ) -> None:
+        # Parity: accept same kwargs as NATS; most are ignored here.
+        if not self._connected:
+            if not await self.connect():
+                return
+        qgroup = queue or deliver_group or queue_group
+        if qgroup:
+            key = (subject, qgroup)
+            meta = self._qgroups.setdefault(key, {"handlers": [], "rr": 0})
+            meta["handlers"].append(handler)
+            if qgroup not in self._groups_by_subject.get(subject, []):
+                self._groups_by_subject.setdefault(subject, []).append(qgroup)
+            log.debug("[inproc] Subscribed %s in group '%s' (%d handlers)",
+                      subject, qgroup, len(meta["handlers"]))
+            return
+        self._subscribers.setdefault(subject, []).append(handler)
+        log.debug("[inproc] Subscribed %s (%d non-group handlers)",
+                  subject, len(self._subscribers[subject]))
+
+    async def wait_ready(self, timeout: float = 5.0) -> bool:
+        """Always ready once connected; returns True."""
+        if not self._connected:
+            await self.connect()
+        log.debug("[inproc] wait_ready -> True")
+        return True
+
+    async def ensure_stream(self, stream: str, subjects: List[str]) -> bool:
+        """
+        Emulate JetStream ensure_stream: we just record subjects to help with debugging.
+        """
+        if not self._connected:
+            await self.connect()
+        if not hasattr(self, "_streams"):
+            self._streams: Dict[str, set] = {}
+        s = self._streams.setdefault(stream, set())
+        before = len(s)
+        for sub in subjects or []:
+            s.add(str(sub))
+        after = len(s)
+        log.debug("[inproc] ensure_stream stream=%s subjects_now=%d (changed=%s)", stream, after, after != before)
+        return True
+
+    async def ensure_consumer(
+        self,
+        stream: str,
+        subject: str,
+        durable: str,
+        *,
+        ack_wait: Optional[int] = None,
+        max_deliver: Optional[int] = None,
+        deliver_group: Optional[str] = None,
+        deliver_policy: Optional[Any] = None,
+    ) -> bool:
+        """
+        Emulate consumer creation: record durable and subject mapping.
+        """
+        if not self._connected:
+            await self.connect()
+        if not hasattr(self, "_consumers"):
+            self._consumers: Dict[str, Dict[str, Any]] = {}
+        key = f"{stream}:{durable}"
+        self._consumers[key] = {
+            "stream": stream,
+            "subject": subject,
+            "durable": durable,
+            "ack_wait": ack_wait,
+            "max_deliver": max_deliver,
+            "deliver_group": deliver_group,
+        }
+        log.debug("[inproc] ensure_consumer stream=%s durable=%s subject=%s group=%s", stream, durable, subject, deliver_group)
+        return True
+
+
     @property
     def idempotency_store(self):
         """Access the idempotency store for this bus."""
