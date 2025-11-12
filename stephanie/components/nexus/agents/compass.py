@@ -32,9 +32,7 @@ from stephanie.constants import PIPELINE_RUN_ID
 from stephanie.scoring.scorable import Scorable, ScorableType
 from stephanie.scoring.scorable_processor import ScorableProcessor
 from stephanie.services.scoring_service import ScoringService
-from stephanie.services.workers.nexus_workers import (
-    NexusVPMWorkerInline,
-)
+from stephanie.services.workers.nexus_workers import NexusVPMWorkerInline
 from stephanie.services.zeromodel_service import ZeroModelService
 from stephanie.utils.embed_utils import as_list_floats, cos_safe, has_vec
 from stephanie.utils.graph_utils import compute_run_metrics
@@ -257,33 +255,7 @@ class CompassAgent(BaseAgent, ProgressMixin):
         if context.get("scorables_targeted") and context.get(
             "scorables_baseline"
         ):
-            # ensure vectors exist (normalizes numpy etc.)
-            await self._ensure_embeddings_global(context["scorables_targeted"])
-            await self._ensure_embeddings_global(context["scorables_baseline"])
-
-            # build a goal vector (same source as the A/B split)
-            gx = (context.get("goal") or {}).get("goal_text") or ""
-            target_vec = (
-                as_list_floats(self.memory.embedding.get_or_create(gx))
-                if gx
-                else []
-            )
-            tgt_ctx = await self._emit_single_run(
-                run_id=f"{run_id_root}-targeted",
-                scorables=context["scorables_targeted"],
-                context=context,
-                target_vec=target_vec,
-            )
-            bl_ctx = await self._emit_single_run(
-                run_id=f"{run_id_root}-baseline",
-                scorables=context["scorables_baseline"],
-                context=context,
-                target_vec=target_vec,
-            )
-            # publish A/B paths for GAP
-            context["ab_targeted_run_dir"] = tgt_ctx["nexus_run_dir"]
-            context["ab_baseline_run_dir"] = bl_ctx["nexus_run_dir"]
-            return context
+            return await self.process_existing(run_id_root, context)
 
         scorables: List[Dict[str, Any]] = list(context.get("scorables", []))
 
@@ -442,64 +414,7 @@ class CompassAgent(BaseAgent, ProgressMixin):
         self._init_snapshots(out_dir)
 
         if not scorables:
-            # minimal manifest
-            manifest = NexusRunManifest(
-                run_id=run_id,
-                created_utc=time.time(),
-                extras={
-                    "goal": context.get("goal"),
-                    "source": context.get("source"),
-                    "count_scorables": 0,
-                },
-            )
-            manifest.save(out_dir)
-
-            # empty run_metrics + frames so downstream GAP/renderer don't choke
-            with (out_dir / "run_metrics.json").open(
-                "w", encoding="utf-8"
-            ) as f:
-                json.dump(
-                    {
-                        "nodes": 0,
-                        "edges": 0,
-                        "avg_degree": 0.0,
-                        "mean_edge_weight": 0.0,
-                        "connected_components": 0,
-                        "largest_component": 0,
-                        "clustering_coeff": 0.0,
-                        "mutual_knn_frac": 0.0,
-                        "spatial": {
-                            "mean_edge_len": 0.0,
-                            "p10": 0.0,
-                            "p90": 0.0,
-                        },
-                        "goal_alignment": {
-                            "mean": 0.0,
-                            "median": 0.0,
-                            "p90": 0.0,
-                            "count": 0,
-                        },
-                    },
-                    f,
-                    indent=2,
-                )
-            with (out_dir / "frames.json").open("w", encoding="utf-8") as f:
-                json.dump([], f)
-
-            log.warning(
-                "NexusInlineAgent: run %s had 0 scorables; wrote empty artifacts.",
-                run_id,
-            )
-            return {
-                "nexus_graph_json": (
-                    out_dir / "graph.json"
-                ).as_posix(),  # may not exist; fine
-                "nexus_graph_html": (
-                    out_dir / "graph.html"
-                ).as_posix(),  # may not exist; fine
-                "nexus_manifest_path": (out_dir / "manifest.json").as_posix(),
-                "nexus_run_dir": out_dir.as_posix(),
-            }
+            return await self.no_scorables(run_id, out_dir, context)
 
         dims_for_vpm = self.dimensions
 
@@ -542,7 +457,7 @@ class CompassAgent(BaseAgent, ProgressMixin):
             for idx, enhanced_scorable in enumerate(scorables):
                 sc = Scorable.from_dict(enhanced_scorable)
 
-                columns, values, vector = [], [], {}
+                columns, values, vector, rows = [], [], {}, None
                 with _stage(log, "Nexus.score_and_append"):
                     row = await self.scorable_processor.process(enhanced_scorable, context=context)
                     columns = row.get("metrics_columns") or []
@@ -559,6 +474,7 @@ class CompassAgent(BaseAgent, ProgressMixin):
                     vpm_rec = await self.vpmw.run_item(
                         run_id,
                         sc,
+                        row, 
                         out_dir=str(item_dir),
                         dims_for_score=dims_for_vpm,
                         rollout_steps=int(self.rollout_steps),
@@ -803,6 +719,99 @@ class CompassAgent(BaseAgent, ProgressMixin):
             f"NexusInlineAgent completed run {run_id}, output in \n{out_dir.as_posix()}"
         )
         return run_ctx
+
+
+    async def process_existing(self, run_id_root:str, context: Dict[str, Any]) -> Dict[str, Any]:
+        # ensure vectors exist (normalizes numpy etc.)
+        await self._ensure_embeddings_global(context["scorables_targeted"])
+        await self._ensure_embeddings_global(context["scorables_baseline"])
+
+        # build a goal vector (same source as the A/B split)
+        gx = (context.get("goal") or {}).get("goal_text") or ""
+        target_vec = (
+            as_list_floats(self.memory.embedding.get_or_create(gx))
+            if gx
+            else []
+        )
+        tgt_ctx = await self._emit_single_run(
+            run_id=f"{run_id_root}-targeted",
+            scorables=context["scorables_targeted"],
+            context=context,
+            target_vec=target_vec,
+        )
+        bl_ctx = await self._emit_single_run(
+            run_id=f"{run_id_root}-baseline",
+            scorables=context["scorables_baseline"],
+            context=context,
+            target_vec=target_vec,
+        )
+        # publish A/B paths for GAP
+        context["ab_targeted_run_dir"] = tgt_ctx["nexus_run_dir"]
+        context["ab_baseline_run_dir"] = bl_ctx["nexus_run_dir"]
+        return context
+
+
+    async def no_scorables(self, run_id:str, out_dir:Path, context: Dict[str, Any]) -> Dict[str, Any]:
+        # minimal manifest
+        manifest = NexusRunManifest(
+            run_id=run_id,
+            created_utc=time.time(),
+            extras={
+                "goal": context.get("goal"),
+                "source": context.get("source"),
+                "count_scorables": 0,
+            },
+        )
+        manifest.save(out_dir)
+
+        # empty run_metrics + frames so downstream GAP/renderer don't choke
+        with (out_dir / "run_metrics.json").open(
+            "w", encoding="utf-8"
+        ) as f:
+            json.dump(
+                {
+                    "nodes": 0,
+                    "edges": 0,
+                    "avg_degree": 0.0,
+                    "mean_edge_weight": 0.0,
+                    "connected_components": 0,
+                    "largest_component": 0,
+                    "clustering_coeff": 0.0,
+                    "mutual_knn_frac": 0.0,
+                    "spatial": {
+                        "mean_edge_len": 0.0,
+                        "p10": 0.0,
+                        "p90": 0.0,
+                    },
+                    "goal_alignment": {
+                        "mean": 0.0,
+                        "median": 0.0,
+                        "p90": 0.0,
+                        "count": 0,
+                    },
+                },
+                f,
+                indent=2,
+            )
+        with (out_dir / "frames.json").open("w", encoding="utf-8") as f:
+            json.dump([], f)
+
+        log.warning(
+            "NexusInlineAgent: run %s had 0 scorables; wrote empty artifacts.",
+            run_id,
+        )
+        return {
+            "nexus_graph_json": (
+                out_dir / "graph.json"
+            ).as_posix(),  # may not exist; fine
+            "nexus_graph_html": (
+                out_dir / "graph.html"
+            ).as_posix(),  # may not exist; fine
+            "nexus_manifest_path": (out_dir / "manifest.json").as_posix(),
+            "nexus_run_dir": out_dir.as_posix(),
+        }
+
+    
 
     # ---------- HELPERS ----------
     async def _ensure_embeddings_global(

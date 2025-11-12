@@ -263,7 +263,7 @@ class ScorableProcessor:
         metrics_columns = list(metrics_vector.keys())
         metrics_values = [float(metrics_vector[k]) for k in metrics_columns]
 
-        row = {
+        row = {**acc,    
             "scorable_id": str(scorable.id)
             or f"{scorable.target_type}:{self._hash_text(text)}",
             "scorable_type": scorable.target_type,
@@ -298,7 +298,7 @@ class ScorableProcessor:
                 "parent_scorable_type"
             ),
             "order_in_parent": (scorable.meta or {}).get("order_in_parent"),
-            "vpm_png": (scorable.meta or {}).get("vpm_png"),
+            "vpm_png": acc.get("vpm_png"),
             # "vision_signals": acc.get("vision_signals") or {},
             "rollout": (scorable.meta or {}).get("rollout") or {},
             "processor_version": "2.0",

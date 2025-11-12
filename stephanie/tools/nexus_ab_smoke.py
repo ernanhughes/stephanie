@@ -16,6 +16,8 @@ Notes
 - Backward compatible with your existing run_metrics.json layout:
     <root>/<run_id>-baseline/run_metrics.json
     <root>/<run_id>-targeted/run_metrics.json
+- If the above is missing per-metric aggregates, this script will
+  auto-aggregate from features.jsonl written by ScorableProcessor.
 - NexusImprover is optional. If provided, we compare:
     win_rate, mean_lift, topk_lift, diversity pre/post, novelty retention.
 """
@@ -26,12 +28,12 @@ import json
 import sys
 from pathlib import Path
 from statistics import mean
+from math import isfinite
 
 EPS = 1e-9
 
 # ---------- helpers -----------------------------------------------------------
 
-# replace your dot_get() with this
 def dot_get(d, path, stat="mean"):
     """
     Try root-level dotted path first; if missing, try metric_columns.<path>.<stat>.
@@ -47,7 +49,7 @@ def dot_get(d, path, stat="mean"):
     if cur is not None:
         return cur
 
-    # 2) metric_columns fallback
+    # 2) metric_columns fallback (aggregated)
     mc = d.get("metric_columns")
     if isinstance(mc, dict):
         col = mc.get(path)
@@ -85,8 +87,15 @@ def latest_nexus_report_under(runs_root: Path):
     return cand[0] if cand else None
 
 def safe_mean(lst):
-    lst = [x for x in lst if isinstance(x, (int, float))]
+    lst = [x for x in lst if isinstance(x, (int, float)) and isfinite(x)]
     return (sum(lst) / max(1, len(lst))) if lst else None
+
+def p90(lst):
+    lst = sorted(x for x in lst if isinstance(x, (int, float)) and isfinite(x))
+    if not lst:
+        return None
+    idx = int(0.9 * (len(lst)-1))
+    return lst[idx]
 
 # ---------- metric registry (unchanged, can extend) --------------------------
 
@@ -98,7 +107,7 @@ METRICS = [
     ("clustering_coeff",         "clustering_coeff",           "up",  "mean"),  # root
     ("spatial.mean_edge_len",    "spatial.mean_edge_len",      "down","mean"),  # root
 
-    # these come from metric_columns.<name>.<stat>
+    # these come from per-item features via ScorableProcessor (we aggregate here)
     ("text.len",                 "text.len",                   "down","mean"),
     ("text.words",               "text.words",                 "down","mean"),
     ("sicql.aggregate",          "sicql.aggregate",            "up",  "mean"),
@@ -106,10 +115,91 @@ METRICS = [
     ("sicql.clarity.uncertainty","sicql.clarity.attr.uncertainty","down","mean"),
     ("sicql.coverage.uncertainty","sicql.coverage.attr.uncertainty","down","mean"),
     ("sicql.faithfulness.uncertainty","sicql.faithfulness.attr.uncertainty","down","mean"),
-    ("sicql.clarity.advantage",  "sicql.clarity.attr.advantage","up", "mean"),   # less negative is better → “up”
+    ("sicql.clarity.advantage",  "sicql.clarity.attr.advantage","up", "mean"),   # less negative → “up”
     ("sicql.coverage.advantage", "sicql.coverage.attr.advantage","up","mean"),
     ("sicql.faithfulness.advantage","sicql.faithfulness.attr.advantage","up","mean"),
 ]
+
+# ---------- features.jsonl aggregation (NEW) ---------------------------------
+
+def _find_features_file(run_arm_dir: Path) -> Path | None:
+    """
+    Try common locations; otherwise first recursive match under the arm directory.
+    """
+    for p in [
+        run_arm_dir / "features.jsonl",
+        run_arm_dir / "manifest" / "features.jsonl",
+    ]:
+        if p.exists():
+            return p
+    matches = list(run_arm_dir.rglob("features.jsonl"))
+    return matches[0] if matches else None
+
+def _iter_features_rows(path: Path):
+    with path.open("r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                yield json.loads(line)
+            except Exception:
+                continue
+
+def _collect_metric_samples(features_path: Path) -> dict[str, list[float]]:
+    """
+    Build {metric_name -> [values...]} from features.jsonl rows.
+    - Supports either metrics_vector dict or (metrics_columns, metrics_values) arrays.
+    - Also derives text.len and text.words from the row's text.
+    """
+    pool: dict[str, list[float]] = {}
+    for row in _iter_features_rows(features_path):
+        # 1) metrics vector
+        vec = row.get("metrics_vector")
+        if not isinstance(vec, dict):
+            cols = row.get("metrics_columns") or []
+            vals = row.get("metrics_values") or []
+            if isinstance(cols, list) and isinstance(vals, list) and len(cols) == len(vals):
+                vec = {c: v for c, v in zip(cols, vals)}
+            else:
+                vec = {}
+
+        for k, v in vec.items():
+            if isinstance(v, (int, float)) and isfinite(v):
+                pool.setdefault(k, []).append(float(v))
+
+        # 2) cheap text features
+        text = row.get("text") or ""
+        pool.setdefault("text.len", []).append(float(len(text)))
+        pool.setdefault("text.words", []).append(float(len(text.split())))
+
+    return pool
+
+def augment_with_features(run_arm_dir: Path, metrics_dict: dict, wanted=METRICS):
+    """
+    If metrics_dict lacks metric_columns stats for wanted metrics, compute means/p90 from features.jsonl.
+    Injects them into metrics_dict['metric_columns'][name] = {'mean': ..., 'p90': ...}
+    """
+    fpath = _find_features_file(run_arm_dir)
+    if not fpath:
+        # soft warning only
+        print(colorize(f"• features.jsonl not found under {run_arm_dir}", "y"))
+        return
+
+    samples = _collect_metric_samples(fpath)
+    mc = metrics_dict.setdefault("metric_columns", {})
+
+    for (_name, path, _direction, stat) in wanted:
+        # if already present at root OR metric_columns, skip
+        if dot_get(metrics_dict, path, stat) is not None:
+            continue
+        vals = samples.get(path)
+        if not vals:
+            continue
+        mc[path] = {
+            "mean": safe_mean(vals),
+            "p90": p90(vals),
+        }
 
 # ---------- NexusImprover diff helpers ---------------------------------------
 
@@ -125,7 +215,6 @@ def nexus_summary(nr: dict):
     if not isinstance(nr, dict):
         return None
     dec = nr.get("decisions") or []
-    # novelty retention = mean(k_after_novelty / k_generated) when defined
     ratios = []
     for d in dec:
         k  = d.get("k_generated")
@@ -177,20 +266,27 @@ def main():
 
     root = Path(args.root)
     rid = args.run_id
-    base_metrics = load_json(root/f"{rid}-baseline"/"run_metrics.json")
-    targ_metrics = load_json(root/f"{rid}-targeted"/"run_metrics.json")
+    base_dir = root / f"{rid}-baseline"
+    targ_dir = root / f"{rid}-targeted"
 
-    if base_metrics is None or targ_metrics is None:
-        print(colorize("Missing run_metrics.json. Check --root and run_id.", "r"))
+    base_metrics = load_json(base_dir / "run_metrics.json") or {}
+    targ_metrics = load_json(targ_dir / "run_metrics.json") or {}
+
+    if not base_metrics and not targ_metrics:
+        print(colorize("Missing run_metrics.json for both arms. Check --root and run_id.", "r"))
         sys.exit(2)
+
+    # NEW: augment missing stats from features.jsonl (ScorableProcessor output)
+    augment_with_features(base_dir, base_metrics, METRICS)
+    augment_with_features(targ_dir, targ_metrics, METRICS)
 
     # ----- METRIC DELTAS -----------------------------------------------------
     rows = []
     print()
     print(colorize("=== Metric deltas (direction-aware) ===", "g"))
     for name, path, direction, stat in METRICS:
-        vb = dot_get(base_metrics, path)
-        vt = dot_get(targ_metrics, path)
+        vb = dot_get(base_metrics, path, stat)
+        vt = dot_get(targ_metrics, path, stat)
         imp = rel_improvement(vb, vt, direction)
         base_s, targ_s = fmt(vb), fmt(vt)
         delta_s = "n/a" if imp is None else f"{imp*100:+.1f}%"
@@ -378,7 +474,8 @@ def main():
             sa = nexus_summary(nexus_a) if nexus_a else {}
             sb = nexus_summary(nexus_b) if nexus_b else {}
             def mline(lbl, key):
-                md.append(f"- **{lbl}**: A={fmt(sa.get(key))} → B={fmt(sb.get(key))} (Δ%={fmt(rel(sa.get(key), sb.get(key)) and rel(sa.get(key), sb.get(key))*100, 1)})")
+                relv = rel(sa.get(key), sb.get(key))
+                md.append(f"- **{lbl}**: A={fmt(sa.get(key))} → B={fmt(sb.get(key))} (Δ%={fmt(None if relv is None else relv*100, 1)})")
             for k, lbl in [
                 ("win_rate","Win rate"), ("mean_lift","Mean lift"),
                 ("topk_lift","Top-K lift"), ("novelty_retention","Novelty retention"),
@@ -389,15 +486,16 @@ def main():
         print(colorize(f"Wrote Markdown  → {args.md_out}", "g"))
 
     # ----- summary / exit ----------------------------------------------------
-    if failures and args.strict:
+    if ('failures' in locals()) and failures and args.strict:
         print(colorize(f"\nGuard checks failed: {len(failures)}", "r"))
         for fmsg in failures:
             print(colorize(f" - {fmsg}", "r"))
         sys.exit(1)
-    elif failures:
+    elif ('failures' in locals()) and failures:
         print(colorize(f"\nGuard checks failed (non-strict).", "y"))
     else:
         print(colorize("\nAll guard checks passed.", "g"))
 
+# python stephanie/tools/nexus_ab_smoke.py 8466
 if __name__ == "__main__":
     main()

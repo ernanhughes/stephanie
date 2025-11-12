@@ -14,6 +14,8 @@ from PIL import Image
 
 from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.scorable_processor import ScorableProcessor
+from stephanie.utils.json_sanitize import dumps_safe
+from stephanie.utils.vpm_utils import vpm_image_details
 
 log = logging.getLogger(__name__)
 
@@ -52,6 +54,7 @@ class NexusVPMWorkerInline:
         self,
         run_id: str,
         item: Scorable,
+        row: Dict[str, Any],
         *,
         out_dir: Optional[str] = None,
         dims_for_score: List[str] = ("clarity","coherence","complexity","alignment","coverage"),
@@ -63,35 +66,23 @@ class NexusVPMWorkerInline:
         t0 = time.time()
         out_root = Path(out_dir or self.sp.vpm_out_root) / f"nexus_{run_id}"
         out_root.mkdir(parents=True, exist_ok=True)
-
-        ctx = {"pipeline_run_id": run_id}
-        row = await self.sp.process(item, ctx)
-
         # Compose per-item dir; SP may already have saved a gray PNG
         item_id = (name_hint or f"{getattr(item, 'id', '') or 'item'}").replace("/", "_")
         item_dir = out_root / item_id
         item_dir.mkdir(parents=True, exist_ok=True)
 
         # Try to reuse SP’s PNG; if missing, synthesize a composite for preview
-        vpm_png = row.get("vpm_png")
-        if not vpm_png:
+        vpm_png = row.get("vision_signals")
             # Recreate a preview from VPM array, if ZeroModel can re-render quickly
             # Prefer deterministic reconstruction from metrics (no feature drift).
-            vpm_u8, _meta = await _maybe_await(self.zm.vpm_from_scorable(
-                item,
-                metrics_values=row.get("metrics_values") or [],
-                metrics_columns=row.get("metrics_columns") or [],
-            ))
-            comp = vpm_u8.mean(axis=0)
-            comp_img = (np.clip(comp, 0, 255)).astype(np.uint8)
-            Image.fromarray(comp_img).save(item_dir / "vpm_gray.png")
-            vpm_png = str(item_dir / "vpm_gray.png")
+        details = vpm_image_details(
+            vpm_png,
+            out_path=item_dir / "vpm_gray.png",
+            save_per_channel=save_channels,
+            logger=self.logger, 
+        )
+        vpm_png = details["gray_path"]  
 
-            # optional channel saves (for debugging)
-            if save_channels:
-                C = vpm_u8.shape[0]
-                for c in range(C):
-                    Image.fromarray(vpm_u8[c]).save(item_dir / f"vpm_ch{c}.png")
 
         # Rollout (frames + per-step summaries) — ZeroModel owns the policy
         frames, summaries = await _maybe_await(self.zm.vpm_rollout(
@@ -135,7 +126,7 @@ class NexusVPMWorkerInline:
             "metrics_values": row.get("metrics_values") or [],
         }
         (item_dir / "metrics.json").write_text(
-            json_dumps(step_json, indent=2),
+            dumps_safe(step_json, indent=2),
             encoding="utf-8"
         )
 
@@ -152,22 +143,3 @@ class NexusVPMWorkerInline:
             run_id, out_path=str(out_dir or self.sp.vpm_out_root))
         )
 
-
-# ==============================
-# Nexus Metrics Worker (Inline)
-# ==============================
-class NexusMetricsWorkerInline:
-    """
-    Replaced by ScorableProcessor: builds the dense metrics vector and appends one row.
-    """
-    def __init__(self, sp: ScorableProcessor):
-        self.sp = sp
-
-
-
-def json_dumps(obj, indent=2):
-    import json
-    try:
-        return json.dumps(obj, indent=indent, ensure_ascii=False)
-    except Exception:
-        return json.dumps(obj, indent=indent)
