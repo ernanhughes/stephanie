@@ -5,26 +5,23 @@ import asyncio
 import json
 import time
 import contextlib
-import sys
 import traceback
-from fastapi import HTTPException
 
 from fastapi import APIRouter, Request, Query
-from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse
+from fastapi.responses import StreamingResponse
 
 from nats.aio.client import Client as NATS
+import logging
 
-# --- logging helper ----------------------------------------------------------
-def log(*args):
-    ts = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
-    print(f"[tap {ts}]", *args, file=sys.stdout, flush=True)
+router = APIRouter()
+log = logging.getLogger(__name__)
 
 
 def nats_servers(request: Request):
     servers = getattr(request.app.state, "nats_servers", None) or [
         "nats://localhost:4222"
     ]
-    log("nats servers from app.state:", servers)
+    log.info("nats servers from app.state:", servers)
     return servers
 
 # --- tiny NATS helper (core only, no JetStream) -----------------------------
@@ -33,19 +30,19 @@ class _NatsCore:
         self.nc: Optional[NATS] = None
 
     async def ensure(self, servers: List[str]) -> Optional[NATS]:
-        log("NATS.ensure called; servers=", servers)
+        log.info("NATS.ensure called; servers=", servers)
         if NATS is None:
-            log("NATS lib not available")
+            log.info("NATS lib not available")
             return None
         if self.nc and not self.nc.is_closed:
-            log(
+            log.info(
                 "NATS.ensure: reusing existing nc (connected=",
                 not self.nc.is_closed,
                 ")",
             )
             return self.nc
         self.nc = NATS()
-        log("NATS.ensure: connecting…")
+        log.info("NATS.ensure: connecting…")
         await self.nc.connect(
             servers=servers,
             name="sis-tap",
@@ -55,7 +52,7 @@ class _NatsCore:
             ping_interval=10,
             max_outstanding_pings=5,
         )
-        log("NATS.ensure: connected")
+        log.info("NATS.ensure: connected")
         return self.nc
 
 

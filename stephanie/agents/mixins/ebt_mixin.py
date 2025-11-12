@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import os
-from typing import Dict, List, Optional, Union
+from typing import Dict, Optional
 
 import torch
 import torch.nn as nn

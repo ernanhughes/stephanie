@@ -12,8 +12,8 @@ from tabulate import tabulate
 from stephanie.constants import (GOAL, NAME, PIPELINE, PIPELINE_RUN_ID,
                                  PROMPT_DIR, RUN_ID, SAVE_CONTEXT,
                                  SCORABLE_DETAILS, SKIP_IF_COMPLETED, STAGE)
+from stephanie.core.logging.json_logger import JSONLogger
 from stephanie.engine.context_manager import ContextManager
-from stephanie.logging.json_logger import JSONLogger
 from stephanie.memory.memory_tool import MemoryTool
 from stephanie.reporting import ReportFormatter
 from stephanie.services.plan_trace_service import PlanTraceService
@@ -141,8 +141,6 @@ class Supervisor:
 
     async def run_pipeline_config(self, input_data: dict) -> dict:
         self.logger.log("PipelineStart", input_data)
-        await self.memory.ensure_bus_connected()
-
         
         goal_dict = self.get_goal(input_data)
         run_id = str(uuid4())
@@ -413,12 +411,12 @@ class Supervisor:
         input_context_id = None
         output_context_id = None
 
-        latest_context = self.memory.context.get_latest(run_id=run_id)
+        latest_context = self.memory.contexts.get_latest(run_id=run_id)
         if latest_context:
             output_context_id = latest_context.id
 
         # If this is not the first stage, get previous context
-        prev_context = self.memory.context.get_previous(run_id=run_id)
+        prev_context = self.memory.contexts.get_previous(run_id=run_id)
         if prev_context:
             input_context_id = prev_context.id
 
@@ -475,7 +473,7 @@ class Supervisor:
     def load_context(self, cfg: DictConfig, goal_id: int):
         if cfg.get(SKIP_IF_COMPLETED, False):
             name = cfg.get(NAME, None)
-            if name and self.memory.context.has_completed(goal_id, name):
+            if name and self.memory.contexts.has_completed(goal_id, name):
                 loaded_context = self.context.load_from_db(goal_id)
                 if loaded_context:
                     self.logger.log("ContextLoaded", {"Goal Id": goal_id, NAME: name})
@@ -634,25 +632,6 @@ class Supervisor:
                     )
                 merged[key] = value
         return merged
-
-    # Inside your supervisor.py
-    def check_for_retraining(self):
-        query = """
-        SELECT dimension, AVG(uncertainty) as avg_uncertainty
-        FROM scoring_history
-        WHERE created_at > NOW() - INTERVAL '1 day'
-        GROUP BY dimension
-        """
-        results = self.memory.session.execute(query).fetchall()
-        
-        for r in results:
-            if r.avg_uncertainty > self.cfg.get("retrain_threshold", 0.75):
-                self.logger.log("EBTRetrainNeeded", {
-                    "dimension": r.dimension,
-                    "avg_uncertainty": r.avg_uncertainty
-                })
-                # Trigger retraining
-                self._trigger_ebt_retraining(r.dimension)
 
     def _print_pipeline_summary(self):
         print(f"\n🖇️ Pipeline {self.context().get('pipeline_run_id')} Execution Summary:\n")

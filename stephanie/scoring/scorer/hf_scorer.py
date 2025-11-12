@@ -41,7 +41,7 @@ from stephanie.data.score_result import ScoreResult
 from stephanie.scoring.scorer.base_scorer import BaseScorer
 
 # Module-level logger for comprehensive debugging and monitoring
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 
 class HuggingFaceScorer(BaseScorer):
@@ -79,7 +79,7 @@ class HuggingFaceScorer(BaseScorer):
     def __init__(self, cfg, memory, container, logger):
         """Initialize HuggingFaceScorer with configuration and dependencies."""
         super().__init__(cfg, memory, container, logger, enable_plugins=True)
-        _logger.debug("Initializing HuggingFaceScorer with config: %s", 
+        log.debug("Initializing HuggingFaceScorer with config: %s", 
                      {k: v for k, v in cfg.items() if not k.startswith('_')})
         
         self.model_type = "hf"
@@ -95,13 +95,13 @@ class HuggingFaceScorer(BaseScorer):
             "dimensions",
             ["reasoning", "knowledge", "clarity", "faithfulness", "coverage"],
         )
-        _logger.debug("Model config: name=%s, tokenizer=%s, max_seq_len=%d", 
+        log.debug("Model config: name=%s, tokenizer=%s, max_seq_len=%d", 
                      self.model_name, self.tokenizer_name, self.max_seq_len)
 
         # Optional HF cache configuration
         self.cache_dir = cfg.get("cache_dir") or os.environ.get("HF_HOME") or None
         self.local_files_only = bool(cfg.get("local_files_only", False))
-        _logger.debug("Cache config: cache_dir=%s, local_files_only=%s", 
+        log.debug("Cache config: cache_dir=%s, local_files_only=%s", 
                      self.cache_dir, self.local_files_only)
 
         # Data type configuration for performance/memory tradeoffs
@@ -110,10 +110,10 @@ class HuggingFaceScorer(BaseScorer):
             self.torch_dtype = torch.float16 if torch.cuda.is_available() else torch.float32
         else:
             self.torch_dtype = getattr(torch, dtype_str, torch.float32)
-        _logger.debug("Data type: %s (from config: %s)", self.torch_dtype, dtype_str)
+        log.debug("Data type: %s (from config: %s)", self.torch_dtype, dtype_str)
 
         # --- Tokenizer initialization with fallback strategy ---
-        _logger.info("Loading tokenizer: %s", self.tokenizer_name)
+        log.info("Loading tokenizer: %s", self.tokenizer_name)
         tok_id = self.tokenizer_name
         try:
             # First attempt: fast tokenizer for better performance
@@ -124,10 +124,10 @@ class HuggingFaceScorer(BaseScorer):
                 cache_dir=self.cache_dir,
                 local_files_only=self.local_files_only,
             )
-            _logger.debug("Fast tokenizer loaded successfully")
+            log.debug("Fast tokenizer loaded successfully")
         except Exception as e_fast:
             # Fallback: slow tokenizer for compatibility
-            _logger.warning("Fast tokenizer failed, falling back to slow tokenizer: %s", str(e_fast))
+            log.warning("Fast tokenizer failed, falling back to slow tokenizer: %s", str(e_fast))
             if self.logger:
                 self.logger.log("HFTokenizerFastFailed", {"model": tok_id, "error": str(e_fast)})
             self.tok = AutoTokenizer.from_pretrained(
@@ -137,18 +137,18 @@ class HuggingFaceScorer(BaseScorer):
                 cache_dir=self.cache_dir,
                 local_files_only=self.local_files_only,
             )
-            _logger.debug("Slow tokenizer loaded as fallback")
+            log.debug("Slow tokenizer loaded as fallback")
 
         # Ensure pad token is set for stable batch processing
         if not getattr(self.tok, "pad_token", None):
             try:
                 self.tok.pad_token = self.tok.eos_token
-                _logger.debug("Set pad_token to eos_token")
+                log.debug("Set pad_token to eos_token")
             except Exception as e:
-                _logger.warning("Failed to set pad_token: %s", str(e))
+                log.warning("Failed to set pad_token: %s", str(e))
 
         # --- Model initialization with stability enhancements ---
-        _logger.info("Loading model: %s", self.model_name)
+        log.info("Loading model: %s", self.model_name)
         self.model = AutoModelForCausalLM.from_pretrained(
             self.model_name,
             device_map=self.device_map,
@@ -159,17 +159,17 @@ class HuggingFaceScorer(BaseScorer):
             local_files_only=self.local_files_only,
         )
         self.model.eval()  # Set to evaluation mode
-        _logger.debug("Model loaded and set to evaluation mode")
+        log.debug("Model loaded and set to evaluation mode")
 
         # Force eager attention for stability (avoid SDPA/Flash issues on Windows/CUDA)
         try:
             if hasattr(self.model, "config"):
                 if getattr(self.model.config, "attn_implementation", None) is not None:
                     self.model.config.attn_implementation = "eager"
-                    _logger.debug("Forced eager attention implementation")
+                    log.debug("Forced eager attention implementation")
                 setattr(self.model.config, "_attn_implementation", "eager")
         except Exception as e:
-            _logger.debug("Could not force eager attention: %s", str(e))
+            log.debug("Could not force eager attention: %s", str(e))
 
         # For uniformity with other scorers in the system
         self.embedding_type = self.memory.embedding.name
@@ -180,7 +180,7 @@ class HuggingFaceScorer(BaseScorer):
             dev_str = str(p.device)
         except Exception:
             dev_str = "unknown"
-        _logger.debug("Model loaded on device: %s", dev_str)
+        log.debug("Model loaded on device: %s", dev_str)
 
         # Log successful initialization
         if self.logger:
@@ -193,7 +193,7 @@ class HuggingFaceScorer(BaseScorer):
                     "dtype": str(self.torch_dtype)
                 },
             )
-        _logger.info("HuggingFaceScorer initialized successfully: %s on %s", self.model_name, dev_str)
+        log.info("HuggingFaceScorer initialized successfully: %s on %s", self.model_name, dev_str)
 
     # -----------------------------
     # Core Scoring Method
@@ -223,17 +223,17 @@ class HuggingFaceScorer(BaseScorer):
             This method does NOT compute semantic scores - plugins are expected
             to enhance the results with SCM, calibration, and other advanced features.
         """
-        _logger.debug("Starting core scoring for %d dimensions: %s", len(dimensions), dimensions)
+        log.debug("Starting core scoring for %d dimensions: %s", len(dimensions), dimensions)
         
         # Extract goal and response text from inputs
         goal_text = (context.get(GOAL, {}) or {}).get(GOAL_TEXT, "") or ""
         resp_text = scorable.text or ""
-        _logger.debug("Scoring: goal=%d chars, response=%d chars", len(goal_text), len(resp_text))
+        log.debug("Scoring: goal=%d chars, response=%d chars", len(goal_text), len(resp_text))
 
         # Compute language model statistics with teacher forcing
         with torch.no_grad():
             stats = self._ll_stats(goal_text, resp_text)
-        _logger.debug("LL stats computed: ppl=%.2f, mean_logprob=%.3f, entropy=%.3f", 
+        log.debug("LL stats computed: ppl=%.2f, mean_logprob=%.3f, entropy=%.3f", 
                      stats["ppl"], stats["mean_logprob"], stats["entropy_mean"])
 
         # Minimal attribute set that plugins can build upon
@@ -250,7 +250,7 @@ class HuggingFaceScorer(BaseScorer):
 
         # Build feature vector for machine learning compatibility
         vector = self._build_base_vector(self.model_alias, base_attrs)
-        _logger.debug("Base vector built with %d features", len(vector.get("columns", [])))
+        log.debug("Base vector built with %d features", len(vector.get("columns", [])))
 
         # Create ScoreResult objects for each dimension
         results: Dict[str, ScoreResult] = {}
@@ -268,9 +268,9 @@ class HuggingFaceScorer(BaseScorer):
                 weight=1.0,
                 attributes={**base_attrs, **vector},  # Combine base stats with vector representation
             )
-            _logger.debug("Created result for dimension '%s'", dim)
+            log.debug("Created result for dimension '%s'", dim)
 
-        _logger.info("Core scoring completed: %d results with ppl=%.2f", len(results), stats["ppl"])
+        log.info("Core scoring completed: %d results with ppl=%.2f", len(results), stats["ppl"])
         return ScoreBundle(results=results)
 
     # -----------------------------
@@ -303,10 +303,10 @@ class HuggingFaceScorer(BaseScorer):
             → [[("Artificial", 0.8), ("AI", 0.15)], [("Intelligence", 0.7), ("AI", 0.2)]]
         """
         if not k or k <= 0:
-            _logger.debug("Token top-k analysis disabled (k=%d)", k)
+            log.debug("Token top-k analysis disabled (k=%d)", k)
             return None
 
-        _logger.debug("Computing top-%d token distributions: goal=%d chars, resp=%d chars", 
+        log.debug("Computing top-%d token distributions: goal=%d chars, resp=%d chars", 
                      k, len(goal), len(resp))
         
         try:
@@ -318,7 +318,7 @@ class HuggingFaceScorer(BaseScorer):
             input_ids = torch.cat([enc_goal["input_ids"], enc_resp["input_ids"]], dim=1)
             input_ids = input_ids.to(self.model.device)
             attention_mask = torch.ones_like(input_ids)
-            _logger.debug("Input sequence: %d tokens (goal: %d, resp: %d)", 
+            log.debug("Input sequence: %d tokens (goal: %d, resp: %d)", 
                          input_ids.shape[1], enc_goal["input_ids"].shape[1], enc_resp["input_ids"].shape[1])
 
             # Forward pass to get logits
@@ -330,7 +330,7 @@ class HuggingFaceScorer(BaseScorer):
             start = enc_goal["input_ids"].shape[1]
             resp_logits = shift_logits[:, start:, :]  # [1, Lr, V]
             probs = torch.softmax(resp_logits, dim=-1)[0]  # [Lr, V]
-            _logger.debug("Response logits shape: %s, probs shape: %s", 
+            log.debug("Response logits shape: %s, probs shape: %s", 
                          resp_logits.shape, probs.shape)
 
             # Compute top-k tokens and probabilities
@@ -342,11 +342,11 @@ class HuggingFaceScorer(BaseScorer):
                 [(toks[t][j], float(topv[t, j].item())) for j in range(k)]
                 for t in range(topi.size(0))
             ]
-            _logger.debug("Computed top-%d distributions for %d response tokens", k, len(result))
+            log.debug("Computed top-%d distributions for %d response tokens", k, len(result))
             return result
             
         except Exception as e:
-            _logger.error("Failed to compute token top-k: %s", str(e))
+            log.error("Failed to compute token top-k: %s", str(e))
             return None
 
     # -----------------------------
@@ -380,7 +380,7 @@ class HuggingFaceScorer(BaseScorer):
         Note:
             Returns safe defaults for empty responses to avoid division by zero
         """
-        _logger.debug("Computing LL stats: goal=%d chars, resp=%d chars", len(goal), len(resp))
+        log.debug("Computing LL stats: goal=%d chars, resp=%d chars", len(goal), len(resp))
         
         # Tokenize inputs separately for precise position tracking
         enc_goal = self.tok(goal, return_tensors="pt", add_special_tokens=False)
@@ -390,7 +390,7 @@ class HuggingFaceScorer(BaseScorer):
         r_ids = enc_resp["input_ids"]
         goal_len = g_ids.shape[1]
         total_len = goal_len + r_ids.shape[1]
-        _logger.debug("Tokenized: goal=%d tokens, resp=%d tokens, total=%d", 
+        log.debug("Tokenized: goal=%d tokens, resp=%d tokens, total=%d", 
                      goal_len, r_ids.shape[1], total_len)
 
         # Combine goal and response tokens
@@ -403,22 +403,22 @@ class HuggingFaceScorer(BaseScorer):
             input_ids = input_ids[:, cut:]
             attention_mask = attention_mask[:, cut:]
             resp_start = max(0, goal_len - cut)
-            _logger.debug("Sequence truncated: cut=%d tokens, new_total=%d, resp_start=%d", 
+            log.debug("Sequence truncated: cut=%d tokens, new_total=%d, resp_start=%d", 
                          cut, input_ids.shape[1], resp_start)
         else:
             resp_start = goal_len
-            _logger.debug("No truncation needed, resp_start=%d", resp_start)
+            log.debug("No truncation needed, resp_start=%d", resp_start)
 
         # Move to model device for inference
         device = next(self.model.parameters()).device
         input_ids = input_ids.to(device)
         attention_mask = attention_mask.to(device)
-        _logger.debug("Moved inputs to device: %s", device)
+        log.debug("Moved inputs to device: %s", device)
 
         # Forward pass to compute logits
         out = self.model(input_ids=input_ids, attention_mask=attention_mask, use_cache=False)
         logits = out.logits  # [B, T, V]
-        _logger.debug("Model forward completed: logits shape=%s", logits.shape)
+        log.debug("Model forward completed: logits shape=%s", logits.shape)
 
         # Shift for teacher-forcing alignment
         shift_logits = logits[:, :-1, :]    # Predict next token
@@ -427,12 +427,12 @@ class HuggingFaceScorer(BaseScorer):
         # Extract response portion after goal context
         resp_logits = shift_logits[:, resp_start:, :]   # [B, Lr, V]
         resp_labels = shift_labels[:, resp_start:]      # [B, Lr]
-        _logger.debug("Response portion: logits=%s, labels=%s", 
+        log.debug("Response portion: logits=%s, labels=%s", 
                      resp_logits.shape, resp_labels.shape)
 
         # Handle empty response case gracefully
         if resp_labels.numel() == 0:
-            _logger.warning("Empty response after processing, returning safe defaults")
+            log.warning("Empty response after processing, returning safe defaults")
             vocab_est = (
                 getattr(self.tok, "vocab_size", None)
                 or (len(getattr(self.tok, "get_vocab")() or {}) if hasattr(self.tok, "get_vocab") else None)
@@ -453,23 +453,23 @@ class HuggingFaceScorer(BaseScorer):
         logprobs = F.log_softmax(resp_logits, dim=-1)              # [B, Lr, V]
         chosen_lp = torch.gather(logprobs, dim=-1, index=resp_labels.unsqueeze(-1)).squeeze(-1)  # [B, Lr]
         mean_logprob = float(chosen_lp.mean().item())
-        _logger.debug("Mean log probability: %.4f", mean_logprob)
+        log.debug("Mean log probability: %.4f", mean_logprob)
 
         # Compute token-level entropy (uncertainty measure)
         probs = logprobs.exp()
         ent = -(probs * logprobs).sum(dim=-1)                      # [B, Lr]
         entropy_mean = float(ent.mean().item())
-        _logger.debug("Mean entropy: %.4f nats", entropy_mean)
+        log.debug("Mean entropy: %.4f nats", entropy_mean)
 
         # Compute perplexity (standard language model metric)
         ppl = float(math.exp(-mean_logprob))
-        _logger.debug("Perplexity: %.2f", ppl)
+        log.debug("Perplexity: %.2f", ppl)
 
         # Information-theoretic measures
         sum_nll_nats = float(-chosen_lp.sum().item())  # Total negative log likelihood
         bytes_len = self._bytes_len(resp)
         bpb = self._to_bits(sum_nll_nats) / max(bytes_len, 1)      # Bits per byte
-        _logger.debug("Information metrics: sum_nll=%.2f nats, bytes=%d, bpb=%.3f", 
+        log.debug("Information metrics: sum_nll=%.2f nats, bytes=%d, bpb=%.3f", 
                      sum_nll_nats, bytes_len, bpb)
 
         return dict(
@@ -509,7 +509,7 @@ class HuggingFaceScorer(BaseScorer):
             - columns: List of feature names in consistent order
             - values: List of feature values matching columns order
         """
-        _logger.debug("Building base vector for alias: %s", alias)
+        log.debug("Building base vector for alias: %s", alias)
         
         # Define feature keys with namespacing
         keys = [
@@ -538,7 +538,7 @@ class HuggingFaceScorer(BaseScorer):
         cols = list(vec.keys())
         vals = [vec[c] for c in cols]
         
-        _logger.debug("Built vector with %d features for %s", len(cols), alias)
+        log.debug("Built vector with %d features for %s", len(cols), alias)
         return {"vector": vec, "columns": cols, "values": vals}
 
     # -----------------------------
@@ -558,7 +558,7 @@ class HuggingFaceScorer(BaseScorer):
         try:
             return len(s.encode("utf-8"))
         except Exception as e:
-            _logger.debug("UTF-8 encoding failed, using character length: %s", str(e))
+            log.debug("UTF-8 encoding failed, using character length: %s", str(e))
             return len(s)
 
     def _to_bits(self, nats: float) -> float:
@@ -594,15 +594,15 @@ class HuggingFaceScorer(BaseScorer):
         
         Should be called when the scorer is no longer needed to free resources.
         """
-        _logger.info("Closing HuggingFaceScorer and cleaning up resources")
+        log.info("Closing HuggingFaceScorer and cleaning up resources")
         try:
             # 0) Remove accelerate hooks if present to prevent reference cycles
             try:
                 import accelerate
                 accelerate.hooks.remove_hook_from_submodules(self.model)
-                _logger.debug("Removed accelerate hooks")
+                log.debug("Removed accelerate hooks")
             except Exception as e:
-                _logger.debug("No accelerate hooks to remove: %s", str(e))
+                log.debug("No accelerate hooks to remove: %s", str(e))
 
             # 1) Move model to CPU and drop references for GC
             if getattr(self, "model", None) is not None:
@@ -612,26 +612,26 @@ class HuggingFaceScorer(BaseScorer):
                         self.model.hf_device_map = None
                     # Move to CPU before deletion
                     self.model.to("cpu")
-                    _logger.debug("Moved model to CPU")
+                    log.debug("Moved model to CPU")
                 except Exception as e:
-                    _logger.warning("Error moving model to CPU: %s", str(e))
+                    log.warning("Error moving model to CPU: %s", str(e))
                 finally:
                     self.model = None
-                    _logger.debug("Cleared model reference")
+                    log.debug("Cleared model reference")
 
             # 2) Drop tokenizer reference
             if getattr(self, "tok", None) is not None:
                 self.tok = None
-                _logger.debug("Cleared tokenizer reference")
+                log.debug("Cleared tokenizer reference")
 
             # 3) Teardown any offload managers
             try:
                 offload = getattr(self, "_cpu_offload", None)
                 if offload and hasattr(offload, "teardown"):
                     offload.teardown()
-                    _logger.debug("Tore down CPU offload manager")
+                    log.debug("Tore down CPU offload manager")
             except Exception as e:
-                _logger.debug("No CPU offload manager to teardown: %s", str(e))
+                log.debug("No CPU offload manager to teardown: %s", str(e))
 
             # 4) Aggressive garbage collection and memory cleanup
             gc.collect()
@@ -640,11 +640,11 @@ class HuggingFaceScorer(BaseScorer):
                 torch.cuda.empty_cache()
                 torch.cuda.ipc_collect()
                 torch.cuda.reset_peak_memory_stats()
-                _logger.debug("Cleaned GPU memory and cache")
+                log.debug("Cleaned GPU memory and cache")
                 
         except Exception as e:
-            _logger.error("Error during HuggingFaceScorer cleanup: %s", str(e))
+            log.error("Error during HuggingFaceScorer cleanup: %s", str(e))
         finally:
             # Always call parent cleanup for plugin teardown
             super().close()
-            _logger.info("HuggingFaceScorer closed successfully")
+            log.info("HuggingFaceScorer closed successfully")

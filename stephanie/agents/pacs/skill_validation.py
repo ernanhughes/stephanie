@@ -1,10 +1,9 @@
 # stephanie/pipeline/stages/skill_validation.py
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 import numpy as np
-import torch
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.constants import GOAL, PIPELINE

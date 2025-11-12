@@ -8,13 +8,14 @@ from dataclasses import dataclass
 from typing import Any, Dict, Optional, Tuple
 
 from stephanie.analysis.scorable_classifier import ScorableClassifier
-from stephanie.components.risk.features.entity_domain_features import (
-    compute_entity_metrics, risk_from_features)
-from stephanie.memory.memcube_store import MemcubeStore
+from stephanie.components.risk.features.entity_domain_features import \
+    risk_from_features
+from stephanie.memory.memcube_store import MemCubeStore
 from stephanie.scoring.scorable import Scorable
 from stephanie.services.service_protocol import Service
+from stephanie.scoring.scorable_processor import ScorableProcessor
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 @dataclass
 class RiskServiceConfig:
@@ -42,7 +43,7 @@ class RiskPredictorService(Service):
         self.container = container
         self.logger = logger
 
-        self.memcubes: MemcubeStore = memory.memcubes
+        self.memcubes: MemCubeStore = memory.memcubes
         self._up: bool = False
         self._req_count: int = 0
         self._err_count: int = 0
@@ -55,6 +56,7 @@ class RiskPredictorService(Service):
             logger,
             self.cfg.domain_seed_config_path or "config/domain/seeds.yaml",
         )
+        self.scorable_processor: ScorableProcessor = ScorableProcessor(memory, logger)
         self.bus = memory.bus
         self._bus_ready = asyncio.Event()
 
@@ -138,28 +140,36 @@ class RiskPredictorService(Service):
         evidence_text: str = "",
         min_domain_conf: float = 0.0,
     ) -> Tuple[float, Tuple[float, float], Dict[str, Any]]:
-        """
-        Strict path: domain must be present on scorable.domains; if empty, we run the classifier (deterministic).
-        No memcube.guess_domain anywhere.
-        """
         t0 = time.perf_counter()
         try:
-            # 1) Domain: from scorable, or classify deterministically if missing
-            domains = scorable.domains or []
-            if not domains:
-                # Deterministic classification (not a heuristic "guess")
-                cls = self.domain_classifier.classify(scorable.text, top_k=1, min_value=0.0)
-                domains = [{"domain": d, "score": float(s), "source": "seed"} for d, s in (cls or [])]
-            domain_used = Scorable.pick_primary_domain(domains, min_conf=min_domain_conf)
+            # 1) Hydrate via ScorableProcessor when available
+            row = await self.scorable_processor.process(scorable, context={})
 
-            # 2) Entity metrics (NER comes from scorable)
-            ent_feats = {} # await compute_entity_metrics(self.memory, domain_used, scorable.ner or [])
+            # 2) Domain resolution (STRICT)
+            domain_used = None
+            # Prefer SP row (domains like [{"name": "...", "score": 0.xx}, ...])
+            if row and isinstance(row.get("domains"), list) and row["domains"]:
+                cand = sorted(
+                    row["domains"],
+                    key=lambda d: float(d.get("score", 0.0)),
+                    reverse=True,
+                )[0]
+                domain_used = (cand.get("name") or cand.get("domain") or "").strip().lower()
 
-            # 3) Coverage / OOV / numeric checks (stubs → wire your own)
-            coverage_overlap = await self._coverage_overlap(scorable.text, evidence_text or "")
+            # 3) Feature assembly
+            # Entity features (if SP row provided NER, we can later expand these)
+            ent_feats = {
+                "entity_support_ratio": 1.0,        # keep safe defaults; wire your checks here
+                "entity_contradiction_ratio": 0.0,
+                "entity_unresolved_ratio": 0.0,
+                "entity_ambiguity": 0.0,
+            }
+            # Coverage / OOV / numeric (existing hooks)
+            coverage_overlap = await self._coverage_overlap(scorable.text or "", evidence_text or "")
             oov_rate = self._domain_oov_rate(domain_used, reply_text or "")
             numeric_incons = self._numeric_inconsistency(domain_used, scorable.text or "", reply_text or "")
 
+            # Optionally incorporate SP metrics vector in future (kept separate for stability)
             feats = {
                 **ent_feats,
                 "coverage_overlap": coverage_overlap,
@@ -170,13 +180,13 @@ class RiskPredictorService(Service):
             # 4) Deterministic risk
             risk = risk_from_features(domain_used, feats)
 
-            # 5) Domain-calibrated thresholds (MemCube)
+            # 5) Domain-calibrated thresholds from MemCubeStore
             low, high = await self.get_domain_thresholds(domain_used)
 
-            # 6) Bookkeeping
+            # 6) bookkeeping
             self._record_latency(t0)
             self._req_count += 1
-            meta = {"domain": domain_used, "features": feats}
+            meta = {"domain": domain_used, "features": feats, "sp_used": bool(row is not None)}
             return float(risk), (float(low), float(high)), meta
 
         except Exception as e:
@@ -184,6 +194,46 @@ class RiskPredictorService(Service):
             self.logger.error(f"predict_for_scorable failed: {e}")
             return 0.0, (self.cfg.fallback_low, self.cfg.fallback_high), {"error": str(e)}
 
+    async def get_domain_thresholds(self, domain: Optional[str]) -> Tuple[float, float]:
+        d = (domain or "").strip().lower() or "general"
+        now = time.time()
+        async with self._cache_lock:
+            cached = self._th_cache.get(d)
+            if cached and cached[2] > now:
+                return cached[0], cached[1]
+
+        low = high = None
+        if self.memcubes:
+            try:
+                rec = self.memcubes.get_calibration("risk", d, newest_first=True)
+                if rec:
+                    # payload shape: store_calibration(...) put thresholds in either content JSON or extra_data
+                    # prefer extra_data to avoid JSON parse
+                    extra = rec.extra_data or {}
+                    low = extra.get("low_threshold")
+                    high = extra.get("high_threshold")
+                    if low is None or high is None:
+                        # fallback parse from content (if needed)
+                        import json as _json
+                        try:
+                            cont = _json.loads(rec.content or "{}")
+                            low = low or cont.get("low_threshold")
+                            high = high or cont.get("high_threshold")
+                        except Exception:
+                            pass
+                    if low is not None and high is not None:
+                        low, high = float(low), float(high)
+            except Exception as e:
+                log.warning(f"MemCube calibration fetch failed: {e}")
+
+        if low is None or high is None:
+            low = self.cfg.fallback_low
+            high = self.cfg.fallback_high
+
+        async with self._cache_lock:
+            self._th_cache[d] = (low, high, now + self.cfg.calib_ttl_s)
+        return low, high
+    
     async def predict_risk_strict(
         self,
         question: str,
@@ -232,7 +282,7 @@ class RiskPredictorService(Service):
                     low = float(rec.get("low_threshold"))
                     high = float(rec.get("high_threshold"))
             except Exception as e:
-                self.logger.warning(f"MemCube calibration fetch failed: {e}")
+                log.warning(f"MemCube calibration fetch failed: {e}")
 
         if low is None or high is None:
             low = self.cfg.fallback_low

@@ -187,7 +187,6 @@ class ImageProfileService:
             return None
         try:
             if _CLIP_BACKEND == "openai-clip":
-                import clip  # type: ignore
                 with torch.no_grad():
                     t = _PREPROC(img).unsqueeze(0)
                     feats = _CLIP.encode_image(t)
@@ -195,7 +194,6 @@ class ImageProfileService:
                     return feats.cpu().numpy().reshape(-1)
             else:
                 # open-clip
-                import open_clip  # type: ignore
                 with torch.no_grad():
                     t = _PREPROC(img).unsqueeze(0)
                     feats = _CLIP.encode_image(t)
@@ -216,7 +214,6 @@ class ImageProfileService:
                     feats = feats / feats.norm(dim=-1, keepdim=True)
                     return feats.cpu().numpy().reshape(-1)
             else:
-                import open_clip  # type: ignore
                 from open_clip import tokenize  # type: ignore
                 with torch.no_grad():
                     tok = tokenize([text])

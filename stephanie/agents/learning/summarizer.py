@@ -10,7 +10,7 @@ from typing import Any, Dict, List
 
 from stephanie.utils.json_sanitize import dumps_safe
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 class Summarizer:
     def __init__(self, cfg, memory, container, logger, strategy, scoring, prompt_loader, call_llm):
@@ -93,7 +93,7 @@ class Summarizer:
                     meta={"iteration": context.get("iteration")}
                 )
         except Exception as e:
-            _logger.error(f"Failed to save attribution: {str(e)}", exc_info=True)
+            log.error(f"Failed to save attribution: {str(e)}", exc_info=True)
 
         return {"text": improved, "attribution": matches}
     
@@ -124,7 +124,7 @@ class Summarizer:
                     try:
                         await self.memory.bus.unsubscribe("prompts.run.result", _handler)
                     except Exception as e:
-                        _logger.debug(f"Error unsubscribing: {str(e)}")
+                        log.debug(f"Error unsubscribing: {str(e)}")
                     self._in_flight.pop(prompt_id, None)
         
         # Add to in-flight tracking

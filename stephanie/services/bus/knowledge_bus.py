@@ -12,9 +12,6 @@ A durable, dependency-free pub/sub bus for Stephanie.
 
 from __future__ import annotations
 
-import queue
-import threading
-import time
 from typing import Any, Dict, List, Optional
 
 

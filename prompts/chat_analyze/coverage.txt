@@ -3,15 +3,21 @@ You are a precise knowledge judge. You evaluate the coverage and completeness of
 relative to the user’s goal and key subtopics. Be strict and concise.
 
 CONVERSATION TITLE (goal):
+```text
 {{ goal_text }}
+```
 
 USER QUESTION:
+```text
 {{ user_text }}
+```
 
 ASSISTANT ANSWER:
+```text
 {{ assistant_text }}
+```
 
-{% if context %} OK
+{% if context %} 
 OPTIONAL CONTEXT (may include prior turns, files, constraints):
 {{ context }}
 {% endif %}

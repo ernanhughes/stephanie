@@ -10,11 +10,11 @@ from __future__ import annotations
 
 import logging
 import math
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 @dataclass
 class EpisodeTrace:

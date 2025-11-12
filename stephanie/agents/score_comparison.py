@@ -699,7 +699,7 @@ class ScoreComparisonAgent(BaseAgent):
                 report_path = os.path.join(self.output_dir, report_filename)
 
                 with open(report_path, 'w', encoding='utf-8') as f:
-                    f.write(f"# Detailed Score Analysis Report\n\n")
+                    f.write("# Detailed Score Analysis Report\n\n")
                     f.write(f"**Generated:** {comparison_metadata.get('comparison_timestamp', 'N/A')}\n\n") # Use timestamp from comparison
                     f.write(f"**Analysis Performed:** {datetime.now().isoformat()}\n\n")
                     f.write(f"**Pipeline Runs Analyzed:** {comparison_metadata.get('pipeline_run_ids', 'N/A')}\n\n")

@@ -4,7 +4,7 @@ from __future__ import annotations
 import re
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.constants import PIPELINE, PIPELINE_RUN_ID, RUN_ID
+from stephanie.constants import PIPELINE, PIPELINE_RUN_ID
 from stephanie.models import EvaluationORM
 
 
@@ -113,7 +113,7 @@ class PipelineJudgeAgent(BaseAgent):
             pipeline_run_id=context.get(PIPELINE_RUN_ID),
             symbolic_rule_id=rule_application_id,
             extra_data={"raw_response": judgement},
-            dimensions=dimensions,  # new: parsed dimensions
+            dimensions=dimensions,  
         )
 
         self.memory.evaluations.insert(score_obj)

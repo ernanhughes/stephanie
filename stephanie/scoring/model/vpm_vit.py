@@ -1,11 +1,8 @@
 # stephanie/scoring/model/vpm_vit.py
 from __future__ import annotations
 
-import math
-
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 
 # ---------- utils ----------

@@ -1,15 +1,10 @@
 # stephanie/agents/world/worldview_evaluator.py
 from __future__ import annotations
 
-from datetime import datetime
-
 from sqlalchemy.orm import Session
 
-from stephanie.data.score_bundle import ScoreBundle
 from stephanie.models.belief import BeliefORM
 from stephanie.models.cartridge import CartridgeORM
-from stephanie.models.icl_example import ICLExampleORM
-from stephanie.models.world_view import WorldviewORM
 from stephanie.scoring.scorer.svm_scorer import SVMScorer
 
 

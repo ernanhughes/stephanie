@@ -2,13 +2,16 @@
 from __future__ import annotations
 
 import re
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from stephanie.data.plan_trace import ExecutionStep, PlanTrace
 from stephanie.models.cartridge_triple import CartridgeTripleORM
 from stephanie.models.casebook import CaseORM
-from stephanie.models.chat import (ChatConversationORM, ChatMessageORM,
-                                   ChatTurnORM)
+from stephanie.models.chat import (
+    ChatConversationORM,
+    ChatMessageORM,
+    ChatTurnORM,
+)
 from stephanie.models.document import DocumentORM
 from stephanie.models.document_section import DocumentSectionORM
 from stephanie.models.dynamic_scorable import DynamicScorableORM
@@ -46,8 +49,10 @@ class ScorableType:
     REFINEMENT = "refinement"
     VPM = "vpm"
 
+
 class MissingDomainsError(ValueError):
     """Raised when a Scorable has no canonical 'domains' list."""
+
     pass
 
 
@@ -65,7 +70,7 @@ class Scorable:
         self._text = text
         self._target_type = target_type
         self._metadata = meta or {}
-        self._domains = domains or {}   # <-- keep as passed
+        self._domains = domains or {}  # <-- keep as passed
         self._ner = ner or {}
 
     @property
@@ -111,11 +116,15 @@ class Scorable:
         )
 
     def primary_domain(self) -> tuple[str | None, float | None, str | None]:
-        items = self._domains if isinstance(self._domains, list) else self._domains.get("items") or self._domains.get("domains")
+        items = (
+            self._domains
+            if isinstance(self._domains, list)
+            else self._domains.get("items") or self._domains.get("domains")
+        )
         if isinstance(items, list):
             return self.select_primary_domain(items)
         return None, None, None
-    
+
     # Standardized domain selection from your known format:
     # [{'score': 0.62, 'domain': 'evaluation', 'source': 'seed'}, ...]
     @staticmethod
@@ -129,14 +138,20 @@ class Scorable:
         ranked = sorted(
             items,
             key=lambda x: (
-                (prefer_sources.index(str(x.get("source"))) 
-                 if str(x.get("source")) in prefer_sources else 999),
-                -float(x.get("score", 0.0))
-            )
+                (
+                    prefer_sources.index(str(x.get("source")))
+                    if str(x.get("source")) in prefer_sources
+                    else 999
+                ),
+                -float(x.get("score", 0.0)),
+            ),
         )
         top = ranked[0]
-        return str(top.get("domain")), float(top.get("score", 0.0)), str(top.get("source"))
-
+        return (
+            str(top.get("domain")),
+            float(top.get("score", 0.0)),
+            str(top.get("source")),
+        )
 
     def to_dict(self) -> dict:
         return {
@@ -148,9 +163,8 @@ class Scorable:
             "ner": self._ner,
         }
 
-
     @staticmethod
-    def from_dict(d: Dict[str, Any]) -> "Scorable":
+    def from_dict(d: Dict[str, Any]) -> Scorable:
         return Scorable(
             text=d.get("text", ""),
             id=str(d.get("id") or d.get("scorable_id") or ""),
@@ -159,6 +173,17 @@ class Scorable:
             domains=d.get("domains") or [],
             ner=d.get("ner") or {},
         )
+
+    @staticmethod
+    def get_goal_text(
+        scorable: Dict[str, Any], context: Dict[str, Any]
+    ) -> str:
+        goal_text = ""
+        if hasattr(scorable, "goal_ref"):
+            goal_text = scorable.get("goal_ref", {}).get("text", "")
+        else:
+            goal_text = context.get("goal", {}).get("goal_text", "")
+        return goal_text
 
 
 class ScorableFactory:

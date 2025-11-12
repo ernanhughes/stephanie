@@ -1,8 +1,11 @@
 # stephanie/agents/learning/scoring.py
 from __future__ import annotations
 
+import logging
 import re
 from typing import Any, Dict, List, Tuple
+
+log = logging.getLogger(__name__)
 
 
 class Scoring:
@@ -23,7 +26,7 @@ class Scoring:
             self.knowledge_weight + self.clarity_weight + self.grounding_weight
         )
         if abs(weights_sum - 1.0) > 0.01:
-            self.logger.warning(
+            log.warning(
                 f"Scoring weights don't sum to 1.0 (knowledge={self.knowledge_weight}, "
                 f"clarity={self.clarity_weight}, grounding={self.grounding_weight}). "
                 "Auto-normalizing weights."

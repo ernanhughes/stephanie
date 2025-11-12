@@ -24,9 +24,7 @@ Output added to context:
 
 from __future__ import annotations
 
-import json
 import logging
-import math
 import re
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
@@ -35,7 +33,7 @@ import numpy as np
 
 from stephanie.agents.base_agent import BaseAgent
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 
 # ----------------------------

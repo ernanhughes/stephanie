@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from sqlalchemy.orm import Session
 
-from stephanie.models import BeliefORM, BeliefTuneLogORM, WorldviewORM
+from stephanie.models import BeliefORM, BeliefTuneLogORM
 
 
 class WorldviewAuditAgent:

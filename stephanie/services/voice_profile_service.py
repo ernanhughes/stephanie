@@ -5,10 +5,8 @@ import math
 import re
 import time
 import traceback
-from collections import Counter, defaultdict
-from typing import Any, Dict, List, Optional, Tuple
-
-import numpy as np
+from collections import Counter
+from typing import Any, Dict, List, Optional
 
 
 def _nz(x, lo: float = 0.0, hi: float = 1.0) -> float:

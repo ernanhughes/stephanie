@@ -20,7 +20,7 @@ from xgboost import XGBClassifier
 
 from stephanie.scoring.training.base_trainer import BaseTrainer
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 @dataclass
 class RiskTrainerConfig:
@@ -70,31 +70,31 @@ class RiskTrainer(BaseTrainer):
         out_dir = Path(self.cfg.out_dir)
         out_dir.mkdir(parents=True, exist_ok=True)
 
-        _logger.info(f"[RiskTrainer] Loading dataset: {data_path}")
+        log.info(f"[RiskTrainer] Loading dataset: {data_path}")
         df = pd.read_parquet(data_path)
-        _logger.info(f"[RiskTrainer] Dataset loaded: rows={len(df)}, cols={len(df.columns)}")
+        log.info(f"[RiskTrainer] Dataset loaded: rows={len(df)}, cols={len(df.columns)}")
 
         # Sanity: ensure minimal columns
         missing = [c for c in [self.cfg.label_col, self.cfg.domain_col] if c not in df.columns]
         if missing:
-            _logger.error(f"[RiskTrainer] Missing required columns: {missing}")
+            log.error(f"[RiskTrainer] Missing required columns: {missing}")
             raise ValueError(f"RiskTrainer: dataset missing columns: {missing}")
 
-        _logger.info(f"[RiskTrainer] Columns present: {sorted(df.columns.tolist())}")
+        log.info(f"[RiskTrainer] Columns present: {sorted(df.columns.tolist())}")
 
-        _logger.info("[RiskTrainer] Building feature matrix...")
+        log.info("[RiskTrainer] Building feature matrix...")
         X, y, feature_names, domain_encoder = self._make_matrix(df)
-        _logger.info(f"[RiskTrainer] Features ready: X.shape={X.shape}, y.pos_rate={y.mean():.4f}")
-        _logger.info(f"[RiskTrainer] Feature names ({len(feature_names)}): {feature_names[:10]}{' ...' if len(feature_names)>10 else ''}")
+        log.info(f"[RiskTrainer] Features ready: X.shape={X.shape}, y.pos_rate={y.mean():.4f}")
+        log.info(f"[RiskTrainer] Feature names ({len(feature_names)}): {feature_names[:10]}{' ...' if len(feature_names)>10 else ''}")
 
-        _logger.info("[RiskTrainer] Train/validation split...")
+        log.info("[RiskTrainer] Train/validation split...")
         Xtr, Xva, ytr, yva = train_test_split(
             X, y, test_size=self.cfg.test_size, random_state=self.cfg.random_state, stratify=y
         )
-        _logger.info(f"[RiskTrainer] Split: train={len(ytr)}, val={len(yva)}, stratified pos_rate={ytr.mean():.4f}/{yva.mean():.4f}")
+        log.info(f"[RiskTrainer] Split: train={len(ytr)}, val={len(yva)}, stratified pos_rate={ytr.mean():.4f}/{yva.mean():.4f}")
 
         # Model init
-        _logger.info("[RiskTrainer] Initializing XGBClassifier")
+        log.info("[RiskTrainer] Initializing XGBClassifier")
         clf = XGBClassifier(
             n_estimators=self.cfg.n_estimators,
             max_depth=self.cfg.max_depth,
@@ -106,7 +106,7 @@ class RiskTrainer(BaseTrainer):
             eval_metric="logloss",
             random_state=self.cfg.random_state,
         )
-        _logger.info(
+        log.info(
             "[RiskTrainer] XGB params: "
             f"n_estimators={self.cfg.n_estimators}, max_depth={self.cfg.max_depth}, "
             f"lr={self.cfg.learning_rate}, subsample={self.cfg.subsample}, "
@@ -115,24 +115,24 @@ class RiskTrainer(BaseTrainer):
 
         # Fit model
         t1 = time.perf_counter()
-        _logger.info("[RiskTrainer] Fitting XGB...")
+        log.info("[RiskTrainer] Fitting XGB...")
         clf.fit(Xtr, ytr)
-        _logger.info(f"[RiskTrainer] XGB fit complete in {time.perf_counter()-t1:.2f}s")
+        log.info(f"[RiskTrainer] XGB fit complete in {time.perf_counter()-t1:.2f}s")
 
         # Isotonic calibration
-        _logger.info("[RiskTrainer] Calibrating with isotonic regression...")
+        log.info("[RiskTrainer] Calibrating with isotonic regression...")
         p_va_raw = clf.predict_proba(Xva)[:, 1]
         try:
             iso = IsotonicRegression(out_of_bounds="clip").fit(p_va_raw, yva)
             p_va = iso.predict(p_va_raw)
-            _logger.info("[RiskTrainer] Isotonic calibration complete")
+            log.info("[RiskTrainer] Isotonic calibration complete")
         except Exception as e:
-            _logger.warning(f"[RiskTrainer] Isotonic calibration failed ({e}); falling back to raw probs")
+            log.warning(f"[RiskTrainer] Isotonic calibration failed ({e}); falling back to raw probs")
             iso = None
             p_va = p_va_raw
 
         # Metrics
-        _logger.info("[RiskTrainer] Computing validation metrics...")
+        log.info("[RiskTrainer] Computing validation metrics...")
         try:
             val_auc = float(roc_auc_score(yva, p_va))
         except Exception:
@@ -147,18 +147,18 @@ class RiskTrainer(BaseTrainer):
             val_logloss = float("nan")
         prevalence = float(y.mean())
 
-        _logger.info(
+        log.info(
             f"[RiskTrainer] Metrics: AUC={val_auc:.4f}, AP={val_ap:.4f}, "
             f"logloss={val_logloss:.4f}, prevalence={prevalence:.4f}"
         )
 
         # Per-domain gates
-        _logger.info("[RiskTrainer] Sweeping per-domain thresholds...")
+        log.info("[RiskTrainer] Sweeping per-domain thresholds...")
         thresholds = self._compute_domain_thresholds(df, domain_encoder, clf, iso)
-        _logger.info(f"[RiskTrainer] Thresholds computed for {len(thresholds)} domains")
+        log.info(f"[RiskTrainer] Thresholds computed for {len(thresholds)} domains")
 
         # Persist bundle
-        _logger.info("[RiskTrainer] Saving model bundle...")
+        log.info("[RiskTrainer] Saving model bundle...")
         bundle = {
             "version": "risk_xgb_isotonic_v1",
             "clf": clf,
@@ -177,7 +177,7 @@ class RiskTrainer(BaseTrainer):
         }
         joblib.dump(bundle, out_dir / "bundle.joblib")
         (out_dir / "metrics.json").write_text(json.dumps(bundle["metrics"], indent=2))
-        _logger.info(f"[RiskTrainer] Bundle saved to {out_dir / 'bundle.joblib'}")
+        log.info(f"[RiskTrainer] Bundle saved to {out_dir / 'bundle.joblib'}")
 
         # TrainingStats (lightweight)
         try:
@@ -205,9 +205,9 @@ class RiskTrainer(BaseTrainer):
                 sample_count=len(df),
                 start_time=datetime.now(),
             )
-            _logger.info("[RiskTrainer] Training stats persisted to memory")
+            log.info("[RiskTrainer] Training stats persisted to memory")
         except Exception as e:
-            _logger.warning(f"[RiskTrainer] Failed to persist TrainingStats: {e}")
+            log.warning(f"[RiskTrainer] Failed to persist TrainingStats: {e}")
 
         meta = {
             "model_type": "risk",
@@ -217,7 +217,7 @@ class RiskTrainer(BaseTrainer):
             **bundle["metrics"],
         }
         self._save_meta_file(meta, dimension)
-        _logger.info(f"[RiskTrainer] Training complete in {time.perf_counter()-t0:.2f}s")
+        log.info(f"[RiskTrainer] Training complete in {time.perf_counter()-t0:.2f}s")
         self.logger.log("RiskTrainingComplete", meta)
         return meta
 
@@ -236,7 +236,7 @@ class RiskTrainer(BaseTrainer):
 
         num_cols = sorted(set(num_cols))
         if not num_cols:
-            _logger.warning("[RiskTrainer] No numeric feature columns matched; using empty numeric matrix")
+            log.warning("[RiskTrainer] No numeric feature columns matched; using empty numeric matrix")
 
         Xnum = df[num_cols].fillna(0.0).values.astype(np.float32)
 
@@ -249,7 +249,7 @@ class RiskTrainer(BaseTrainer):
         X = np.hstack([Xnum, Xdom.astype(np.float32)])
         y = df[self.cfg.label_col].astype(int).values
 
-        _logger.info(
+        log.info(
             f"[RiskTrainer] Matrix shapes: Xnum={Xnum.shape}, Xdom={Xdom.shape}, "
             f"X={X.shape}, y={y.shape}; domains={list(oh.categories_[0])}"
         )
@@ -281,7 +281,7 @@ class RiskTrainer(BaseTrainer):
         global_low = float(np.quantile(p_cal, q_lo))
         global_high = float(np.quantile(p_cal, q_hi))
 
-        _logger.info(
+        log.info(
             f"[RiskTrainer] Global threshold quantiles: q_lo={q_lo}, q_hi={q_hi} "
             f"→ low={global_low:.4f}, high={global_high:.4f}"
         )
@@ -291,14 +291,14 @@ class RiskTrainer(BaseTrainer):
             n_dom = int(mask.sum())
             if n_dom < 30:
                 low, high = global_low, global_high
-                _logger.info(
+                log.info(
                     f"[RiskTrainer] Domain '{dom}' too small (n={n_dom}); using global "
                     f"low={low:.4f}, high={high:.4f}"
                 )
             else:
                 low = float(np.quantile(p_cal[mask], q_lo))
                 high = float(np.quantile(p_cal[mask], q_hi))
-                _logger.info(
+                log.info(
                     f"[RiskTrainer] Domain '{dom}' thresholds: "
                     f"low={low:.4f}, high={high:.4f} (n={n_dom})"
                 )

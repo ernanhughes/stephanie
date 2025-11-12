@@ -12,14 +12,7 @@ from datetime import date, datetime
 from datetime import time as dtime
 from typing import Any, Iterable, Mapping
 
-# Optional NumPy support
-try:
-    import numpy as np  # type: ignore
-    HAS_NP = True
-except Exception:
-    np = None  # type: ignore
-    HAS_NP = False
-
+import numpy as np  # type: ignore
 
 # -----------------------------------------------------------------------------
 # Core, single-source-of-truth utilities
@@ -31,18 +24,17 @@ def _to_native_scalar(x: Any) -> tuple[bool, Any]:
     Returns (converted, value). If converted=False, caller should recurse/handle.
     """
     # NumPy scalars / special values
-    if HAS_NP:
-        if isinstance(x, np.generic):  # np.float32, np.int64, np.bool_
-            if isinstance(x, np.floating):
-                val = float(x)
-                return True, (None if (math.isnan(val) or math.isinf(val)) else val)
-            if isinstance(x, np.integer):
-                return True, int(x)
-            if isinstance(x, np.bool_):
-                return True, bool(x)
-            return True, x.item()
-        if x is np.nan or x is np.inf or x is -np.inf:
-            return True, None
+    if isinstance(x, np.generic):  # np.float32, np.int64, np.bool_
+        if isinstance(x, np.floating):
+            val = float(x)
+            return True, (None if (math.isnan(val) or math.isinf(val)) else val)
+        if isinstance(x, np.integer):
+            return True, int(x)
+        if isinstance(x, np.bool_):
+            return True, bool(x)
+        return True, x.item()
+    if x is np.nan or x is np.inf or x is -np.inf:
+        return True, None
 
     # Plain Python numbers/bools/str/None
     if isinstance(x, bool):
@@ -115,7 +107,7 @@ def _sanitize_any(obj: Any, *, max_depth: int = 100) -> Any:
         return [_sanitize_any(x, max_depth=max_depth - 1) for x in obj]
 
     # NumPy arrays
-    if HAS_NP and isinstance(obj, np.ndarray):  # type: ignore
+    if isinstance(obj, np.ndarray):  # type: ignore
         return [_sanitize_any(x, max_depth=max_depth - 1) for x in obj.tolist()]
 
     # Fallback: best-effort string (last resort)
@@ -135,7 +127,7 @@ def _json_default(obj: Any):
     if converted:
         return val
     # NumPy arrays to list
-    if HAS_NP and isinstance(obj, np.ndarray):  # type: ignore
+    if isinstance(obj, np.ndarray):  # type: ignore
         return obj.tolist()
     # Dataclasses to dict
     if dataclasses.is_dataclass(obj):

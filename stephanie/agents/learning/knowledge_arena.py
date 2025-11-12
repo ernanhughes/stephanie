@@ -5,7 +5,6 @@ import asyncio
 import logging
 import math
 import time
-import uuid
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
 
 from stephanie.utils.emit_utils import prepare_emit
@@ -15,7 +14,7 @@ Score = Dict[str, float]
 Candidate = Dict[str, Any]
 EmitFn = Optional[Callable[[Dict[str, Any]], Awaitable[None] | None]]
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 def _is_coro_fn(fn: Callable) -> bool:
     return asyncio.iscoroutinefunction(fn)
@@ -85,7 +84,7 @@ class KnowledgeArena:
         self.cfg = cfg
         self.memory = memory
         self.container = container
-        self.logger = logger or _logger
+        self.logger = logger or log
 
         # config with sensible defaults
         self._beam_w = max(1, int(cfg.get("beam_width", 5)))
@@ -122,7 +121,7 @@ class KnowledgeArena:
                 s = self.score_candidate(text, section_text)
             return _norm_score(s)
         except Exception as e:
-            self.logger.warning("Arena.score_candidate failed; zeroing score: %s", e)
+            log.warning("Arena.score_candidate failed; zeroing score: %s", e)
             return _norm_score(None)
 
     async def _call_improve(self, text: str, improve_ctx: Dict[str, Any]) -> str:
@@ -133,7 +132,7 @@ class KnowledgeArena:
                 out = self.improve(text, improve_ctx)
             return out if isinstance(out, str) and out else text
         except Exception as e:
-            self.logger.warning("Arena.improve failed; keeping original: %s", e)
+            log.warning("Arena.improve failed; keeping original: %s", e)
             return text
 
     # ---- emitter that supports fn or events object ----
@@ -156,7 +155,7 @@ class KnowledgeArena:
                     emit(safe)
         except Exception as e:
             # never fail the arena for telemetry issues
-            self.logger.debug("Arena emit skipped: %s", e)
+            log.debug("Arena emit skipped: %s", e)
 
     # ---- helpers ----
     def _marginal_per_ktok(self, prev_best: float, curr_best: float, prev_toks: int, curr_toks: int) -> float:

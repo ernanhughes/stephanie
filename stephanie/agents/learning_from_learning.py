@@ -15,7 +15,8 @@ from stephanie.agents.knowledge.chat_knowledge_builder import \
     ChatKnowledgeBuilder
 from stephanie.agents.knowledge.conversation_filter import \
     ConversationFilterAgent
-from stephanie.agents.knowledge.scorable_annotate import ScorableAnnotateAgent
+from stephanie.agents.maintenance.scorable_annotate import \
+    ScorableAnnotateAgent
 from stephanie.models.casebook import CaseBookORM, CaseORM
 from stephanie.scoring.scorable import ScorableType
 from stephanie.scoring.scorer.knowledge_scorer import KnowledgeScorer
@@ -26,7 +27,7 @@ from stephanie.utils.json_sanitize import dumps_safe  # and/or sanitize
 from stephanie.utils.paper_utils import (build_paper_goal_meta,
                                          build_paper_goal_text)
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -103,7 +104,7 @@ class LearningFromLearningAgent(BaseAgent):
                 cfg.get("knowledge_scorer", {}), memory, container, logger
             )
         except Exception as e:
-            _logger.warning(f"KnowledgeScorer unavailable, falling back: {e}")
+            log.warning(f"KnowledgeScorer unavailable, falling back: {e}")
 
         # Arena switch
         self.use_arena = bool(cfg.get("use_arena", True))
@@ -427,10 +428,10 @@ class LearningFromLearningAgent(BaseAgent):
                 await self.annotate.run(context={"scorables": items})
                 await self.analyze.run(context={"chats": items})
             except Exception as e:
-                _logger.warning(f"Corpus annotate/analyze skipped: {e}")
+                log.warning(f"Corpus annotate/analyze skipped: {e}")
             return items
         except Exception as e:
-            _logger.warning(f"Chat corpus retrieval failed: {e}")
+            log.warning(f"Chat corpus retrieval failed: {e}")
             return []
 
     def _verify_and_improve(
@@ -571,7 +572,7 @@ class LearningFromLearningAgent(BaseAgent):
             self.logger.log("LfL_Strategy_Track", payload)
 
         except Exception as e:
-            _logger.warning(f"_track_strategy_evolution skipped: {e}")
+            log.warning(f"_track_strategy_evolution skipped: {e}")
 
     def _record_strategy_state(self, context: Optional[Dict[str, Any]], tag: str = "pre_change") -> None:
         """Record current strategy knobs so we can compare later."""
@@ -814,7 +815,7 @@ class LearningFromLearningAgent(BaseAgent):
             curr_tokens = _est_tokens(new_beam[0]["text"]) if new_beam else prev_tokens
             marginal = _marginal(prev_best, curr_best, prev_tokens, curr_tokens)
             if marginal < min_marg:
-                _logger.debug(f"[arena] early-stop@r={r+1} marginal={marginal:.3f} < {min_marg}")
+                log.debug(f"[arena] early-stop@r={r+1} marginal={marginal:.3f} < {min_marg}")
                 beam = new_beam[:beam_w]
                 # snapshot beam before breaking
                 iters.append([{"variant": b["variant"], "overall": b["score"]["overall"], "k": b["score"]["k"]} for b in beam])
@@ -823,7 +824,7 @@ class LearningFromLearningAgent(BaseAgent):
             # Plateau stop (no meaningful improvement)
             best_hist.append(curr_best)
             if len(best_hist) >= 2 and (best_hist[-1] - best_hist[-2]) < plateau_eps:
-                _logger.debug(f"[arena] plateau-stop@r={r+1} Δ={best_hist[-1]-best_hist[-2]:.4f} < {plateau_eps}")
+                log.debug(f"[arena] plateau-stop@r={r+1} Δ={best_hist[-1]-best_hist[-2]:.4f} < {plateau_eps}")
                 beam = new_beam[:beam_w]
                 iters.append([{"variant": b["variant"], "overall": b["score"]["overall"], "k": b["score"]["k"]} for b in beam])
                 break
@@ -955,7 +956,7 @@ class LearningFromLearningAgent(BaseAgent):
                             meta=_meta(origin=w["origin"], variant=w["variant"])
                         )
             except Exception as e:
-                _logger.warning(f"auto-citation skipped: {e}")
+                log.warning(f"auto-citation skipped: {e}")
 
             w_score = w.get("score") or {}
             self.memory.casebooks.add_scorable(
@@ -1043,7 +1044,7 @@ class LearningFromLearningAgent(BaseAgent):
                 )
 
             except Exception as e:
-                _logger.warning(f"Failed to set case provenance attrs: {str(e)}")
+                log.warning(f"Failed to set case provenance attrs: {str(e)}")
 
             # -------- Optional SIS card (non-blocking) --------
             try:
@@ -1085,7 +1086,7 @@ class LearningFromLearningAgent(BaseAgent):
                     "section": section.get("section_name"),
                 })
             except Exception:
-                _logger.warning(f"_persist_arena failed: {e}")
+                log.warning(f"_persist_arena failed: {e}")
 
 
     # NOTE: removed accidental duplicate _persist_arena definition that overwrote the real one
@@ -1236,7 +1237,7 @@ class LearningFromLearningAgent(BaseAgent):
                 "timestamp": time.time(),
             }
             self._evolution_log.append(event)
-            _logger.debug(f"LfL_Strategy_Evolved(AB): {event}")
+            log.debug(f"LfL_Strategy_Evolved(AB): {event}")
             if context is not None:
                 context.setdefault("strategy_evolution", []).append(event)
 
@@ -1506,7 +1507,7 @@ class LearningFromLearningAgent(BaseAgent):
                     },
                 )
         except Exception as e:
-            _logger.warning(f"Pair persistence skipped: {e}")
+            log.warning(f"Pair persistence skipped: {e}")
 
     # ---------------- small helpers ----------------
 

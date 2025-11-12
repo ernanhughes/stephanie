@@ -5,7 +5,7 @@ import logging
 from dataclasses import dataclass, replace
 from typing import Any, Dict, Optional, cast
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class Strategy:
@@ -24,14 +24,14 @@ class Strategy:
 
     def _validate(self):
         if not (0.7 <= self.verification_threshold <= 0.95):
-            _logger.warning(
+            log.warning(
                 "Verification threshold %.3f outside recommended range [0.70, 0.95]",
                 self.verification_threshold
             )
 
         total_weight = self.skeptic_weight + self.editor_weight + self.risk_weight
         if abs(total_weight - 1.0) > 0.01:
-            _logger.warning(
+            log.warning(
                 "Strategy weights sum to %.3f (skeptic=%.3f, editor=%.3f, risk=%.3f); "
                 "call .normalize() to renormalize.",
                 total_weight, self.skeptic_weight, self.editor_weight, self.risk_weight

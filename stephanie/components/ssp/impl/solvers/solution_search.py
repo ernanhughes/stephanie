@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Optional
 from stephanie.components.tree.events import TreeEventEmitter
 from stephanie.prompts.prompt_loader import PromptLoader
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 # Try to use shared parser if available; otherwise use local fallback.
 try:
@@ -149,7 +149,7 @@ class SolutionSearch:
                 break
             except Exception as e:
                 attempt += 1
-                _logger.warning("SolutionSearch prompt call failed (attempt %d): %s", attempt, e)
+                log.warning("SolutionSearch prompt call failed (attempt %d): %s", attempt, e)
                 self._emit("error", {"where": "solution_search.run_prompt", "error": str(e), "attempt": attempt})
                 if attempt > self.retries:
                     snippets = self._fallback_snippets(query, seed_answer, k)
@@ -157,7 +157,7 @@ class SolutionSearch:
                     return snippets
                 await asyncio.sleep(self.backoff * attempt)
 
-        _logger.info("SolutionSearch LLM response (first 160 chars): %s", (response or "").replace("\n", " ")[:160])
+        log.info("SolutionSearch LLM response (first 160 chars): %s", (response or "").replace("\n", " ")[:160])
 
         # Parse
         if self.use_three and k == 1:

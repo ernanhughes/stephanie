@@ -8,7 +8,7 @@ from stephanie.models.base import Base
 
 
 class DocumentSectionORM(Base):
-    __tablename__ = "document_sections"   # ✅ Corrected table name
+    __tablename__ = "document_sections"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     document_id = Column(

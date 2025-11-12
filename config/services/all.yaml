@@ -174,3 +174,13 @@ services:
       memory: ${memory}
       logger: ${logger}
       container: ${container}
+
+  # Optional: cycle watcher if you use it anywhere
+  cache:
+    enabled: false
+    cls: stephanie.services.cache_service.CacheService
+    dependencies: [state]
+    args: 
+      cfg: ${cfg}
+      memory: ${memory}
+      logger: ${logger}

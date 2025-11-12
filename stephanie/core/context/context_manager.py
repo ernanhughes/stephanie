@@ -129,7 +129,7 @@ class ContextManager:
         if score is None and hasattr(self, "scorer_fn"):
             try:
                 score = self.scorer_fn(self._data["goal"], content)
-            except:
+            except Exception:
                 score = {"alignment": 0.5, "clarity": 0.6, "novelty": 0.7}
         
         # Add to metadata

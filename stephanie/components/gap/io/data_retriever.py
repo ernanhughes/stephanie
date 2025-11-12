@@ -1,3 +1,4 @@
+# stephanie/components/gap/io/data_retriever.py
 from __future__ import annotations
 
 import logging
@@ -6,7 +7,7 @@ from typing import Any, Dict, List, Optional
 
 from stephanie.components.gap.models import TripleSample
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -38,7 +39,7 @@ class DataRetriever:
 
     def __init__(self, container, logger, retriever_cfg: RetrieverConfig | None = None):
         self.container = container
-        self.logger = logger or _logger
+        self.logger = logger
         self.cfg = retriever_cfg or RetrieverConfig()
 
     async def get_triples_by_dimension(
@@ -106,7 +107,7 @@ class DataRetriever:
             out[dim] = triples
             self.logger.log("DataRetrieverMemory", {"dimension": dim, "requested": fetch_n, "returned": len(triples)})
             if len(triples) < limit:
-                _logger.warning(
+                log.warning(
                     "DataRetrieverMemoryShortfall: dim=%s requested=%d got=%d (after filtering)",
                     dim, limit, len(triples)
                 )

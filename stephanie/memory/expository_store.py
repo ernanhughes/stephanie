@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional
 
 from sqlalchemy import asc, desc, func
 from sqlalchemy.orm import Query
@@ -54,7 +54,6 @@ class ExpositorySnippetStore(BaseSQLAlchemyStore):
                 expository_score=float(expository_score),
                 bloggability_score=float(bloggability_score),
                 picked=bool(picked),
-                created_at=datetime.now(),
             )
             s.add(row)
             s.flush()
@@ -103,7 +102,6 @@ class ExpositorySnippetStore(BaseSQLAlchemyStore):
                         expository_score=float(it.get("expository_score") or 0.0),
                         bloggability_score=float(it.get("bloggability_score") or 0.0),
                         picked=bool(it.get("picked") or False),
-                        created_at=datetime.now(),
                     )
                 )
             if not rows:

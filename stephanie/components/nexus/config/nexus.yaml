@@ -1,0 +1,33 @@
+model:
+  visual_encoder: "timesformer_s"
+  token_merge: true
+index:
+  coarse:
+    type: "faiss_ivfpq"
+    nlist: 4096
+    m: 32
+    nprobe: 16
+  rerank:
+    late_interaction: true
+    topk_coarse: 200
+    topk_final: 20
+graph:
+  knn_k: 32
+  keep_top_m_lateint: 12
+path:
+  steps_max: 12
+  weights:
+    alpha_text: 1.0
+    beta_goal: 0.7
+    gamma_stability: 0.6
+    zeta_agreement: 0.4
+    eta_novelty: 0.3
+    kappa_switch: 0.2
+    delta_domain: 0.0        # added (safe default)
+    epsilon_entity: 0.0      # added (safe default)
+tables:
+  nodes: "nexus_nodes"
+  edges: "nexus_edges"
+  paths: "nexus_paths"
+bus:
+  topic_prefix: "nexus.events"

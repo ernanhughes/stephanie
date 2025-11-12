@@ -21,10 +21,9 @@ from __future__ import annotations
 
 import logging
 import time
-from dataclasses import dataclass, field
-from enum import Enum
+from dataclasses import dataclass
 from functools import wraps
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 import numpy as np
 from pydantic import BaseModel, Field, validator
@@ -92,7 +91,7 @@ class CircuitBreaker:
                     self.state = CircuitBreakerState.HALF_OPEN
                     self.half_open_successes = 0
                 else:
-                    self.logger.warning("Circuit breaker is OPEN - skipping call")
+                    log.warning("Circuit breaker is OPEN - skipping call")
                     return None
             
             try:
@@ -118,7 +117,7 @@ class CircuitBreaker:
                 
                 # Transition to OPEN state if threshold reached
                 if self.failures >= self.failure_threshold:
-                    self.logger.warning("Circuit breaker transitioning to OPEN state")
+                    log.warning("Circuit breaker transitioning to OPEN state")
                     self.state = CircuitBreakerState.OPEN
                 
                 raise

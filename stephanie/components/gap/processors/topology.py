@@ -5,7 +5,7 @@ import json
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Literal, Optional, Tuple
+from typing import Any, Dict, List, Literal, Optional, Tuple
 
 import matplotlib
 import matplotlib.pyplot as plt
@@ -570,7 +570,7 @@ class TopologyProcessor(ProgressMixin):
             top = 0.0 if H1.shape[0] == 0 else float(np.max(H1[:, 1] - H1[:, 0]))
             bstrap.append({"b1": int(H1.shape[0]), "top_H1_persistence": top})
             if (b % 2) == 0 or (b + 1) == B:
-                self.pstage(f"topology:bootstrap", "tick", b=b+1, B=B)
+                self.pstage("topology:bootstrap", "tick", b=b+1, B=B)
 
         jitter: List[Dict[str, Any]] = []
         if self.cfg.use_weighted:
@@ -582,7 +582,7 @@ class TopologyProcessor(ProgressMixin):
                 top = 0.0 if H1.shape[0] == 0 else float(np.max(H1[:, 1] - H1[:, 0]))
                 jitter.append({"b1": int(H1.shape[0]), "top_H1_persistence": top})
                 if (j % 2) == 0 or (j + 1) == J:
-                    self.pstage(f"topology:jitter", "tick", j=j+1, J=J)
+                    self.pstage("topology:jitter", "tick", j=j+1, J=J)
 
         return {"bootstrap": bstrap, "weight_jitter": jitter}
 

@@ -1,7 +1,6 @@
 # stephanie/scoring/training/sicql_trainer.py
 from __future__ import annotations
 
-import json
 import os
 from datetime import datetime
 
@@ -14,8 +13,6 @@ from torch.utils.data import DataLoader, TensorDataset
 from tqdm import tqdm
 
 from stephanie.models.belief_cartridge import BeliefCartridgeORM
-from stephanie.models.model_version import ModelVersionORM
-from stephanie.models.training_stats import TrainingStatsORM
 from stephanie.scoring.model.in_context_q import InContextQModel
 from stephanie.scoring.model.policy_head import PolicyHead
 from stephanie.scoring.model.q_head import QHead
@@ -90,7 +87,6 @@ class SICQLTrainer(BaseTrainer):
         Builds a TensorDataset of (ctx_emb, doc_emb, score) on self.device.
         """
         import torch
-        from torch.utils.data import DataLoader, TensorDataset
 
         ctxs, docs, ys = [], [], []
         kept, skipped = 0, 0

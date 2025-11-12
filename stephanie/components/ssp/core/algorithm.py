@@ -23,9 +23,7 @@ import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-import numpy as np
-
-from stephanie.components.ssp.core.protocols import EpisodeContext, SSPMetrics
+from stephanie.components.ssp.core.protocols import SSPMetrics
 from stephanie.components.ssp.core.roles.proposer import Proposer
 from stephanie.components.ssp.core.roles.solver import Solver
 from stephanie.components.ssp.core.roles.verifier import Verifier
@@ -39,7 +37,7 @@ from stephanie.components.ssp.training.rewards import (
     calculate_self_play_rewards, update_episode_with_rewards)
 from stephanie.components.ssp.utils.trace import EpisodeTrace
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 
 class SSPAlgorithm:
@@ -148,15 +146,11 @@ class SSPAlgorithm:
                 self.vpm_visualization.snapshot_progress(
                     unit=episode_id, dims=dims, step_idx=0, tag="proposed"
                 )
-                _logger.info(
-                    "Episode proposed snapshot saved",
-                    extra={
-                        "episode_id": episode_id,
-                        "question": ep.question,
-                        "dims": {
-                            k: round(float(v), 4) for k, v in dims.items()
-                        },
-                    },
+                log.debug(
+                    "Episode proposed snapshot saved episode_id:%s question:%s dims:%s",
+                    episode_id,
+                    ep.question,
+                    str({k: round(float(v), 4) for k, v in dims.items()}),
                 )
 
             # 5) Rewards: compute on verified only (paper’s game signal)
@@ -191,7 +185,7 @@ class SSPAlgorithm:
                         unit=episode_id
                     )
 
-                    _logger.info(
+                    log.info(
                         "VPM artifacts",
                         extra={
                             "unit": episode_id,
@@ -208,7 +202,7 @@ class SSPAlgorithm:
             return ep
 
         except Exception as e:
-            _logger.error(
+            log.error(
                 "SSP episode failed",
                 extra={"episode_id": episode_id, "error": str(e)},
             )
@@ -257,12 +251,12 @@ class SSPAlgorithm:
                     film_path = self.vpm_visualization.generate_filmstrip(
                         unit=unit
                     )
-                    _logger.info(
+                    log.info(
                         "Filmstrip ready",
                         extra={"unit": unit, "path": film_path},
                     )
                 except Exception as e:
-                    _logger.warning(
+                    log.warning(
                         "Filmstrip generation skipped",
                         extra={"unit": unit, "error": str(e)},
                     )

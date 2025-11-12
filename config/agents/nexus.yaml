@@ -1,0 +1,301 @@
+nexus:
+  name: nexus
+  enabled: true
+  save_prompt: false
+  save_context: false
+  skip_if_completed: false
+
+  # ------------------------------------------------------------------
+  # Core / Model
+  # ------------------------------------------------------------------
+  model:
+    name: ollama/qwen3
+    api_base: http://localhost:11434
+    api_key: null
+
+  embeddings:
+    backend: ${embeddings.backend}   # e.g. "hnet", stays in sync with global
+
+  paths:
+    vpm_out: "./runs/vpm/nexus"
+    cache_dir: ".vision_scorer_cache"
+    artifacts: "./runs/nexus_artifacts"
+    prompts: "${paths.prompts}"      # for analyze helper
+
+  # ------------------------------------------------------------------
+  # Data loading → Scorables → Graph
+  # ------------------------------------------------------------------
+  loader:
+    role_filter: "assistant"     # null for all roles
+    limit: 5000
+    min_text_len: 80
+
+  indexer:
+    batch_size: 128
+    normalize_l2: true
+    persist: true
+    faiss:
+      use_gpu: true
+      nprobe: 32
+    knn:
+      k: 12
+      edge_threshold: 0.35
+    cap:
+      max_nodes: 50000
+      max_edges_per_node: 32
+
+  # ------------------------------------------------------------------
+  # Path search over the Nexus graph
+  # ------------------------------------------------------------------
+  pathfinder:
+    beam_width: 6
+    max_path_len: 24
+    min_path_len: 3
+    backtrack: true
+    start_strategy: "nearest_to_goal"   # "nearest_to_goal" | "seed_node"
+    weights:
+      alpha_text: 0.55
+      beta_goal: 0.20
+      gamma_stability: 0.15
+      zeta_agreement: 0.05
+      delta_domain: 0.03
+      epsilon_entity: 0.02
+    penalties:
+      revisit: 0.10
+      long_hop: 0.05
+    stops:
+      max_total_cost: 9999
+      target_hit_threshold: 0.82
+
+  # Optional external signals Nexus can consume if present
+  signals:
+    use_hallucination: true
+    use_uncertainty: true
+    use_agreement: true
+
+  # ------------------------------------------------------------------
+  # Text scoring (Scorable → vector)
+  # Used by NexusMetricsWorkerInline
+  # ------------------------------------------------------------------
+  scoring:
+    scorers: 
+      - sicql
+      - hrm
+      - tiny
+      - ebt
+      - svm
+      - mrq
+      - knowledge
+    dimensions:
+      - alignment
+      - clarity
+      - relevance
+      - coverage
+      - faithfulness
+      - novelty
+      - implementability
+    persist: false
+
+
+  graph:
+    knn_k: 12
+    sim_threshold: 0.35
+    max_edges_per_node: 24
+    add_temporal: true
+    add_mst_backbone: true
+
+    edge_caps:
+      knn_blend: 250000
+      temporal_next: 250000
+      backbone_mst: 100000
+
+    edge_weights:
+      embed: 0.50
+      metrics: 0.25
+      lexical: 0.10
+      domains: 0.08
+      entities: 0.05
+      agreement: 0.02
+      stability: 0.00
+
+  pulse:
+    enabled: true
+    k: 25                 # neighbors per pulse
+    depth: 2              # subgraph ego radius
+    min_sim: 0.35
+    sse_subject: "nexus.pulse"      # UI SSE bus subject
+    expand_workers: 3
+    fanout_limit: 200              # safety valve
+
+  goals:
+    # “identity” goals (raise/lower thresholds per your taste)
+    - id: self_improvement
+      priority: 0.95
+      activation_threshold: 0.70
+      keywords: ["improve", "optimize", "learn", "train", "self-play", "policy"]
+    - id: knowledge_discovery
+      priority: 0.90
+      activation_threshold: 0.65
+      keywords: ["paper", "result", "proof", "novel", "SOTA", "benchmark"]
+    - id: system_preservation
+      priority: 0.85
+      activation_threshold: 0.60
+      keywords: ["error", "outage", "latency", "risk", "hallucination", "health"]
+
+  # ------------------------------------------------------------------
+  # Visual scoring & rendering (ZeroModel)
+  # Used by NexusVPMWorkerInline + ZeroModelService
+  # ------------------------------------------------------------------
+  vpm:
+    dims_for_score:
+      - clarity
+      - coherence
+      - complexity
+      - alignment
+      - coverage
+    rollout_steps: 0                  # 0 = score only (no extra visual ops)
+    rollout_strategy: "consensus-walk"
+    save_channels: false
+
+  zero_model:
+    fps: 8
+    max_frames: 1024
+    output_dir: "./data/runs/"
+    timeline_scale_mode: "robust01"
+    pipeline:
+      - { stage: "normalize",           params: {} }
+      - { stage: "feature_engineering", params: {} }
+      - { stage: "organization",        params: { strategy: "spatial" } }
+    epistemic_field:
+      enabled: true
+      alpha: 0.97
+      Kc: 40
+      Kr: 100
+      fps: 8
+      cmap: "seismic"
+      aggregate: false
+
+  # Optional viewer/filmstrip defaults
+  filmstrip:
+    rows: 2
+    cols: 12
+    dpi: 200
+    border_px: 2
+    border_color: 255
+    label_on: false
+    label_pos: tl
+    label_color: 255
+    label_bg: 0
+
+  vpm_viz:
+    raw_render: bar
+    progress_render: bar
+    bar_height: 12
+    grid_side: 32
+    fixed_scale: true
+    dimensions:
+      - clarity
+      - coherence
+      - complexity
+      - alignment
+      - coverage
+    output_dir: "./runs/vpm/nexus/viz"
+    tl_fracs: [0.25, 0.16, 0.36, 0.09]
+    delta: 0.02
+
+  # ------------------------------------------------------------------
+  # Agent flow wiring
+  # ------------------------------------------------------------------
+  flow:
+    batch_size: 16
+    max_items: 200
+    stop_on_error: false
+    progress_every: 10
+
+  # ------------------------------------------------------------------
+  # Telemetry / Bus subjects (event versions drop in without code changes)
+  # ------------------------------------------------------------------
+  telemetry:
+    enabled: true
+    subject_root: nexus
+    sample: 1.0
+    persist: true
+    extra:
+      app: stephanie
+      component: nexus
+
+  bus:
+    vpm:
+      request: "arena.nexus.vpm.request"
+      ready:   "arena.nexus.vpm.ready"
+    metrics:
+      request: "arena.nexus.metrics.request"
+      ready:   "arena.nexus.metrics.ready"
+
+  # ------------------------------------------------------------------
+  # Safety hooks for Daimon (soft guards)
+  # ------------------------------------------------------------------
+  guards:
+    enable_risk_checks: false
+    overlap_min: 0.05
+    delta_mass_min: -0.10
+
+  # ------------------------------------------------------------------
+  # Helper sub-agents (same file, separate runners can reference these keys)
+  # ------------------------------------------------------------------
+  annotate:
+    seed_config: "config/domain/seeds.yaml"
+    goal_config: "config/domain/goal_prompt.yaml"
+    max_domains_per_source: 3
+    min_confidence: 0.10
+    only_missing: true
+    force: false
+    progress: true
+    filter_role: true
+    scorable_role: "assistant"
+
+  analyze:
+    limit: 10000
+    force_rescore: false
+    prompt_dir: "./prompts/chat_analyze"
+    dimensions:
+      - reasoning
+      - knowledge
+      - clarity
+      - faithfulness
+      - coverage
+    model:
+      name: ollama/qwen3
+      api_base: http://localhost:11434
+      api_key: null
+
+  # ------------------------------------------------------------------
+  # Seeds / Dev switches
+  # ------------------------------------------------------------------
+  seeds:
+    - "Summarize this week’s progress succinctly."
+    - "List three risks in our current reasoning stack."
+    - "Explain the role of VPMs in one paragraph."
+
+  dev:
+    dry_run: false
+    log_level: INFO
+    save_step_json: true
+
+  vpm_out: "./runs/nexus_vpm"
+  rollout_steps: 0
+  rollout_strategy: "consensus-walk"
+  target_type: "conversation_turn"
+
+  graph_build:
+    embed_key: "global"
+    knn_k: 12
+    sim_threshold: 0.35
+
+  ab_compare:
+    enabled: true
+    top_k: 10
+    seed: 0
+    target_source: "goal"     # "goal" | "text"
+    target_text: ""           # used if target_source == "text"
+    prefer_item_embedding: true   # use embeddings.global if available

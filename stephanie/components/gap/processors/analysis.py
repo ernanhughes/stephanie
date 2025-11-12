@@ -16,7 +16,7 @@ from stephanie.components.gap.processors.topology import (TopologyConfig,
 from stephanie.components.gap.processors.visuals import render_scm_images
 from stephanie.utils.progress_mixin import ProgressMixin
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 
 
@@ -33,7 +33,7 @@ class AnalysisProcessor(ProgressMixin):
         self.logger = logger
         self.topology_processor: TopologyProcessor | None = None
         self._init_progress(container, logger)  # <-- ProgressService hookup
-        _logger.debug(f"AnalysisProcessor initialized with config: {config}")
+        log.debug(f"AnalysisProcessor initialized with config: {config}")
 
     async def execute_analysis(
         self,
@@ -89,8 +89,8 @@ class AnalysisProcessor(ProgressMixin):
             return out
         # ----------------------------------------------------------------------
 
-        _logger.debug(f"Starting analysis pipeline for run {run_id}")
-        _logger.debug(f"Scoring results keys: {list(scoring_results.keys())}")
+        log.debug(f"Starting analysis pipeline for run {run_id}")
+        log.debug(f"Scoring results keys: {list(scoring_results.keys())}")
 
         zm = self.container.get("zeromodel")
 
@@ -124,7 +124,7 @@ class AnalysisProcessor(ProgressMixin):
                 artifacts=_pick_artifacts(res),
                 extra={"summary": {k:v for k,v in res.items() if isinstance(v,(int,float,str))}})
         except Exception as e:
-            _logger.error(f"Frontier analysis failed: {e}", exc_info=True)
+            log.error(f"Frontier analysis failed: {e}", exc_info=True)
             results["frontier"] = {"error": str(e)}
             self.pstage(task, "frontier:done", status="error", error=str(e))
             _m_end("analysis.frontier", status="error", artifacts={"error": str(e)})
@@ -142,7 +142,7 @@ class AnalysisProcessor(ProgressMixin):
                 artifacts=_pick_artifacts(res),
                 extra={"metrics": {k:v for k,v in res.get("metrics", {}).items() if isinstance(v,(int,float))}})
         except Exception as e:
-            _logger.error(f"Delta analysis failed: {e}", exc_info=True)
+            log.error(f"Delta analysis failed: {e}", exc_info=True)
             results["delta_analysis"] = {"error": str(e)}
             self.pstage(task, "delta:done", status="error", error=str(e))
             _m_end("analysis.delta", status="error", artifacts={"error": str(e)})
@@ -158,7 +158,7 @@ class AnalysisProcessor(ProgressMixin):
             self.pstage(task, "intensity:done", status="ok")
             _m_end("analysis.intensity", status="ok", artifacts=_pick_artifacts(res))
         except Exception as e:
-            _logger.error(f"Intensity report generation failed: {e}", exc_info=True)
+            log.error(f"Intensity report generation failed: {e}", exc_info=True)
             results["intensity"] = {"error": str(e)}
             self.pstage(task, "intensity:done", status="error", error=str(e))
             _m_end("analysis.intensity", status="error", artifacts={"error": str(e)})
@@ -174,7 +174,7 @@ class AnalysisProcessor(ProgressMixin):
             self.pstage(task, "phos:done", status="ok")
             _m_end("analysis.phos", status="ok", artifacts=_pick_artifacts(res))
         except Exception as e:
-            _logger.error(f"PHOS analysis failed: {e}", exc_info=True)
+            log.error(f"PHOS analysis failed: {e}", exc_info=True)
             results["phos"] = {"error": str(e)}
             self.pstage(task, "phos:done", status="error", error=str(e))
             _m_end("analysis.phos", status="error", artifacts={"error": str(e)})
@@ -209,7 +209,7 @@ class AnalysisProcessor(ProgressMixin):
             self.pstage(task, "scm_visuals:done", status="ok", n_imgs=len(img_paths))
             _m_end("analysis.scm_visuals", status="ok", artifacts={"images": img_paths})
         except Exception as e:
-            _logger.error(f"SCM visualization failed: {e}", exc_info=True)
+            log.error(f"SCM visualization failed: {e}", exc_info=True)
             results["scm_visuals"] = {"error": str(e)}
             self.pstage(task, "scm_visuals:done", status="error", error=str(e))
             _m_end("analysis.scm_visuals", status="error", artifacts={"error": str(e)})
@@ -246,14 +246,14 @@ class AnalysisProcessor(ProgressMixin):
                 artifacts=_pick_artifacts(topo_out),
                 extra={"betti": topo_out.get("betti", {})})
         except Exception as e:
-            _logger.error(f"Topology analysis failed: {e}", exc_info=True)
+            log.error(f"Topology analysis failed: {e}", exc_info=True)
             results["topology"] = {"error": str(e)}
             self.pstage(task, "topology:done", status="error", error=str(e))
             _m_end("analysis.topology", status="error", artifacts={"error": str(e)})
         done_stages += 1
         self.ptick(task, done=done_stages, total=total_stages)
 
-        _logger.info(f"Analysis pipeline completed for run {run_id} with {len(results)} components")
+        log.info(f"Analysis pipeline completed for run {run_id} with {len(results)} components")
         self.pdone(task, extra={"stages": done_stages})
 
         if manifest:
@@ -265,14 +265,14 @@ class AnalysisProcessor(ProgressMixin):
     def _resolve_mats_and_names(
         self, scoring_results: Dict[str, Any]
     ) -> Tuple[np.ndarray, np.ndarray, list[str], list[str]]:
-        _logger.debug("Resolving matrices for analysis...")
+        log.debug("Resolving matrices for analysis...")
         H = scoring_results.get("hrm_vectors")
         T = scoring_results.get("tiny_vectors")
 
         if isinstance(H, np.ndarray) and isinstance(T, np.ndarray):
             if H.shape == T.shape and H.shape[1] > 0:
                 return H, T, list(scoring_results.get("hrm_names", [])), list(scoring_results.get("tiny_names", []))
-            _logger.warning(f"Native vector shape mismatch: HRM {getattr(H, 'shape', None)} != Tiny {getattr(T, 'shape', None)}")
+            log.warning(f"Native vector shape mismatch: HRM {getattr(H, 'shape', None)} != Tiny {getattr(T, 'shape', None)}")
 
         Hs = scoring_results.get("hrm_scm_matrix")
         Ts = scoring_results.get("tiny_scm_matrix")
@@ -294,7 +294,7 @@ class AnalysisProcessor(ProgressMixin):
         """
         NOTE: order fixed to match call sites: run_id precedes labels.
         """
-        _logger.debug(f"Rendering frontier map for matrices: {pos_matrix.shape}")
+        log.debug(f"Rendering frontier map for matrices: {pos_matrix.shape}")
         if pos_matrix.shape != neg_matrix.shape:
             raise ValueError(f"Frontier: shape mismatch hrm={pos_matrix.shape} tiny={neg_matrix.shape}")
 
@@ -344,7 +344,7 @@ class AnalysisProcessor(ProgressMixin):
             plt.close()
             meta["delta_abs_heat"] = str(png)
         except Exception as e:
-            _logger.warning(f"Could not generate delta heatmap: {e}")
+            log.warning(f"Could not generate delta heatmap: {e}")
 
         return meta
 
@@ -366,7 +366,7 @@ class AnalysisProcessor(ProgressMixin):
         - Statistical outliers
         - Critical performance gaps
         """
-        _logger.debug("Generating intensity report...")
+        log.debug("Generating intensity report...")
         
         out_dir = str(self.config.base_dir / run_id / "metrics")
         intensity = zm.build_intensity_report(
@@ -377,7 +377,7 @@ class AnalysisProcessor(ProgressMixin):
             out_dir=out_dir,
             top_k=25,
         )
-        _logger.debug(f"Intensity report generated with {len(intensity)} entries")
+        log.debug(f"Intensity report generated with {len(intensity)} entries")
         return intensity
 
     async def _perform_phos_analysis(self, run_id: str) -> Dict[str, Any]:
@@ -385,7 +385,7 @@ class AnalysisProcessor(ProgressMixin):
 
         df_proj = self._prepare_phos_data(run_id)
         if df_proj is None or df_proj.empty:
-            _logger.warning(f"No PHOS data available for run {run_id}")
+            log.warning(f"No PHOS data available for run {run_id}")
             return {"status": "no_rows_for_df"}
 
         # 1) Get aliases (manifest → df inference → fallback)

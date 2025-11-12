@@ -25,7 +25,7 @@ class EGVisualService(Service):
     """
 
     def __init__(self):
-        self._logger = logging.getLogger(self.name)
+        self.log = logging.getLogger(self.name)
         self._visual: Optional[EGVisual] = None
         self._up = False
 
@@ -37,13 +37,13 @@ class EGVisualService(Service):
         cfg = (kwargs.get("config") or {}) if kwargs else {}
         logger = kwargs.get("logger")
         if logger is not None:
-            self._logger = logger
+            self.log = logger
 
         out_dir = cfg.get("out_dir", "./runs/eg/img")
         seed = int(cfg.get("seed", 42))
         self._visual = EGVisual(out_dir=out_dir, seed=seed)
         self._up = True
-        self._logger.info(
+        self.log.info(
             "EGVisualService initialized (DEPRECATED)",
             extra={
                 "out_dir": out_dir,
@@ -65,7 +65,7 @@ class EGVisualService(Service):
     def shutdown(self) -> None:
         self._up = False
         self._visual = None
-        self._logger.info("EGVisualService shutdown (DEPRECATED)")
+        self.log.info("EGVisualService shutdown (DEPRECATED)")
 
     # --- Pass-through (for legacy use only) ---
     def render(self, trace_id: str, vpm: Any) -> tuple[str, str, str]:
@@ -99,7 +99,7 @@ class EGVisualService(Service):
                 raise ValueError("vpm must be numpy.ndarray of shape (n, 4) or dict with keys R,G,B,A")
 
         field_path, strip_path, legend_path = self._visual.render(trace_id, vpm)
-        self._logger.debug(
+        self.log.debug(
             f"EGVisualService rendered legacy artifacts for {trace_id}",
             extra={
                 "field": field_path,

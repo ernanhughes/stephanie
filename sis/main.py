@@ -2,34 +2,26 @@
 from __future__ import annotations
 
 from datetime import datetime
-from venv import logger
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from stephanie.logging.json_logger import JSONLogger
+from stephanie.core.logging.json_logger import JSONLogger
 from stephanie.memory.memory_tool import MemoryTool
-from sis.routes import arena, db, pipelines, models, logs, plan_traces, documents, mars, learning
+from sis.routes import arena, db, nexus, pipelines, models, logs, plan_traces, documents, mars, learning
 from sis.routes import casebooks as casebooks_routes
 from sis.routes import chats, cards
-from stephanie.components.gap.risk.api import create_router as create_gap_risk_router
-from sis.routes import risk_ui # (new router below)
-from sis.routes import explore_ui  # add with other route imports
+from sis.routes import explore_ui
 from sis.routes import overnight_ui
 from sis.routes import ssp
 from sis.utils.date_utls import short_dt, datetimeformat
 from stephanie.services.service_container import ServiceContainer
 from stephanie.services.registry_loader import load_services_profile
-from omegaconf import OmegaConf
-# sis/main.py (or wherever you load the cfg)
 from hydra import initialize, compose
 
 def load_sis_cfg(overrides: list[str] | None = None):
     with initialize(version_base=None, config_path="../config"):  # path containing sis.yaml
         cfg = compose(config_name="sis", overrides=overrides or [])
     return cfg
-
-
-
 
 app = FastAPI(title="Stephanie Insight System (SIS)")
 
@@ -82,6 +74,7 @@ app.include_router(cards.router)
 app.include_router(learning.router)
 app.include_router(explore_ui.router)
 app.include_router(overnight_ui.router)
+app.include_router(nexus.router)
 
 # # After app = FastAPI(...)
 # class SISContainer:
@@ -110,13 +103,13 @@ app.include_router(overnight_ui.router)
 # Mount SIS UI for risk
 # Yeah app.include_router(risk_ui.router)
 
-try:
-    from stephanie.components.ssp2.component import SSPComponent
-    from stephanie.utils.trace_logger import attach_to_app
-    app.state.ssp = SSPComponent(app.state.cfg.components.ssp, app.state.memory, app.state.container, app.state.logger)
-    attach_to_app(app, jsonl_path="logs/plan_traces.jsonl", enable_stdout=False)
-except Exception as e:
-    # Don't crash SIS if SSP isn't ready; you can still turn it on later
-    app.state.ssp = None
-    logger.info({"msg": "SSP not initialized at boot", "error": str(e)})
+# try:
+#     from stephanie.components.ssp.component import SSPComponent
+#     from stephanie.utils.trace_logger import attach_to_app
+#     app.state.ssp = SSPComponent(app.state.cfg.components.ssp, app.state.memory, app.state.container, app.state.logger)
+#     attach_to_app(app, jsonl_path="logs/plan_traces.jsonl", enable_stdout=False)
+# except Exception as e:
+#     # Don't crash SIS if SSP isn't ready; you can still turn it on later
+#     app.state.ssp = None
+#     logger.info({"msg": "SSP not initialized at boot", "error": str(e)})
 app.include_router(ssp.router, prefix="/ssp")   # ← add prefix

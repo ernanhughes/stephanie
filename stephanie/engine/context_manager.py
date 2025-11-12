@@ -12,8 +12,6 @@ import numpy as np
 import torch
 from sqlalchemy import text
 
-from stephanie.models.context_state import ContextStateORM
-
 
 class ContextManager:
     def __init__(
@@ -132,7 +130,7 @@ class ContextManager:
         if score is None and hasattr(self, "scorer_fn"):
             try:
                 score = self.scorer_fn(self._data["goal"], content)
-            except:
+            except Exception:
                 score = {"alignment": 0.5, "clarity": 0.6, "novelty": 0.7}
         
         # Add to metadata
@@ -313,16 +311,16 @@ class ContextManager:
 
                 
         # Save to ORM
-        context_orm = ContextStateORM(
-            run_id=self.run_id,
-            stage_name=stage_dict.get("name", "unknown"),
-            context=json.dumps(processed_context_state),
-            trace=serializable_context.get("trace", []), # Make sure trace is handled correctly
-            token_count=serializable_context["metadata"].get("token_count", 0),
-            extra_data=json.dumps(stage_dict)
-        )
-        self.memory.session.add(context_orm)
-        self.memory.session.commit()
+        stage_name = stage_dict.get("name", "unknown")
+        context_dict = {
+            "run_id": self.run_id,
+            "stage_name": stage_name,
+            "context": json.dumps(processed_context_state),
+            "trace": serializable_context.get("trace", []), # Make sure trace is handled correctly
+            "token_count": serializable_context["metadata"].get("token_count", 0),
+            "extra_data": json.dumps(stage_dict)
+        }
+        self.memory.contexts.save(self.run_id, stage_name, context_dict)
         return True
 
     def stringify_tuple_keys(self, d):

@@ -4,26 +4,19 @@ from __future__ import annotations
 import json
 import logging
 import os
-from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional
 
-import yaml  # PyYAML
+import yaml
 
 from .aligner import Aligner
 from .badge_renderer import BadgeRenderer
-# --- Required sibling services (keep these names stable across files) -------
-# Implemented in:
-#   stephanie/components/gap/risk/monitor.py         -> class MonitorService
-#   stephanie/components/gap/risk/aligner.py         -> class Aligner
-#   stephanie/components/gap/risk/risk_engine.py     -> class RiskEngine
-#   stephanie/components/gap/risk/badge_renderer.py  -> class BadgeRenderer
-#   stephanie/components/gap/risk/provenance.py      -> class ProvenanceLogger
 from .monitor import MonitorService
 from .provenance import ProvenanceLogger
 from .risk_engine import RiskEngine
 
+log = logging.getLogger(__name__)
 
 def _utc_now_run_id() -> str:
     # example: 2025-10-23T20:58:41Z/35841
@@ -165,7 +158,7 @@ class GapRiskOrchestrator:
             try:
                 self._publisher.publish(self._publish_topic, record)
             except Exception as e:
-                self.logger.warning("Badge publish failed (topic=%s): %s", self._publish_topic, e)
+                log.warning("Badge publish failed (topic=%s): %s", self._publish_topic, e)
 
         return record
 

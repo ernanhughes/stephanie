@@ -220,6 +220,8 @@ def _clamp01(x: float) -> float:
     return 0.0 if not math.isfinite(x) else 1.0 if x > 1.0 else (0.0 if x < 0.0 else x)
 
 def _to01(x):
+    if x is None:
+        return None
     try:
         return _clamp01(float(x))
     except Exception:

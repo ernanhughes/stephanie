@@ -600,7 +600,6 @@ class ScoreBundle:
                 if cv is not None:
                     nums.append(cv)
 
-            # NEW: no numeric elements → skip in numeric_only mode
             if not nums:
                 # Optional alternative if you prefer to keep a signal:
                 # out[f"{key}.len"] = float(len(values))

@@ -21,7 +21,7 @@ from stephanie.components.ssp.services.vpm_visualization_service import \
 from stephanie.components.tree.events import TreeEventEmitter
 from stephanie.utils.progress_mixin import ProgressMixin
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 
 class SSPAgent(BaseAgent, ProgressMixin):
@@ -110,8 +110,8 @@ class SSPAgent(BaseAgent, ProgressMixin):
             vpm_visualization=self.container.get("ssp_vpm_viz"),
         )
         try:
-            _logger.info("SSP step started for run_id=%s", run_id)
-            self._init_progress(self.container, _logger)
+            log.debug("SSP step started for run_id=%s", run_id)
+            self._init_progress(self.container, log)
 
             task = f"SSP:{run_id}"
             self.pstart(
@@ -127,7 +127,7 @@ class SSPAgent(BaseAgent, ProgressMixin):
             self.pstage(task=task, stage="complete")
             self.pdone(task=task)
 
-            _logger.info("== SSP Summary ==\n%s", stats)
+            log.info("== SSP Summary ==\n%s", stats)
 
             # Attach under standard output key for downstream pipeline stages
             context[self.output_key] = {
@@ -138,5 +138,5 @@ class SSPAgent(BaseAgent, ProgressMixin):
 
         except Exception as e:
             error_msg = f"SSP step failed for run_id={run_id}: {str(e)}"
-            _logger.exception(error_msg)
+            log.exception(error_msg)
             raise RuntimeError(error_msg) from e

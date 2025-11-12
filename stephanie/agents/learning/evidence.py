@@ -4,7 +4,7 @@ from __future__ import annotations
 import asyncio
 import json
 import time
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Tuple
 
 
 class Evidence:
@@ -13,7 +13,7 @@ class Evidence:
         self.memory = memory
         self.container = container
         self.casebook_tag = cfg.get("casebook_action", "blog")
-        self._last: Dict[str, Any] = {}   # NEW: last snapshot for delta reporting
+        self._last: Dict[str, Any] = {}  
 
     def _emit(self, event: str, **fields):
         payload = {"event": event, 

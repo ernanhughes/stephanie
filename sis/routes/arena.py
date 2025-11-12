@@ -8,7 +8,7 @@ from fastapi import APIRouter, Request, Query
 from fastapi.responses import HTMLResponse, JSONResponse
 import logging
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/arena", tags=["arena"])
 
@@ -200,7 +200,7 @@ async def api_provenance(request: Request, case_id: str):
         }
         
     except Exception as e:
-        _logger.error(f"Provenance lookup failed for case {case_id}: {str(e)}", exc_info=True)
+        log.error(f"Provenance lookup failed for case {case_id}: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Provenance lookup failed: {str(e)}")
 
 @router.post("/api/scorables/{case_id}/rescore")
@@ -250,7 +250,7 @@ async def api_rescore(request: Request, case_id: str):
         }
         
     except Exception as e:
-        _logger.error(f"Rescoring failed for case {case_id}: {str(e)}", exc_info=True)
+        log.error(f"Rescoring failed for case {case_id}: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Rescoring failed: {str(e)}")
 
 def _store(request: Request):

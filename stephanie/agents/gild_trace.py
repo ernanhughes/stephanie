@@ -4,7 +4,7 @@ from __future__ import annotations
 import time
 import traceback
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 import torch
 import torch.nn.functional as F

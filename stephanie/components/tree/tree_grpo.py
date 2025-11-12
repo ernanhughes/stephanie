@@ -257,11 +257,9 @@ A: Start with `M=2, N=2, L=1` (very cheap). If budget allows, increase `L` first
 from __future__ import annotations
 
 import asyncio
-import math
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import (Any, Callable, DefaultDict, Dict, Iterable, List, Optional,
-                    Tuple)
+from typing import Any, Callable, DefaultDict, Dict, List, Optional
 
 import numpy as np
 
@@ -275,7 +273,7 @@ class TreeGRPOConfig:
     N: int = 2          # nodes sampled per tree per round
     L: int = 1          # expansion rounds
     scorer_name: str = "sicql"
-    dimensions: List[str] = None
+    dimensions: Optional[List[str]] = None
     # Advantage / normalization
     use_zscore_intra: bool = False    # if False, use (r - sibling_mean)
     use_zscore_inter: bool = True     # global z-score across all branches
@@ -283,6 +281,8 @@ class TreeGRPOConfig:
     value_alpha: float = 0.0          # 0 disables value scaling
     # Sampling
     prefer_non_buggy: bool = True
+    on_new_node: Optional[Callable[[SolutionNode], None]] = None 
+    return_top_k: int = 1
 
 class TreeGRPOAdapter:
     """
@@ -311,59 +311,68 @@ class TreeGRPOAdapter:
 
     async def rollout_forest(self, context: dict) -> Dict[str, Any]:
         """
-        Build a small 'forest' of search trees and expand them Tree-GRPO style.
-        Returns a dict with: nodes, per-node rewards, advantages, and a training batch.
+        If context provides `seed_plans` (list[str]) we use them as roots.
+        Else we draft M roots with plan_generator.
         """
-        # 1) Create M roots by calling the base search's initial drafting once per root
         goal = context.get("goal", {})
         task_description = goal.get("goal_text", "").strip()
         if not task_description:
             raise ValueError("Context must contain 'goal.goal_text'")
 
-        # Generate M root drafts (prefix sharing comes from reusing these as parents)
-        for _ in range(self.cfg.M):
-            plan = await self.plan_gen.draft_plan(task_description, context)
-            node = await self.base._process_plan(plan, parent_node=None, node_type="draft",
-                                                 task_description=task_description, context=context)
-            self._register_node(node)
+        seed_plans = context.get("seed_plans")  # list[str] or None   ### NEW
+        if seed_plans:
+            for plan_text in seed_plans:
+                node = await self.base._process_plan(
+                    plan_text, parent_node=None, node_type="seed",
+                    task_description=task_description, context=context
+                )
+                self._register_node(node)
+                if self.cfg.on_new_node:                                 # ### NEW
+                    try: self.cfg.on_new_node(node)
+                    except Exception: pass
+        else:
+            for _ in range(self.cfg.M):
+                plan = await self.plan_gen.draft_plan(task_description, context)
+                node = await self.base._process_plan(
+                    plan, parent_node=None, node_type="draft",
+                    task_description=task_description, context=context
+                )
+                self._register_node(node)
+                if self.cfg.on_new_node:                                 # ### NEW
+                    try: self.cfg.on_new_node(node)
+                    except Exception: pass
 
-        # 2) Perform L expansion rounds; in each round, for each tree sample up to N nodes to expand
         for _round in range(self.cfg.L):
-            try:
-                self.base.events.on_progress({"phase": "grpo_round_start", "round": _round})
-            except Exception:
-                pass
-            # snapshot candidate nodes per tree
+            try: self.base.events.on_progress({"phase":"grpo_round_start","round":_round})
+            except Exception: pass
             for rid in list(self._roots):
                 candidates = self._candidate_nodes(rid)
-                if not candidates:
-                    continue
+                if not candidates: continue
                 sample = self._sample_nodes(candidates, self.cfg.N)
-                # expand each sampled node once (improve or debug if buggy; else improve)
                 expand_tasks = [self._expand_one(nid, context) for nid in sample]
                 for new_node in await asyncio.gather(*expand_tasks):
                     if new_node is not None:
                         self._register_node(new_node)
+                        if self.cfg.on_new_node:                         # ### NEW
+                            try: self.cfg.on_new_node(new_node)
+                            except Exception: pass
 
-        # 3) Compute rewards and advantages
         nodes = [self.base.nodes_by_id[nid] for rid in self._roots for nid in self._trees[rid]]
         rewards = {n.id: self._reward_of(n) for n in nodes}
-
         adv_intra = self._compute_intra_tree_advantages(rewards, nodes)
         adv_inter = self._compute_inter_tree_normalization(rewards, nodes) if self.cfg.use_zscore_inter else {nid:0.0 for nid in rewards}
+        advantages = {nid: adv_intra.get(nid,0.0) + adv_inter.get(nid,0.0) for nid in rewards}
 
-        # 4) Combine
-        advantages = {nid: adv_intra.get(nid, 0.0) + adv_inter.get(nid, 0.0) for nid in rewards}
-
-        # 5) Optional value scaling (RLEV-like)
         if self.cfg.value_alpha > 0.0:
-            value_scale = self._value_scale_for_nodes(nodes, context)  # returns in [1,2]
+            value_scale = self._value_scale_for_nodes(nodes, context)
             for nid in advantages:
                 advantages[nid] *= value_scale.get(nid, 1.0)
 
-        # 6) Export a training batch sketch (IDs + advantages + metadata)
-        batch = self._to_training_batch(nodes, advantages, rewards, context)
+        # --- NEW: select best K leaves and extract their paths
+        top = self._top_k_leaves(nodes, rewards, k=max(1, self.cfg.return_top_k))    
+        paths = [self._extract_path(nid) for nid,_ in top]                           
 
+        batch = self._to_training_batch(nodes, advantages, rewards, context)
         return {
             "root_ids": list(self._roots),
             "nodes": [self._node_rec(n) for n in nodes],
@@ -372,7 +381,10 @@ class TreeGRPOAdapter:
             "adv_intra": adv_intra,
             "adv_inter": adv_inter,
             "training_batch": batch,
+            "top_leaves": top,              # List[(node_id, reward)] 
+            "top_paths": paths,             # List[List[node_id]]     
         }
+
 
     # ---------------------------- EXPANSION LOGIC --------------------------
 
@@ -539,3 +551,20 @@ class TreeGRPOAdapter:
             id=n.id, parent_id=n.parent_id, root_id=n.root_id, depth=n.depth,
             sibling_index=n.sibling_index, metric=n.metric, type=n.node_type
         )
+
+    def _top_k_leaves(self, nodes: List[SolutionNode], rewards: Dict[str,float], k:int):
+        leaves = [n for n in nodes if not any(self.base.nodes_by_id[x].parent_id == n.id for x in self.base.nodes_by_id)]
+        # fallback: if leaf detection is tricky, treat highest-depth nodes as leaves
+        if not leaves:
+            maxd = max((n.depth for n in nodes), default=0)
+            leaves = [n for n in nodes if n.depth == maxd]
+        ranked = sorted(((n.id, rewards[n.id]) for n in leaves), key=lambda t:t[1], reverse=True)
+        return ranked[:k]
+
+    def _extract_path(self, leaf_id: str) -> List[str]:
+        path = []
+        nid = leaf_id
+        while nid:
+            path.append(nid)
+            nid = self.base.nodes_by_id[nid].parent_id
+        return list(reversed(path))

@@ -36,7 +36,7 @@ def _guess_domain_heuristic(question: str) -> str:
 
 class MemCubeClient:
     """
-    Async client over MemcubeStore with a tiny API used by risk prediction:
+    Async client over MemCubeStore with a tiny API used by risk prediction:
       - query_calibration(kind, filters, sort, limit) Hi good night
       - store_calibration(kind, payload)
       - guess_domain(question)

@@ -14,7 +14,7 @@ from stephanie.utils.json_sanitize import dumps_safe
 from stephanie.utils.paper_utils import (build_paper_goal_meta,
                                          build_paper_goal_text)
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 AGENT_NAME = "LearningFromLearningAgent"  # stable label
 
@@ -518,7 +518,7 @@ class Persistence:
                             ),
                         )
             except Exception as e:
-                _logger.warning("auto-citation skipped: %s", e)
+                log.warning("auto-citation skipped: %s", e)
 
             w_score = w.get("score") or {}
             self.memory.casebooks.add_scorable(
@@ -707,7 +707,7 @@ class Persistence:
                     },
                 )
             except Exception:
-                _logger.warning("_persist_arena failed: %s", e)
+                log.warning("_persist_arena failed: %s", e)
 
     @staticmethod
     def _extract_claim_sentences(text: str) -> List[str]:

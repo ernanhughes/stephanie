@@ -15,7 +15,7 @@ def extract_knowledge_transfer_matrix(event_log_path: str) -> Dict[str, Any]:
                 try:
                     event = json.loads(line)
                     events.append(event)
-                except:
+                except Exception:
                     continue
     
     # Group by paper

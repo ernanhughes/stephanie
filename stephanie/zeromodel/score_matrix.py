@@ -2,8 +2,6 @@
 from __future__ import annotations
 
 import json
-import math
-from dataclasses import dataclass
 from typing import Dict, Iterable, List, Tuple
 
 import numpy as np
@@ -24,8 +22,10 @@ def _make_scorable(text: str, idx: int):
     """
     if ScorableFactory and ScorableType:
         # minimal dict accepted by your factory
-        return ScorableFactory.from_dict({"text": text, "id": f"resp_{idx}"}, ScorableType.DOCUMENT)
-    return SimpleScorable(id=f"resp_{idx}", text=text)
+        return ScorableFactory.from_dict(
+            {"text": text, "id": f"resp_{idx}"}, ScorableType.DOCUMENT
+        )
+    return Scorable(id=f"resp_{idx}", text=text, type=ScorableType.CUSTOM)
 
 
 def _robust_minmax(series: pd.Series, lo=10.0, hi=90.0) -> pd.Series:
@@ -59,12 +59,15 @@ def _corr_safe(a: pd.Series, b: pd.Series) -> Tuple[float, float, float]:
 # Core
 # ---------------------------
 
+
 def build_score_matrix(
     *,
     responses: Iterable[str],
     goal_text: str,
     dimensions: List[str],
-    scorers: Dict[str, object],   # e.g. {"hrm": hrm_scorer, "tiny": tiny_scorer}
+    scorers: Dict[
+        str, object
+    ],  # e.g. {"hrm": hrm_scorer, "tiny": tiny_scorer}
     memory=None,
     logger=None,
     max_n: int = 500,
@@ -86,7 +89,9 @@ def build_score_matrix(
     cols = []
     data = []
     if show_progress:
-        pbar = tqdm(total=len(scorables)*max(1, len(scorers)), desc="Scoring")
+        pbar = tqdm(
+            total=len(scorables) * max(1, len(scorers)), desc="Scoring"
+        )
     else:
         pbar = None
 
@@ -105,45 +110,83 @@ def build_score_matrix(
                     row_dicts[i][(model_name, dim)] = float(sr.score)
             except Exception as e:
                 if logger:
-                    logger.log("EvalScorerError", {"model": model_name, "dim_set": dimensions, "idx": i, "error": str(e)})
-            if pbar: pbar.update(1)
+                    logger.log(
+                        "EvalScorerError",
+                        {
+                            "model": model_name,
+                            "dim_set": dimensions,
+                            "idx": i,
+                            "error": str(e),
+                        },
+                    )
+            if pbar:
+                pbar.update(1)
 
-    if pbar: pbar.close()
+    if pbar:
+        pbar.close()
 
     # 4) assemble DataFrame
     all_cols = sorted({k for row in row_dicts for k in row.keys()})
-    df = pd.DataFrame([{c: row.get(c, np.nan) for c in all_cols} for row in row_dicts])
-    df.columns = pd.MultiIndex.from_tuples(df.columns, names=["model", "dimension"])
+    df = pd.DataFrame(
+        [{c: row.get(c, np.nan) for c in all_cols} for row in row_dicts]
+    )
+    df.columns = pd.MultiIndex.from_tuples(
+        df.columns, names=["model", "dimension"]
+    )
     df.index = [f"resp_{i}" for i in range(len(df))]
 
     # 5) compute metrics
-    metrics = {"per_model_distribution": {}, "agreement": {}, "inter_dim_corr": {}}
+    metrics = {
+        "per_model_distribution": {},
+        "agreement": {},
+        "inter_dim_corr": {},
+    }
 
     # 5a) per-model distribution stats per dimension
     for model_name in sorted({m for m, _ in df.columns}):
-        sub = df[model_name] if model_name in df.columns.get_level_values(0) else None
-        if sub is None: continue
+        sub = (
+            df[model_name]
+            if model_name in df.columns.get_level_values(0)
+            else None
+        )
+        if sub is None:
+            continue
         mstats = {}
         for dim in dimensions:
-            if dim not in sub.columns: continue
+            if dim not in sub.columns:
+                continue
             s = sub[dim].astype(float)
             mstats[dim] = {
                 "count": int(s.notna().sum()),
                 "mean": float(np.nanmean(s)),
                 "std": float(np.nanstd(s)),
-                "min": float(np.nanmin(s)) if s.notna().any() else float("nan"),
-                "p25": float(np.nanpercentile(s, 25)) if s.notna().any() else float("nan"),
-                "p50": float(np.nanpercentile(s, 50)) if s.notna().any() else float("nan"),
-                "p75": float(np.nanpercentile(s, 75)) if s.notna().any() else float("nan"),
-                "max": float(np.nanmax(s)) if s.notna().any() else float("nan"),
+                "min": float(np.nanmin(s))
+                if s.notna().any()
+                else float("nan"),
+                "p25": float(np.nanpercentile(s, 25))
+                if s.notna().any()
+                else float("nan"),
+                "p50": float(np.nanpercentile(s, 50))
+                if s.notna().any()
+                else float("nan"),
+                "p75": float(np.nanpercentile(s, 75))
+                if s.notna().any()
+                else float("nan"),
+                "max": float(np.nanmax(s))
+                if s.notna().any()
+                else float("nan"),
             }
         metrics["per_model_distribution"][model_name] = mstats
 
     # 5b) HRM vs Tiny agreement (normalize each to 0..1 via robust minmax)
-    if ("hrm" in df.columns.get_level_values(0)) and ("tiny" in df.columns.get_level_values(0)):
+    if ("hrm" in df.columns.get_level_values(0)) and (
+        "tiny" in df.columns.get_level_values(0)
+    ):
         agr = {}
         for dim in dimensions:
-            if (("hrm", dim) not in df.columns) or (("tiny", dim) not in df.columns):
+            if (("hrm", dim) not in df.columns) or (
+                ("tiny", dim) not in df.columns
+            ):
                 continue
             a_raw = df[("hrm", dim)]
             b_raw = df[("tiny", dim)]
@@ -165,9 +208,15 @@ def build_score_matrix(
         try:
             sub = df[model_name].astype(float)
             # Only keep columns with non-NaN variation
-            keep = [c for c in sub.columns if sub[c].notna().sum() > 3 and sub[c].std(skipna=True) > 1e-9]
+            keep = [
+                c
+                for c in sub.columns
+                if sub[c].notna().sum() > 3 and sub[c].std(skipna=True) > 1e-9
+            ]
             if keep:
-                metrics["inter_dim_corr"][model_name] = sub[keep].corr(method="spearman").to_dict()
+                metrics["inter_dim_corr"][model_name] = (
+                    sub[keep].corr(method="spearman").to_dict()
+                )
         except Exception:
             pass
 
@@ -181,4 +230,3 @@ def save_score_matrix(df: pd.DataFrame, metrics: Dict, *, out_prefix: str):
     df.to_csv(f"{out_prefix}_scores.csv", index=True)
     with open(f"{out_prefix}_metrics.json", "w", encoding="utf-8") as f:
         json.dump(metrics, f, ensure_ascii=False, indent=2)
-

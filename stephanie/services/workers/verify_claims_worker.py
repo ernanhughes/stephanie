@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional
 
 from stephanie.scoring.scorable import ScorableType
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 class VerifyClaimsKGWorker:
     """
@@ -21,7 +21,7 @@ class VerifyClaimsKGWorker:
     def __init__(self, memory: Any, container: Any, logger: Optional[logging.Logger] = None):
         self.memory = memory
         self.container = container
-        self.logger = logger or _logger
+        self.logger = logger or log
         self.bus = container.get_service("bus")
 
     # ---------- runtime ----------
@@ -63,7 +63,7 @@ class VerifyClaimsKGWorker:
             }
             self.bus.publish(self.RESULT_TOPIC, payload)
         except Exception as e:
-            self.logger.warning(f"VerifyClaimsKGWorker failed: {e}", exc_info=True)
+            log.warning(f"VerifyClaimsKGWorker failed: {e}", exc_info=True)
 
     # ---------- verification ----------
 

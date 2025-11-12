@@ -1,7 +1,10 @@
 # sis/arena_emitters.py
 from __future__ import annotations
 from typing import Dict, Any
-import sqlite3, json, time, contextlib
+import sqlite3
+import json
+import time
+import contextlib
 
 class SqliteArenaEmitter:
     def __init__(self, db_path: str):

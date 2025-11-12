@@ -1,0 +1,22 @@
+nexus_scorable_loader:
+  name: scorable_loader
+  enabled: true
+  output_key: scorables
+  limit: 100                 # final display/union size is driven by A/B counts
+  include_ner: false        # keep strict in final selection; we’ll relax in preload
+  ab_select:
+    enabled: true
+    n_targeted: 50     # <-- increase to get more data
+    n_baseline: 50     # <-- increase to get more data
+    targeted_min_sim: 0.55
+    baseline_max_sim: 0.25
+    relax_steps: 8
+    seed: 0
+  preload:
+    enabled: true
+    total_limit: 1000       # << oversample here
+    include_texts: true
+    require_nonempty_ner: false
+    require_assistant_text: false
+    min_assistant_len: 0
+    order_desc: true

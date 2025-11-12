@@ -89,7 +89,7 @@ class AutoTunerAgent(BaseAgent):
                 temp = float(original["temperature"])
                 new_temp = round(min(temp + 0.2, 1.0), 2)
                 candidates.append({**original, "temperature": new_temp})
-            except:
+            except (TypeError, ValueError):
                 pass
 
         if "adapter" in original:
@@ -99,7 +99,7 @@ class AutoTunerAgent(BaseAgent):
             try:
                 new_tokens = max(int(original["max_tokens"]) - 100, 100)
                 candidates.append({**original, "max_tokens": new_tokens})
-            except:
+            except (TypeError, ValueError):
                 pass
 
         # Default fallback: add a hint flag

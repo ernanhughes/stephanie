@@ -51,7 +51,7 @@ class SkillFilterORM(Base):
             return {}
         try:
             return json.loads(self.compatible_domains)
-        except:
+        except Exception:
             return {}
     
     def get_negative_interactions(self) -> list:
@@ -60,5 +60,5 @@ class SkillFilterORM(Base):
             return []
         try:
             return json.loads(self.negative_interactions)
-        except: 
+        except Exception: 
             return [] 

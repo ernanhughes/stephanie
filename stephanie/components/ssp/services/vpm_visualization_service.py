@@ -24,7 +24,6 @@ import json
 import logging
 import os
 import time
-from dataclasses import asdict
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -38,7 +37,6 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 from stephanie.components.ssp.utils.trace import EpisodeTrace
-from stephanie.logging.json_logger import JSONLogger
 from stephanie.memory.memory_tool import MemoryTool
 from stephanie.services.service_protocol import Service
 from stephanie.zeromodel.vpm_controller import VPMRow
@@ -47,7 +45,7 @@ from stephanie.zeromodel.vpm_phos import (build_compare_guarded,
                                           phos_sort_pack, robust01, save_img,
                                           to_square, vpm_vector_from_df)
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 # Back-compat mapping: old -> new canonical names
 _KEY_MAP = {
@@ -89,7 +87,7 @@ class VPMVisualizationService(Service):
         self,
         cfg: Dict[str, Any],
         memory: MemoryTool,
-        logger: JSONLogger,
+        logger,
         container: Optional[Any],
         run_id: Optional[str],
     ):
@@ -147,7 +145,7 @@ class VPMVisualizationService(Service):
         dims_cfg = c.get("dimensions")
         self._dimensions = [_KEY_MAP.get(d, d) for d in dims_cfg] if dims_cfg else list(_CANON_DIMS)
 
-        _logger.info(
+        log.info(
             "VPMVisualizationService paths initialized",
             extra={
                 "viz_dir": str(self._viz_dir),
@@ -187,7 +185,6 @@ class VPMVisualizationService(Service):
         self._phos_interleave = bool(c.get("phos_interleave", False))
         self._phos_weights = c.get("phos_weights", None)
 
-        # NEW: render modes
         self._raw_render = (c.get("raw_render") or "square").lower()      # "bar" | "square"
         self._progress_render = (c.get("progress_render") or "square").lower()
         self._bar_height = int(c.get("bar_height", 12))
@@ -679,15 +676,15 @@ class VPMVisualizationService(Service):
         return str(out_path)
 
     def generate_filmstrip(self, unit: str, *, rows: int = None, cols: int = None, dpi: int = None) -> str:
-        from PIL import ImageDraw, ImageFont
         import re
+
+        from PIL import ImageDraw, ImageFont
 
         cfg = self.cfg.get("filmstrip", self.cfg.get("vpm_viz", {}).get("filmstrip", {}))
         rows = rows or int(cfg.get("rows", 3))
         cols = cols or int(cfg.get("cols", 10))
         dpi  = dpi  or int(cfg.get("dpi", 500))
 
-        # New styling options (all optional)
         border_px    = int(cfg.get("border_px", 5))          # frame thickness (pixels)
         border_color = int(cfg.get("border_color", 255))     # 0..255 (L-mode), 255 = white
         label_on     = bool(cfg.get("label_on", False))

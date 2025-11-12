@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 import time
 import traceback
@@ -13,6 +14,7 @@ from stephanie.agents.thought.paper_blog import SimplePaperBlogAgent
 from stephanie.models.casebook import CaseBookORM
 from stephanie.scoring.scorable import ScorableType
 
+log = logging.getLogger(__name__)
 
 class PaperSectionProcessorAgent(BaseAgent):
     """
@@ -115,7 +117,7 @@ class PaperSectionProcessorAgent(BaseAgent):
             arxiv_id = doc.get("arxiv_id", "")
             
             if not structured_data:
-                self.logger.warning(f"No structured data for document {doc_id}")
+                log.warning(f"No structured data for document {doc_id}")
                 continue
                 
             self.logger.info(f"Processing document {doc_id} with {len(structured_data)} sections")
@@ -130,7 +132,7 @@ class PaperSectionProcessorAgent(BaseAgent):
             for section_name, section_text in sorted_sections[:self.max_sections]:
                 # Skip very short sections
                 if len(section_text) < self.min_section_length:
-                    self.logger.debug(f"Skipping short section '{section_name}' for doc {doc_id}")
+                    log.debug(f"Skipping short section '{section_name}' for doc {doc_id}")
                     continue
                     
                 try:

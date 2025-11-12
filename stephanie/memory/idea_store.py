@@ -3,8 +3,6 @@ from __future__ import annotations
 
 from typing import List
 
-from sqlalchemy import desc
-
 from stephanie.memory.base_store import BaseSQLAlchemyStore
 from stephanie.models.idea import IdeaORM
 

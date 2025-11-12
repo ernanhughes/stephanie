@@ -39,7 +39,6 @@ sharpening:
     - reliable_source
     - simplicity
 
-  # New sharpening mode
   mode: templates  # Options: templates, judge, compare_mrq
 
   templates:

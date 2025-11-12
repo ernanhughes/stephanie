@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from stephanie.memory.base_embedding_store import BaseEmbeddingStore
 from stephanie.models.embedding import EmbeddingORM
-from stephanie.tools import get_embedding
+from stephanie.tools.embedding_tool import get_embedding
 
 
 class EmbeddingStore(BaseEmbeddingStore):

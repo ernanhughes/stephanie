@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import (Any, Dict, List, Optional, Protocol, Tuple,
                     runtime_checkable)
 
+log = logging.getLogger(__name__)
 
 # Contract from monitor.py
 @runtime_checkable
@@ -154,7 +155,7 @@ class SelfCheckScorer(PairScorer):
                     timeout=self.cfg.timeout_s,
                 )
             except Exception:
-                self.logger.warning(
+                log.warning(
                     "chat_sampler failed; falling back to empty"
                 )
         return []

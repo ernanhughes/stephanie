@@ -1,4 +1,3 @@
-# stephanie/models/casebook.py
 from __future__ import annotations
 
 from datetime import datetime
@@ -11,31 +10,8 @@ from sqlalchemy.orm import relationship
 
 from stephanie.models.base import Base
 from stephanie.utils.date_utils import iso_date, utcnow
-
-
-def _json_safe(val):
-    """
-    Make JSON-ish fields safe to serialize. Leaves dict/list/str/num/bool/None as-is,
-    converts datetimes to ISO strings, and falls back to str() for unknowns.
-    """
-    if val is None:
-        return None
-    if isinstance(val, (str, int, float, bool)):
-        return val
-    if isinstance(val, datetime):
-        return iso_date(val)
-    if isinstance(val, dict):
-        return {k: _json_safe(v) for k, v in val.items()}
-    if isinstance(val, (list, tuple)):
-        return [_json_safe(v) for v in val]
-    # Numpy scalars etc.
-    try:
-        import numpy as np  # optional
-        if isinstance(val, np.generic):
-            return val.item()
-    except Exception:
-        pass
-    return str(val)
+# ✅ Use the central sanitizer
+from stephanie.utils.json_sanitize import sanitize  # <— NEW
 
 
 class CaseBookORM(Base):
@@ -79,13 +55,12 @@ class CaseBookORM(Base):
             "description": self.description or "",
             "pipeline_run_id": self.pipeline_run_id,
             "agent_name": self.agent_name,
-            "tags": self.tags or [],
+            "tags": sanitize(self.tags) or [],          # <— sanitize
             "created_at": iso_date(self.created_at),
+            "meta": sanitize(self.meta),                # <— sanitize
         }
 
         if include_counts:
-            # If collection not loaded, len(self.cases) may trigger a lazy load.
-            # If you want to avoid that, gate it behind include_cases or detect .loaded
             try:
                 data["case_count"] = len(self.cases)
             except Exception:
@@ -100,7 +75,8 @@ class CaseBookORM(Base):
         return data
 
     def __repr__(self) -> str:
-        return f"<CaseBookORM id={self.id} name={self.name!r} tag={self.tag!r}>"
+        # fix: 'tag' doesn’t exist on this model
+        return f"<CaseBookORM id={self.id} name={self.name!r} agent={self.agent_name!r}>"
 
 
 class CaseORM(Base):
@@ -133,26 +109,26 @@ class CaseORM(Base):
             "prompt_text": self.prompt_text or "",
             "agent_name": self.agent_name,
             "created_at": iso_date(self.created_at),
-            "meta": _json_safe(self.meta),
+            "meta": sanitize(self.meta),               # <— sanitize
         }
         if include_scorables:
             data["scorables"] = [s.to_dict() for s in (self.scorables or [])]
         return data
 
+
 class CaseScorableORM(Base):
     __tablename__ = "case_scorables"
     id = Column(Integer, primary_key=True, autoincrement=True)
     case_id = Column(Integer, ForeignKey("cases.id", ondelete="CASCADE"), nullable=False)
-    scorable_id = Column(String, nullable=False)   # stays NOT NULL
+    scorable_id = Column(String, nullable=False)
     scorable_type = Column(String, nullable=True)
     role = Column(String, nullable=False, default="input")
-    rank = Column(Integer, nullable=True)          # ← matches new column
+    rank = Column(Integer, nullable=True)
     meta = Column(SA_JSON, nullable=True)
     created_at = Column(DateTime, default=datetime.now, nullable=False)
 
     case = relationship("CaseORM", back_populates="scorables")
 
-    # -------- convenience --------
     def to_dict(self) -> dict:
         return {
             "id": self.id,
@@ -161,13 +137,9 @@ class CaseScorableORM(Base):
             "scorable_type": self.scorable_type,
             "role": self.role,
             "rank": self.rank,
-            "meta": _json_safe(self.meta),
+            "meta": sanitize(self.meta),               # <— sanitize
             "created_at": iso_date(self.created_at),
         }
-
-    def __repr__(self) -> str:
-        return f"<CaseScorableORM id={self.id} case_id={self.case_id} scorable_id={self.scorable_id!r} role={self.role!r}>"
-
 
 
 class CaseAttributeORM(Base):
@@ -191,6 +163,6 @@ class CaseAttributeORM(Base):
             "value_text": self.value_text,
             "value_num": self.value_num,
             "value_bool": self.value_bool,
-            "value_json": _json_safe(self.value_json),
+            "value_json": sanitize(self.value_json),   # <— sanitize
             "created_at": iso_date(self.created_at),
         }

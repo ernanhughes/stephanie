@@ -303,7 +303,7 @@ class JASLifecycleAgent(BaseAgent):
                 }
                 
         except Exception as e:
-            self.logger.warning(f"VPM generation failed: {str(e)}")
+            log.warning(f"VPM generation failed: {str(e)}")
         
         # Final fallback
         return {
@@ -340,7 +340,7 @@ class JASLifecycleAgent(BaseAgent):
         
         # Check if apoptosis conditions are met
         if self.apoptosis.should_initiate(self.core, self.homeostasis):
-            self.logger.warning("Apoptosis initiated - preserving legacy")
+            log.warning("Apoptosis initiated - preserving legacy")
             asyncio.create_task(self._initiate_apoptosis())
     
     async def _initiate_apoptosis(self):

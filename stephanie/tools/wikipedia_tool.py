@@ -25,7 +25,7 @@ class WikipediaTool:
                 article = {"title": title, "summary": summary, "url": page.url}
                 articles.append(article)
                 self.logger.log("WikipediaArticleFetched", {"article": article})
-            except wikipedia.exceptions.DisambiguationError as e:
+            except wikipedia.exceptions.DisambiguationError:
                 self.logger.log("WikipediaDisambiguationSkipped", {"title": title})
                 continue
             except Exception as e:

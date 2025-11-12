@@ -1,0 +1,31 @@
+# config/bus/topics/default.yaml
+
+# ──────────────────────────────────────────────────────────────────────────────
+# File: stephanie/config/bus_topics.yaml
+# Purpose: Central subject registry (no magic strings in code)
+# ──────────────────────────────────────────────────────────────────────────────
+
+prompts:
+  eval:
+    base: "prompts.eval"
+    # Phase‑2 will append <target> and <priority> (e.g., prompts.eval.local.normal)
+
+results:
+  prompt:
+    base: "results.prompt"
+
+telemetry:
+  prompts:
+    dispatched: "telemetry.prompts.dispatched"
+    completed:  "telemetry.prompts.completed"
+    failed:     "telemetry.prompts.failed"
+
+health:
+  base: "health"
+
+scoring:
+  eval: "scoring.eval"
+
+
+
+

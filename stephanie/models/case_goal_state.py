@@ -3,8 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import (Column, DateTime, Float, ForeignKey, Index, Integer,
-                        String, UniqueConstraint)
+from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, String
 
 from stephanie.models.base import Base
 
@@ -42,11 +41,6 @@ class CaseGoalStateORM(Base):
     created_at = Column(DateTime, nullable=False, default=datetime.now)
     updated_at = Column(DateTime, nullable=False, default=datetime.now,
                         onupdate=datetime.now)
-
-    __table_args__ = (
-        UniqueConstraint("casebook_id", "goal_id", name="uq_case_goal_state"),
-        Index("ix_case_goal", "casebook_id", "goal_id"),
-    )
 
     def __repr__(self) -> str:
         return (

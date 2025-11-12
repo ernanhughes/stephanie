@@ -21,11 +21,9 @@ try:
 except Exception:  # pragma: no cover
     Image = None
 
-from stephanie.logging.json_logger import JSONLogger
 from stephanie.memory.memory_tool import MemoryTool
 from stephanie.services.service_protocol import Service
-from stephanie.utils.json_sanitize import (dumps_safe,  # ← reuse your utils
-                                           sanitize)
+from stephanie.utils.json_sanitize import sanitize
 # Optional ZeroModel/PHOS imports (kept as in your existing file)
 from stephanie.zeromodel.vpm_controller import Decision, Policy, Thresholds
 from stephanie.zeromodel.vpm_controller import \
@@ -53,14 +51,14 @@ class VPMControlService(Service):
         self,
         cfg: Dict[str, Any],
         memory: MemoryTool,
-        container: Optional[Any],
-        logger: Optional[JSONLogger],
+        container,
+        logger,
         run_id: int
     ):
         self.cfg = cfg or {}
         self.memory = memory
         self.container = container
-        self.logger = logger or getattr(container, "logger", None)  # soft fallback
+        self.logger = logger
         self.run_id = run_id
 
         self._initialized = False

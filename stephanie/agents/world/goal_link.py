@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from sklearn.metrics.pairwise import cosine_similarity
 
-from stephanie.models.goal import GoalORM
 from stephanie.models.world_view import WorldviewORM
 
 

@@ -2,12 +2,11 @@
 from __future__ import annotations
 
 import logging
-from typing import Dict, List, Tuple
+from typing import List, Tuple
 
 from tqdm import tqdm
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.data.score_bundle import ScoreBundle
 from stephanie.data.score_corpus import ScoreCorpus
 from stephanie.models.cartridge_triple import CartridgeTripleORM
 from stephanie.models.casebook import CaseScorableORM
@@ -20,7 +19,7 @@ from stephanie.scoring.calculations.mars_calculator import MARSCalculator
 from stephanie.scoring.scorable import ScorableFactory, ScorableType
 from stephanie.utils.db_scope import session_scope
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 
 class ScorerAgent(BaseAgent):
@@ -78,7 +77,7 @@ class ScorerAgent(BaseAgent):
         # service handle
         self.scoring_service = self.container.get("scoring")
 
-        _logger.debug(
+        log.debug(
             "ScorerAgentInitialized: enabled=%s dims=%s targets=%s force_rescore=%s save_results=%s",
             self.enabled_scorers, self.dimensions, self.target_types,
             self.force_rescore, self.save_results

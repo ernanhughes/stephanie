@@ -20,7 +20,7 @@ The `MemoryTool` manages pluggable stores, each handling a specific data type:
 
 ```python
 memory.hypotheses.insert(goal, text, confidence, review, features)
-memory.context.save(run_id, stage, context_dict)
+memory.contexts.save(run_id, stage, context_dict)
 ````
 
 You can access any store via:

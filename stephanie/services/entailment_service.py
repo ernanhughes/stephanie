@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, Optional
 
 import numpy as np
 
@@ -18,6 +18,7 @@ except ImportError:
 # Optional: if you use Hugging Face transformers directly
 from transformers import pipeline
 
+log = logging.getLogger(__name__)
 
 class EntailmentService(Service):
     """
@@ -75,10 +76,10 @@ class EntailmentService(Service):
                 if self._nli_model and hasattr(self._nli_model, "predict"):
                     self.logger.info("EntailmentService: Using custom NLI model")
                 else:
-                    self.logger.warning("EntailmentService: nli_model provided but lacks .predict()")
+                    log.warning("EntailmentService: nli_model provided but lacks .predict()")
                     self._nli_model = None
             except Exception as e:
-                self.logger.warning(f"EntailmentService: Failed to load NLI model: {e}")
+                log.warning(f"EntailmentService: Failed to load NLI model: {e}")
                 self._nli_model = None
 
         # 2. Try Hugging Face pipeline (fallback)
@@ -94,7 +95,7 @@ class EntailmentService(Service):
                     max_length=512,
                 )
             except Exception as e:
-                self.logger.warning(f"EntailmentService: Failed to load HF NLI: {e}")
+                log.warning(f"EntailmentService: Failed to load HF NLI: {e}")
                 self._hf_pipeline = None
 
         # 3. Try embedding model (for cosine similarity fallback)
@@ -103,12 +104,12 @@ class EntailmentService(Service):
             if self._embedding_model:
                 self.logger.info("EntailmentService: Using embedding model for cosine fallback")
             else:
-                self.logger.warning("EntailmentService: No embedder available for cosine fallback")
+                log.warning("EntailmentService: No embedder available for cosine fallback")
 
         # 4. Lexical fallback is always available (no dependency)
 
         if not any([self._nli_model, self._hf_pipeline, self._embedding_model]):
-            self.logger.warning(
+            log.warning(
                 "EntailmentService: NO ENTAILMENT BACKENDS ENABLED. "
                 "FALLING BACK TO LEXICAL OVERLAP (LOW ACCURACY)."
             )
@@ -147,27 +148,27 @@ class EntailmentService(Service):
             try:
                 return await self._predict_nli_model(premise, hypothesis)
             except Exception as e:
-                self.logger.warning(f"NLI model failed: {e}")
+                log.warning(f"NLI model failed: {e}")
 
         if self._hf_pipeline:
             try:
                 return await self._predict_hf_pipeline(premise, hypothesis)
             except Exception as e:
-                self.logger.warning(f"HF pipeline failed: {e}")
+                log.warning(f"HF pipeline failed: {e}")
 
         # Fall back to embedding similarity
         if self._embedding_model:
             try:
                 return await self._predict_embedding(premise, hypothesis)
             except Exception as e:
-                self.logger.warning(f"Embedding similarity failed: {e}")
+                log.warning(f"Embedding similarity failed: {e}")
 
         # Final fallback: lexical Jaccard
         if self.use_lexical:
             return self._predict_lexical(premise, hypothesis)
 
         # If all fail, return neutral
-        self.logger.warning("All entailment backends failed. Returning neutral 0.5.")
+        log.warning("All entailment backends failed. Returning neutral 0.5.")
         return 0.5
 
     # ------------------- Internal Backends -------------------

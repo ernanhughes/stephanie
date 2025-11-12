@@ -9,11 +9,11 @@ from jinja2 import Template
 from stephanie.constants import (DEFAULT, FILE, NAME, PROMPT_DIR, PROMPT_FILE,
                                  PROMPT_MODE, STRATEGY)
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 def get_text_from_file(file_path: str) -> str:
     """Reads and returns stripped text from a file."""
-    _logger.debug(f"Loading prompt from file: {file_path}")
+    log.debug(f"Loading prompt from file: {file_path}")
     with open(file_path, "r", encoding="utf-8") as f:
         return f.read().strip()
 
@@ -52,7 +52,7 @@ class PromptLoader:
             return self._load_from_file(merged)
 
         except Exception as e:
-            _logger.error(f"❌ Exception:  {type(e).__name__}: {e}")
+            log.error(f"❌ Exception:  {type(e).__name__}: {e}")
             return self._fallback_prompt(context.get("goal", ""))
 
     def from_file(self, file_name: str, config: dict, context: dict) -> str:
@@ -63,7 +63,7 @@ class PromptLoader:
         try:
             return Template(prompt_text).render(**merged)
         except KeyError as e:
-            _logger.error(f"❌ Exception:  {type(e).__name__}: {e}")
+            log.error(f"❌ Exception:  {type(e).__name__}: {e}")
 
     def from_context(self, config: dict, context: dict) -> str:
         """Load prompt directly from context variable."""
@@ -74,7 +74,7 @@ class PromptLoader:
         try:
             return Template(prompt_text).render(**merged)
         except KeyError as e:
-            _logger.error(f"❌ Exception:  {type(e).__name__}: {e}")
+            log.error(f"❌ Exception:  {type(e).__name__}: {e}")
             return prompt_text  # Fallback: return raw
 
     def from_text(self, prompt_text: str, context: dict) -> str:
@@ -82,7 +82,7 @@ class PromptLoader:
         try:
             return Template(prompt_text).render(**context)
         except KeyError as e:
-            _logger.error(f"❌ Exception:  {type(e).__name__}: {e}")
+            log.error(f"❌ Exception:  {type(e).__name__}: {e}")
             return prompt_text  # Fallback: return raw
 
     def score_prompt(self, file_name: str, config: dict, context: dict) -> str:
@@ -93,7 +93,7 @@ class PromptLoader:
         try:
             return Template(prompt_text).render(**merged)
         except KeyError as e:
-            _logger.error(f"❌ Exception:  {type(e).__name__}: {e}")
+            log.error(f"❌ Exception:  {type(e).__name__}: {e}")
 
 
     @staticmethod
@@ -101,7 +101,7 @@ class PromptLoader:
         """Builds full prompt file path."""
         prompts_dir = context.get(PROMPT_DIR, "prompts")
         filename = file_name if file_name.endswith(".txt") else f"{file_name}.txt"
-        _logger.debug(f"PromptLoader.get_file_path: prompts_dir={prompts_dir}, cfg={cfg}, filename={filename}")
+        log.debug(f"PromptLoader.get_file_path: prompts_dir={prompts_dir}, cfg={cfg}, filename={filename}")
         return os.path.join(prompts_dir, cfg.get("name", "default"), filename)
 
     @staticmethod
@@ -109,7 +109,7 @@ class PromptLoader:
         """Builds full prompt file path."""
         prompts_dir = context.get(PROMPT_DIR, "prompts")
         filename = file_name if file_name.endswith(".txt") else f"{file_name}.txt"
-        _logger.debug(f"PromptLoader.get_score_path: prompts_dir={prompts_dir}, cfg={cfg}, filename={filename}")
+        log.debug(f"PromptLoader.get_score_path: prompts_dir={prompts_dir}, cfg={cfg}, filename={filename}")
         return os.path.join(prompts_dir, "scoring", filename)
 
 
@@ -120,21 +120,21 @@ class PromptLoader:
         file_name = f"{file_key}.txt" if not file_key.endswith(".txt") else file_key
         path = os.path.join(prompt_dir, config.get(NAME, "default"), file_name)
 
-        _logger.debug(
+        log.debug(
             f"PromptFileLoading file_key={file_key}, resolved_file={file_name}, path={path}"
         )
 
         if not os.path.exists(path):
-            _logger.error(f"❌ PromptFileNotFound: path={path}, agent={config.get(NAME, DEFAULT)}")
+            log.error(f"❌ PromptFileNotFound: path={path}, agent={config.get(NAME, DEFAULT)}")
             raise FileNotFoundError(f"Prompt file not found: {path}")
 
         try:
             prompt_text = get_text_from_file(path)
             rendered = Template(prompt_text).render(**self._merge_context(config, {}))
-            _logger.debug(f"PromptFileLoaded: path={path}, rendered_preview={rendered[:100]}")
+            log.debug(f"PromptFileLoaded: path={path}, rendered_preview={rendered[:100]}")
             return rendered
         except KeyError as e:
-            _logger.error(f"❌ PromptFormattingError: missing_key={e}, path={path}")
+            log.error(f"❌ PromptFormattingError: missing_key={e}, path={path}")
             return prompt_text  # Fallback: return raw
 
     def _load_best_version(self, agent_name: str, goal: str, config: dict) -> str:
@@ -145,7 +145,7 @@ class PromptLoader:
         if best_prompt:
             return best_prompt["prompt_text"]
 
-        _logger.debug(f"PromptLoader.get_best_version: agent_name={agent_name}, goal={goal}, config={config}")   
+        log.debug(f"PromptLoader.get_best_version: agent_name={agent_name}, goal={goal}, config={config}")   
         return self._load_from_file(config)
 
     def _fallback_prompt(self, goal: str = "") -> str:

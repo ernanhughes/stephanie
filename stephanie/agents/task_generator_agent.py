@@ -1,15 +1,13 @@
 # stephanie/agents/task_generator_agent.py
 from __future__ import annotations
 
-import json
 import random
-import re
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Dict
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.models.mrq_memory_entry import MRQMemoryEntryORM
-from stephanie.models.mrq_preference_pair import MRQPreferencePairORM
+from stephanie.utils.json_sanitize import dumps_safe
 
 
 class TaskGeneratorAgent(BaseAgent):
@@ -168,7 +166,7 @@ class TaskGeneratorAgent(BaseAgent):
                 prompt=problem,
                 response=solution,
                 reward=scores.get("mrq_similarity", 0.0),
-                metadata_=json.dumps({"scores": scores, "source": "task_generator"}),
+                metadata_=dumps_safe({"scores": scores, "source": "task_generator"}),
                 created_at=datetime.now(timezone.utc),
             )
             self.session.add(entry)

@@ -1,0 +1,34 @@
+paths:
+  models_dir: models/vpm_thought
+  logs_dir: logs/vpm_thought
+training:
+  device: cpu
+  batch_size: 16
+  lr: 3e-4
+  weight_decay: 1e-2
+  max_epochs: 6
+  clip_grad: 1.0
+  seed: 42
+  num_workers: 4
+curriculum:
+  steps: [1, 2]
+  samples_per_step: [500, 300]
+  min_utility_gain: [0.05, 0.03]
+data:
+  probe_types: ["sbm","ring_of_cliques","barbell","grid_maze"]
+  real_traces_sample: 0.0
+rewards:
+  utility_weight: 1.0
+  format_weight: 0.5
+  cost_weight: -0.2
+  sicql_weight: 0.0
+evaluation:
+  save_every: 1
+  log_every: 50
+model:
+  in_channels: 3
+  hidden_dim: 512
+  goal_dim: 128
+  n_ops: 5
+  param_dim: 8
+  dropout: 0.1

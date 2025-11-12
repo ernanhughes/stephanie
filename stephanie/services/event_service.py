@@ -6,6 +6,7 @@ import socket
 import time
 import traceback
 import uuid
+import logging
 from typing import Any, Awaitable, Callable, Dict, Optional
 
 from stephanie.services.bus.idempotency import (JsonlIdempotencyStore,
@@ -15,6 +16,7 @@ from stephanie.services.service_protocol import Service
 Handler = Callable[[dict], Awaitable[None]]
 RpcHandler = Callable[[dict], Awaitable[dict]]
 
+log = logging.getLogger(__name__)
 
 class EventService(Service):
     """
@@ -128,7 +130,7 @@ class EventService(Service):
                 f"{len(self._rpc_handlers)} rpc routes"
             )
         except Exception as e:
-            self.logger.error(f"[{self._name}] init failed: {e}", exc_info=True)
+            log.error(f"[{self._name}] init failed: {e}", exc_info=True)
             # mark unhealthy but don’t crash the process
             self._initialized = False
 

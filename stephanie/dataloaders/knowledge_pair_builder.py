@@ -14,7 +14,7 @@ from tqdm import tqdm
 
 from stephanie.utils.coerce_utils import to_float
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 def _simple_sentences(text: str) -> List[str]:
     """Split text into sentences using punctuation as delimiters"""
@@ -137,7 +137,7 @@ class KnowledgePairBuilder:
         Returns:
             List of contrastive pairs with metadata
         """
-        _logger.debug(
+        log.debug(
             f"Building knowledge pairs: pos≥{min_star_pos} (human) or ≥{ai_score_threshold} (AI), "
             f"neg≤{max_star_neg} (human) or ≤{100-ai_score_threshold} (AI), limit={limit}"
         )
@@ -149,7 +149,7 @@ class KnowledgePairBuilder:
         neg_turns = self._get_negative_turns(max_star_neg, ai_score_threshold)
         
         if not pos_turns or not neg_turns:
-            _logger.warning("No positive or negative turns found.")
+            log.warning("No positive or negative turns found.")
             return []
 
         if shuffle:
@@ -162,7 +162,7 @@ class KnowledgePairBuilder:
             key = (neg["conversation_id"], _primary_domain_from_row(neg))
             neg_buckets.setdefault(key, []).append(neg)
 
-        _logger.debug(
+        log.debug(
             f"Pos={len(pos_turns)} ({self._count_human_pos(pos_turns)}/human, {self._count_ai_pos(pos_turns)}/AI) | "
             f"Neg={len(neg_turns)} ({self._count_human_neg(neg_turns)}/human, {self._count_ai_neg(neg_turns)}/AI) | "
             f"Buckets={len(neg_buckets)}"
@@ -206,7 +206,7 @@ class KnowledgePairBuilder:
 
             # Log entity overlap drop rate
             if len(candidates) > 0 and len(filtered) == 0:
-                _logger.debug(f"Entity overlap filtered {len(candidates)} candidates for pos_id={pos['id']}")
+                log.debug(f"Entity overlap filtered {len(candidates)} candidates for pos_id={pos['id']}")
 
             # Build pairs
             for neg in chosen:
@@ -231,9 +231,9 @@ class KnowledgePairBuilder:
 
             # Logging
             if (pi + 1) % 1000 == 0:
-                _logger.debug(f"Processed {pi+1} positives → pairs={len(pairs)}")
+                log.debug(f"Processed {pi+1} positives → pairs={len(pairs)}")
 
-        _logger.debug(f"✅ Built {len(pairs)} contrastive pairs.")
+        log.debug(f"✅ Built {len(pairs)} contrastive pairs.")
         return pairs
 
     # ---------------- internal helpers ----------------
@@ -498,5 +498,5 @@ class KnowledgePairBuilder:
                 
             return vec / n
         except Exception as e:
-            _logger.error(f"Embedding failed for turn {row.get('id')}: {str(e)}")
+            log.error(f"Embedding failed for turn {row.get('id')}: {str(e)}")
             return None 

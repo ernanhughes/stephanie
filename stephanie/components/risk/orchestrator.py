@@ -19,8 +19,9 @@ from stephanie.services.scm_service import SCMService
 from stephanie.services.storage_service import \
     StorageService  # your FS-backed store
 from stephanie.utils.progress_mixin import ProgressMixin
+from stephanie.scoring.scorable_processor import ScorableProcessor
 
-_logger = logging.getLogger(__file__)
+log = logging.getLogger(__file__)
 
 
 @dataclass
@@ -122,7 +123,7 @@ class RiskOrchestrator(ProgressMixin):
             )
             self.eg_visual_svc = self.container.get("eg_visual")
         except Exception as e:
-            _logger.error(f"RiskOrchestrator service registration failed: {e}")
+            log.error(f"RiskOrchestrator service registration failed: {e}")
 
         # progress/manifest
         self._init_progress(container, logger)
@@ -155,7 +156,7 @@ class RiskOrchestrator(ProgressMixin):
             models={"chat": context.get("model_alias", "chat")},
         )
 
-        items = context.get("scorable")
+        items = context.get("scorables")
 
 
         self.pstart(
@@ -167,7 +168,7 @@ class RiskOrchestrator(ProgressMixin):
 
         records = []
         total = len(items)
-        _logger.debug(
+        log.debug(
             f"RiskAgent: evaluating run_id={run_id} models={self.cfg.get('default_model_alias')}"
         )
         for idx, item in enumerate(items):
@@ -281,9 +282,7 @@ class RiskOrchestrator(ProgressMixin):
                         },
                     )
             except Exception as e:
-                self.logger.warning(
-                    "EpistemicGuardService.assess failed: %s", e
-                )
+                log.warning("EpistemicGuardService.assess failed: %s", e)
 
         record["elapsed_ms"] = round((time.perf_counter() - t0) * 1000.0, 2)
         return record

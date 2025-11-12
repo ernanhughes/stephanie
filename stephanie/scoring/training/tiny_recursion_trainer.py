@@ -38,7 +38,7 @@ try:
 except Exception:  # pragma: no cover
     tqdm = None
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 def _bucket3(y01: torch.Tensor) -> torch.Tensor:
     """

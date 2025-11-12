@@ -1,11 +1,11 @@
 # stephanie/scoring/scorer/vpm_scorer.py
 from __future__ import annotations
 
+import logging
 from typing import Any, Dict, List
 
 import numpy as np
 import torch
-import logging
 
 from stephanie.data.score_bundle import ScoreBundle
 from stephanie.data.score_result import ScoreResult
@@ -59,7 +59,7 @@ class VPMScorer(BaseScorer):
                 self.model.load_state_dict(state)
                 self.logger.info(f"Loaded VPM weights from {self.weights}")
             except Exception as e:
-                self.logger.warning(f"Could not load VPM weights: {e}")
+                log.warning(f"Could not load VPM weights: {e}")
 
         self.model.eval()
 

@@ -31,7 +31,7 @@ import numpy as np
 from stephanie.analysis.scorable_classifier import ScorableClassifier
 from stephanie.memcube.memcube_client import MemCubeClient
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 
 class DomainRequiredError(ValueError):
@@ -174,7 +174,7 @@ class DomainCalibratedRiskPredictor:
                 if k not in self.bundle.feature_names
             ]
             if missing:
-                _logger.warn(
+                logn(
                     f"Risk bundle missing features used by featurizer: {missing}"
                 )
 
@@ -326,7 +326,7 @@ class DomainCalibratedRiskPredictor:
                 if results:
                     return results[0][0]
             except Exception as e:
-                _logger.warning(f"Domain classification failed: {e}")
+                log.warning(f"Domain classification failed: {e}")
 
         # Fallback
         return await self.memcube.guess_domain(question or "")

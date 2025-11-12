@@ -1,0 +1,8 @@
+thoughts:
+  enabled: true
+  processor:
+    agent: stephanie.components.thoughts.agents.thought_processor_agent.ThoughtProcessorAgent
+  trainer:
+    sft_model: tiny/thought-head
+  vpm:
+    out_root: runs/thoughts

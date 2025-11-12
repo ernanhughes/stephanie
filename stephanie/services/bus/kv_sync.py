@@ -18,7 +18,7 @@ class SyncKV:
     async def _ensure(self, bucket, max_age_seconds, description):
         try:
             return await self._js.key_value(bucket=bucket)
-        except:
+        except Exception:
             return await self._js.create_key_value(bucket=bucket, description=description, max_age=max_age_seconds)
 
     def _run(self, coro):
@@ -30,7 +30,7 @@ class SyncKV:
             try:
                 e = await self._kv.get(key)
                 return None if e is None else e.value
-            except:
+            except Exception:
                 return None
         return self._run(_get())
 
@@ -38,6 +38,6 @@ class SyncKV:
         async def _put():
             try:
                 await self._kv.put(key, value)
-            except:
+            except Exception:
                 pass
         self._run(_put())

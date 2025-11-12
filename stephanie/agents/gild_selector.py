@@ -47,11 +47,10 @@ class GILDSelectorAgent(BaseAgent):
 
             return context
 
-        except Exception as e:
+        except Exception:
             return context
 
     def _compute_efficiency_scores(self, examples: list) -> dict:
-        from collections import defaultdict
 
         import numpy as np
 

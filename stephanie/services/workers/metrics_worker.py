@@ -10,7 +10,7 @@ from typing import Any, Dict, Optional
 from stephanie.scoring.scorable import Scorable
 from stephanie.services.scoring_service import ScoringService
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 
 class MetricsWorkerInline:
@@ -229,11 +229,11 @@ class MetricsWorker:
                 
                 # Log with color-coded status
                 if status:
-                    _logger.debug("BUS HEALTH: 🟢 %s - %s | %s", bus_type, status, details_str)
+                    log.debug("BUS HEALTH: 🟢 %s - %s | %s", bus_type, status, details_str)
                 elif status == "disconnected":
-                    _logger.warning("BUS HEALTH: 🔴 %s - %s | %s", bus_type, status, details_str)
+                    log.warning("BUS HEALTH: 🔴 %s - %s | %s", bus_type, status, details_str)
                 
                 await asyncio.sleep(30)
             except Exception as e:
-                _logger.error("BUS HEALTH CHECK FAILED: %s", str(e))
+                log.error("BUS HEALTH CHECK FAILED: %s", str(e))
                 await asyncio.sleep(10)

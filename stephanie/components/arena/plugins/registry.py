@@ -1,7 +1,7 @@
 # stephanie/arena/plugins/registry.py
 from __future__ import annotations
 
-from typing import Dict, Type
+from typing import Dict
 
 from stephanie.components.arena.plugins.interfaces import Play, Scorer
 

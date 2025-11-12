@@ -90,7 +90,7 @@ class AutonomousWorldviewCycleAgent:
 
         return cartridge
 
-    def _default_logger(self):
+    def _defaultlog(self):
         class DummyLogger:
             def log(self, tag, payload):
                 print(f"[{tag}] {payload}")

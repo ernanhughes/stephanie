@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from stephanie.services.service_protocol import Service
-from stephanie.tools.time_utils import now_iso
+from stephanie.utils.time_utils import now_iso
 
 
 # --- Utility Functions ---

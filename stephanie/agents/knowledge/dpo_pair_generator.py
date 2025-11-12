@@ -7,13 +7,11 @@ import logging
 import traceback
 import uuid
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.knowledge.casebook_store import CaseBookStore
-from stephanie.utils.json_sanitize import safe_json
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 class DPOPairGeneratorAgent(BaseAgent):
     """
@@ -29,7 +27,7 @@ class DPOPairGeneratorAgent(BaseAgent):
         self.output_dir = Path(cfg.get("dpo_output_dir", "data/dpo_pairs"))
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
-        _logger.debug(
+        log.debug(
             "DPOPairGeneratorAgent initialized | "
             f"output_dir={self.output_dir} | "
             f"min_improvement_score={self.min_improvement_score} | "

@@ -501,7 +501,6 @@ class AgenticTreeSearch:
             "prompt_text": node.plan,
             "prompt_preview": (node.plan[:160] if node.plan else ""),
 
-            # NEW: provenance
             "tree_id": node.tree_id,
             "root_id": node.root_id,
             "node_id": node.id,

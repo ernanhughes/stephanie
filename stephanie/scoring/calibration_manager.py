@@ -13,7 +13,7 @@ import pandas as pd
 
 from stephanie.models.quantile_fallback import QuantileThresholdCalibrator
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 
 class SigmoidCalibrator:
@@ -99,7 +99,7 @@ class CalibrationManager:
             )
             self.memory.calibration_events.add(event)
         except Exception as e:
-            _logger.error(f"Failed to log calibration event: {e}")
+            log.error(f"Failed to log calibration event: {e}")
 
     # ----------------------------
     # Data access helpers
@@ -115,7 +115,7 @@ class CalibrationManager:
                 return None
             return df[["raw_similarity", "is_relevant"]].dropna()
         except Exception as e:
-            _logger.error(f"Failed to load calibration data for {domain}: {e}")
+            log.error(f"Failed to load calibration data for {domain}: {e}")
             return None
 
     def domain_counts(self, domain: str) -> Tuple[int, int, int]:
@@ -126,7 +126,7 @@ class CalibrationManager:
             neg = int(counts.get("neg", 0))
             return pos, neg, pos + neg
         except Exception as e:
-            _logger.error(f"domain_counts failed for {domain}: {e}")
+            log.error(f"domain_counts failed for {domain}: {e}")
             return 0, 0, 0
 
     def _load_training(self, domain: str):
@@ -422,7 +422,7 @@ class CalibrationManager:
             else:
                 total = int(counts or 0)
         except Exception as e:
-            _logger.warning(f"get_confidence: count fetch failed for domain={domain}: {e}")
+            log.warning(f"get_confidence: count fetch failed for domain={domain}: {e}")
             total = 0
 
         # Avoid div-by-zero and clamp to [0,1]

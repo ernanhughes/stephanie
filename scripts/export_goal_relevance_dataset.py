@@ -30,7 +30,7 @@ from sqlalchemy import text
 from stephanie.models.base import engine
 from stephanie.utils.file_utils import atomic_write
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 def export_goal_relevance_dataset(
     output_path: str,
@@ -57,8 +57,8 @@ def export_goal_relevance_dataset(
     if dimensions is None:
         dimensions = ["knowledge", "clarity", "grounding", "overall"]
     
-    _logger.debug(f"Exporting goal-relevance dataset to {output_path}")
-    _logger.debug(f"Dimensions: {dimensions}, Min score: {min_score}, Limit: {limit}")
+    log.debug(f"Exporting goal-relevance dataset to {output_path}")
+    log.debug(f"Dimensions: {dimensions}, Min score: {min_score}, Limit: {limit}")
     
     # Build query
     query = text("""
@@ -84,7 +84,7 @@ def export_goal_relevance_dataset(
         result = conn.execute(query)
         rows = result.fetchall()
     
-    _logger.debug(f"Fetched {len(rows)} raw evaluation records")
+    log.debug(f"Fetched {len(rows)} raw evaluation records")
     
     # Process rows into training examples
     examples = []
@@ -95,7 +95,7 @@ def export_goal_relevance_dataset(
         try:
             scores = json.loads(row.scores) if isinstance(row.scores, str) else (row.scores or [])
         except Exception as e:
-            _logger.warning(f"Failed to parse scores for evaluation {row.evaluation_id}: {str(e)}")
+            log.warning(f"Failed to parse scores for evaluation {row.evaluation_id}: {str(e)}")
             skipped += 1
             continue
         
@@ -164,7 +164,7 @@ def export_goal_relevance_dataset(
             
             examples.append(example)
     
-    _logger.debug(f"Processed {len(examples)} training examples ({skipped} skipped)")
+    log.debug(f"Processed {len(examples)} training examples ({skipped} skipped)")
     
     # Save dataset
     os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
@@ -185,14 +185,14 @@ def export_goal_relevance_dataset(
     stats["rows_skipped"] = skipped
     stats["export_timestamp"] = datetime.now().isoformat()
     
-    _logger.debug(f"Export complete. Statistics: {json.dumps(stats, indent=2)}")
+    log.debug(f"Export complete. Statistics: {json.dumps(stats, indent=2)}")
     
     return stats
 
 def _save_as_csv(examples: List[Dict[str, Any]], output_path: str) -> None:
     """Save examples as CSV file"""
     if not examples:
-        _logger.warning("No examples to save")
+        log.warning("No examples to save")
         return
     
     # Get all possible columns
@@ -211,7 +211,7 @@ def _save_as_csv(examples: List[Dict[str, Any]], output_path: str) -> None:
             row = {col: example.get(col, "") for col in columns}
             writer.writerow(row)
     
-    _logger.debug(f"Saved {len(examples)} examples to {output_path}")
+    log.debug(f"Saved {len(examples)} examples to {output_path}")
 
 def _save_as_jsonl(examples: List[Dict[str, Any]], output_path: str) -> None:
     """Save examples as JSONL file"""
@@ -219,7 +219,7 @@ def _save_as_jsonl(examples: List[Dict[str, Any]], output_path: str) -> None:
         for example in examples:
             f.write(json.dumps(example, ensure_ascii=False) + "\n")
     
-    _logger.debug(f"Saved {len(examples)} examples to {output_path}")
+    log.debug(f"Saved {len(examples)} examples to {output_path}")
 
 def _generate_statistics(examples: List[Dict[str, Any]], dimensions: List[str]) -> Dict[str, Any]:
     """Generate dataset statistics"""
@@ -306,7 +306,7 @@ def main():
         print(json.dumps(stats, indent=2))
         return 0
     except Exception as e:
-        _logger.error(f"Export failed: {str(e)}", exc_info=True)
+        log.error(f"Export failed: {str(e)}", exc_info=True)
         return 1
 
 # python -m stephanie.tools.export_goal_relevance_dataset --output-path=data/goal_relevance_dataset.csv --dimensions=knowledge,clarity,relevance --min-score=0.0 --limit=100

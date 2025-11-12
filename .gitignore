@@ -17,6 +17,7 @@ __pycache__/
 *$py.class
 
 merged_code.md
+*.zip
 
 # C extensions
 *.so

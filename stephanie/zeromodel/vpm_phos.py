@@ -38,6 +38,7 @@ from stephanie.utils.json_sanitize import dumps_safe
 
 CAND_SUFFIXES = ["", ".score", ".aggregate", ".raw", ".value"]
 
+
 # --- fix: dataclass decorator + types ---
 @dataclass
 class RunManifest:
@@ -52,15 +53,19 @@ def build_vpm(scores: dict, metric_whitelist=None):
     # scores: dict[str] -> np.array[T] or [T,K]
     cols, mats = [], []
     for k, v in scores.items():
-        if metric_whitelist and k not in metric_whitelist: continue
+        if metric_whitelist and k not in metric_whitelist:
+            continue
         v = np.asarray(v)
         if v.ndim == 1:
-            cols.append(k); mats.append(v[:,None])
+            cols.append(k)
+            mats.append(v[:, None])
         elif v.ndim == 2:
             for j in range(v.shape[1]):
-                cols.append(f"{k}[{j}]"); mats.append(v[:,j:j+1])
-    X = np.concatenate(mats, axis=1) if mats else np.zeros((0,0))
+                cols.append(f"{k}[{j}]")
+                mats.append(v[:, j : j + 1])
+    X = np.concatenate(mats, axis=1) if mats else np.zeros((0, 0))
     return X, cols
+
 
 def robust_normalize(X, eps=1e-9):
     med = np.nanmedian(X, axis=0, keepdims=True)
@@ -68,19 +73,23 @@ def robust_normalize(X, eps=1e-9):
     Z = (X - med) / mad
     return np.clip(Z, -5, 5)  # squash extremes
 
+
 # ---------------------------
 # Low-level utils
 # ---------------------------
 
-def robust01(x: np.ndarray, p_lo: float = 10.0, p_hi: float = 90.0) -> np.ndarray:
+
+def robust01(
+    x: np.ndarray, p_lo: float = 10.0, p_hi: float = 90.0
+) -> np.ndarray:
     """
     Robust [0,1] scaling using percentiles to damp outliers.
-    
+
     Args:
         x: Input array to normalize
         p_lo: Lower percentile for scaling (default: 10th percentile)
         p_hi: Upper percentile for scaling (default: 90th percentile)
-    
+
     Returns:
         Array scaled to [0,1] range based on percentile bounds
     """
@@ -103,48 +112,76 @@ def learn_layout(*vpm_lists):
     order = np.argsort(-col_energy)
     return order.tolist()
 
+
 def save_layout(order, names, path):
-    with open(path, "w") as f: 
-        f.write(dumps_safe({"columns":[names[i] for i in order], "index":order}, indent=2))
+    with open(path, "w") as f:
+        f.write(
+            dumps_safe(
+                {"columns": [names[i] for i in order], "index": order},
+                indent=2,
+            )
+        )
 
 
 def project(X, order):
     keep = [i for i in order if i < X.shape[1]]
     return X[:, keep]
 
+
 def guess_diag_cols(names):
-    DIAG_SUFFIX = ("uncertainty","ood","ood_hat","temp01","entropy","jacobian","consistency","halt_prob")
-    return [i for i,n in enumerate(names) if any(s in n for s in DIAG_SUFFIX)]
+    DIAG_SUFFIX = (
+        "uncertainty",
+        "ood",
+        "ood_hat",
+        "temp01",
+        "entropy",
+        "jacobian",
+        "consistency",
+        "halt_prob",
+    )
+    return [i for i, n in enumerate(names) if any(s in n for s in DIAG_SUFFIX)]
+
 
 def correlate_abs_delta_with_diags(Delta, X_diag):
     y = np.abs(Delta).mean(axis=1)  # per-turn intensity
-    R = np.corrcoef(X_diag.T, y)[-1,:-1]  # quick/dirty
+    R = np.corrcoef(X_diag.T, y)[-1, :-1]  # quick/dirty
     return R
+
 
 def delta_metrics(XA, XB):
     Delta = XA - XB
     absA, absB = np.abs(XA).ravel(), np.abs(XB).ravel()
-    overlap = (absA @ absB) / (np.linalg.norm(absA)+1e-9) / (np.linalg.norm(absB)+1e-9)
+    overlap = (
+        (absA @ absB)
+        / (np.linalg.norm(absA) + 1e-9)
+        / (np.linalg.norm(absB) + 1e-9)
+    )
     dmass = np.mean(np.abs(Delta))  # whole-field mass; optional TL window
     col_scores = np.mean(np.abs(Delta), axis=0)
     row_scores = np.mean(np.abs(Delta), axis=1)
     top_cols = np.argsort(-col_scores)[:25].tolist()
     top_rows = np.argsort(-row_scores)[:25].tolist()
-    return Delta, {"delta_mass": float(dmass), "overlap": float(overlap),
-                   "top_cols": top_cols, "top_rows": top_rows}
+    return Delta, {
+        "delta_mass": float(dmass),
+        "overlap": float(overlap),
+        "top_cols": top_cols,
+        "top_rows": top_rows,
+    }
+
 
 def save_delta(meta, names, path_json):
     meta["column_names"] = names
     with open(path_json, "w") as f:
         f.write(dumps_safe(meta, indent=2))
 
+
 def to_square(vec: np.ndarray) -> Tuple[np.ndarray, int]:
     """
     Pad a 1D vector to the next square length and reshape to (s, s).
-    
+
     Args:
         vec: Input 1D vector
-        
+
     Returns:
         Tuple of (square_image, side_length)
     """
@@ -158,77 +195,79 @@ def to_square(vec: np.ndarray) -> Tuple[np.ndarray, int]:
         v = np.pad(v, (0, pad), mode="constant")
     return v.reshape(s, s), s
 
+
 def route(use_A_cond, A_agg, B_agg):
     # use A (expensive) when diagnostics say so, else B
     return np.where(use_A_cond, A_agg, B_agg)
 
+
 def phos_sort_pack(v: np.ndarray, *, tl_frac: float = 0.25) -> np.ndarray:
     """
     PHOS (Packed High-Order Structure) algorithm.
-    
+
     Sorts values in descending order and packs them into a square image with
     top values concentrated in the top-left region.
-    
+
     Args:
         v: Input performance vector
         tl_frac: Fraction of area to allocate for top-left concentration
-    
+
     Returns:
         Square image with sorted and packed values
     """
     v = np.asarray(v, dtype=np.float64).ravel()
-    if v.size == 0: 
+    if v.size == 0:
         return np.zeros((1, 1), dtype=np.float64)
-    
+
     # Normalize and prepare for packing
     v01 = robust01(v)
     n = v01.size
     s = int(np.ceil(np.sqrt(n)))
     pad = s * s - n
-    if pad > 0: 
+    if pad > 0:
         v01 = np.concatenate([v01, np.zeros(pad)])
-    
+
     # Sort values in descending order
     order = np.argsort(v01)[::-1]
     sorted_vals = v01[order]
     img = sorted_vals.reshape(s, s)
-    
+
     # Calculate top-left block size
     k = max(1, int(round(s * s * tl_frac)))
     packed = np.zeros_like(img)
     packed[:][:] = 0.0
-    
+
     r = int(np.floor(np.sqrt(k)))
-    if r <= 0: 
+    if r <= 0:
         r = 1
     rr = r
     if rr * r * r > k:
         rr = int(np.floor(np.sqrt(k)))
-    
+
     # Fill top-left with highest values
     top = sorted_vals[:k]
     tl = np.zeros_like(img)
-    tl[:rr, :rr] = top[:rr * rr].reshape(rr, rr)
-    rest = sorted_vals[rr * rr:]
-    
+    tl[:rr, :rr] = top[: rr * rr].reshape(rr, rr)
+    rest = sorted_vals[rr * rr :]
+
     # Pack remaining values
     packed[:rr, :rr] = tl[:rr, :rr]
     flat = packed.ravel()
-    flat[rr * rr:rr * rr + rest.size] = rest
-    
+    flat[rr * rr : rr * rr + rest.size] = rest
+
     return flat.reshape(s, s)
 
 
 def image_entropy(img: np.ndarray) -> float:
     """
     Calculate Shannon entropy over normalized pixel mass.
-    
+
     Measures the information content/distribution uniformity in the image.
     Higher entropy = more uniform distribution, lower entropy = more concentrated.
-    
+
     Args:
         img: Input image array
-        
+
     Returns:
         Shannon entropy value
     """
@@ -244,14 +283,14 @@ def image_entropy(img: np.ndarray) -> float:
 def brightness_concentration(img: np.ndarray, tl_frac: float = 0.25) -> float:
     """
     Calculate fraction of total mass in the top-left region.
-    
+
     Measures how concentrated the high values are in the designated area.
     Used as a key metric for PHOS effectiveness.
-    
+
     Args:
         img: Input image array
         tl_frac: Area fraction for top-left region
-        
+
     Returns:
         Concentration ratio (0-1)
     """
@@ -269,7 +308,7 @@ def brightness_concentration(img: np.ndarray, tl_frac: float = 0.25) -> float:
 def save_img(img: np.ndarray, path: str, title: str = "") -> None:
     """
     Save grayscale image to disk.
-    
+
     Args:
         img: Image array (values 0-1)
         path: Output file path
@@ -289,6 +328,7 @@ def save_img(img: np.ndarray, path: str, title: str = "") -> None:
 # VPM vectorization
 # ---------------------------
 
+
 def vpm_vector_from_df(
     df: pd.DataFrame,
     model: str,
@@ -301,10 +341,10 @@ def vpm_vector_from_df(
 ) -> np.ndarray:
     """
     Build a single 1D VPM vector from DataFrame columns.
-    
+
     Supports both MultiIndex and flat column naming conventions.
     Can concatenate or interleave dimensions.
-    
+
     Args:
         df: DataFrame containing model performance scores
         model: Model identifier (e.g., 'hrm', 'tiny')
@@ -313,7 +353,7 @@ def vpm_vector_from_df(
         weights: Optional dimension weights for weighted combination
         p_lo: Lower percentile for robust scaling
         p_hi: Upper percentile for robust scaling
-        
+
     Returns:
         1D VPM vector combining all specified dimensions
     """
@@ -349,6 +389,7 @@ def vpm_vector_from_df(
 # Artifact builders
 # ---------------------------
 
+
 def build_vpm_phos_artifacts(
     df: pd.DataFrame,
     *,
@@ -361,13 +402,13 @@ def build_vpm_phos_artifacts(
 ) -> Dict:
     """
     Build both raw VPM and PHOS-packed artifacts for a single model.
-    
+
     Produces:
       - Raw VPM image (simple reshaping)
       - PHOS VPM image (sorted packing)
       - Comprehensive metrics for both
       - PNG files saved to disk
-    
+
     Args:
         df: Input DataFrame with performance scores
         model: Target model name
@@ -376,25 +417,31 @@ def build_vpm_phos_artifacts(
         tl_frac: Top-left area fraction for PHOS packing
         interleave: Whether to interleave dimensions
         weights: Optional dimension weights
-        
+
     Returns:
         Dictionary containing paths, metrics, and configuration
     """
-    vec = vpm_vector_from_df(df, model, dimensions, interleave=interleave, weights=weights)
-    
+    vec = vpm_vector_from_df(
+        df, model, dimensions, interleave=interleave, weights=weights
+    )
+
     # Generate raw and PHOS images
     raw_img, _ = to_square(vec)
     phos_img = phos_sort_pack(vec)
 
     # Calculate comparison metrics
     raw_metrics = {
-        "brightness_top_left": brightness_concentration(raw_img, tl_frac=tl_frac),
+        "brightness_top_left": brightness_concentration(
+            raw_img, tl_frac=tl_frac
+        ),
         "mean": float(raw_img.mean()),
         "std": float(raw_img.std()),
         "entropy": image_entropy(raw_img),
     }
     phos_metrics = {
-        "brightness_top_left": brightness_concentration(phos_img, tl_frac=tl_frac),
+        "brightness_top_left": brightness_concentration(
+            phos_img, tl_frac=tl_frac
+        ),
         "mean": float(phos_img.mean()),
         "std": float(phos_img.std()),
         "entropy": image_entropy(phos_img),
@@ -417,15 +464,15 @@ def build_vpm_phos_artifacts(
 def _chosen_from_sweep(sweep: List[Dict], delta: float) -> Dict:
     """
     Select best PHOS candidate from parameter sweep.
-    
+
     Selection strategy:
     1. Prefer first candidate that shows significant improvement over raw
     2. Fallback to candidate with highest PHOS concentration
-    
+
     Args:
         sweep: List of sweep results
         delta: Minimum improvement threshold
-        
+
     Returns:
         Selected candidate configuration
     """
@@ -436,22 +483,27 @@ def _chosen_from_sweep(sweep: List[Dict], delta: float) -> Dict:
     return cand[0] if cand else {}
 
 
-
 # --- helper: pick best sweep result (prefer improved; else best phos conc) ---
-def _chosen_from_sweep(sweep: List[Dict], *, delta: float = 0.02) -> Optional[Dict]:
+def _chosen_from_sweep(
+    sweep: List[Dict], *, delta: float = 0.02
+) -> Optional[Dict]:
     if not sweep:
         return None
     improved = [r for r in sweep if r.get("improved")]
-    return max(improved, key=lambda r: r.get("phos_conc", 0.0)) if improved else \
-           max(sweep,    key=lambda r: r.get("phos_conc", 0.0))
+    return (
+        max(improved, key=lambda r: r.get("phos_conc", 0.0))
+        if improved
+        else max(sweep, key=lambda r: r.get("phos_conc", 0.0))
+    )
+
 
 def build_compare_guarded(
     df: pd.DataFrame,
     *,
     dimensions: List[str],
     out_prefix: str,
-    model_A: str,                 # e.g. "hf_HRM" or "Llama3-8B"
-    model_B: str,                 # e.g. "hf_TinyLama" or "Phi-3-mini"
+    model_A: str,  # e.g. "hf_HRM" or "Llama3-8B"
+    model_B: str,  # e.g. "hf_TinyLama" or "Phi-3-mini"
     tl_fracs: Iterable[float] = (0.25, 0.16, 0.36, 0.09),
     delta: float = 0.02,
     interleave: bool = False,
@@ -487,35 +539,46 @@ def build_compare_guarded(
                 weights=weights,
             )
 
-            raw_c  = float(res["metrics"]["raw"]["brightness_top_left"])
+            raw_c = float(res["metrics"]["raw"]["brightness_top_left"])
             phos_c = float(res["metrics"]["phos"]["brightness_top_left"])
             improved = phos_c > raw_c * (1.0 + float(delta))
 
-            model_sweep.append({
-                "tl_frac": float(tl),
-                "raw_conc": raw_c,
-                "phos_conc": phos_c,
-                "improved": bool(improved),
-                "raw_path": res["paths"]["raw"],
-                "phos_path": res["paths"]["phos"],
-            })
+            model_sweep.append(
+                {
+                    "tl_frac": float(tl),
+                    "raw_conc": raw_c,
+                    "phos_conc": phos_c,
+                    "improved": bool(improved),
+                    "raw_path": res["paths"]["raw"],
+                    "phos_path": res["paths"]["phos"],
+                }
+            )
 
         chosen = _chosen_from_sweep(model_sweep, delta=delta)
         results["sweep"][model] = model_sweep
         results[f"{model}_chosen"] = chosen
 
         # Persist the sweep details for this model
-        with open(f"{out_prefix}_{model}_vpm_guard_metrics.json", "w", encoding="utf-8") as f:
-            json.dump({
-                "model": model,
-                "delta": float(delta),
-                "sweep": model_sweep,
-                "chosen": chosen,
-            }, f, indent=2)
+        with open(
+            f"{out_prefix}_{model}_vpm_guard_metrics.json",
+            "w",
+            encoding="utf-8",
+        ) as f:
+            json.dump(
+                {
+                    "model": model,
+                    "delta": float(delta),
+                    "sweep": model_sweep,
+                    "chosen": chosen,
+                },
+                f,
+                indent=2,
+            )
 
         # Convenience: copy chosen PHOS to a stable name (ignore if not available)
         if chosen and chosen.get("phos_path"):
             import shutil
+
             dst = f"{out_prefix}_{model}_vpm_chosen.png"
             try:
                 shutil.copyfile(chosen["phos_path"], dst)
@@ -525,18 +588,26 @@ def build_compare_guarded(
     # ---- 2) PHOS(A) − PHOS(B) visualization (using current DataFrame) -------
     # Use your existing vectorizer + packer. If either fails, we just skip diff.
     try:
-        vec_A  = vpm_vector_from_df(df, model_A, dimensions, interleave=interleave, weights=weights)
-        vec_B  = vpm_vector_from_df(df, model_B, dimensions, interleave=interleave, weights=weights)
-        img_A  = phos_sort_pack(vec_A)
-        img_B  = phos_sort_pack(vec_B)
+        vec_A = vpm_vector_from_df(
+            df, model_A, dimensions, interleave=interleave, weights=weights
+        )
+        vec_B = vpm_vector_from_df(
+            df, model_B, dimensions, interleave=interleave, weights=weights
+        )
+        img_A = phos_sort_pack(vec_A)
+        img_B = phos_sort_pack(vec_B)
 
         if img_A.shape == img_B.shape and img_A.size and img_B.size:
-            diff   = img_A - img_B
-            dmin   = float(diff.min()); dmax = float(diff.max())
+            diff = img_A - img_B
+            dmin = float(diff.min())
+            dmax = float(diff.max())
             # Normalize to [0,1] for viewing
             diff01 = (diff - dmin) / (dmax - dmin + 1e-12)
-            save_img(diff01, f"{out_prefix}_vpm_chosen_diff.png",
-                     title=f"PHOS({model_A}) − PHOS({model_B})")
+            save_img(
+                diff01,
+                f"{out_prefix}_vpm_chosen_diff.png",
+                title=f"PHOS({model_A}) − PHOS({model_B})",
+            )
             results["diff_range"] = [dmin, dmax]
         else:
             results["diff_range"] = None
@@ -550,13 +621,14 @@ def build_compare_guarded(
         "chosen": {
             model_A: results.get(f"{model_A}_chosen"),
             model_B: results.get(f"{model_B}_chosen"),
-        }
+        },
     }
     with open(f"{out_prefix}_guard_compare.json", "w", encoding="utf-8") as f:
         json.dump(summary, f, indent=2)
 
     results["summary"] = summary
     return results
+
 
 def pick_metric_column(df: pd.DataFrame, base: str) -> str | None:
     for suf in CAND_SUFFIXES:
@@ -569,6 +641,7 @@ def pick_metric_column(df: pd.DataFrame, base: str) -> str | None:
             return c
     return None
 
+
 def project_dimensions(df_in: pd.DataFrame, dims: list[str]) -> pd.DataFrame:
     out = {"node_id": df_in["node_id"].values}
     missing = {"hrm": [], "tiny": []}
@@ -577,10 +650,12 @@ def project_dimensions(df_in: pd.DataFrame, dims: list[str]) -> pd.DataFrame:
         t = pick_metric_column(df_in, f"tiny.{d}")
 
         if h is None:
-            missing["hrm"].append(d); out[f"hrm.{d}"] = 0.0
+            missing["hrm"].append(d)
+            out[f"hrm.{d}"] = 0.0
         else:
             out[f"hrm.{d}"] = df_in[h].astype(float).fillna(0.0)
         if t is None:
-            missing["tiny"].append(d); out[f"tiny.{d}"] = 0.0
+            missing["tiny"].append(d)
+            out[f"tiny.{d}"] = 0.0
         else:
             out[f"tiny.{d}"] = df_in[t].astype(float).fillna(0.0)

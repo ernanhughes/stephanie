@@ -29,7 +29,7 @@ import numpy as np
 # Scale-aware normalization
 # ----------------------------
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -175,7 +175,7 @@ class ScoreNormalizer:
         try:
             v = float(value)
         except Exception:
-            _logger.debug(f"Invalid score value: {value}, defaulting to 0.0")
+            log.error(f"Invalid score value: {value}, defaulting to 0.0")
             return 0.0
             
         rng = self._get_range(self.score_ranges, source, dimension)
@@ -183,7 +183,7 @@ class ScoreNormalizer:
         
         # Log extreme normalizations for monitoring
         if result <= 0.01 or result >= 0.99:
-            _logger.debug(f"Extreme score normalization: {v} -> {result} (source: {source}, dim: {dimension})")
+            log.debug(f"Extreme score normalization: {v} -> {result} (source: {source}, dim: {dimension})")
             
         return result
 
@@ -202,7 +202,7 @@ class ScoreNormalizer:
         try:
             v = float(value)
         except Exception:
-            _logger.debug(f"Invalid attribute value: {value}, defaulting to 0.0")
+            log.debug(f"Invalid attribute value: {value}, defaulting to 0.0")
             return 0.0
             
         rng = self._get_range(self.attr_ranges, source, name)
@@ -235,7 +235,7 @@ def _source_from_prefix(model_prefix: str) -> str:
     if p.startswith("llm"):
         return "LLM"
     # Fallback: treat unknown as LLM-style unless configured otherwise
-    _logger.debug(f"Unknown model prefix '{model_prefix}', defaulting to LLM normalization")
+    log.warning(f"Unknown model prefix '{model_prefix}', defaulting to LLM normalization")
     return "LLM"
 
 
@@ -582,7 +582,7 @@ def scm_from_vector(vec_native: Dict[str, Any], *, model_prefix: str) -> Dict[st
         - Debug: Conversion process and fallback usage
         - Warning: Missing critical signals or extreme values
     """
-    _logger.debug(f"Converting {model_prefix} outputs to SCM format")
+    log.debug(f"Converting {model_prefix} outputs to SCM format")
     
     # Tier 1: Extract dimension-specific scores
     dim_scores = {d: _dim_score(vec_native, model_prefix, d) for d in DIMENSIONS}
@@ -614,7 +614,7 @@ def scm_from_vector(vec_native: Dict[str, Any], *, model_prefix: str) -> Dict[st
         "scm.agree_hat01": agree_val,
     }
     
-    _logger.debug(f"SCM conversion complete for {model_prefix}, aggregate: {agg:.3f}")
+    log.debug(f"SCM conversion complete for {model_prefix}, aggregate: {agg:.3f}")
     return scm
 
 

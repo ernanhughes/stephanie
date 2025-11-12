@@ -6,7 +6,7 @@ import os
 import time
 import traceback
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Dict, List
 
 import matplotlib
 
@@ -14,7 +14,6 @@ if matplotlib.get_backend().lower() != "agg":
     matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
 from tqdm import tqdm
 
 # Import our core PlanTrace components
@@ -108,7 +107,7 @@ class HNetValidationExperiment(BaseAgent):
         # Print improvement results
         if results["improvements"]:
             improvement = results["improvements"][0]
-            print(f"\nSELF-IMPROVEMENT RESULT:")
+            print("\nSELF-IMPROVEMENT RESULT:")
             print(f"- Original quality: {improvement['original_quality']:.2f}")
             print(f"- Improved quality: {improvement['improved_quality']:.2f}")
             print(f"- Quality improvement: {improvement['quality_improvement']:.1%}")
@@ -180,7 +179,7 @@ class HNetValidationExperiment(BaseAgent):
         for i in range(count):
             paper_id = f"arxiv:2406.{1000+i}"
             title = f"Self-Improving AI: {i+1} Advanced Techniques for Recursive Self-Optimization"
-            summary = f"This paper explores advanced techniques for building self-improving AI systems. It introduces a novel framework for recursive self-optimization that outperforms existing approaches by 23.7% on benchmark tasks. The framework combines hierarchical reasoning with dynamic policy adaptation, enabling AI systems to improve their own cognitive architecture."
+            summary = "This paper explores advanced techniques for building self-improving AI systems. It introduces a novel framework for recursive self-optimization that outperforms existing approaches by 23.7% on benchmark tasks. The framework combines hierarchical reasoning with dynamic policy adaptation, enabling AI systems to improve their own cognitive architecture."
             content = summary * 20  # Simulate full content
             
             papers.append({

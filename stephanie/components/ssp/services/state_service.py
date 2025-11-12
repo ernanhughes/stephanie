@@ -316,7 +316,7 @@ class StateService(Service):
             "service": self.name,
             **payload
         }
-        self.logger.log(f"StateServiceEvent", extra=full_payload)
+        self.logger.log("StateServiceEvent", extra=full_payload)
 
         # Add to in-memory event ring buffer
         if self._recent_events is not None:

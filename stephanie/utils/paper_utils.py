@@ -43,12 +43,6 @@ def section_quality(section_name: str) -> dict:
         base["citation_support"] = 0.93
     return base
 
-def system_guidance_from_goal(goal_text: str | None, quality: dict) -> str:
-    # keep your existing function signature; this version just ensures section is surfaced
-    qt = " ".join([f"{k}≥{v:.2f}" for k, v in quality.items()])
-    return f"[SYSTEM GOAL]\n{goal_text or ''}\n[QUALITY TARGETS] {qt}\n[STYLE] Plain, precise, blog-friendly; no hallucinations.\n"
-
-
 def build_paper_goal_text(title: str) -> str:
     return (
         f"As an expert technical blog writer, process the paper “{title}” into "

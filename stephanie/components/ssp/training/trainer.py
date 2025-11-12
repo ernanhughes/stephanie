@@ -15,7 +15,7 @@ from stephanie.components.ssp.impl.verifiers.f1_verifier import Verifier
 from stephanie.components.ssp.utils.trace import EpisodeTrace
 from stephanie.components.tree.events import TreeEventEmitter
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 class Trainer:
     def __init__(self, cfg, memory, container, logger):
@@ -33,14 +33,14 @@ class Trainer:
         proposer = SearchingProposer(self.cfg, memory=self.memory, container=self.container, logger=self.logger, solution_search=solution_search)
         question, proposer_evidence, solver_meta = await proposer.propose(seed_answer, context=context)
         if not question:
-            _logger.warning(f"⚠️  No question proposed for seed answer: {seed_answer}")
+            log.warning(f"⚠️  No question proposed for seed answer: {seed_answer}")
             question = f"What is the question for this answer {seed_answer}?"
 
         # ATS‑based solver with a tiny local searcher that contains the answer in synthetic docs
         solver = ATSSolver(cfg=self.cfg, memory=self.memory, container=self.container, logger=self.logger,
             searcher=solution_search, event_emitter=emitter)
         predicted, evidence, solver_steps, solver_meta = await solver.solve(question, seed_answer=seed_answer, context=context, evidence_docs=proposer_evidence)
-        _logger.info(f"🧠 Predicted answer: {predicted} | using {len(evidence)} evidence docs.")
+        log.info(f"🧠 Predicted answer: {predicted} | using {len(evidence)} evidence docs.")
         ok, reward = self.verify.verify(ground_truth=seed_answer, predicted=predicted)
 
         ep = EpisodeTrace(
@@ -83,7 +83,7 @@ class Trainer:
             n += 1
             r_sum += ep.reward
             ok_sum += int(ep.verified)
-            _logger.info(
+            log.info(
                 f"EP {ep.episode_id} | ok={ep.verified} r={ep.reward:.3f} | Q: {ep.question}\n"
                 f"→ A*: {ep.predicted_answer}\n"
             )

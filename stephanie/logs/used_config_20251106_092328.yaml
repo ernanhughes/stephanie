@@ -1,0 +1,762 @@
+embeddings:
+  backend: hnet
+goal:
+  goal_text: I want to build an AI that can teach itself to solve complex problems
+    better over time.
+  goal_type: tactical
+  goal_category: meta_learning
+  focus_area: self_improvement
+  strategy: stepwise_decomposition
+  difficulty: medium-high
+  expected_formats:
+  - symbolic_prompt_plan
+  - stepwise_reasoning_trace
+  - annotated_score_vector
+paths:
+  prompts: ${hydra:runtime.cwd}/prompts
+report:
+  generate_report: true
+  path: ${hydra:runtime.cwd}/reports
+pipeline:
+  name: chat training
+  tag: chat_training
+  description: Uses chat history to train models. Different dynamics than traditional
+    training.
+  stages:
+  - name: scorable_loader
+    description: 🔓 Loads a large amount of conversation turns
+    cls: stephanie.agents.scorable_loader.ScorableLoaderAgent
+    enabled: true
+    iterations: 1
+  - name: chat_analyze
+    description: Analyze chat history for relevant information
+    cls: stephanie.agents.knowledge.chat_analyze.ChatAnalyzeAgent
+    enabled: false
+  - name: universal_scorer
+    cls: stephanie.agents.universal_scorer.UniversalScorerAgent
+    enabled: false
+    iterations: 1
+  - name: nexus
+    description: Generate a memory graph
+    cls: stephanie.components.nexus.agents.nexus_inline.NexusInlineAgent
+    enabled: true
+    iterations: 1
+db:
+  database: co
+  name: co
+  user: co
+  password: co
+  host: localhost
+  port: 5432
+plan_monitor:
+  enabled: false
+  save_output: false
+  self_improve:
+    enabled: false
+logging:
+  logger:
+    type: JSONLogger
+    use_event_table: true
+    log_path: ./logs/
+    report_path: ./reports/pipeline_events.jsonl
+  logging:
+    logger:
+      type: JSONLogger
+      use_event_table: true
+      log_path: ./logs/
+      report_path: ./reports/pipeline_events.jsonl
+services:
+  services:
+    state:
+      enabled: true
+      cls: stephanie.services.state_tracker_service.StateTrackerService
+      dependencies: []
+      args:
+        cfg: ${cfg}
+        memory: ${memory}
+        logger: ${logger}
+    storage:
+      enabled: true
+      cls: stephanie.services.storage_service.StorageService
+      dependencies: []
+      args: null
+    rules:
+      enabled: true
+      cls: stephanie.services.rules_service.RulesService
+      dependencies: []
+      args:
+        cfg: ${cfg}
+        memory: ${memory}
+        logger: ${logger}
+    knowledge_graph:
+      enabled: true
+      cls: stephanie.services.knowledge_graph_service.KnowledgeGraphService
+      dependencies: []
+      args:
+        cfg: ${cfg}
+        memory: ${memory}
+        logger: ${logger}
+    llm:
+      enabled: true
+      cls: stephanie.services.llm_service.LLMService
+      dependencies:
+      - rules
+      args:
+        cfg: ${cfg}
+        memory: ${memory}
+        logger: ${logger}
+    scoring:
+      enabled: true
+      cls: stephanie.services.scoring_service.ScoringService
+      dependencies: []
+      args:
+        cfg: ${cfg}
+        memory: ${memory}
+        container: ${container}
+        logger: ${logger}
+    confidence:
+      enabled: true
+      cls: stephanie.services.meta_confidence_service.MetaConfidenceService
+      dependencies:
+      - state
+      args:
+        cfg: ${cfg}
+        memory: ${memory}
+        logger: ${logger}
+    plan_trace:
+      enabled: true
+      cls: stephanie.services.plan_trace_service.PlanTraceService
+      dependencies:
+      - scoring
+      - state
+      args:
+        cfg: ${cfg}
+        memory: ${memory}
+        container: ${container}
+        logger: ${logger}
+    reporting:
+      enabled: true
+      factory: stephanie.services.factories:make_reporting_service
+      dependencies: []
+      args:
+        sinks:
+        - cls: stephanie.services.reporting_service.JsonlSink
+          args:
+            path: ${cfg:logging.logger.report_path}
+        - cls: stephanie.services.reporting_service.LoggerSink
+          args:
+            logger: ${logger}
+        enabled: ${cfg:reporting.enabled}
+        sample_rate: ${cfg:reporting.sample_rate}
+    validation:
+      enabled: true
+      factory: stephanie.services.factories:create_self_validator
+      dependencies:
+      - scoring
+      args:
+        cfg: ${cfg}
+        memory: ${memory}
+        logger: ${logger}
+    training:
+      enabled: true
+      factory: stephanie.services.factories:create_training_controller
+      dependencies:
+      - validation
+      - confidence
+      args:
+        cfg: ${cfg}
+        memory: ${memory}
+        logger: ${logger}
+        container: ${container}
+    event:
+      enabled: true
+      cls: stephanie.services.event_service.EventService
+      dependencies: []
+      args:
+        cfg: ${cfg}
+        memory: ${memory}
+        logger: ${logger}
+    prompt:
+      enabled: true
+      cls: stephanie.services.prompt_service.PromptService
+      dependencies: []
+      args:
+        cfg: ${cfg}
+        memory: ${memory}
+        logger: ${logger}
+        container: ${container}
+    kbase:
+      enabled: true
+      cls: stephanie.services.knowledge_base_service.KnowledgeBaseService
+      dependencies: []
+      args:
+        cfg: ${cfg}
+        memory: ${memory}
+        logger: ${logger}
+        container: ${container}
+    zeromodel:
+      enabled: true
+      cls: stephanie.services.zeromodel_service.ZeroModelService
+      dependencies: []
+      args:
+        cfg: ${cfg}
+        memory: ${memory}
+        logger: ${logger}
+    cbr:
+      enabled: true
+      cls: stephanie.services.cbr_service.CBRService
+      dependencies:
+      - llm
+      - scoring
+      args:
+        cfg: ${cfg}
+        memory: ${memory}
+        logger: ${logger}
+        container: ${container}
+    strategy:
+      enabled: true
+      cls: stephanie.services.strategy_profile_service.StrategyProfileService
+      dependencies: []
+      args:
+        cfg: ${cfg}
+        memory: ${memory}
+        logger: ${logger}
+        container: ${container}
+    cycle:
+      enabled: false
+      cls: stephanie.services.cycle_watcher_service.CycleWatcherService
+      dependencies:
+      - state
+      args:
+        cfg: ${cfg}
+        memory: ${memory}
+        logger: ${logger}
+        container: ${container}
+scorer:
+  reward:
+    name: reward
+    model_type: contrastive_ranker
+    model_alias: Reward
+    display_name: Reward
+    margin: 0.05
+    goal_conditioned: true
+    model_version: v1
+    evaluator: contrastive_ranker
+    target_type: document
+    dimensions:
+    - alignment
+    - clarity
+    - implementability
+    - novelty
+    - relevance
+  ebt:
+    name: ebt
+    model_type: ebt
+    model_alias: EBT
+    display_name: EBT
+    model_version: v1
+    evaluator: ebt
+    target_type: document
+    dimensions:
+    - alignment
+    - clarity
+    - implementability
+    - novelty
+    - relevance
+  hrm:
+    name: hrm
+    model_type: hrm
+    model_alias: HRM
+    display_name: HRM
+    model_version: v1
+    evaluator: hrm
+    target_type: conversation_turn
+    dimensions:
+    - reasoning
+    - knowledge
+    - clarity
+    - faithfulness
+    - coverage
+  knowledge:
+    model_type: knowledge
+    model_alias: Knowledge
+    display_name: Knowledge
+    target_type: document
+    model_path: models
+    model_version: v1
+    early_stopping: true
+    patience: 3
+    min_delta: 0.0001
+    batch_size: 4
+    epochs: 30
+    lr: 0.0001
+    min_samples: 20
+    use_tuner: true
+    beta: 2.0
+    margin: 0.2
+    aux_features:
+    - human_stars
+    - pseudo_stars
+    - artifact_quality
+    - turn_pos_ratio
+    - has_retrieval
+    - retrieval_fidelity
+    - text_len_norm
+  mrq:
+    name: mrq
+    model_type: mrq
+    model_alias: MRQ
+    display_name: MRQ
+    model_version: v1
+    evaluator: mrq
+    target_type: conversation_turn
+    dimensions:
+    - reasoning
+    - knowledge
+    - clarity
+    - faithfulness
+    - coverage
+  sicql:
+    name: sicql
+    model_type: sicql
+    model_alias: sicql
+    display_name: sicql
+    model_version: v1
+    evaluator: sicql
+    target_type: conversation_turn
+    dimensions:
+    - reasoning
+    - knowledge
+    - clarity
+    - faithfulness
+    - coverage
+  svm:
+    name: svm
+    model_type: svm
+    model_alias: svm
+    display_name: svm
+    model_version: v1
+    evaluator: svm
+    target_type: document
+    dimensions:
+    - alignment
+    - clarity
+    - implementability
+    - novelty
+    - relevance
+  tiny:
+    name: tiny
+    model_type: tiny
+    model_alias: Tiny
+    display_name: Tiny
+    model_version: v1
+    evaluator: tiny
+    target_type: conversation_turn
+    dimensions:
+    - reasoning
+    - knowledge
+    - clarity
+    - faithfulness
+    - coverage
+  contrastive_ranker:
+    name: contrastive_ranker
+    model_type: contrastive_ranker
+    model_alias: cr
+    display_name: ContrastRank
+    model_version: v1
+    evaluator: contrastive_ranker
+    target_type: document
+    dimensions:
+    - alignment
+    - clarity
+    - implementability
+    - novelty
+    - relevance
+  vpm:
+    name: vpm
+    img_size: 64
+    patch_size: 8
+    in_channels: 3
+    embed_dim: 128
+    depth: 4
+    num_heads: 8
+    mlp_ratio: 4.0
+    dropout: 0.1
+    learning_rate: 0.0001
+    batch_size: 16
+    epochs: 100
+    weights_path: null
+    max_resolution: 256
+    resize_method: bilinear
+  zero:
+    name: zero
+    dimensions:
+    - clarity
+    - coherence
+    - alignment
+    - confidence
+    - novelty
+    - contradiction
+    - complexity
+    - vpm_overall
+    dimension_order:
+    - clarity
+    - coherence
+    - alignment
+    - confidence
+    dimension_weights:
+      clarity: 1.25
+      coherence: 1.15
+      alignment: 1.1
+      confidence: 1.0
+    order_decay: 0.92
+agents:
+  nexus:
+    name: nexus
+    enabled: true
+    save_prompt: false
+    save_context: true
+    skip_if_completed: false
+    model:
+      name: ollama/qwen3
+      api_base: http://localhost:11434
+      api_key: null
+    embeddings:
+      backend: ${embeddings.backend}
+    paths:
+      vpm_out: ./runs/vpm/nexus
+      cache_dir: .vision_scorer_cache
+      artifacts: ./runs/nexus_artifacts
+      prompts: ${paths.prompts}
+    loader:
+      role_filter: assistant
+      limit: 5000
+      min_text_len: 80
+    indexer:
+      batch_size: 128
+      normalize_l2: true
+      persist: true
+      faiss:
+        use_gpu: true
+        nprobe: 32
+      knn:
+        k: 12
+        edge_threshold: 0.35
+      cap:
+        max_nodes: 50000
+        max_edges_per_node: 32
+    pathfinder:
+      beam_width: 6
+      max_path_len: 24
+      min_path_len: 3
+      backtrack: true
+      start_strategy: nearest_to_goal
+      weights:
+        alpha_text: 0.55
+        beta_goal: 0.2
+        gamma_stability: 0.15
+        zeta_agreement: 0.05
+        delta_domain: 0.03
+        epsilon_entity: 0.02
+      penalties:
+        revisit: 0.1
+        long_hop: 0.05
+      stops:
+        max_total_cost: 9999
+        target_hit_threshold: 0.82
+    signals:
+      use_hallucination: true
+      use_uncertainty: true
+      use_agreement: true
+    scoring:
+      scorers:
+      - sicql
+      - hrm
+      - tiny
+      - ebt
+      - knowledge
+      dimensions:
+      - alignment
+      - clarity
+      - relevance
+      - coverage
+      - faithfulness
+      - novelty
+      - implementability
+      persist: false
+    graph:
+      knn_k: 12
+      sim_threshold: 0.35
+      max_edges_per_node: 24
+      add_temporal: true
+      add_mst_backbone: true
+      edge_caps:
+        knn_blend: 250000
+        temporal_next: 250000
+        backbone_mst: 100000
+      edge_weights:
+        embed: 0.5
+        metrics: 0.25
+        lexical: 0.1
+        domains: 0.08
+        entities: 0.05
+        agreement: 0.02
+        stability: 0.0
+    pulse:
+      enabled: true
+      k: 25
+      depth: 2
+      min_sim: 0.35
+      sse_subject: nexus.pulse
+      expand_workers: 3
+      fanout_limit: 200
+    goals:
+    - id: self_improvement
+      priority: 0.95
+      activation_threshold: 0.7
+      keywords:
+      - improve
+      - optimize
+      - learn
+      - train
+      - self-play
+      - policy
+    - id: knowledge_discovery
+      priority: 0.9
+      activation_threshold: 0.65
+      keywords:
+      - paper
+      - result
+      - proof
+      - novel
+      - SOTA
+      - benchmark
+    - id: system_preservation
+      priority: 0.85
+      activation_threshold: 0.6
+      keywords:
+      - error
+      - outage
+      - latency
+      - risk
+      - hallucination
+      - health
+    vpm:
+      dims_for_score:
+      - clarity
+      - coherence
+      - complexity
+      - alignment
+      - coverage
+      rollout_steps: 0
+      rollout_strategy: none
+      save_channels: false
+    zero_model:
+      fps: 8
+      max_frames: 1024
+      output_dir: ./data/runs/
+      timeline_scale_mode: robust01
+      pipeline:
+      - stage: normalize
+        params: {}
+      - stage: feature_engineering
+        params: {}
+      - stage: organization
+        params:
+          strategy: spatial
+      epistemic_field:
+        enabled: true
+        alpha: 0.97
+        Kc: 40
+        Kr: 100
+        fps: 8
+        cmap: seismic
+        aggregate: false
+    filmstrip:
+      rows: 2
+      cols: 12
+      dpi: 200
+      border_px: 2
+      border_color: 255
+      label_on: false
+      label_pos: tl
+      label_color: 255
+      label_bg: 0
+    vpm_viz:
+      raw_render: bar
+      progress_render: bar
+      bar_height: 12
+      grid_side: 32
+      fixed_scale: true
+      dimensions:
+      - clarity
+      - coherence
+      - complexity
+      - alignment
+      - coverage
+      output_dir: ./runs/vpm/nexus/viz
+      tl_fracs:
+      - 0.25
+      - 0.16
+      - 0.36
+      - 0.09
+      delta: 0.02
+    flow:
+      batch_size: 16
+      max_items: 200
+      stop_on_error: false
+      progress_every: 10
+    telemetry:
+      enabled: true
+      subject_root: nexus
+      sample: 1.0
+      persist: true
+      extra:
+        app: stephanie
+        component: nexus
+    bus:
+      vpm:
+        request: arena.nexus.vpm.request
+        ready: arena.nexus.vpm.ready
+      metrics:
+        request: arena.nexus.metrics.request
+        ready: arena.nexus.metrics.ready
+    guards:
+      enable_risk_checks: false
+      overlap_min: 0.05
+      delta_mass_min: -0.1
+    annotate:
+      seed_config: config/domain/seeds.yaml
+      goal_config: config/domain/goal_prompt.yaml
+      max_domains_per_source: 3
+      min_confidence: 0.1
+      only_missing: true
+      force: false
+      progress: true
+      filter_role: true
+      scorable_role: assistant
+    analyze:
+      limit: 10000
+      force_rescore: false
+      prompt_dir: ./prompts/chat_analyze
+      dimensions:
+      - reasoning
+      - knowledge
+      - clarity
+      - faithfulness
+      - coverage
+      model:
+        name: ollama/qwen3
+        api_base: http://localhost:11434
+        api_key: null
+    seeds:
+    - Summarize this week’s progress succinctly.
+    - List three risks in our current reasoning stack.
+    - Explain the role of VPMs in one paragraph.
+    dev:
+      dry_run: false
+      log_level: INFO
+      save_step_json: true
+    vpm_out: ./runs/nexus_vpm
+    rollout_steps: 0
+    rollout_strategy: none
+    target_type: conversation_turn
+    graph_build:
+      embed_key: global
+      knn_k: 12
+      sim_threshold: 0.35
+  scorable_loader:
+    name: scorable_loader
+    enabled: true
+    save_prompt: true
+    save_context: false
+    skip_if_completed: false
+    model:
+      name: ollama/qwen3
+      api_base: http://localhost:11434
+      api_key: null
+    input_keys:
+    - goal
+    input_key: goal
+    output_key: scorables
+    prompt_mode: file
+    prompt_file: scorable_loader.txt
+  chat_analyze:
+    name: chat_analyze
+    enabled: true
+    save_prompt: true
+    save_context: false
+    skip_if_completed: false
+    dimensions:
+    - reasoning
+    - knowledge
+    - clarity
+    - faithfulness
+    - coverage
+    model:
+      name: ollama/qwen3
+      api_base: http://localhost:11434
+      api_key: null
+    input_keys:
+    - goal
+    - hypotheses
+    input_key: documents
+    output_key: chat_analyze
+    prompt_mode: file
+    prompt_file: chat_analyze.txt
+  universal_scorer:
+    name: universal_scorer
+    enabled: true
+    save_prompt: true
+    save_context: false
+    skip_if_completed: false
+    include_mars: true
+    enabled_scorers:
+    - llm
+    include_ranking: true
+    rank_top_k: 5
+    dimensions:
+    - alignment
+    - clarity
+    - implementability
+    - novelty
+    - relevance
+    target_types:
+    - case_scorable
+    dimension_config:
+      alignment:
+        scale: 0-100
+        trust_references:
+        - llm
+        expected_variance: 0.15
+      clarity:
+        scale: 0-100
+        trust_references:
+        - llm
+        expected_variance: 0.15
+      implementability:
+        scale: 0-100
+        trust_references:
+        - llm
+        expected_variance: 0.15
+      novelty:
+        scale: 0-100
+        trust_references:
+        - llm
+        expected_variance: 0.15
+      relevance:
+        scale: 0-100
+        trust_references:
+        - llm
+        expected_variance: 0.15
+    model:
+      name: ollama/qwen3
+      api_base: http://localhost:11434
+      api_key: null
+    input_keys:
+    - goal
+    - hypotheses
+    input_key: documents
+    output_key: universal_scorer
+    prompt_mode: file
+    prompt_file: universal_scorer.txt

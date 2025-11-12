@@ -2,14 +2,15 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import Any, Optional
 
 import psycopg2
 from pgvector.psycopg2 import register_vector
 from sqlalchemy.orm import sessionmaker
 
-from stephanie.logging import JSONLogger
 from stephanie.memory.belief_cartridge_store import BeliefCartridgeStore
+from stephanie.memory.blossom_store import BlossomStore
 from stephanie.memory.bus_event_store import BusEventStore
 from stephanie.memory.calibration_event_store import CalibrationEventStore
 from stephanie.memory.cartridge_domain_store import CartridgeDomainStore
@@ -39,7 +40,7 @@ from stephanie.memory.idea_store import IdeaStore
 from stephanie.memory.lookahead_store import LookaheadStore
 from stephanie.memory.mars_conflict_store import MARSConflictStore
 from stephanie.memory.mars_result_store import MARSResultStore
-from stephanie.memory.memcube_store import MemcubeStore
+from stephanie.memory.memcube_store import MemCubeStore
 from stephanie.memory.method_plan_store import MethodPlanStore
 from stephanie.memory.models_store import ModelsStore
 from stephanie.memory.mrq_store import MRQStore
@@ -75,9 +76,12 @@ from stephanie.models.base import engine  # From your SQLAlchemy setup
 from stephanie.services.bus.hybrid_bus import HybridKnowledgeBus
 from stephanie.services.bus.knowledge_bus import KnowledgeBus
 
+from stephanie.utils.async_utils import retry
+
+log = logging.getLogger(__name__)
 
 class MemoryTool:
-    def __init__(self, cfg: dict, logger: Optional[JSONLogger] = None):
+    def __init__(self, cfg: dict, logger: Any):
         self.cfg = cfg
         self.logger = logger
         self._stores = {}
@@ -166,7 +170,7 @@ class MemoryTool:
         self.register_store(CartridgeDomainStore(self.session_maker, logger))
         self.register_store(CartridgeStore(self.session_maker, logger))
         self.register_store(CartridgeTripleStore(self.session_maker, logger))
-        self.register_store(MemcubeStore(self.session_maker, logger))
+        self.register_store(MemCubeStore(self.session_maker, logger))
         self.register_store(BeliefCartridgeStore(self.session_maker, logger))
         self.register_store(GoalDimensionsStore(self.session_maker, logger))
         self.register_store(PipelineStageStore(self.session_maker, logger))
@@ -201,6 +205,8 @@ class MemoryTool:
         self.register_store(AgentTrajectoryStore(self.session_maker, logger))
         self.register_store(ReasoningSampleStore(self.session_maker, logger))
         self.register_store(VPMStore(self.session_maker, logger))
+        self.register_store(ScorableEntityStore(self.session_maker, logger))
+        self.register_store(BlossomStore(self.session_maker, logger))
 
         if cfg.get("extra_stores"):
             for store_class in cfg.get("extra_stores", []):
@@ -222,17 +228,62 @@ class MemoryTool:
         async with self._bus_lock:
             if self._bus_connected_evt.is_set():
                 return
-            ok = await self.bus.connect()
-            if ok:
-                self._bus_connected_evt.set()
-                self.logger.info("KnowledgeBusReady", {"backend": self.bus.get_backend()})
-                return
 
-        # failed to connect
-        self.logger.warning("KnowledgeBusConnectFailed", {"required": required})
-        if required:
-            raise RuntimeError("Knowledge bus failed to connect")
-        # else: continue without a bus (backend = "none")
+            # 1) Connect (best effort). Hybrid will fallback to inproc if allowed.
+            ok = await self.bus.connect()
+            if not ok:
+                log.warning("KnowledgeBusConnectFailed", {"required": required})
+                if required:
+                    raise RuntimeError("Knowledge bus failed to connect")
+                return  # continue without a bus
+
+            # 2) Ensure stream FIRST (so wait_ready() health publish won’t 404)
+            # Prefer a wide wildcard to avoid future subject drift.
+            subjects = [
+                "stephanie.>",                              # catch-all
+                "stephanie.blossom.prompt.request",         # explicit (kept for clarity)
+                "stephanie.blossom.prompt.responses.available",
+                "stephanie.health",
+            ]
+            try:
+                await retry(lambda: self.bus.ensure_stream("stephanie", subjects))
+            except Exception as e:
+                log.error("KnowledgeBusEnsureStreamFailed: %s", e)
+                if required:
+                    raise
+                # Let HybridBus fall back (if configured); we still proceed to set the flag
+                # so callers that don't strictly require NATS can run.
+
+            # 3) Now wait_ready (does a JS health publish). One quick retry helps after stream add/update.
+            try:
+                ready = await self.bus.wait_ready(timeout=5.0)
+                if not ready:
+                    # one short retry after a brief delay (stream update propagation)
+                    await asyncio.sleep(0.25)
+                    ready = await self.bus.wait_ready(timeout=5.0)
+                if not ready:
+                    log.warning("KnowledgeBusWaitReadyFalse (continuing; Hybrid may be inproc)")
+            except Exception as e:
+                log.warning("KnowledgeBusWaitReadyError: %s (continuing)", e)
+
+            # 4) Ensure durable consumer for response channel (prefix handled in bus)
+            try:
+                await retry(lambda: self.bus.ensure_consumer(
+                    stream="stephanie",
+                    subject="blossom.prompt.responses.available",
+                    durable="d_blossom_resp_ready",
+                    ack_wait=30,        # seconds; NATS bus converts to timedelta
+                    max_deliver=5,
+                    deliver_group=None, # advisory (subscribe should pass queue group)
+                    deliver_policy=None,
+                ))
+            except Exception as e:
+                log.error("KnowledgeBusEnsureConsumerFailed: %s", e)
+                if required:
+                    raise
+
+            self._bus_connected_evt.set()
+            self.logger.info("KnowledgeBusReady", {"backend": self.bus.get_backend()})
 
     def register_store(self, store):
         store_name = getattr(store, "name", store.__class__.__name__)

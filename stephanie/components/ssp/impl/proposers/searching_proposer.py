@@ -13,7 +13,7 @@ from stephanie.components.ssp.impl.solvers.solution_search import \
 from stephanie.components.ssp.utils.parser import parse_proposer_lines
 from stephanie.prompts.prompt_loader import PromptLoader
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 PROPOSER_PROMPT_TMPL = """You are building an SSP dataset. Given the canonical mechanism (SEED_ANSWER), write ONE precise, verifiable question whose correct answer is that mechanism.
 
@@ -125,7 +125,7 @@ class SearchingProposer:
                     },
                 )
             except Exception as e:
-                _logger.info("VPM decide failed (non-fatal): %s", e)
+                log.info("VPM decide failed (non-fatal): %s", e)
 
         return question, all_evidence, meta
 
@@ -164,7 +164,7 @@ class SearchingProposer:
                 break
             except Exception as e:
                 attempt += 1
-                _logger.warning("Proposer prompt failed (attempt %d/%d): %s", attempt, self.retries, e)
+                log.warning("Proposer prompt failed (attempt %d/%d): %s", attempt, self.retries, e)
                 if attempt > self.retries:
                     parsed = {"rationale": "prompt failure", "difficulty": 0, "verifiability": 0, "ok": False}
                     return "", parsed

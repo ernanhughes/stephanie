@@ -6,7 +6,6 @@ import math
 from collections import defaultdict
 from typing import Optional
 
-from sqlalchemy.orm import Session
 from tabulate import tabulate
 
 from stephanie.models import (EvaluationORM, EvaluationRuleLinkORM,

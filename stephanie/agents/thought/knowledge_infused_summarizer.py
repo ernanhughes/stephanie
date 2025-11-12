@@ -41,7 +41,7 @@ CBR_CASES_DEFAULT = 3
 PACS_WEIGHTS_DEFAULT = {"skeptic": 0.34, "editor": 0.33, "risk": 0.33}
 
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 
 class KnowledgeInfusedVerifierAgent(BaseAgent):
@@ -885,7 +885,7 @@ class KnowledgeInfusedVerifierAgent(BaseAgent):
                 }
             )
         except Exception as e:
-            _logger.error("CalibrationAddWarn", {"error": str(e)})
+            log.error("CalibrationAddWarn", {"error": str(e)})
 
         # Optional: casebook of signals (simple append-only log)
         try:
@@ -985,7 +985,7 @@ class KnowledgeInfusedVerifierAgent(BaseAgent):
         Produce a simple PNG of baseline performance drift after the learning split.
         """
         try:
-            import matplotlib
+            pass
         except Exception:
             self.logger.log(
                 "TransferCurveSkip", {"reason": "matplotlib not available"}
@@ -1297,7 +1297,7 @@ Verified summary:
         rels = knowledge_tree.get("relationships", []) or []
         if self.strategy:
             threshold = self.strategy.verification_threshold
-            _logger.debug(f"Using strategy threshold: {threshold}")
+            log.debug(f"Using strategy threshold: {threshold}")
         else:
             threshold = self.verification_threshold
         strong = [

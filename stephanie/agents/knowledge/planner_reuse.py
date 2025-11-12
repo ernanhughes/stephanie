@@ -13,7 +13,7 @@ from stephanie.data.score_result import ScoreResult
 from stephanie.scoring.scorable import Scorable, ScorableFactory, ScorableType
 from stephanie.scoring.scorer.scorable_ranker import ScorableRanker
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 class PlannerReuseAgent(BaseAgent):
     def __init__(self, cfg, memory, container, logger):
@@ -150,7 +150,7 @@ class PlannerReuseAgent(BaseAgent):
             goal_text = self.memory.plan_traces.get_goal_text(cand.id)
             if pt:
                 score = bundle.get("results", {}).get("rank_score", {}).get("score", 0)
-                _logger.debug(f"Selected example trace {pt.trace_id} with rank score {score}")
+                log.debug(f"Selected example trace {pt.trace_id} with rank score {score}")
                 example = {
                     "trace_id": pt.trace_id,
                     "goal": goal_text,

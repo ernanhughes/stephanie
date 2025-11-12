@@ -1,13 +1,11 @@
 # stephanie/services/epistemic_guard_service.py
 from __future__ import annotations
 
-import asyncio
 import logging
 import os
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 import numpy as np
-import torch
 
 from stephanie.components.risk.attr_sink_orm import ORMAttrSink
 from stephanie.components.risk.badge import make_badge
@@ -17,7 +15,6 @@ from stephanie.components.risk.provenance import ProvenanceLogger
 from stephanie.components.risk.signals import HallucinationContext
 from stephanie.components.risk.signals import collect as collect_hall
 from stephanie.services.service_protocol import Service
-from stephanie.services.storage_service import StorageService
 
 # ------------------- Contracts -------------------
 # These are your real hallucination components — must be provided by container
@@ -51,7 +48,7 @@ class EpistemicGuardService(Service):
     def __init__(self, memory, container):
         self.memory = memory    
         self.container = container
-        self._logger = None
+        self.log = None
         self._sampler = None
         self._embedder = self.memory.embedding
         self._entailment = None
@@ -71,9 +68,9 @@ class EpistemicGuardService(Service):
         cfg: Dict[str, Any] = (kwargs.get("config") or {}) if kwargs else {}
         logger = kwargs.get("logger")
         if logger is not None:
-            self._logger = logger
+            self.log = logger
         else:
-            self._logger = logging.getLogger(self.name)
+            self.log = logging.getLogger(self.name)
 
 
 
@@ -88,7 +85,7 @@ class EpistemicGuardService(Service):
 
         # --- Validate and log ---
         self._up = True
-        self._logger.info(
+        self.log.info(
             "EpistemicGuardService initialized",
             extra={
                 "n_semantic_samples": self._n_semantic_samples,
@@ -113,7 +110,7 @@ class EpistemicGuardService(Service):
 
     def shutdown(self) -> None:
         self._up = False
-        self._logger.info("EpistemicGuardService shutdown")
+        self.log.info("EpistemicGuardService shutdown")
 
     # ------------------- Public API -------------------
     async def assess(self, data: GuardInput, *, run_id: Optional[str] = None) -> GuardOutput:
@@ -246,7 +243,7 @@ class EpistemicGuardService(Service):
                 np.savez_compressed(path, **{k: v for k, v in channels.items()})
                 return str(path)
             except Exception as e:
-                self._logger.warning(f"Failed to save VPM channels for {run_id}: {e}")
+                self.log.warning(f"Failed to save VPM channels for {run_id}: {e}")
                 return f"{run_id}_vpm.npz"
         else:
             # Fallback: save to local dir
@@ -257,7 +254,7 @@ class EpistemicGuardService(Service):
                 np.savez_compressed(path, **{k: v for k, v in channels.items()})
                 return path
             except Exception as e:
-                self._logger.warning(f"Failed to save VPM channels locally: {e}")
+                self.log.warning(f"Failed to save VPM channels locally: {e}")
                 return f"{run_id}_vpm.npz"
 
     def _log_provenance(
@@ -272,8 +269,8 @@ class EpistemicGuardService(Service):
         if not run_id:
             run_id = f"adhoc_{hash(str(goal) + str(reply))}"
 
-        provenance_logger = ProvenanceLogger(out_dir=self._provenance_dir, logger=self._logger)
-        provenance_logger.log(
+        provenancelog = ProvenanceLogger(out_dir=self._provenance_dir, logger=self.log)
+        provenancelog.log(
             record=record,
             goal=goal,
             reply=reply,

@@ -7,7 +7,9 @@ from dataclasses import dataclass
 from typing import Any, Dict, Optional, Protocol, runtime_checkable
 
 from .plugins.cove import CoVeScorer
-from .plugins.selfcheck import SelfCheckScorer  # new
+from .plugins.selfcheck import SelfCheckScorer
+
+log = logging.getLogger(__name__)
 
 # ------------------------------ Contracts -----------------------------------
 
@@ -126,7 +128,7 @@ class TinyAdapter(PairScorer):
         elif hasattr(self.tiny, "score"):
             out = await self.tiny.score(goal, reply)  # type: ignore
         else:
-            self.logger.warning("TinyAdapter: no compatible method found, returning neutral metrics")
+            log.warning("TinyAdapter: no compatible method found, returning neutral metrics")
             return _neutral_metrics()
 
         return dict(
@@ -164,7 +166,7 @@ class HRMAdapter(PairScorer):
         elif hasattr(self.hrm, "score"):
             out = await self.hrm.score(goal, reply)  # type: ignore
         else:
-            self.logger.warning("HRMAdapter: no compatible method found, returning neutral metrics")
+            log.warning("HRMAdapter: no compatible method found, returning neutral metrics")
             return _neutral_metrics()
 
         return dict(
@@ -327,7 +329,7 @@ class MonitorService:
             scorer_chain.insert(0, self._selfcheck_adapter)        
 
         # Total fallback
-        self.logger.warning("MonitorService: all scorers failed; returning neutral metrics")
+        log.warning("MonitorService: all scorers failed; returning neutral metrics")
         return _neutral_metrics()
 
 

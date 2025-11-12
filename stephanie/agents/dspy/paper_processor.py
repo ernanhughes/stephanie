@@ -27,12 +27,13 @@ import dspy
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.models.casebook import CaseBookORM
 from stephanie.utils.casebook_utils import generate_casebook_name
+from stephanie.utils.json_sanitize import dumps_safe
 from stephanie.utils.paper_utils import (build_paper_goal_meta,
                                          build_paper_goal_text,
                                          section_goal_text, section_quality,
                                          system_guidance_from_goal)
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 # DSPy Signatures for each step in the processing pipeline
 class ClaimExtractionSignature(dspy.Signature):
@@ -41,7 +42,7 @@ class ClaimExtractionSignature(dspy.Signature):
     section_text = dspy.InputField(desc="Text of the paper section")
     claims = dspy.OutputField(
         desc="List of key claims with evidence grounding",
-        format=lambda x: json.dumps(x, indent=2),
+        format=lambda x: dumps_safe(x, indent=2),
     )
 
 
@@ -54,7 +55,7 @@ class ContextFusionSignature(dspy.Signature):
     )
     fused_context = dspy.OutputField(
         desc="Fused context with paper claims and conversation insights",
-        format=lambda x: json.dumps(x, indent=2),
+        format=lambda x: dumps_safe(x, indent=2),
     )
 
 
@@ -74,7 +75,7 @@ class IntroSynthesisSignature(dspy.Signature):
     )
     intro_draft = dspy.OutputField(
         desc="Structured blog introduction draft in JSON with keys: {hook, context, core_contributions, why_it_matters, preview}",
-        format=lambda x: json.dumps(x, indent=2),
+        format=lambda x: dumps_safe(x, indent=2),
     )
 
 
@@ -86,7 +87,7 @@ class IntroVerificationSignature(dspy.Signature):
     prior_summary = dspy.InputField(desc="Existing summary")
     verification_report = dspy.OutputField(
         desc="JSON with {unsupported_points[], missing_essentials[], redundancy[], scores{coverage, correctness, coherence}}",
-        format=lambda x: json.dumps(x, indent=2),
+        format=lambda x: dumps_safe(x, indent=2),
     )
 
 
@@ -97,7 +98,7 @@ class IntroRefinementSignature(dspy.Signature):
     verification_report = dspy.InputField(desc="Verification report JSON")
     refined_intro = dspy.OutputField(
         desc="Refined intro draft JSON with same keys as intro_draft",
-        format=lambda x: json.dumps(x, indent=2),
+        format=lambda x: dumps_safe(x, indent=2),
     )
 
 
@@ -110,7 +111,7 @@ class IntroFinalValidationSignature(dspy.Signature):
     )
     final_validation = dspy.OutputField(
         desc="Validation result JSON with {scores, passed, notes}",
-        format=lambda x: json.dumps(x, indent=2),
+        format=lambda x: dumps_safe(x, indent=2),
     )
 
 
@@ -122,7 +123,7 @@ class DraftGenerationSignature(dspy.Signature):
     )
     blog_section = dspy.OutputField(
         desc="Well-structured blog section draft",
-        format=lambda x: json.dumps(x, indent=2),
+        format=lambda x: dumps_safe(x, indent=2),
     )
 
 
@@ -135,7 +136,7 @@ class VerificationSignature(dspy.Signature):
     )
     verification_report = dspy.OutputField(
         desc="Verification report identifying gaps and issues",
-        format=lambda x: json.dumps(x, indent=2),
+        format=lambda x: dumps_safe(x, indent=2),
     )
 
 
@@ -148,7 +149,7 @@ class RefinementSignature(dspy.Signature):
     )
     refined_draft = dspy.OutputField(
         desc="Refined blog section draft",
-        format=lambda x: json.dumps(x, indent=2),
+        format=lambda x: dumps_safe(x, indent=2),
     )
 
 
@@ -161,7 +162,7 @@ class FinalValidationSignature(dspy.Signature):
     )
     final_validation = dspy.OutputField(
         desc="Final validation report with quality scores",
-        format=lambda x: json.dumps(x, indent=2),
+        format=lambda x: dumps_safe(x, indent=2),
     )
 
 # -------------------------------------------------------------------------
@@ -180,16 +181,16 @@ class LoggingLM(dspy.LM):
             prompt = kwargs.get("prompt")
             messages = kwargs.get("messages")
             if prompt:
-                _logger.debug(
+                log.debug(
                     "=== DSPy PROMPT ===\n%s\n====================", prompt
                 )
             if messages:
-                _logger.debug(
+                log.debug(
                     "=== DSPy MESSAGES ===\n%s\n====================", messages
                 )
         result = super().__call__(*args, **kwargs)
         if self._debug_prompts:
-            _logger.debug(
+            log.debug(
                 "=== DSPy RESPONSE ===\n%s\n====================", result
             )
         return result
@@ -311,7 +312,7 @@ class DSPyPaperSectionProcessorAgent(BaseAgent):
             structured_data = self.memory.document_sections.get_by_document(doc_id)
             if not structured_data:
                 self.report({"event": "doc.skip", "agent": self.name, "reason": "no_structured_sections", "doc_id": doc_id, "elapsed_ms": self._ms_since(dt0)})
-                _logger.warning("No structured data for document %s", doc_id)
+                log.warning("No structured data for document %s", doc_id)
                 continue
 
             self.report({"event": "doc.sections", "agent": self.name, "doc_id": doc_id, "sections_count": len(structured_data)})
@@ -402,7 +403,7 @@ class DSPyPaperSectionProcessorAgent(BaseAgent):
                     })
 
                 except Exception as e:
-                    _logger.error(f"Error processing section {section_name} for doc {doc_id}: {str(e)}")
+                    log.error(f"Error processing section {section_name} for doc {doc_id}: {str(e)}")
                     traceback.print_exc()
                     self.report({"event": "section.error", "agent": self.name, "doc_id": doc_id, "section_name": section_name, "error": str(e)})
 
@@ -503,7 +504,7 @@ class DSPyPaperSectionProcessorAgent(BaseAgent):
                     "error": None,
                     "meta": {"attempts": attempt, "duration_ms": round((time.time()-start)*1000,1)}
                 }
-            except Exception as e:
+            except Exception:
                 time.sleep(backoff_sec)
 
         return {
@@ -563,7 +564,7 @@ class DSPyPaperSectionProcessorAgent(BaseAgent):
             self.intro_verify,
             output_field="verification_report",
             expect_json=True,
-            intro_draft=json.dumps(intro_draft, ensure_ascii=False),
+            intro_draft=dumps_safe(intro_draft, ensure_ascii=False),
             abstract=abstract or "",
             prior_summary=prior_summary or "",
         )
@@ -585,8 +586,8 @@ class DSPyPaperSectionProcessorAgent(BaseAgent):
                 self.intro_refine,
                 output_field="refined_intro",
                 expect_json=True,
-                intro_draft=json.dumps(refined_intro, ensure_ascii=False),
-                verification_report=json.dumps(verification_report, ensure_ascii=False),
+                intro_draft=dumps_safe(refined_intro, ensure_ascii=False),
+                verification_report=dumps_safe(verification_report, ensure_ascii=False),
             )
             refined_intro = self._loads_or_empty(ref["data"], default=refined_intro)
 
@@ -594,7 +595,7 @@ class DSPyPaperSectionProcessorAgent(BaseAgent):
                 self.intro_verify,
                 output_field="verification_report",
                 expect_json=True,
-                intro_draft=json.dumps(refined_intro, ensure_ascii=False),
+                intro_draft=dumps_safe(refined_intro, ensure_ascii=False),
                 abstract=abstract or "",
                 prior_summary=prior_summary or "",
             )
@@ -616,8 +617,8 @@ class DSPyPaperSectionProcessorAgent(BaseAgent):
             self.intro_final,
             output_field="final_validation",
             expect_json=True,
-            refined_intro=json.dumps(refined_intro, ensure_ascii=False),
-            quality_standards=json.dumps(quality_standards, ensure_ascii=False),
+            refined_intro=dumps_safe(refined_intro, ensure_ascii=False),
+            quality_standards=dumps_safe(quality_standards, ensure_ascii=False),
         )
         final_validation = self._loads_or_empty(final["data"], default={"scores": {}, "passed": False})
 
@@ -675,8 +676,8 @@ class DSPyPaperSectionProcessorAgent(BaseAgent):
             self.context_fuser,
             output_field="fused_context",
             expect_json=True,
-            claims=json.dumps({"section_name": section_name, "claims": claims}, ensure_ascii=False),
-            conversation_history=json.dumps({"system_guidance": sysg, "section_name": section_name, "snippets": conversation_history}, ensure_ascii=False),
+            claims=dumps_safe({"section_name": section_name, "claims": claims}, ensure_ascii=False),
+            conversation_history=dumps_safe({"system_guidance": sysg, "section_name": section_name, "snippets": conversation_history}, ensure_ascii=False),
         )
         fused_context = self._loads_or_empty(fusion_res["data"], default={})
         self.report({"event": "stage", "agent": self.name, "stage": "fuse", "section_name": section_name, "snippets": len(conversation_history), "elapsed_ms": self._ms_since(f0)})
@@ -687,7 +688,7 @@ class DSPyPaperSectionProcessorAgent(BaseAgent):
             self.draft_generator,
             output_field="blog_section",
             expect_json=True,
-            fused_context=json.dumps({"system_guidance": sysg, "section_name": section_name, "context": fused_context}, ensure_ascii=False),
+            fused_context=dumps_safe({"system_guidance": sysg, "section_name": section_name, "context": fused_context}, ensure_ascii=False),
         )
         draft = self._loads_or_empty(draft_res["data"], default={"title": section_name, "body": ""})
         self.report({"event": "stage", "agent": self.name, "stage": "draft", "section_name": section_name, "elapsed_ms": self._ms_since(d0)})
@@ -699,8 +700,8 @@ class DSPyPaperSectionProcessorAgent(BaseAgent):
             self.verification_module,
             output_field="verification_report",
             expect_json=True,
-            draft=json.dumps({"section_name": section_name, "draft": draft}, ensure_ascii=False),
-            knowledge_base=json.dumps(knowledge_base, ensure_ascii=False)
+            draft=dumps_safe({"section_name": section_name, "draft": draft}, ensure_ascii=False),
+            knowledge_base=dumps_safe(knowledge_base, ensure_ascii=False)
         )
         verification_report = self._loads_or_empty(verify_res["data"], default={"scores": {}})
         self.report({"event": "stage", "agent": self.name, "stage": "verify", "section_name": section_name, "elapsed_ms": self._ms_since(v0)})
@@ -714,8 +715,8 @@ class DSPyPaperSectionProcessorAgent(BaseAgent):
                 self.refinement_module,
                 output_field="refined_draft",
                 expect_json=True,
-                draft=json.dumps({"section_name": section_name, "draft": refined_draft}, ensure_ascii=False),
-                verification_report=json.dumps({"section_name": section_name, "report": verification_report}, ensure_ascii=False),
+                draft=dumps_safe({"section_name": section_name, "draft": refined_draft}, ensure_ascii=False),
+                verification_report=dumps_safe({"section_name": section_name, "report": verification_report}, ensure_ascii=False),
             )
             refined_draft = self._loads_or_empty(refine_res["data"], default=refined_draft)
 
@@ -723,8 +724,8 @@ class DSPyPaperSectionProcessorAgent(BaseAgent):
                 self.verification_module,
                 output_field="verification_report",
                 expect_json=True,
-                draft=json.dumps({"section_name": section_name, "draft": refined_draft}, ensure_ascii=False),
-                knowledge_base=json.dumps(knowledge_base, ensure_ascii=False),
+                draft=dumps_safe({"section_name": section_name, "draft": refined_draft}, ensure_ascii=False),
+                knowledge_base=dumps_safe(knowledge_base, ensure_ascii=False),
             )
             verification_report = self._loads_or_empty(verify_res["data"], default=verification_report)
 
@@ -750,8 +751,8 @@ class DSPyPaperSectionProcessorAgent(BaseAgent):
             self.final_validator,
             output_field="final_validation",
             expect_json=True,
-            refined_draft=json.dumps({"section_name": section_name, "draft": refined_draft}, ensure_ascii=False),
-            quality_standards=json.dumps(quality, ensure_ascii=False),
+            refined_draft=dumps_safe({"section_name": section_name, "draft": refined_draft}, ensure_ascii=False),
+            quality_standards=dumps_safe(quality, ensure_ascii=False),
         )
         validation_report = self._loads_or_empty(final_res["data"], default={"scores": {}, "passed": False})
         passed = bool(validation_report.get("passed")) or self._is_quality_threshold_met(validation_report)
@@ -873,7 +874,7 @@ class DSPyPaperSectionProcessorAgent(BaseAgent):
         case = self.memory.casebooks.add_case(
             casebook_id=casebook.id,
             goal_id=goal_id,
-            prompt_text=json.dumps(
+            prompt_text=dumps_safe(
                 {"type": "introduction", "paper_id": doc_id, "title": title}
             ),
             agent_name=self.name,
@@ -889,11 +890,11 @@ class DSPyPaperSectionProcessorAgent(BaseAgent):
         for role, payload in [
             ("introduction_abstract", abstract or ""),
             ("introduction_prior_summary", prior_summary or ""),
-            ("introduction_draft", json.dumps(intro_result.get("intro_draft", {}))),
-            ("introduction_refined", json.dumps(intro_result.get("refined_intro", {}))),
-            ("introduction_verification", json.dumps(intro_result.get("verification_report", {}))),
-            ("introduction_final_validation", json.dumps(intro_result.get("final_validation", {}))),
-            ("introduction_metrics", json.dumps({"passed": intro_result.get("passed", False),
+            ("introduction_draft", dumps_safe(intro_result.get("intro_draft", {}))),
+            ("introduction_refined", dumps_safe(intro_result.get("refined_intro", {}))),
+            ("introduction_verification", dumps_safe(intro_result.get("verification_report", {}))),
+            ("introduction_final_validation", dumps_safe(intro_result.get("final_validation", {}))),
+            ("introduction_metrics", dumps_safe({"passed": intro_result.get("passed", False),
                                                 "refinement_iterations": intro_result.get("refinement_iterations", 0)})),
         ]:
             self.memory.casebooks.add_scorable(
@@ -947,7 +948,7 @@ class DSPyPaperSectionProcessorAgent(BaseAgent):
         case = self.memory.casebooks.add_case(
             casebook_id=casebook.id,
             goal_id=goal_id,
-            prompt_text=json.dumps(case_prompt, ensure_ascii=False),
+            prompt_text=dumps_safe(case_prompt, ensure_ascii=False),
             agent_name=self.name,
             meta=case_meta,
         )
@@ -979,7 +980,7 @@ class DSPyPaperSectionProcessorAgent(BaseAgent):
         self.memory.casebooks.add_scorable(
             case_id=case.id,
             pipeline_run_id=pipeline_run_id,
-            text=json.dumps(result.get("initial_draft", {}), ensure_ascii=False),
+            text=dumps_safe(result.get("initial_draft", {}), ensure_ascii=False),
             role="initial_draft",
             meta=_smeta(),
         )
@@ -990,7 +991,7 @@ class DSPyPaperSectionProcessorAgent(BaseAgent):
         self.memory.casebooks.add_scorable(
             case_id=case.id,
             pipeline_run_id=pipeline_run_id,
-            text=json.dumps(refined_draft, ensure_ascii=False),
+            text=dumps_safe(refined_draft, ensure_ascii=False),
             role="refined_draft",
             meta=_smeta({"refinement_iterations": result.get("refinement_iterations", 0)}),
         )
@@ -1001,7 +1002,7 @@ class DSPyPaperSectionProcessorAgent(BaseAgent):
         self.memory.casebooks.add_scorable(
             case_id=case.id,
             pipeline_run_id=pipeline_run_id,
-            text=json.dumps(verification_report, ensure_ascii=False),
+            text=dumps_safe(verification_report, ensure_ascii=False),
             role="verification_report",
             meta=_smeta(),
         )
@@ -1012,7 +1013,7 @@ class DSPyPaperSectionProcessorAgent(BaseAgent):
         self.memory.casebooks.add_scorable(
             case_id=case.id,
             pipeline_run_id=pipeline_run_id,
-            text=json.dumps(final_validation, ensure_ascii=False),
+            text=dumps_safe(final_validation, ensure_ascii=False),
             role="final_validation",
             meta=_smeta(),
         )
@@ -1028,7 +1029,7 @@ class DSPyPaperSectionProcessorAgent(BaseAgent):
         self.memory.casebooks.add_scorable(
             case_id=case.id,
             pipeline_run_id=pipeline_run_id,
-            text=json.dumps(metrics, ensure_ascii=False),
+            text=dumps_safe(metrics, ensure_ascii=False),
             role="metrics",
             meta=_smeta(),
         )
@@ -1071,9 +1072,9 @@ class DSPyPaperSectionProcessorAgent(BaseAgent):
     def _dumps_safe(self, obj) -> str:
         """Safely convert object to JSON string with fallback."""
         try:
-            return json.dumps(obj, ensure_ascii=False)
+            return dumps_safe(obj, ensure_ascii=False)
         except Exception:
-            return json.dumps({"_warning": "failed_to_dump", "repr": repr(obj)})
+            return dumps_safe({"_warning": "failed_to_dump", "repr": repr(obj)})
 
     def _ensure_dict(self, x, default=None):
         """Ensure value is a dictionary, parsing if necessary."""

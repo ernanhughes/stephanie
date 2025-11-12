@@ -15,11 +15,8 @@ Author: you
 
 from __future__ import annotations
 
-import json
-import math
 import os
 import re
-import uuid
 from dataclasses import dataclass
 from typing import Any, Dict, Optional, Tuple
 
@@ -36,10 +33,9 @@ from stephanie.components.risk.provenance import \
 # --- ADD THESE IMPORTS AT THE TOP ---
 from stephanie.components.risk.signals import HallucinationContext
 from stephanie.components.risk.signals import collect as collect_hall
-from stephanie.tools.time_utils import now_iso
 
 try:
-    from PIL import Image, ImageDraw, ImageFont
+    from PIL import Image
 except Exception:
     Image = None  # badge fallbacks will raise if used
 

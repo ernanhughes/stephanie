@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 from datetime import datetime
-from uuid import uuid4
 
 from sqlalchemy import (JSON, Column, DateTime, Float, ForeignKey, Integer,
                         String)

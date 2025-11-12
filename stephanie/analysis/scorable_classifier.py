@@ -26,7 +26,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-import time  # NEW
+import time
 from functools import lru_cache
 from typing import Dict, List, Optional, Tuple
 
@@ -37,7 +37,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 from stephanie.services.bus.bus_protocol import BusProtocol
 from stephanie.services.bus.idempotency import InMemoryIdempotencyStore
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 
 class ScorableClassifier:
@@ -76,16 +76,17 @@ class ScorableClassifier:
         self.idempotency_store = None
         
         # Log initialization with configuration details
-        _logger.debug("DomainClassifierInit"
+        log.debug("DomainClassifierInit"
             f"config_path: {config_path}"
             f"metric {metric}"
             f"bus_available: {bool(bus)}"
             "message: Initializing domain classifier"
         )
-        
+
+        self.config_path = config_path
         try:
             # Load domain configuration from YAML file
-            with open(config_path, "r") as f:
+            with open(self.config_path, "r") as f:
                 self.domain_config = yaml.safe_load(f)
             
             self.domains = self.domain_config.get("domains", {})
@@ -149,7 +150,7 @@ class ScorableClassifier:
                 # For now, we'll just return None to force recomputation
                 return None
         except Exception as e:
-            self.logger.warning(f"Cache lookup failed: {str(e)}")
+            log.warning(f"Cache lookup failed: {str(e)}")
             
         return None
 
@@ -163,7 +164,7 @@ class ScorableClassifier:
             await self.idempotency_store.mark(key)
             # In a real implementation, you'd store the results here
         except Exception as e:
-            self.logger.warning(f"Failed to cache results: {str(e)}")
+            log.warning(f"Failed to cache results: {str(e)}")
 
 
     def classify(
@@ -329,7 +330,7 @@ class ScorableClassifier:
             Cosine similarity score between -1 and 1
         """
         similarity = float(cosine_similarity([emb1], [emb2])[0][0])
-        _logger.debug("DistanceCalculation"
+        log.debug("DistanceCalculation"
             "metric: cosine"
             f"similarity: {similarity}"
             "message Calculated cosine similarity"
@@ -352,7 +353,7 @@ class ScorableClassifier:
         """
         distance = np.linalg.norm(emb1 - emb2)
         negative_distance = -distance  # Convert to negative for consistency
-        _logger.debug("DistanceCalculation"
+        log.debug("DistanceCalculation"
             "metric: euclidean"
             f"distance: {distance}"
             f"negative_distance: {negative_distance}"
@@ -382,7 +383,7 @@ class ScorableClassifier:
         huber_loss = np.mean(0.5 * quadratic**2 + delta * linear)
         negative_huber = -huber_loss  # Convert to negative for consistency
         
-        _logger.debug("DistanceCalculation"
+        log.debug("DistanceCalculation"
             "metric: huber"
             f"huber_loss: {huber_loss}"
             f"negative_huber: {negative_huber}"
@@ -423,7 +424,7 @@ class ScorableClassifier:
             # Calculate centroid as mean of all seed embeddings
             if seed_embs:
                 centroids[domain] = np.mean(seed_embs, axis=0)
-                _logger.debug("DomainCentroidCalculated"
+                log.debug("DomainCentroidCalculated"
                     f"domain : {domain}"
                     f"num_seeds : {len(seeds)}"
                     f"centroid_shape : {centroids[domain].shape}"

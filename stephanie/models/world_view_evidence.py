@@ -1,11 +1,7 @@
 # stephanie/models/world_view_evidence.py
 from __future__ import annotations
 
-from datetime import datetime
-
-from sqlalchemy import (JSON, Column, DateTime, Float, ForeignKey, Integer,
-                        String, Text)
-from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy import Column, Float, ForeignKey, Integer, String, Text
 
 from stephanie.models.base import Base
 

@@ -14,11 +14,11 @@ from stephanie.models.context_state import ContextStateORM
 
 class ContextStore(BaseSQLAlchemyStore):
     orm_model = ContextStateORM
-    default_order_by = "timestamp"
+    default_order_by = ContextStateORM.timestamp.desc()
 
     def __init__(self, session_maker, logger=None):
         super().__init__(session_maker, logger)
-        self.name = "context"
+        self.name = "contexts"
         self.dump_dir = logger.log_path if logger else None
         if self.dump_dir:
             self.dump_dir = os.path.dirname(self.dump_dir)

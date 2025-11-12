@@ -12,7 +12,7 @@ import pandas as pd
 from stephanie.services.service_protocol import Service
 from stephanie.utils.json_sanitize import dumps_safe
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 class StorageService(Service):
     """
@@ -46,7 +46,7 @@ class StorageService(Service):
         self._base = Path(base_dir)
         self._base.mkdir(parents=True, exist_ok=True)
         self._initialized = True
-        _logger.info("StorageInit path: %s", self._base)
+        log.info("StorageInit path: %s", self._base)
 
     def health_check(self) -> Dict[str, Any]:
         return {
@@ -61,7 +61,7 @@ class StorageService(Service):
 
     def shutdown(self) -> None:
         # Nothing persistent to close; keep for symmetry/logging
-        _logger.debug("[StorageService] Shutdown complete")
+        log.debug("[StorageService] Shutdown complete")
 
     @property
     def name(self) -> str:
@@ -146,10 +146,10 @@ class StorageService(Service):
             df.to_parquet(pq_path, index=False)
             parquet_ok = str(pq_path)
         except Exception as e:
-            _logger.warning("Parquet save failed (%s); continuing with CSV.", e)
+            log.warning("Parquet save failed (%s); continuing with CSV.", e)
 
         df.to_csv(csv_path, index=False)
-        _logger.info("RowsPersisted | run_id=%s rows=%d csv=%s parquet=%s",
+        log.info("RowsPersisted | run_id=%s rows=%d csv=%s parquet=%s",
                         run_id, len(df), str(csv_path), bool(parquet_ok))
         self._mark_write()
         return {"parquet": parquet_ok, "csv": str(csv_path)}
@@ -192,7 +192,7 @@ class StorageService(Service):
         try:
             shutil.copyfile(src_path, dst)
         except Exception as e:
-            _logger.warning("copy_into failed (%s), returning intended dst anyway.", e)
+            log.warning("copy_into failed (%s), returning intended dst anyway.", e)
         self._mark_write()
         return str(dst)
 

@@ -4,8 +4,7 @@ from __future__ import annotations
 from typing import Any, Dict
 
 import sqlalchemy as sa
-from sqlalchemy import (JSON, Column, Float, Index, Integer, String,
-                        UniqueConstraint)
+from sqlalchemy import JSON, Column, Float, Integer, String
 from sqlalchemy.dialects.postgresql import UUID
 
 from stephanie.models.base import Base
@@ -50,15 +49,6 @@ class BusEventORM(Base):
     hash = Column(
         String, nullable=True, unique=True
     )  # sha256 of payload_json (or whole envelope)
-
-    __table_args__ = (
-        # optional: allow fast “same subject+event_id” uniqueness; NULL event_id will not be unique in SQLite
-        UniqueConstraint(
-            "subject", "event_id", name="uq_bus_events_subject_eventid"
-        ),
-        # helpful compound index for UI filters
-        Index("idx_bus_events_paper_section", "paper_id", "section_name"),
-    )
 
     def to_dict(
         self, include_payload: bool = True, include_extras: bool = True

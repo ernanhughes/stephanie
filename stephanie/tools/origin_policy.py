@@ -3,9 +3,9 @@ from __future__ import annotations
 
 import logging
 import random
-from typing import Any, Dict, List, Tuple
+from typing import Any, List, Tuple
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 class _KV:
     """Tiny KV wrapper over memory.kv or container.get('kv')."""
@@ -31,7 +31,7 @@ class _KV:
             if self.kv:
                 self.kv.put(k, value)
         except Exception as e:
-            _logger.debug(f"KV put failed for {key}: {e}")
+            log.debug(f"KV put failed for {key}: {e}")
 
 class ThompsonOriginRouter:
     """

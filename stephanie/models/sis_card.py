@@ -3,8 +3,7 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
-from sqlalchemy import (JSON, Column, Float, Index, Integer, String,
-                        UniqueConstraint)
+from sqlalchemy import JSON, Column, Float, Integer, String
 
 from stephanie.models.base import Base
 
@@ -24,13 +23,6 @@ class SisCardORM(Base):
         JSON, nullable=True
     )  # case_id, paper_id, section_name, run_id, etc.
     hash = Column(String, nullable=True, unique=True)  # idempotency
-
-    __table_args__ = (
-        UniqueConstraint(
-            "scope", "key", "hash", name="uq_sis_cards_scope_key_hash"
-        ),
-        Index("idx_sis_cards_scope_key_ts", "scope", "key", "ts"),
-    )
 
     def to_dict(self, include_cards=True) -> Dict[str, Any]:
         d = {

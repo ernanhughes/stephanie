@@ -21,13 +21,11 @@ Key Features:
 """
 from __future__ import annotations
 
-import asyncio
 import logging
 import time
-import uuid
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from pydantic import BaseModel, Field, validator
 
@@ -417,7 +415,7 @@ class JASOrchestrator:
                     status=ServiceStatus.MISSING,
                     error=f"Service {service} not registered"
                 )
-                self.logger.warning(f"Service {service} not found in container")
+                log.warning(f"Service {service} not found in container")
             else:
                 self.service_registry[service] = ServiceRegistration(
                     name=service,
@@ -490,7 +488,7 @@ class JASOrchestrator:
                         integration_metrics = service.get_ssp_integration_metrics()
                         metrics[f"{service_name}_integration"] = integration_metrics
                 except Exception as e:
-                    self.logger.warning(f"Failed to get metrics from {service_name}: {str(e)}")
+                    log.warning(f"Failed to get metrics from {service_name}: {str(e)}")
         
         return metrics
 

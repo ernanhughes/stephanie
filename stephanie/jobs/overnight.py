@@ -19,9 +19,8 @@ def _cfg(app) -> dict:
 
 async def select_seeds_from_db(container: Any, *, k: int, min_len: int,
                                require_nonempty_ner: bool, cursor_path: str):
-    memory = container.memory                     # ✅ single gateway
-    chats = memory.chats                          # stephanie.memory.chat_store.ChatStore
-    # newest conversations first
+    memory = container.memory                    
+    chats = memory.chats                         
     convs = chats.get_all(limit=500)
     conv_ids = [c.id for c in convs]
 

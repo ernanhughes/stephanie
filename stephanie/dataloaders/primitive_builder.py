@@ -14,14 +14,11 @@ object for MemCube/CartridgeORM persistence.
 from __future__ import annotations
 
 import json
-import math
 import time
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
 
 from stephanie.models.casebook import CaseBookORM
 # ORM imports – adjust paths to your repo

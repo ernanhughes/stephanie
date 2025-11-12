@@ -21,7 +21,7 @@ from stephanie.agents.learning.summarizer import Summarizer
 from stephanie.services.arena_reporting_adapter import ArenaReporter
 from stephanie.utils.agent_progress import AgentProgress
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 
 class LearningFromLearningAgent(BaseAgent):
@@ -81,9 +81,9 @@ class LearningFromLearningAgent(BaseAgent):
                     if hasattr(self.summarizer, 'health_status'):
                         health = self.summarizer.health_status()
                         if health.get("in_flight", 0) > 0:
-                            _logger.debug(f"Prompt service status: {health}")
+                            log.debug(f"Prompt service status: {health}")
                 except Exception as e:
-                    _logger.error(f"Health monitoring error: {str(e)}", exc_info=True)
+                    log.error(f"Health monitoring error: {str(e)}", exc_info=True)
                 
                 await asyncio.sleep(10)  # Check every 10 seconds
         # Start the monitoring task
@@ -108,7 +108,7 @@ class LearningFromLearningAgent(BaseAgent):
                         )
                     )
         except Exception as e:
-            _logger.error(f"Failed to emit event: {str(e)}", exc_info=True)
+            log.error(f"Failed to emit event: {str(e)}", exc_info=True)
 
 
 

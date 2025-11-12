@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, Tuple
 
-_logger = logging.getLogger(__name__) 
+log = logging.getLogger(__name__) 
 
 class RewardRegistry:
     """
@@ -48,5 +48,5 @@ class RewardRegistry:
             if self.kv:
                 self.kv.put(self._key(goal_id), w)
         except Exception as e:
-            _logger.debug(f"RewardRegistry update failed for {goal_id}: {e}")
+            log.debug(f"RewardRegistry update failed for {goal_id}: {e}")
         return w

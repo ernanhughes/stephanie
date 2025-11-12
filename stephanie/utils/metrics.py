@@ -2,22 +2,20 @@
 from __future__ import annotations
 
 import logging
-from typing import Dict, Optional, Union
+from typing import Dict, Union
 
 import numpy as np
 import torch
 
-from stephanie.logging.json_logger import JSONLogger
-
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 class EpistemicMetrics:
     """
     Class for tracking and analyzing epistemic uncertainty in Stephanie's scoring system.
     """
     
-    def __init__(self, logger: Optional[logging.Logger] = None):
-        self.logger = logger or JSONLogger("metrics")
+    def __init__(self, logger):
+        self.logger = logger
     
     @staticmethod
     def compute_uncertainty(
@@ -78,7 +76,7 @@ class EpistemicMetrics:
     
     def _log_significant_gap(self, gap_info: dict) -> None:
         """Handle logging for significant epistemic gaps"""
-        _logger.debug(
+        log.debug(
             f"High epistemic uncertainty detected in {gap_info['dimension']} "
             f"(ID: {gap_info['document_id']}): {gap_info['uncertainty']:.2f}\n"
             f"LLM score: {gap_info['llm_score']:.2f}, "

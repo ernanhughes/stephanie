@@ -10,7 +10,6 @@ import torch.nn.functional as F
 from torch import optim
 from torch.utils.data import DataLoader, TensorDataset
 
-from stephanie.models.training_stats import TrainingStatsORM
 from stephanie.scoring.model.mrq_model import MRQModel
 from stephanie.scoring.model.text_encoder import TextEncoder
 from stephanie.scoring.model.value_predictor import ValuePredictor

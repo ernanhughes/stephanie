@@ -3,8 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import JSON, Column, DateTime, Float, Integer, String, Text
-from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy import JSON, Column, DateTime, Float, Integer, Text
 
 from stephanie.models.base import Base
 

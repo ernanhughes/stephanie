@@ -59,7 +59,7 @@ class ScorableDomainStore(BaseSQLAlchemyStore):
             )
         return self._run(op)
 
-    def get_domains(self, scorable_id: str, scorable_type: str) -> List[ScorableDomainORM]:
+    def find(self, scorable_id: str, scorable_type: str) -> List[ScorableDomainORM]:
         """Get all domain classifications for a scorable."""
         def op(s):
             return (

@@ -30,7 +30,7 @@ from stephanie.models.chat import (ChatConversationORM, ChatMessageORM,
                                    ChatTurnORM)
 from stephanie.scoring.scorable import Scorable, ScorableType
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 class ChatStore(BaseSQLAlchemyStore):
     """
@@ -272,15 +272,15 @@ class ChatStore(BaseSQLAlchemyStore):
                     .all()
                 )
                 if not turns:
-                    _logger.warning(f"No turns found for conversation {conv_id}")
+                    log.warning(f"No turns found for conversation {conv_id}")
                 return turns
             except Exception as e:
-                _logger.error(f"Failed to fetch turns for conversation {conv_id}: {e}", exc_info=True)
+                log.error(f"Failed to fetch turns for conversation {conv_id}: {e}", exc_info=True)
                 raise
 
         result = self._run(op)
         if result is None:
-            _logger.error(f"_run() returned None for conversation {conv_id}")
+            log.error(f"_run() returned None for conversation {conv_id}")
             return []
         return result
 
@@ -639,9 +639,9 @@ class ChatStore(BaseSQLAlchemyStore):
                     "star": int(getattr(t, "star", 0) or 0),
                     "user_text": t.user_message.text if t.user_message else "—",
                     "assistant_text": t.assistant_message.text if t.assistant_message else "—",
-                    "ner": t.ner or [],                 # NEW
-                    "domains": t.domains or [],         # NEW
-                    "ai_knowledge_score": t.ai_knowledge_score,   # NEW
+                    "ner": t.ner or [],               
+                    "domains": t.domains or [],       
+                    "ai_knowledge_score": t.ai_knowledge_score, 
                     "ai_knowledge_score_norm": (
                         None if t.ai_knowledge_score is None
                         else max(0.0, min(1.0, float(t.ai_knowledge_score)/100.0))
@@ -690,7 +690,6 @@ class ChatStore(BaseSQLAlchemyStore):
                 .filter(ChatTurnORM.conversation_id == conv_id)
             )
 
-            # NEW: filter for missing annotations
             if only_missing == "ner":
                 q = q.filter(ChatTurnORM.ner.is_(None))
             elif only_missing == "domains":
@@ -893,12 +892,12 @@ class ChatStore(BaseSQLAlchemyStore):
             # Unsupported filters on this model (log once)
             if goal_id is not None and not warned_missing["goal"]:
                 try:
-                    self.logger and self.logger.warning("list_turns: goal_id filter ignored (not on ChatTurnORM)")
+                    self.logger and log.warning("list_turns: goal_id filter ignored (not on ChatTurnORM)")
                 finally:
                     warned_missing["goal"] = True
             if casebook_id is not None and not warned_missing["casebook"]:
                 try:
-                    self.logger and self.logger.warning("list_turns: casebook_id filter ignored (not on ChatTurnORM)")
+                    self.logger and log.warning("list_turns: casebook_id filter ignored (not on ChatTurnORM)")
                 finally:
                     warned_missing["casebook"] = True
 
@@ -1408,5 +1407,157 @@ class ChatStore(BaseSQLAlchemyStore):
                 q = q.order_by(ChatConversationORM.id.desc())
 
             return q.limit(limit).all()
+
+        return self._run(op)
+
+
+
+    def iter_turns_with_texts(
+        self,
+        *,
+        min_star: Optional[int] = None,
+        max_star: Optional[int] = None,
+        min_ai_score: Optional[float] = None,
+        max_ai_score: Optional[float] = None,
+        require_assistant_text: bool = True,
+        require_nonempty_ner: bool = True,
+        min_assistant_len: int = 1,
+        total_limit: int = 100000,            # hard cap across all batches
+        batch_size: int = 1000,               # tune: 500–5000 is usually sweet
+        start_after_id: Optional[int] = None, # keyset cursor (DESC): start from id < this
+        include_texts: bool = True,           # set False to skip loading full texts
+        include_goal: bool = True,            # set False to skip conversation title join
+        order_desc: bool = True,
+    ):
+        """
+        Yield batches of dict rows efficiently via keyset pagination.
+        """
+        def op(s):
+            U = aliased(ChatMessageORM)
+            A = aliased(ChatMessageORM)
+            C = aliased(ChatConversationORM)
+
+            produced = 0
+            cursor_id = start_after_id
+            is_pg = s.bind.dialect.name.startswith("postgre")
+
+            # prebuild base selectable (without limit/cursor)
+            base_cols = [
+                ChatTurnORM.id.label("id"),
+                ChatTurnORM.conversation_id.label("conversation_id"),
+                ChatTurnORM.order_index.label("order_index"),
+                ChatTurnORM.star.label("star"),
+                ChatTurnORM.ner.label("ner"),
+                ChatTurnORM.domains.label("domains"),
+                ChatTurnORM.ai_knowledge_score.label("ai_score"),
+                ChatTurnORM.ai_knowledge_rationale.label("ai_rationale"),
+                ChatTurnORM.user_message_id.label("user_message_id"),
+                ChatTurnORM.assistant_message_id.label("assistant_message_id"),
+            ]
+
+            if include_texts:
+                text_cols = [U.text.label("user_text"), A.text.label("assistant_text")]
+            else:
+                text_cols = [func.cast(None, String).label("user_text"),
+                            func.cast(None, String).label("assistant_text")]
+
+            if include_goal:
+                goal_cols = [C.title.label("goal_text")]
+            else:
+                goal_cols = [func.cast(None, String).label("goal_text")]
+
+            sel_cols = base_cols + text_cols + goal_cols
+
+            while True:
+                q = (
+                    s.query(*sel_cols)
+                    .join(U, ChatTurnORM.user_message_id == U.id)
+                    .join(A, ChatTurnORM.assistant_message_id == A.id)
+                )
+                if include_goal:
+                    q = q.join(C, ChatTurnORM.conversation_id == C.id)
+
+                # filters
+                if min_star is not None:
+                    q = q.filter(ChatTurnORM.star >= int(min_star))
+                if max_star is not None:
+                    q = q.filter(ChatTurnORM.star <= int(max_star))
+                if min_ai_score is not None:
+                    q = q.filter(ChatTurnORM.ai_knowledge_score >= float(min_ai_score))
+                if max_ai_score is not None:
+                    q = q.filter(ChatTurnORM.ai_knowledge_score <= float(max_ai_score))
+
+                if require_assistant_text:
+                    q = q.filter(A.text.isnot(None), A.text != "")
+                    if min_assistant_len and min_assistant_len > 1:
+                        # LENGTH() exists on most dialects; silently ignore if not
+                        try:
+                            q = q.filter(func.length(A.text) >= int(min_assistant_len))
+                        except Exception:
+                            pass
+
+                if require_nonempty_ner:
+                    # Fast + indexed on PG if you create a GIN; portable fallback otherwise.
+                    if is_pg:
+                        # COALESCE(jsonb_array_length(ner), 0) > 0
+                        q = q.filter(ChatTurnORM.ner.isnot(None))
+                        q = q.filter(func.jsonb_array_length(ChatTurnORM.ner) > 0)
+                    else:
+                        # Generic fallback: only check NOT NULL; we'll drop empties in Python
+                        q = q.filter(ChatTurnORM.ner.isnot(None))
+
+                # keyset cursor (no OFFSET)
+                if cursor_id is not None:
+                    q = q.filter(ChatTurnORM.id < int(cursor_id)) if order_desc else q.filter(ChatTurnORM.id > int(cursor_id))
+
+                q = q.order_by(ChatTurnORM.id.desc() if order_desc else ChatTurnORM.id.asc()) \
+                    .limit(int(batch_size)) \
+                    .execution_options(stream_results=True)
+
+                rows = q.all()
+                if not rows:
+                    break
+
+                batch = []
+                for r in rows:
+                    row = {
+                        "id": r.id,
+                        "conversation_id": r.conversation_id,
+                        "order_index": int(r.order_index or 0),
+                        "star": int(r.star or 0),
+                        "user_message_id": r.user_message_id,
+                        "assistant_message_id": r.assistant_message_id,
+                        "user_text": (r.user_text or "") if include_texts else "",
+                        "assistant_text": (r.assistant_text or "") if include_texts else "",
+                        "ner": r.ner or [],
+                        "domains": r.domains or [],
+                        "goal_text": (r.goal_text or "") if include_goal else "",
+                        "ai_score": r.ai_score,
+                        "ai_rationale": r.ai_rationale or "",
+                    }
+                    # dialect-agnostic guard for "nonempty NER" when not PG
+                    if require_nonempty_ner and not is_pg:
+                        try:
+                            if not row["ner"]:
+                                continue
+                            if isinstance(row["ner"], list) and len(row["ner"]) == 0:
+                                continue
+                        except Exception:
+                            pass
+                    batch.append(row)
+
+                if not batch:
+                    # advance cursor anyway to break potential loop on empty post-filter
+                    cursor_id = rows[-1].id
+                    continue
+
+                yield batch
+
+                produced += len(batch)
+                if produced >= total_limit:
+                    break
+
+                # advance keyset cursor
+                cursor_id = rows[-1].id if order_desc else rows[-1].id
 
         return self._run(op)

@@ -1,5 +1,5 @@
 # scripts/run_kg_worker.py
-from stephanie.logging.json_logger import JSONLogger
+from stephanie.core.logging.json_logger import JSONLogger
 from stephanie.memory.memory_tool import MemoryTool
 from stephanie.services.workers.kg_indexer import KnowledgeGraphIndexerWorker
 import yaml

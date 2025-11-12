@@ -4,16 +4,15 @@ from __future__ import annotations
 import abc
 import logging
 from collections.abc import Mapping
-from typing import Any, Callable, Dict, List, Optional, Protocol
+from typing import Any, Dict, List, Protocol
 
 import torch
-from omegaconf import OmegaConf
 
 from stephanie.data.score_bundle import ScoreBundle
 from stephanie.scoring.model.model_locator_mixin import ModelLocatorMixin
 from stephanie.scoring.scorable import Scorable
 
-_logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 class ScoringPlugin(Protocol):
     """Protocol for scoring plugins that can post-process model outputs."""
@@ -48,11 +47,11 @@ class BaseScorer(ModelLocatorMixin, abc.ABC):
         if enable_plugins:
             try:
                 self._plugins = self.build_plugins()
-                _logger.debug("ScorerPluginsLoaded %s -> %s",
+                log.debug("ScorerPluginsLoaded %s -> %s",
                               self.get_model_name(),
                               [type(p).__name__ for p in self._plugins])
             except Exception as e:
-                _logger.error("ScorerPluginLoadError: %s", e)
+                log.error("ScorerPluginLoadError: %s", e)
 
     def score(
         self,
@@ -94,7 +93,7 @@ class BaseScorer(ModelLocatorMixin, abc.ABC):
 
     def range_sentinel(self, tag: str, val: float, eps: float = 1e-6):
         if not (0.0 - eps <= val <= 1.0 + eps):
-            _logger.error("ScoreRangeViolation tag=%s value=%s", tag, float(val))
+            log.error("ScoreRangeViolation tag=%s value=%s", tag, float(val))
 
     def get_display_name(self) -> str:
         return self.cfg.get("display_name", self.name)
@@ -103,7 +102,7 @@ class BaseScorer(ModelLocatorMixin, abc.ABC):
     def _run_plugins_and_merge(self, *, bundle: ScoreBundle, goal: dict, scorable: Scorable) -> ScoreBundle:
         tap = {
             "goal_text": goal.get("goal", {}).get("goal_text", ""),
-            "resp_text": scorable.text or "",
+            "resp_text": scorable.text,
             "context": goal,
             "model_alias": getattr(self, "model_alias", self.model_type),
             "attributes": {},
@@ -199,27 +198,26 @@ class BaseScorer(ModelLocatorMixin, abc.ABC):
 
         # 3) Validate top-level shape.
         if not isinstance(plugins_cfg, list):
-            _logger.error("ScoringPluginConfigError: 'plugins' must be a list, got %r", type(plugins_cfg))
+            log.error("ScoringPluginConfigError: 'plugins' must be a list, got %r", type(plugins_cfg))
             return plugins
 
         # Helper: enforce single-key mapping entries.
         def _extract_single_mapping(item) -> tuple[str, dict]:
-            from collections.abc import Mapping
             if not isinstance(item, Mapping) or len(item) != 1:
-                _logger.error(
+                log.error(
                     "ScoringPluginConfigError: each plugins[] entry must be a single-key mapping, got: %r", item
                 )
                 return "", {}
             (name, opts), = item.items()
             name = (str(name).strip() if name is not None else "")
             if not name:
-                _logger.error("ScoringPluginConfigError: empty plugin key in entry: %r", item)
+                log.error("ScoringPluginConfigError: empty plugin key in entry: %r", item)
                 return "", {}
             # Coerce opts to dict
             if opts is None:
                 opts = {}
             elif not isinstance(opts, Mapping):
-                _logger.warning("ScoringPluginConfigWarning: opts for '%s' should be a mapping; coercing.", name)
+                log.warning("ScoringPluginConfigWarning: opts for '%s' should be a mapping; coercing.", name)
                 opts = {"value": opts}
             else:
                 opts = dict(opts)
@@ -235,13 +233,13 @@ class BaseScorer(ModelLocatorMixin, abc.ABC):
             try:
                 svc = self.container.get(service_name)
             except Exception as e:
-                _logger.error("ScoringPluginContainerError: service '%s' not found (%s)", service_name, e)
+                log.error("ScoringPluginContainerError: service '%s' not found (%s)", service_name, e)
                 continue
 
             # Must implement post_process(tap_output=...)
             post = getattr(svc, "post_process", None)
             if not callable(post):
-                _logger.error(
+                log.error(
                     "ScoringPluginTypeError: service '%s' does not implement post_process(tap_output=...)", service_name
                 )
                 continue
@@ -253,7 +251,7 @@ class BaseScorer(ModelLocatorMixin, abc.ABC):
                 else:
                     setattr(svc, "host", self)
             except Exception as e:
-                _logger.warning("PluginHostAttachWarning: %s (svc=%s)", e, service_name)
+                log.warning("PluginHostAttachWarning: %s (svc=%s)", e, service_name)
 
             # Stash plugin options on the service
             try:
@@ -262,6 +260,6 @@ class BaseScorer(ModelLocatorMixin, abc.ABC):
                 pass
 
             plugins.append(svc)
-            _logger.debug("ScoringPluginLoaded(service): %s -> %s", service_name, type(svc).__name__)
+            log.debug("ScoringPluginLoaded(service): %s -> %s", service_name, type(svc).__name__)
 
         return plugins

@@ -9,8 +9,10 @@ defaults:
   - services/default
   - scorer: all  
 
+  - agents/scorable_loader
   - agents/embedding_normalizer
-  - agents/scorable_embedding_backfill
+  - agents/scorable_embedding
+  - agents/scorable_entity
   - agents/phos
 
 
@@ -46,14 +48,27 @@ pipeline:
   name: phos
   description: "Visual AI experiment: compare similar, unrelated, and opposite prompts to reveal and enhance knowledge patterns using ZeroModel visual policy maps."
   stages:
+     - name: scorable_loader
+       description: "🔓 Loads a large amount of conversation turns for AB testing nexus"
+       cls: stephanie.agents.scorable_loader.ScorableLoaderAgent
+       enabled: true
+       iterations: 1    
+
      - name: embedding_normalizer
        cls: stephanie.agents.maintenance.embedding_normalizer.EmbeddingNormalizerAgent
-       enabled: false
+       enabled: true
        iterations: 1
-     - name: scorable_embedding_backfill
-       cls: stephanie.agents.maintenance.scorable_embedding_backfill.ScorableEmbeddingBackfillAgent
-       enabled: false
+
+     - name: scorable_embedding
+       cls: stephanie.agents.maintenance.scorable_embedding.ScorableEmbeddingAgent
+       enabled: true
        iterations: 1
+
+     - name: scorable_entity
+       cls: stephanie.agents.maintenance.scorable_entity.ScorableEntityAgent
+       enabled: true
+       iterations: 1
+       
      - name: phos
        cls: stephanie.agents.phos.PhosAgent
        enabled: true

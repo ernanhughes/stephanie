@@ -36,7 +36,7 @@ def extract_arxiv_id(result, include_version=True):
 
     tail = urlparse(url).path.rsplit("/", 1)[-1]  # '2405.03794v1' or 'hep-th/9901001v2'
     m = re.match(
-        r'(?P<id>(?:[a-z\-]+(?:\.[A-Z]{2})?/\d{7}|\d{4}\.\d{4,5}))(?P<ver>v\d+)?$',
+        r'(?P<id>[a-z\-]+(?:\.[A-Z]{2})?/\d{7}|\d{4}\.\d{4,5})(?P<ver>v\d+)?$',
         tail, flags=re.IGNORECASE
     )
     if not m:

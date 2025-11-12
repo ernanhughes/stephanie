@@ -1,0 +1,327 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container-fluid py-3">
+  <div class="d-flex align-items-center justify-content-between mb-3">
+    <h3 class="mb-0">Nexus Timeline</h3>
+    <div class="d-flex gap-2">
+      <a class="btn btn-sm btn-outline-secondary" href="/nexus">← Runs</a>
+    </div>
+  </div>
+
+  <div class="card shadow-sm mb-3">
+    <div class="card-body">
+      <div class="d-flex flex-wrap align-items-end gap-2">
+        <div>
+          <label class="form-label mb-0">Baseline</label>
+          <input id="inBaseline" class="form-control form-control-sm" style="width:160px" value="{{ baseline }}">
+        </div>
+        <div>
+          <label class="form-label mb-0">Targeted</label>
+          <input id="inTargeted" class="form-control form-control-sm" style="width:160px" value="{{ targeted }}">
+        </div>
+        <button id="btnLoadPair" class="btn btn-sm btn-primary">Load pair</button>
+
+        <div class="ms-auto d-flex align-items-center gap-2 flex-wrap">
+          <span class="badge bg-secondary">Top nodes:<span id="badgeTopN" class="ms-1">0</span></span>
+          <span class="badge bg-secondary">Top edges:<span id="badgeTopE" class="ms-1">0</span></span>
+          <span class="badge bg-secondary">Bottom nodes:<span id="badgeBotN" class="ms-1">0</span></span>
+          <span class="badge bg-secondary">Bottom edges:<span id="badgeBotE" class="ms-1">0</span></span>
+
+          <label class="form-check ms-2 small d-flex align-items-center">
+            <input class="form-check-input me-1" type="checkbox" id="chkCenter" checked>
+            Auto-center
+          </label>
+
+          <button id="btnPlay" class="btn btn-sm btn-outline-primary">▶ Play</button>
+          <input id="rngStep" type="range" min="0" max="0" value="0" step="1" style="width: 320px;">
+          <span class="small text-muted"><span id="lblStep">0</span>/<span id="lblTotal">0</span></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-3 align-items-stretch">
+    <!-- LEFT: Baseline -->
+    <div class="col-12 col-lg-6">
+      <div class="card shadow-sm h-100">
+        <div class="card-header py-2 d-flex justify-content-between align-items-center">
+          <strong>Baseline</strong>
+          <div class="small text-muted">edges:
+            <label class="ms-2"><input type="checkbox" id="chkKnn" checked> knn_* / MST</label>
+            <label class="ms-2"><input type="checkbox" id="chkTemporal" checked> temporal_next</label>
+            <label class="ms-2"><input type="checkbox" id="chkDiff" checked> highlight new</label>
+          </div>
+        </div>
+        <div class="card-body" style="height:70vh">
+          <div id="cyTop" style="width:100%; height:100%; border:1px solid #e5e7eb; border-radius:8px;"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT: Targeted -->
+    <div class="col-12 col-lg-6">
+      <div class="card shadow-sm h-100">
+        <div class="card-header py-2"><strong>Targeted</strong></div>
+        <div class="card-body" style="height:70vh">
+          <div id="cyBottom" style="width:100%; height:100%; border:1px solid #e5e7eb; border-radius:8px;"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="mt-2 small text-muted">
+    Scrub or play to watch thoughts accumulate. New nodes/edges each step are highlighted. Empty/no-change frames are automatically skipped.
+  </div>
+</div>
+
+<script src="https://unpkg.com/cytoscape@3.28.1/dist/cytoscape.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  const $inBase  = document.getElementById('inBaseline');
+  const $inTgt   = document.getElementById('inTargeted');
+  const $btnLoad = document.getElementById('btnLoadPair');
+  const $btnPlay = document.getElementById('btnPlay');
+  const $rng     = document.getElementById('rngStep');
+  const $lblS    = document.getElementById('lblStep');
+  const $lblT    = document.getElementById('lblTotal');
+  const $chkKnn  = document.getElementById('chkKnn');
+  const $chkTmp  = document.getElementById('chkTemporal');
+  const $chkDiff = document.getElementById('chkDiff');
+  const $chkCenter = document.getElementById('chkCenter');
+  const $bTopN   = document.getElementById('badgeTopN');
+  const $bTopE   = document.getElementById('badgeTopE');
+  const $bBotN   = document.getElementById('badgeBotN');
+  const $bBotE   = document.getElementById('badgeBotE');
+
+  // query params → inputs
+  (function hydrateFromQuery(){
+    const p = new URLSearchParams(location.search);
+    if (!$inBase.value)  $inBase.value  = p.get('baseline') || '';
+    if (!$inTgt.value)   $inTgt.value   = p.get('targeted') || '';
+  })();
+
+  let cyTop, cyBottom, framesTop = [], framesBottom = [], cur = 0, playing = false, timer = null;
+
+  // ---------- fetch helpers (never throw) ----------
+  async function safeGet(url) {
+    try {
+      const r = await fetch(url, { cache: 'no-store' });
+      const body = await r.text();
+      if (!r.ok) {
+        console.warn('[timeline] GET failed', url, r.status, body.slice(0, 200));
+        return null;
+      }
+      try { return JSON.parse(body); }
+      catch (e) { console.warn('[timeline] JSON parse error', url, e, body.slice(0, 200)); return null; }
+    } catch (err) {
+      console.warn('[timeline] GET error', url, err);
+      return null;
+    }
+  }
+
+  // ---------- frame sanitation ----------
+  function isEmptyFrame(f) {
+    return !f || (!Array.isArray(f.nodes) && !Array.isArray(f.edges))
+           || ((f.nodes?.length||0) === 0 && (f.edges?.length||0) === 0);
+  }
+
+  function sanitizeFrames(frames) {
+    if (!Array.isArray(frames)) return [];
+    let out = frames.filter(f => !isEmptyFrame(f));
+    if (!out.length) return [];
+    const uniq = [];
+    let lastKey = '';
+    for (const f of out) {
+      const k = `${f.nodes?.length||0}|${f.edges?.length||0}`;
+      if (k !== lastKey) { uniq.push(f); lastKey = k; }
+    }
+    return uniq;
+  }
+
+  function synthesizeFramesFromGraph(g, steps = 30) {
+    const nodes = g?.nodes || [];
+    const edges = g?.edges || [];
+    if (!nodes.length && !edges.length) return [];
+    const out = [];
+    const step = Math.max(1, Math.ceil((edges.length || 1) / steps));
+    for (let i = step; i <= edges.length; i += step) {
+      out.push({ nodes, edges: edges.slice(0, i) });
+    }
+    if (!out.length) out.push({ nodes, edges });
+    return out;
+  }
+
+  // ---------- cytoscape setup ----------
+  function makeCy(id){
+    return cytoscape({
+      container: document.getElementById(id),
+      layout: { name: 'preset', fit: false, padding: 0 }, // we rescale positions ourselves
+      pixelRatio: window.devicePixelRatio || 1,            // crisp like Run view
+      textureOnViewport: false,                            // no smeary bitmap cache
+      wheelSensitivity: 0.2,
+      style: [
+        { selector: 'node',
+          style: {
+            'background-color': '#5b8def',
+            'width':'mapData(deg, 0, 16, 10, 32)',
+            'height':'mapData(deg, 0, 16, 10, 32)',
+            'label': 'data(label)',
+            'font-size': 9, 'text-wrap':'wrap', 'text-max-width': 140, 'color':'#111'
+          }
+        },
+        { selector: 'edge', style: { 'line-color':'#aab','width':1,'opacity':0.8 } },
+        { selector: 'edge[type="temporal_next"]',
+          style: { 'line-color':'#e83e8c','width':2,'opacity':0.95,
+                   'target-arrow-shape':'triangle','target-arrow-color':'#e83e8c','curve-style':'bezier' } },
+        { selector: '.newNode', style: { 'background-color':'#22c55e','border-color':'#065f46','border-width':2 } },
+        { selector: '.newEdge', style: { 'line-color':'#22c55e','width':2,'opacity':1 } },
+        { selector: '.faded',   style: { 'opacity':0.35 } }
+      ]
+    });
+  }
+
+  function rescale(nodes, container, pad=30){
+    const withPos = nodes.filter(n => n.position && Number.isFinite(n.position.x) && Number.isFinite(n.position.y));
+    if (!withPos.length) return nodes;
+    const rect = container.getBoundingClientRect();
+    const W = Math.max(10, rect.width-2*pad), H = Math.max(10, rect.height-2*pad);
+    let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity;
+    withPos.forEach(n=>{const p=n.position; if(p.x<minX)minX=p.x; if(p.x>maxX)maxX=p.x; if(p.y<minY)minY=p.y; if(p.y>maxY)maxY=p.y;});
+    const sx=Math.max(1e-6,maxX-minX), sy=Math.max(1e-6,maxY-minY), k=0.9*Math.min(W/sx,H/sy), cx=(minX+maxX)/2, cy=(minY+maxY)/2;
+    return nodes.map(n => n.position ? ({...n, position:{x:(n.position.x-cx)*k+(W/2+pad), y:(n.position.y-cy)*k+(H/2+pad)}}) : n);
+  }
+
+  function filterEdges(edges){
+    const showK = $chkKnn.checked, showT = $chkTmp.checked;
+    return (edges||[]).filter(e => {
+      const t = (e.data?.type || '').toLowerCase();
+      const isKnn = t.startsWith('knn_') || t === 'backbone_mst';
+      return (showK && isKnn) || (showT && t === 'temporal_next');
+    });
+  }
+
+  function degree(edges){
+    const d=new Map();
+    edges.forEach(e=>{d.set(e.data.source,(d.get(e.data.source)||0)+1); d.set(e.data.target,(d.get(e.data.target)||0)+1);});
+    return d;
+  }
+
+  function applyFrame(cy, frames, i){
+    if (!frames.length) { cy.startBatch(); cy.elements().remove(); cy.endBatch(); return; }
+    const idx = Math.max(0, Math.min(i, frames.length-1));
+    const prevIdx = Math.max(0, Math.min(idx-1, frames.length-1));
+    const f = frames[idx], p = frames[prevIdx];
+
+    const nodes = rescale((f.nodes||[]).slice(), cy.container());
+    const edges = filterEdges((f.edges||[]).slice());
+    const d = degree(edges);
+    nodes.forEach(n => n.data.deg = d.get(n.data.id)||0);
+
+    const prevN = new Set((p.nodes||[]).map(n=>n.data.id));
+    const prevE = new Set(filterEdges(p.edges||[]).map(e=>e.data.id));
+    const diff  = $chkDiff.checked && idx>0;
+
+    cy.startBatch();
+    cy.elements().remove();
+    cy.add(nodes.map(n => ({group:'nodes', data:n.data, position:n.position, classes: diff && !prevN.has(n.data.id) ? 'newNode' : ''})));
+    cy.add(edges.map(e => ({group:'edges', data:e.data, classes: diff && !prevE.has(e.data.id) ? 'newEdge' : ''})));
+    if (diff){ cy.elements().addClass('faded'); cy.elements('.newNode, .newEdge').removeClass('faded'); }
+    else { cy.elements().removeClass('faded newNode newEdge'); }
+    cy.endBatch();
+
+    // Center content if requested (pan only; keep zoom)
+    if ($chkCenter.checked) cy.center();
+  }
+
+  function updateBadges(){
+    const top = framesTop[Math.max(0, Math.min(cur, framesTop.length-1))] || {nodes:[],edges:[]};
+    const bot = framesBottom[Math.max(0, Math.min(cur, framesBottom.length-1))] || {nodes:[],edges:[]};
+    $bTopN.textContent = String(top.nodes?.length || 0);
+    $bTopE.textContent = String(filterEdges(top.edges||[]).length || 0);
+    $bBotN.textContent = String(bot.nodes?.length || 0);
+    $bBotE.textContent = String(filterEdges(bot.edges||[]).length || 0);
+  }
+
+  function applyBoth(i){
+    if (framesTop.length) applyFrame(cyTop, framesTop, i);
+    if (framesBottom.length) applyFrame(cyBottom, framesBottom, i);
+    $lblS.textContent = String(i+1);
+    $rng.value = String(i);
+    updateBadges();
+  }
+
+  async function loadFrames(runId){
+    let frames = await safeGet(`/nexus/run/${encodeURIComponent(runId)}/frames.json`);
+    if (Array.isArray(frames)) {
+      frames = sanitizeFrames(frames);
+      if (frames.length) return frames;
+    }
+    let graph = await safeGet(`/nexus/run/${encodeURIComponent(runId)}/graph.json`);
+    if (!graph) graph = await safeGet(`/nexus/run/${encodeURIComponent(runId)}/nexus_graph.json`);
+    if (!graph) return [];
+    return sanitizeFrames(synthesizeFramesFromGraph(graph, 30));
+  }
+
+  async function loadPair(){
+    const base = $inBase.value.trim();
+    const tgt  = $inTgt.value.trim();
+    if (!cyTop)    cyTop = makeCy('cyTop');
+    if (!cyBottom) cyBottom = makeCy('cyBottom');
+
+    framesTop = base ? await loadFrames(base) : [];
+    framesBottom = tgt ? await loadFrames(tgt) : framesTop;
+
+    if (!framesTop.length)    framesTop = [{nodes:[], edges:[]}];
+    if (!framesBottom.length) framesBottom = [{nodes:[], edges:[]}];
+
+    const L = Math.max(framesTop.length, framesBottom.length);
+    const lastTop = framesTop[framesTop.length-1];
+    const lastBot = framesBottom[framesBottom.length-1];
+    while (framesTop.length < L)    framesTop.push(lastTop);
+    while (framesBottom.length < L) framesBottom.push(lastBot);
+
+    $rng.max = String(Math.max(0, L-1));
+    $lblT.textContent = String(L);
+    cur = 0;
+    applyBoth(cur);
+
+    // Re-center once the browser finishes laying out columns
+    requestAnimationFrame(() => applyBoth(cur));
+  }
+
+  function togglePlay(){
+    if (playing){ playing=false; $btnPlay.textContent='▶ Play'; clearInterval(timer); return; }
+    playing=true; $btnPlay.textContent='⏸ Pause';
+    timer=setInterval(()=>{ const L=Math.max(framesTop.length, framesBottom.length)||1; cur=(cur+1)%L; applyBoth(cur); }, 500);
+  }
+
+  $btnLoad.addEventListener('click', loadPair);
+  $btnPlay.addEventListener('click', togglePlay);
+  $rng.addEventListener('input', ()=>applyBoth(Number($rng.value)));
+  [$chkKnn,$chkTmp,$chkDiff,$chkCenter].forEach(el=>el.addEventListener('change', ()=>applyBoth(cur)));
+
+  // Zoom label perf tweak
+  function bindZoomLabelPerf(cy){
+    let lastZ = cy.zoom();
+    cy.on('zoom', () => {
+      const z = cy.zoom();
+      if (Math.abs(z - lastZ) < 0.02) return;
+      lastZ = z;
+      cy.batch(() => cy.nodes().forEach(n => {
+        n.style('label', z >= 1.15 ? n.data('label') : '');
+      }));
+    });
+  }
+
+  cyTop = makeCy('cyTop'); cyBottom = makeCy('cyBottom');
+  bindZoomLabelPerf(cyTop); bindZoomLabelPerf(cyBottom);
+
+  // Keep things centered & sharp on resize (each container observed)
+  const ro = new ResizeObserver(() => applyBoth(cur));
+  ro.observe(document.getElementById('cyTop'));
+  ro.observe(document.getElementById('cyBottom'));
+
+  loadPair();
+});
+</script>
+{% endblock %}
