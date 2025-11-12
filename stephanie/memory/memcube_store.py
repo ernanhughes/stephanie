@@ -1,16 +1,29 @@
 # stephanie/memory/memcube_store.py
 from __future__ import annotations
 
+import re
 import hashlib
 import json
-import re
 from datetime import datetime, timedelta
 from typing import Any, Dict, Iterable, List, Literal, Optional, Tuple
 
-from sqlalchemy import and_, asc, desc, or_
+from sqlalchemy import asc, desc
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
 from stephanie.models.memcube import MemCubeORM
+
+
+# ---------- helpers ----------------------------------------------------------
+
+
+def _stable_int_id(parts: Iterable[str]) -> int:
+    """
+    Deterministic 31-bit positive int from a list of strings.
+    Satisfies MemCubeORM.scorable_id: Integer (not string).
+    """
+    h = hashlib.sha1("||".join(parts).encode("utf-8")).hexdigest()
+    # take 12 hex chars (~48 bits) then mod into signed-32 range for safety
+    return int(h[:12], 16) % 2_000_000_000
 
 
 def _stable_digest(payload: Dict[str, Any]) -> str:
@@ -18,16 +31,29 @@ def _stable_digest(payload: Dict[str, Any]) -> str:
     Stable SHA1 hex digest over a JSON-serializable payload with sorted keys.
     Converts non-primitive types where reasonable (lists/tuples/dicts/str/float/int/bool/None).
     """
+
     def _ser(x):
         if isinstance(x, dict):
             return {k: _ser(v) for k, v in sorted(x.items())}
         if isinstance(x, (list, tuple)):
             return [_ser(v) for v in x]
-        # leave primitives as-is
         return x
 
-    data = json.dumps(_ser(payload), sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+    data = json.dumps(
+        _ser(payload),
+        sort_keys=True,
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
     return hashlib.sha1(data.encode("utf-8")).hexdigest()
+
+
+def _merge_extra(
+    a: Optional[Dict[str, Any]], b: Optional[Dict[str, Any]]
+) -> Dict[str, Any]:
+    out = dict(a or {})
+    out.update(b or {})
+    return out
 
 
 _version_num_re = re.compile(r"(\d+)")
@@ -68,13 +94,18 @@ def _ensure_id(data: Dict[str, Any]) -> str:
     return vid
 
 
-def _merge_extra(existing: Optional[Dict[str, Any]], incoming: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+def _merge_extra(
+    existing: Optional[Dict[str, Any]], incoming: Optional[Dict[str, Any]]
+) -> Dict[str, Any]:
     """
     Shallow merge for extra_data; incoming wins on key conflicts.
     """
     base = dict(existing or {})
     base.update(incoming or {})
     return base
+
+
+# ---------- store ------------------------------------------------------------
 
 
 class MemCubeStore(BaseSQLAlchemyStore):
@@ -95,9 +126,8 @@ class MemCubeStore(BaseSQLAlchemyStore):
         super().__init__(session_maker, logger)
         self.name = "memcubes"
 
-    # --------------------
-    # CRUD / UPSERT
-    # --------------------
+    # -------- core CRUD you already have from prior version (abridged) -------
+
     def insert(
         self,
         data: Dict[str, Any],
@@ -105,37 +135,37 @@ class MemCubeStore(BaseSQLAlchemyStore):
         if_exists: Literal["error", "skip", "update"] = "error",
         merge_extra: bool = True,
     ) -> MemCubeORM:
-        """
-        Insert a MemCube. Auto-generates stable id if missing.
-        if_exists:
-            - "error": raise if an object with same id or composite keys exists
-            - "skip" : return existing without changes
-            - "update": update existing with provided fields
-        """
         def op(s):
-            _ensure_id(data)
+            # Ensure id if missing
+            if not data.get("id"):
+                base = {
+                    "scorable_id": data.get("scorable_id"),
+                    "scorable_type": data.get("scorable_type"),
+                    "dimension": data.get("dimension"),
+                    "version": data.get("version", "v1"),
+                    "source": data.get("source"),
+                    "model": data.get("model"),
+                }
+                digest = _stable_digest(base)
+                data["id"] = f"{digest}:{base['version']}"
+                data.setdefault("version", "v1")
 
-            existing = (
-                s.query(MemCubeORM)
-                .filter_by(id=data["id"])
-                .first()
-            )
-
+            existing = s.query(MemCubeORM).filter_by(id=data["id"]).first()
             if existing:
                 if if_exists == "error":
-                    raise ValueError(f"MemCube with id={data['id']} already exists")
+                    raise ValueError(f"MemCube exists id={data['id']}")
                 if if_exists == "skip":
                     return existing
-                # update path
                 for k, v in data.items():
                     if k == "extra_data" and merge_extra:
-                        setattr(existing, "extra_data", _merge_extra(existing.extra_data, v))
+                        existing.extra_data = _merge_extra(
+                            existing.extra_data, v
+                        )
                     elif k != "id":
                         setattr(existing, k, v)
                 obj = existing
                 action = "MemCubeUpdated"
             else:
-                # ensure defaults
                 data.setdefault("priority", 5)
                 data.setdefault("sensitivity", "public")
                 data.setdefault("usage_count", 0)
@@ -151,43 +181,43 @@ class MemCubeStore(BaseSQLAlchemyStore):
         return self._run(op)
 
     def upsert(
-        self,
-        data: Dict[str, Any],
-        *,
-        key: Literal["id", "composite"] = "composite",
-        merge_extra: bool = True,
+        self, data: Dict[str, Any], *, merge_extra: bool = True
     ) -> MemCubeORM:
-        """
-        Insert or update using either:
-          - key="id": match by primary id (recommended)
-          - key="composite": match by (scorable_id, scorable_type, dimension, version)
-        """
+        # composite uniqueness: (scorable_id, scorable_type, dimension, version)
         def op(s):
-            _ensure_id(data)
-
-            if key == "id":
-                existing = s.query(MemCubeORM).filter_by(id=data["id"]).first()
-            else:
-                existing = (
-                    s.query(MemCubeORM)
-                    .filter_by(
-                        scorable_id=data["scorable_id"],
-                        scorable_type=data["scorable_type"],
-                        dimension=data.get("dimension"),
-                        version=data.get("version", "v1"),
-                    )
-                    .first()
+            if not data.get("version"):
+                data["version"] = "v1"
+            existing = (
+                s.query(MemCubeORM)
+                .filter_by(
+                    scorable_id=data["scorable_id"],
+                    scorable_type=data["scorable_type"],
+                    dimension=data.get("dimension"),
+                    version=data["version"],
                 )
-
+                .first()
+            )
             if existing:
                 for k, v in data.items():
                     if k == "extra_data" and merge_extra:
-                        setattr(existing, "extra_data", _merge_extra(existing.extra_data, v))
-                    elif k != "id":
+                        existing.extra_data = _merge_extra(
+                            existing.extra_data, v
+                        )
+                    else:
                         setattr(existing, k, v)
                 obj = existing
                 action = "MemCubeUpdated"
             else:
+                if not data.get("id"):
+                    base = {
+                        "scorable_id": data["scorable_id"],
+                        "scorable_type": data["scorable_type"],
+                        "dimension": data.get("dimension"),
+                        "version": data["version"],
+                        "source": data.get("source"),
+                        "model": data.get("model"),
+                    }
+                    data["id"] = f"{_stable_digest(base)}:{data['version']}"
                 data.setdefault("priority", 5)
                 data.setdefault("sensitivity", "public")
                 data.setdefault("usage_count", 0)
@@ -202,6 +232,118 @@ class MemCubeStore(BaseSQLAlchemyStore):
 
         return self._run(op)
 
+    # -------- calibration API -------------------------------------------------
+
+    def store_calibration(
+        self,
+        kind: str,  # e.g., "risk"
+        payload: Dict[str, Any],  # expects at least {"domain": "...", ...}
+        *,
+        version: str = "v1",
+        model: Optional[str] = None,
+        source: str = "calibration",
+        sensitivity: str = "public",
+        ttl: Optional[int] = None,
+        priority: int = 5,
+        merge_extra: bool = True,
+    ) -> MemCubeORM:
+        """
+        Persist a per-domain calibration record as a MemCube row.
+
+        Mapping:
+          scorable_type = "calibration"
+          dimension     = <kind> (e.g., "risk")
+          scorable_id   = stable int from (calibration, kind, domain)
+          content       = JSON string of payload (human-readable)
+          extra_data    = payload again (queryable JSON), plus tags
+        """
+        domain = str(payload.get("domain", "general"))
+        scorable_id = _stable_int_id(["calibration", kind, domain])
+
+        data = {
+            "scorable_id": scorable_id,
+            "scorable_type": "calibration",
+            "content": json.dumps(payload, ensure_ascii=False),
+            "dimension": kind,
+            "original_score": None,  # unused here
+            "refined_score": float(payload.get("ece"))
+            if "ece" in payload
+            else None,
+            "refined_content": None,
+            "version": version,
+            "source": source,
+            "model": model,
+            "priority": priority,
+            "sensitivity": sensitivity,
+            "ttl": ttl,
+            "usage_count": 0,
+            # keep domain in JSONB for easy filtering later
+            "extra_data": _merge_extra(
+                {
+                    "domain": domain,
+                    "tags": ["calibration", kind],
+                    "calibration": True,
+                },
+                payload,
+            ),
+        }
+        return self.upsert(data, merge_extra=merge_extra)
+
+    def get_calibration(
+        self,
+        kind: str,
+        domain: str,
+        *,
+        version: Optional[str] = None,
+        newest_first: bool = True,
+    ) -> Optional[MemCubeORM]:
+        """
+        Retrieve one calibration record for a kind+domain.
+        If version is None, returns newest by created_at.
+        """
+
+        def op(s):
+            q = s.query(MemCubeORM).filter(
+                MemCubeORM.scorable_type == "calibration",
+                MemCubeORM.dimension == kind,
+                MemCubeORM.extra_data["domain"].astext == str(domain),
+            )
+            if version:
+                q = q.filter(MemCubeORM.version == version)
+            q = q.order_by(
+                desc(MemCubeORM.created_at)
+                if newest_first
+                else asc(MemCubeORM.created_at)
+            )
+            return q.first()
+
+        return self._run(op)
+
+    def list_calibrations(
+        self,
+        kind: str,
+        *,
+        domains: Optional[List[str]] = None,
+        version: Optional[str] = None,
+        limit: int = 1000,
+    ) -> List[MemCubeORM]:
+        def op(s):
+            q = s.query(MemCubeORM).filter(
+                MemCubeORM.scorable_type == "calibration",
+                MemCubeORM.dimension == kind,
+            )
+            if domains:
+                q = q.filter(
+                    MemCubeORM.extra_data["domain"].astext.in_(
+                        [str(d) for d in domains]
+                    )
+                )
+            if version:
+                q = q.filter(MemCubeORM.version == version)
+            return q.order_by(desc(MemCubeORM.created_at)).limit(limit).all()
+
+        return self._run(op)
+
     def bulk_insert(
         self,
         items: Iterable[Dict[str, Any]],
@@ -212,6 +354,7 @@ class MemCubeStore(BaseSQLAlchemyStore):
         """
         Efficient bulk add. Uses id match for conflict behavior.
         """
+
         def op(s):
             out = []
             for item in items:
@@ -221,7 +364,11 @@ class MemCubeStore(BaseSQLAlchemyStore):
                     if on_conflict == "update":
                         for k, v in item.items():
                             if k == "extra_data" and merge_extra:
-                                setattr(existing, "extra_data", _merge_extra(existing.extra_data, v))
+                                setattr(
+                                    existing,
+                                    "extra_data",
+                                    _merge_extra(existing.extra_data, v),
+                                )
                             elif k != "id":
                                 setattr(existing, k, v)
                         out.append(existing)
@@ -246,6 +393,7 @@ class MemCubeStore(BaseSQLAlchemyStore):
     def get_by_id(self, cube_id: str) -> Optional[MemCubeORM]:
         def op(s):
             return s.query(MemCubeORM).filter_by(id=cube_id).first()
+
         return self._run(op)
 
     def get_by_scorable(
@@ -258,13 +406,20 @@ class MemCubeStore(BaseSQLAlchemyStore):
         newest_first: bool = True,
     ) -> List[MemCubeORM]:
         def op(s):
-            q = s.query(MemCubeORM).filter(MemCubeORM.scorable_id == scorable_id)
+            q = s.query(MemCubeORM).filter(
+                MemCubeORM.scorable_id == scorable_id
+            )
             if scorable_type:
                 q = q.filter(MemCubeORM.scorable_type == scorable_type)
             if dimension:
                 q = q.filter(MemCubeORM.dimension == dimension)
-            q = q.order_by(desc(MemCubeORM.created_at) if newest_first else asc(MemCubeORM.created_at))
+            q = q.order_by(
+                desc(MemCubeORM.created_at)
+                if newest_first
+                else asc(MemCubeORM.created_at)
+            )
             return q.limit(limit).all()
+
         return self._run(op)
 
     def get_latest(
@@ -277,11 +432,15 @@ class MemCubeStore(BaseSQLAlchemyStore):
         """
         Latest by created_at (robust across arbitrary version strings).
         """
+
         def op(s):
-            q = s.query(MemCubeORM).filter_by(scorable_id=scorable_id, scorable_type=scorable_type)
+            q = s.query(MemCubeORM).filter_by(
+                scorable_id=scorable_id, scorable_type=scorable_type
+            )
             if dimension:
                 q = q.filter_by(dimension=dimension)
             return q.order_by(desc(MemCubeORM.created_at)).first()
+
         return self._run(op)
 
     def get_by_composite(
@@ -303,6 +462,7 @@ class MemCubeStore(BaseSQLAlchemyStore):
                 )
                 .first()
             )
+
         return self._run(op)
 
     # --------------------
@@ -351,7 +511,11 @@ class MemCubeStore(BaseSQLAlchemyStore):
             if created_to:
                 q = q.filter(MemCubeORM.created_at <= created_to)
 
-            q = q.order_by(desc(MemCubeORM.created_at) if order_desc else asc(MemCubeORM.created_at))
+            q = q.order_by(
+                desc(MemCubeORM.created_at)
+                if order_desc
+                else asc(MemCubeORM.created_at)
+            )
             return q.limit(limit).all()
 
         return self._run(op)
@@ -359,15 +523,21 @@ class MemCubeStore(BaseSQLAlchemyStore):
     # --------------------
     # MUTATORS
     # --------------------
-    def increment_usage(self, cube_id: str, by: int = 1) -> Optional[MemCubeORM]:
+    def increment_usage(
+        self, cube_id: str, by: int = 1
+    ) -> Optional[MemCubeORM]:
         def op(s):
             obj = s.query(MemCubeORM).filter_by(id=cube_id).first()
             if not obj:
                 return None
             obj.usage_count = int(obj.usage_count or 0) + by
             if self.logger:
-                self.logger.log("MemCubeUsageIncremented", {"id": cube_id, "by": by, "new": obj.usage_count})
+                self.logger.log(
+                    "MemCubeUsageIncremented",
+                    {"id": cube_id, "by": by, "new": obj.usage_count},
+                )
             return obj
+
         return self._run(op)
 
     def set_refined_result(
@@ -388,10 +558,15 @@ class MemCubeStore(BaseSQLAlchemyStore):
             if refined_content is not None:
                 obj.refined_content = refined_content
             if extra_data:
-                obj.extra_data = _merge_extra(obj.extra_data, extra_data) if merge_extra else (extra_data or {})
+                obj.extra_data = (
+                    _merge_extra(obj.extra_data, extra_data)
+                    if merge_extra
+                    else (extra_data or {})
+                )
             if self.logger:
                 self.logger.log("MemCubeRefined", obj.to_dict())
             return obj
+
         return self._run(op)
 
     def touch(self, cube_id: str) -> Optional[MemCubeORM]:
@@ -409,12 +584,15 @@ class MemCubeStore(BaseSQLAlchemyStore):
             if self.logger:
                 self.logger.log("MemCubeDeleted", {"id": cube_id})
             return True
+
         return self._run(op)
 
     # --------------------
     # TTL / HOUSEKEEPING
     # --------------------
-    def list_expired(self, *, now: Optional[datetime] = None, limit: int = 1000) -> List[MemCubeORM]:
+    def list_expired(
+        self, *, now: Optional[datetime] = None, limit: int = 1000
+    ) -> List[MemCubeORM]:
         """
         Returns cubes where ttl is set and (created_at + ttl days) < now.
         """
@@ -437,7 +615,13 @@ class MemCubeStore(BaseSQLAlchemyStore):
 
         return self._run(op)
 
-    def prune_expired(self, *, delete: bool = True, now: Optional[datetime] = None, limit: int = 1000) -> int:
+    def prune_expired(
+        self,
+        *,
+        delete: bool = True,
+        now: Optional[datetime] = None,
+        limit: int = 1000,
+    ) -> int:
         """
         Deletes (or returns count if delete=False) expired items based on TTL.
         """
@@ -488,7 +672,12 @@ class MemCubeStore(BaseSQLAlchemyStore):
         n = 0
         with open(path, "w", encoding="utf-8") as f:
             for r in rows:
-                f.write(json.dumps(r.to_dict(include_extra=True), ensure_ascii=False) + "\n")
+                f.write(
+                    json.dumps(
+                        r.to_dict(include_extra=True), ensure_ascii=False
+                    )
+                    + "\n"
+                )
                 n += 1
         if self.logger:
             self.logger.log("MemCubeExported", {"path": path, "count": n})

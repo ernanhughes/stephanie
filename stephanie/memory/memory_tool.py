@@ -40,7 +40,7 @@ from stephanie.memory.idea_store import IdeaStore
 from stephanie.memory.lookahead_store import LookaheadStore
 from stephanie.memory.mars_conflict_store import MARSConflictStore
 from stephanie.memory.mars_result_store import MARSResultStore
-from stephanie.memory.memcube_store import MemcubeStore
+from stephanie.memory.memcube_store import MemCubeStore
 from stephanie.memory.method_plan_store import MethodPlanStore
 from stephanie.memory.models_store import ModelsStore
 from stephanie.memory.mrq_store import MRQStore
@@ -170,7 +170,7 @@ class MemoryTool:
         self.register_store(CartridgeDomainStore(self.session_maker, logger))
         self.register_store(CartridgeStore(self.session_maker, logger))
         self.register_store(CartridgeTripleStore(self.session_maker, logger))
-        self.register_store(MemcubeStore(self.session_maker, logger))
+        self.register_store(MemCubeStore(self.session_maker, logger))
         self.register_store(BeliefCartridgeStore(self.session_maker, logger))
         self.register_store(GoalDimensionsStore(self.session_maker, logger))
         self.register_store(PipelineStageStore(self.session_maker, logger))

@@ -1,3 +1,4 @@
+# stephanie/scoring/scorable_processor.py
 from __future__ import annotations
 
 import asyncio
@@ -7,7 +8,6 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 from stephanie.analysis.scorable_classifier import ScorableClassifier
-from stephanie.components.ssp.metrics import scorable
 from stephanie.models.ner_retriever import EntityDetector
 import torch
 import numpy as np
@@ -74,7 +74,7 @@ class ScorableProcessor:
             memory=self.memory,
             logger=self.logger,
             config_path=cfg.get(
-                "domain_seed_config_path", "config/domain/cartridges.yaml"
+                "domain_seed_config_path", "config/domain/seeds.yaml"
             ),
         )
 

@@ -20,6 +20,7 @@ from stephanie.services.scoring_service import ScoringService
 from stephanie.scoring.scorable import Scorable
 from stephanie.utils.progress_mixin import ProgressMixin
 from stephanie.components.nexus.blossom.viewer.renderer import write_garden_frames
+from stephanie.components.nexus.graph.knowledge_index import compute_knowledge_index_from_files
 
 log = logging.getLogger(__name__)
 
@@ -375,7 +376,13 @@ class NexusPollinatorAgent(ProgressMixin, BaseAgent):
         improved_path = run_dir / "graph_improved.json"      # already written by renderer
         report_path   = run_dir / "nexus_improver_report.json"
 
-        idx = compute_knowledge_index(baseline_path, improved_path, report_path)
+        idx = compute_knowledge_index_from_files(
+            baseline_path,
+            improved_path,
+            node_quality_attr="quality",   # adjust if you store a different name
+            edge_quality_attr="weight",    # adjust if you store a different name
+            extra_report=report_path,
+        )
         (run_dir / "knowledge_index.json").write_text(json.dumps(idx, indent=2), encoding="utf-8")
         self._slog("KnowledgeIndex", idx)
 

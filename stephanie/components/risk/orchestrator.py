@@ -19,6 +19,7 @@ from stephanie.services.scm_service import SCMService
 from stephanie.services.storage_service import \
     StorageService  # your FS-backed store
 from stephanie.utils.progress_mixin import ProgressMixin
+from stephanie.scoring.scorable_processor import ScorableProcessor
 
 log = logging.getLogger(__file__)
 
