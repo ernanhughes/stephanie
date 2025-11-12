@@ -136,7 +136,7 @@ class HybridKnowledgeBus(BusProtocol):
                             self._bus = inproc
                             self._backend = "inproc"
                             self._idem_store = getattr(inproc, "idempotency_store", None)
-                            log.warning("Hybrid bus using in-process fallback (NATS unavailable).")
+                            log.debug("Hybrid bus using in-process fallback (NATS unavailable).")
                             return True
                     except Exception as e:
                         log.error("Hybrid bus: InProc fallback connect error: %s", e)

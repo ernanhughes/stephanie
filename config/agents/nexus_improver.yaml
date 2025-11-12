@@ -12,6 +12,7 @@ nexus_improver:
   sharpen_iters: 1
   novelty_tau: 0.12
   promote_margin: 0.02
+
   dims: ["alignment","faithfulness","coverage","clarity","coherence"]
   scorers: ["sicql","mrq","hrm"]
   scorer_weights: { sicql: 1.0, mrq: 0.8, hrm: 0.6 }
@@ -23,3 +24,15 @@ nexus_improver:
     coherence: 0.6
   persist_scores: false
   use_llm_heuristic: false
+
+  offload_mode: await         # or fire_and_forget
+  max_inflight: 96
+  response_timeout_s: 75
+  blossom:
+    offload_prompts: true
+    model:
+      name: ollama/qwen:0.5b
+      api_base: http://localhost:11434
+      api_key: null
+    target_pool: provider
+    run_root: runs

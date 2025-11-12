@@ -240,6 +240,14 @@ HTML_TEMPLATE = """<!doctype html>
 <script>
 const FRAMES = __FRAMES__;
 const HAS_POSITIONS = __HAS_POSITIONS__;
+
+// Use literal colors (canvas-safe)
+const COLORS = {
+  base: '#6B7280',   // baseline nodes (gray-500)
+  newly: '#60A5FA',  // new blossom nodes (blue-400)
+  hi:   '#F59E0B',   // highlight (amber-500)
+  edge: '#FFFFFF'    // edges/arrows (white)
+};
 let container = document.getElementById('mynetwork');
 let nodes = new vis.DataSet([]);
 let edges = new vis.DataSet([]);
@@ -262,44 +270,43 @@ function applyFrame(i){
   if(!f) return;
 
   const hiNode = f.highlight?.node_id || null;
-  const hiEdge = f.highlight?.edge || null;
   const hiType = f.highlight?.type || null;
 
   // nodes
   const ns = f.nodes.map(n => {
-    const id = n.data.id;
+    const id  = n.data.id;
     const cls = n.data.cls || 'new';
-    const isHi = (id === hiNode);
-    const label = id.toString().split('/').pop();
-    // color scheme
-    let color = (cls === 'baseline') ? 'var(--base)' : 'var(--new)';
-    if (isHi) color = 'var(--hi)';
-    // size bump for highlight
-    const size = isHi ? 18 : 8;
+    const isHi = (id === (f.highlight?.node_id || null));
+
+    let color = (cls === 'baseline') ? COLORS.base : COLORS.newly;
+    if (isHi) color = COLORS.hi;
+
     return {
       id,
-      label,
+      label: '', // keep dots clean; hover shows id in title
+      title: id,
       color,
+      size: isHi ? 18 : (cls === 'baseline' ? 7 : 10),
       x: n.position?.x,
       y: n.position?.y,
-      fixed: (typeof n.position?.x === 'number' && typeof n.position?.y === 'number'),
-      size
+      fixed: Number.isFinite(n.position?.x) && Number.isFinite(n.position?.y)
     };
   });
 
-  // edges
-  const es = f.edges.map(e => {
-    const s = e.data.source, t = e.data.target;
-    const isHi = !!(hiEdge && s === hiEdge[0] && t === hiEdge[1]);
-    return {
-      id: e.data.id,
-      from: s,
-      to: t,
-      color: isHi ? 'var(--hi)' : 'var(--edge)',
-      width: isHi ? 2.2 : 1.3,
-      arrows: 'to'
-    };
-  });
+// edges
+let hiEdge = f.highlight?.edge;
+const es = f.edges.map(e => {
+  const s = e.data.source, t = e.data.target;
+  const isHi = !!(hiEdge && s === hiEdge[0] && t === hiEdge[1]);
+  return {
+    id: e.data.id,
+    from: s,
+    to: t,
+    color: isHi ? COLORS.hi : COLORS.edge,
+    width: isHi ? 2.2 : 1.6,
+    arrows: 'to'
+  };
+});
 
   nodes.update(ns);
   edges.update(es);

@@ -76,12 +76,12 @@ pipeline:
      - name: nexus
        description: "Generate a memory graph"
        cls: stephanie.components.nexus.agents.nexus_inline.NexusInlineAgent
-       enabled: false
+       enabled: true
        iterations: 1
   
      - name: nexus_improver
        description: "Improve the nexus using multi-dimensional scoring"
-       cls: stephanie.components.nexus.agents.nexus_improver_async.NexusImproverAsyncAgent
+       cls: stephanie.components.nexus.agents.nexus_pollinator.NexusPollinatorAgent
        enabled: true
        iterations: 1
 

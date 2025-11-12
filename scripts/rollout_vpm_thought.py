@@ -15,7 +15,7 @@ from PIL import Image
 
 from stephanie.services.graph_layout import render_multi_layout_vpm
 from stephanie.components.nexus.utils.visual_thought import VisualThoughtOp, VisualThoughtType
-from stephanie.zeromodel.state_machine import VPMGoal, VPMState, compute_phi, Thought, ThoughtExecutor
+from stephanie.components.nexus.vpm.state_machine import VPMGoal, VPMState, compute_phi, Thought, ThoughtExecutor
 from scripts.train_vpm_thought_model import VPMThoughtModel, DEFAULT_CONFIG  # Reuse model definition
 
 # --------------------------- Helpers ---------------------------

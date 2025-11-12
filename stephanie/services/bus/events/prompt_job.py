@@ -7,14 +7,21 @@ import json
 import time
 import uuid
 from enum import Enum
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field, root_validator, validator
+from pydantic import (
+    BaseModel,
+    Field,
+    ConfigDict,
+    field_validator,
+    model_validator,
+)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Enums & small models
 # ──────────────────────────────────────────────────────────────────────────────
+
 
 class Priority(str, Enum):
     high = "high"
@@ -23,19 +30,20 @@ class Priority(str, Enum):
 
 
 class ResponseFormat(str, Enum):
-    text = "text"                # raw text
+    text = "text"  # raw text
     json_object = "json_object"  # single JSON object
-    json_lines = "json_lines"    # stream of JSONL objects
+    json_lines = "json_lines"  # stream of JSONL objects
 
 
 class SafetyLevel(str, Enum):
-    # adjust to your policy ladder
     strict = "strict"
     standard = "standard"
     permissive = "permissive"
 
 
 class RetryPolicy(BaseModel):
+    model_config = ConfigDict(extra="forbid", validate_default=True)
+
     max_retries: int = 2
     backoff_initial_s: float = 1.0
     backoff_max_s: float = 15.0
@@ -43,27 +51,41 @@ class RetryPolicy(BaseModel):
 
 
 class CachePolicy(BaseModel):
+    model_config = ConfigDict(extra="forbid", validate_default=True)
+
     use_exact: bool = True
     use_approx: bool = True
-    approx_threshold: float = 0.96  # cosine similarity threshold for cache reuse
-    ttl_s: Optional[int] = None     # allow eviction policy to consider TTL
+    approx_threshold: float = (
+        0.96  # cosine similarity threshold for cache reuse
+    )
+    ttl_s: Optional[int] = None  # allow eviction policy to consider TTL
 
 
 class RouteHints(BaseModel):
-    group_key: Optional[str] = None       # co-locate jobs (e.g., same scorable/paper)
-    shard_key: Optional[str] = None       # choose shard deterministically
-    tenancy: Optional[str] = None         # e.g., "prod", "staging", "research"
-    target_pool: Optional[str] = None     # e.g., "provider", "local-qwen", "remote-http"
+    model_config = ConfigDict(extra="forbid", validate_default=True)
+
+    group_key: Optional[str] = (
+        None  # co-locate jobs (e.g., same scorable/paper)
+    )
+    shard_key: Optional[str] = None  # choose shard deterministically
+    tenancy: Optional[str] = None  # e.g., "prod", "staging", "research"
+    target_pool: Optional[str] = (
+        None  # e.g., "provider", "local-qwen", "remote-http"
+    )
     max_concurrency_hint: Optional[int] = None  # scheduler hint only
 
 
 class SafetyPolicy(BaseModel):
+    model_config = ConfigDict(extra="forbid", validate_default=True)
+
     level: SafetyLevel = SafetyLevel.standard
     allow_tools: bool = False
     allow_web: bool = False
 
 
 class CostTrack(BaseModel):
+    model_config = ConfigDict(extra="forbid", validate_default=True)
+
     provider: Optional[str] = None
     currency: str = "USD"
     prompt_tokens: int = 0
@@ -78,22 +100,46 @@ class Attachment(BaseModel):
     Minimal attachment wrapper for images, files, or audio.
     Provide either bytes_b64 or url (workers can fetch).
     """
+
+    model_config = ConfigDict(extra="forbid", validate_default=True)
+
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    type: str = "image"           # "image" | "file" | "audio"
+    type: str = "image"  # "image" | "file" | "audio"
     mime: Optional[str] = None
     bytes_b64: Optional[str] = None
     url: Optional[str] = None
 
     @classmethod
-    def from_bytes(cls, data: bytes, mime: str, type_: str = "image") -> "Attachment":
-        return cls(type=type_, mime=mime, bytes_b64=base64.b64encode(data).decode("utf-8"))
+    def from_bytes(
+        cls, data: bytes, mime: str, type_: str = "image"
+    ) -> "Attachment":
+        return cls(
+            type=type_,
+            mime=mime,
+            bytes_b64=base64.b64encode(data).decode("utf-8"),
+        )
 
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Main job model
 # ──────────────────────────────────────────────────────────────────────────────
 
+
 class PromptJob(BaseModel):
+    """
+    Provider-agnostic prompt job that can carry either:
+      - prompt_text (simple completion), or
+      - messages (chat format).
+    Exactly one of these must be present at minimum.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        validate_default=True,
+        validate_assignment=True,
+        use_enum_values=False,  # keep Enum types in Python space; we serialize explicitly
+    )
+
     # Identity & routing
     job_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     scorable_id: Optional[str] = None
@@ -102,17 +148,26 @@ class PromptJob(BaseModel):
     trace_id: Optional[str] = None
 
     # Targeting
-    model: str = "gpt-4o-mini"
+    model: dict = {
+        "name": "ollama/qwen:0.5b",
+        "api_base": "http://localhost:11434",
+        "api_key": None,
+    }
+
     target: str = "auto"  # logical target (router decides real executor)
     route: RouteHints = Field(default_factory=RouteHints)
     priority: Priority = Priority.normal
 
     # Core prompt fields
-    prompt_text: Optional[str] = None                 # simple prompt
-    messages: Optional[List[Dict[str, Any]]] = None   # chat format [{"role": "...", "content": "..."}]
-    system: Optional[str] = None                      # optional system override
-    input_vars: Optional[Dict[str, Any]] = None       # templating vars (if a template upstream)
-    tools: Optional[List[Dict[str, Any]]] = None      # tool schemas (OpenAI-style)
+    prompt_text: Optional[str] = None  # simple prompt
+    messages: Optional[List[Dict[str, Any]]] = (
+        None  # [{"role": "...", "content": "..."}]
+    )
+    system: Optional[str] = None  # optional system override
+    input_vars: Optional[Dict[str, Any]] = (
+        None  # templating vars (if a template upstream)
+    )
+    tools: Optional[List[Dict[str, Any]]] = None  # tool schemas (OpenAI-style)
     attachments: Optional[List[Attachment]] = None
 
     # Generation params (provider-agnostic)
@@ -125,15 +180,21 @@ class PromptJob(BaseModel):
 
     # Output & validation
     response_format: ResponseFormat = ResponseFormat.text
-    force_json: bool = False                 # request strict JSON decoding on worker if supported
-    schema: Optional[Dict[str, Any]] = None  # JSON schema for validation (if response_format != text)
-    stream: bool = False                     # streaming response (worker can split into chunks)
-    enforce_schema: bool = False             # if true, reject outputs that don't validate
+    force_json: bool = (
+        False  # request strict JSON decoding on worker if supported
+    )
+    schema: Optional[Dict[str, Any]] = (
+        None  # JSON schema for validation (if response_format != text)
+    )
+    stream: bool = False  # streaming response (worker can split into chunks)
+    enforce_schema: bool = False  # if true, reject outputs that don't validate
 
     # Timing & lifecycle
     created_ts: float = Field(default_factory=lambda: time.time())
-    deadline_ts: Optional[float] = None      # absolute deadline (epoch seconds)
-    ttl_s: Optional[int] = 3600              # keep result subjects alive (JetStream / Redis)
+    deadline_ts: Optional[float] = None  # absolute deadline (epoch seconds)
+    ttl_s: Optional[int] = (
+        3600  # keep result subjects alive (JetStream / Redis)
+    )
     retry: RetryPolicy = Field(default_factory=RetryPolicy)
     cache: CachePolicy = Field(default_factory=CachePolicy)
     safety: SafetyPolicy = Field(default_factory=SafetyPolicy)
@@ -142,9 +203,11 @@ class PromptJob(BaseModel):
     return_topic: Optional[str] = None
 
     # Dedupe & signatures
-    dedupe_key: Optional[str] = None         # if set, dispatcher can drop duplicates
-    signature: Optional[str] = None          # optional HMAC/signature for zero-trust workers
-    version: str = "v2"                      # bump when changing semantics
+    dedupe_key: Optional[str] = None  # if set, dispatcher can drop duplicates
+    signature: Optional[str] = (
+        None  # optional HMAC/signature for zero-trust workers
+    )
+    version: str = "v2"  # bump when changing semantics
 
     # Free-form metadata (saved & echoed back by workers)
     metadata: Dict[str, Any] = Field(default_factory=dict)
@@ -152,17 +215,30 @@ class PromptJob(BaseModel):
     # Telemetry (filled by worker; safe to leave None at publish time)
     cost: Optional[CostTrack] = None
 
-    # ── Validators ────────────────────────────────────────────────────────────
+    # ── Validators (Pydantic v2) ──────────────────────────────────────────────
 
-    @root_validator
-    def _require_prompt_or_messages(cls, values):
-        if not values.get("prompt_text") and not values.get("messages"):
+    @model_validator(mode="after")
+    def _require_prompt_or_messages(self):
+        """
+        Enforce that at least one of (prompt_text, messages) is provided.
+        If both are provided, prefer 'messages' downstream but allow it.
+        """
+        if not self.prompt_text and not self.messages:
             raise ValueError("Provide either prompt_text or messages.")
-        return values
+        return self
 
-    @validator("priority", pre=True, always=True)
+    @field_validator("priority", mode="before")
+    @classmethod
     def _priority_default(cls, v):
         return v or Priority.normal
+
+    @field_validator("messages")
+    @classmethod
+    def _normalize_messages(cls, v):
+        # Treat [] as None; helps the "require" validator behave as expected.
+        if v is not None and len(v) == 0:
+            return None
+        return v
 
     # ── Keys & hashes ─────────────────────────────────────────────────────────
 
@@ -175,18 +251,20 @@ class PromptJob(BaseModel):
             "model": self.model,
             "target": self.target,
             "prompt_text": self.prompt_text,
-            "messages": self.messages,
+            "messages": self._stable_messages_for_hash(),
             "system": self.system,
             "max_tokens": self.max_tokens,
             "temperature": self.temperature,
             "top_p": self.top_p,
             "stop": self.stop,
             "scorable_id": self.scorable_id,
-            "response_format": self.response_format,
+            "response_format": str(self.response_format),
             "schema": self.schema,
             "force_json": self.force_json,
         }
-        s = json.dumps(payload, sort_keys=True, ensure_ascii=False)
+        s = json.dumps(
+            payload, sort_keys=True, ensure_ascii=False, separators=(",", ":")
+        )
         return hashlib.sha256(s.encode("utf-8")).hexdigest()
 
     def compute_cache_key(self) -> str:
@@ -196,13 +274,29 @@ class PromptJob(BaseModel):
         base = {
             "model": self.model,
             "prompt_text": self.prompt_text,
-            "messages": self.messages,
+            "messages": self._stable_messages_for_hash(),
             "system": self.system,
-            "response_format": self.response_format,
+            "response_format": str(self.response_format),
             "schema": self.schema,
         }
-        s = json.dumps(base, sort_keys=True, ensure_ascii=False)
+        s = json.dumps(
+            base, sort_keys=True, ensure_ascii=False, separators=(",", ":")
+        )
         return hashlib.sha256(("CACHE:" + s).encode("utf-8")).hexdigest()
+
+    def _stable_messages_for_hash(self) -> Any:
+        """
+        Make messages hashing robust:
+        - ensure system injection equivalence (messages vs prompt+system),
+        - drop ephemeral fields if ever present,
+        - keep order stable.
+        """
+        msgs = self.messages or []
+        if msgs and self.system:
+            # Ensure a leading system is present for semantic stability.
+            if msgs[0].get("role") != "system":
+                msgs = [{"role": "system", "content": self.system}] + msgs
+        return msgs
 
     # ── Provider payload helpers ──────────────────────────────────────────────
 
@@ -229,8 +323,10 @@ class PromptJob(BaseModel):
             # text-only legacy path
             content = self.prompt_text or ""
             if self.system:
-                base["messages"] = [{"role": "system", "content": self.system},
-                                    {"role": "user", "content": content}]
+                base["messages"] = [
+                    {"role": "system", "content": self.system},
+                    {"role": "user", "content": content},
+                ]
             else:
                 base["messages"] = [{"role": "user", "content": content}]
 
@@ -239,14 +335,14 @@ class PromptJob(BaseModel):
             base["tools"] = self.tools
 
         # response format
-        if self.response_format == ResponseFormat.json_object and (self.force_json or self.schema):
-            # OpenAI's json_object mode:
+        if self.response_format == ResponseFormat.json_object and (
+            self.force_json or self.schema
+        ):
             base["response_format"] = {"type": "json_object"}
-        elif self.response_format == ResponseFormat.text:
-            pass  # default
         elif self.response_format == ResponseFormat.json_lines:
             # not native; worker can stream with '\n' delimited JSON
             base["stream"] = True
+        # else text → default
 
         # streaming flag
         if self.stream:
@@ -255,7 +351,9 @@ class PromptJob(BaseModel):
         return base
 
     @staticmethod
-    def _inject_system(messages: List[Dict[str, Any]], system: Optional[str]) -> List[Dict[str, Any]]:
+    def _inject_system(
+        messages: List[Dict[str, Any]], system: Optional[str]
+    ) -> List[Dict[str, Any]]:
         if system:
             # Ensure a system message is the first if not already present
             if not messages or messages[0].get("role") != "system":
@@ -263,6 +361,9 @@ class PromptJob(BaseModel):
         return messages
 
     # ── Convenience & summaries ───────────────────────────────────────────────
+
+    def is_chat(self) -> bool:
+        return bool(self.messages)
 
     def short_summary(self) -> str:
         model = self.model
@@ -273,7 +374,9 @@ class PromptJob(BaseModel):
         elif self.messages:
             # show last user message head
             user_msgs = [m for m in self.messages if m.get("role") == "user"]
-            head = (user_msgs[-1].get("content", "") if user_msgs else "")[:160]
+            head = (user_msgs[-1].get("content", "") if user_msgs else "")[
+                :160
+            ]
         else:
             head = ""
         return f"[{prio}] {model}/{tgt} — {head}"
@@ -282,7 +385,7 @@ class PromptJob(BaseModel):
 
     def to_kwargs(self) -> Dict[str, Any]:
         """
-        Legacy shim used by some dispatchers; keep until all callers move to pydantic dict().
+        Legacy shim used by some dispatchers; keep until all callers move to Pydantic v2 APIs.
         """
         return {
             "job_id": self.job_id,

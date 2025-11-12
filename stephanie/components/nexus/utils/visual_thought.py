@@ -41,7 +41,7 @@ except Exception:  # pragma: no cover
 # These imports are part of your project
 # VPMState contains (X: np.ndarray [C,H,W], meta: dict, phi: dict, goal: VPMGoal, utility: float)
 # compute_phi recomputes metrics from VPM + meta (e.g., separability, symmetry, bridge_proxy ...)
-from stephanie.zeromodel.state_machine import VPMGoal, VPMState, compute_phi
+from stephanie.components.nexus.vpm.state_machine import VPMGoal, VPMState, compute_phi
 
 # --------------------------------------------------------------------------------------
 # Visual Ops

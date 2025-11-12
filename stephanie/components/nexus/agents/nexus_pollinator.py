@@ -1,6 +1,7 @@
-# stephanie/components/nexus/agents/nexus_improver.py
+# stephanie/components/nexus/agents/nexus_pollinator.py
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import math
@@ -14,16 +15,18 @@ import numpy as np
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.components.nexus.blossom.runner import BlossomRunnerAgent
-from stephanie.components.nexus.blossom.viewer.renderer import write_garden_frames
+from stephanie.components.nexus.graph.knowledge_index import compute_knowledge_index
 from stephanie.services.scoring_service import ScoringService
 from stephanie.scoring.scorable import Scorable
 from stephanie.utils.progress_mixin import ProgressMixin
+from stephanie.components.nexus.blossom.viewer.renderer import write_garden_frames
 
+log = logging.getLogger(__name__)
 
 # --------------------------- CONFIG ---------------------------
 
 @dataclass(slots=True)
-class NexusImproverAsyncConfig:
+class NexusPollinatorConfig:
     k_candidates: int = 2
     sharpen_iters: int = 1
     novelty_tau: float = 0.12
@@ -36,10 +39,16 @@ class NexusImproverAsyncConfig:
     use_vpm_phi: bool = False
     persist_scores: bool = True
     blossom_cfg: Dict[str, Any] = field(default_factory=dict)
+    # new convenience mirrors 
+    offload_mode: str = "await"   # "await" | "fire_and_forget" | "disabled"
+    max_inflight: int = 64        # global inflight LLM jobs
+    response_timeout_s: float = 90.0
+    response_poll_ms: int = 250
 
     @staticmethod
-    def from_cfg(cfg: Dict[str, Any]) -> NexusImproverAsyncConfig:
-        return NexusImproverAsyncConfig(
+    def from_cfg(cfg: Dict[str, Any]) -> NexusPollinatorConfig:
+        bc = dict(cfg.get("blossom", {}))
+        return NexusPollinatorConfig(
             k_candidates=int(cfg.get("k_candidates", 2)),
             sharpen_iters=int(cfg.get("sharpen_iters", 1)),
             novelty_tau=float(cfg.get("novelty_tau", 0.12)),
@@ -51,13 +60,17 @@ class NexusImproverAsyncConfig:
             use_llm_heuristic=bool(cfg.get("use_llm_heuristic", False)),
             use_vpm_phi=bool(cfg.get("use_vpm_phi", False)),
             persist_scores=bool(cfg.get("persist_scores", True)),
-            blossom_cfg=dict(cfg.get("blossom", {})),
+            blossom_cfg=bc,
+            offload_mode=str(cfg.get("offload_mode", bc.get("offload_mode", "await"))),
+            max_inflight=int(cfg.get("max_inflight", bc.get("max_inflight", 64))),
+            response_timeout_s=float(cfg.get("response_timeout_s", bc.get("response_timeout_s", 90.0))),
+            response_poll_ms=int(cfg.get("response_poll_ms", bc.get("response_poll_ms", 250))),
         )
 
 
 # --------------------------- AGENT ---------------------------
 
-class NexusImproverAsyncAgent(ProgressMixin, BaseAgent):
+class NexusPollinatorAgent(ProgressMixin, BaseAgent):
     """
     Improves a cohort of Scorables via Blossom (generate -> refine -> select),
     evaluates lift, persists training events, and reports progress in real time.
@@ -70,7 +83,7 @@ class NexusImproverAsyncAgent(ProgressMixin, BaseAgent):
     def __init__(self, cfg: Dict[str, Any], memory, container, logger):
         super().__init__(cfg, memory, container, logger)
         self._init_progress(container, logger)
-        self.cfg = NexusImproverAsyncConfig.from_cfg(cfg or {})
+        self.cfg = NexusPollinatorConfig.from_cfg(cfg or {})
         self.scoring: ScoringService = container.get("scoring")
         self.blossom = BlossomRunnerAgent(self.cfg.blossom_cfg, memory, container, logger)
 
@@ -141,8 +154,11 @@ class NexusImproverAsyncAgent(ProgressMixin, BaseAgent):
             est_total = max(1, self.cfg.k_candidates * max(1, self.cfg.sharpen_iters))
             self.pstart(ep_task, total=est_total)
 
-            offload = bool(self.cfg.blossom_cfg.get("offload_prompts", False))
-            if offload:
+            use_offload = bool(self.cfg.blossom_cfg.get("offload_prompts", False))
+            mode = self.cfg.offload_mode
+
+            if use_offload and mode in ("await", "fire_and_forget"):
+                # 1) Enqueue K prompts quickly
                 tickets = await self._offload_candidate_prompts(
                     parent_scorable,
                     {**context, "progress_task": ep_task},
@@ -150,25 +166,54 @@ class NexusImproverAsyncAgent(ProgressMixin, BaseAgent):
                     model=self.cfg.blossom_cfg.get("model", "gpt-4o-mini"),
                     target_pool=self.cfg.blossom_cfg.get("target_pool", "provider"),
                 )
-                # record and move on; don't wait
-                context.setdefault("pending_prompt_tickets", []).extend(tickets)
-                # mark this episode as pending
-                decisions.append({
-                    "parent_id": self._sid(parent_scorable, idx),
-                    "status": "pending_prompts",
-                    "k_requested": self.cfg.k_candidates
-                })
-                self.pstep(task_run, n=1)
-                self.pdone(ep_task)  # ← add this
 
-                # skip sync blossom path
-                continue
+                if mode == "fire_and_forget":
+                    # mark pending and move on; a collector will finalize later
+                    context.setdefault("pending_prompt_tickets", []).extend(tickets)
+                    decisions.append({
+                        "parent_id": getattr(parent_scorable, "id", None),
+                        "status": "pending_prompts",
+                        "k_requested": self.cfg.k_candidates
+                    })
+                    self.pstep(task_run, n=1)
+                    self.pdone(ep_task)
+                    continue
 
-            children, blossom_meta = await self._blossom_and_refine(
-                parent_scorable,
-                {**context, "progress_task": ep_task},
-                self.cfg.k_candidates,
-            )
+                # mode == "await"  →  2) Wait concurrently (bounded globally)
+                # Use a global inflight window: schedule many parents before awaiting.
+                # Simple approach: gather immediately; faster approach: push this into a task pool.
+                texts = await self._await_offloaded_candidates(
+                    tickets,
+                    timeout_s=self.cfg.response_timeout_s,
+                    poll_ms=self.cfg.response_poll_ms
+                )
+
+                # 3) Convert results -> children Scorables
+                children: List[Scorable] = []
+                for i, txt in enumerate(texts):
+                    if not txt:
+                        continue
+                    children.append(Scorable(
+                        id=f"bl_off:{getattr(parent_scorable,'id','x')}:{i}",
+                        text=str(txt),
+                        target_type=getattr(parent_scorable, "target_type", "document"),
+                    ))
+                blossom_meta = {
+                    "episode_id": f"offload:{getattr(parent_scorable,'id','x')}",
+                    "winners": [], "top_reward": 0.0,
+                    "k_requested": self.cfg.k_candidates,
+                    "k_resolved": len(children),
+                }
+
+            else:
+                # original synchronous path
+                children, blossom_meta = await self._blossom_and_refine(
+                    s, {**context, "progress_task": ep_task}, self.cfg.k_candidates
+                )
+
+
+
+
 
             # best-effort progress reconciliation (if runner didn't emit live)
             self._reconcile_episode_progress_from_events(ep_task, blossom_meta, est_total)
@@ -324,6 +369,15 @@ class NexusImproverAsyncAgent(ProgressMixin, BaseAgent):
         context[self.output_key] = report
 
         write_garden_frames(run_dir, baseline_graph_json=context.get("nexus_graph_json"))
+
+        run_dir = self._run_dir(context)
+        baseline_path = run_dir / "baseline_graph.json"      # write this once at start
+        improved_path = run_dir / "graph_improved.json"      # already written by renderer
+        report_path   = run_dir / "nexus_improver_report.json"
+
+        idx = compute_knowledge_index(baseline_path, improved_path, report_path)
+        (run_dir / "knowledge_index.json").write_text(json.dumps(idx, indent=2), encoding="utf-8")
+        self._slog("KnowledgeIndex", idx)
 
         return context
 
@@ -911,12 +965,68 @@ class NexusImproverAsyncAgent(ProgressMixin, BaseAgent):
         d.mkdir(parents=True, exist_ok=True)
         return d
 
+
     def _normalize_weights(self, w: Dict[str, float], default: float = 1.0) -> Dict[str, float]:
         w2 = {k: float(v) for k, v in (w or {}).items()}
         if not w2:
             return {}
         s = sum(abs(v) for v in w2.values())
         return {k: (v / s if s else default) for k, v in w2.items()}
+
+    # ---- Async prompt helpers ---------------------------------
+    async def _offload_candidate_prompts(
+        self, parent: Scorable, context: Dict[str, Any], *, k: int, model: str, target_pool: str
+    ) -> List[Dict[str, str]]:
+        """
+        Enqueue K refinement prompts for `parent` using the async prompt tool.
+        Returns tickets: [{job_id, return_topic, parent_id, k_index}, ...]
+        """
+        from stephanie.prompts.prompt_client import PromptClient
+
+        goal_text = (context.get("goal") or {}).get("goal_text", "")
+        prompts = []
+        for i in range(k):
+            prompts.append({
+                "messages": [
+                    {"role": "system", "content": "You are a careful refiner."},
+                    {"role": "user",
+                    "content": f"Refine this answer for the goal:\n{goal_text}\n\n---\n{parent.text}\n"}
+                ],
+            })
+
+        client = PromptClient(self.cfg.blossom_cfg, self.memory, self.container, self.logger)
+        tickets = await client.offload_many(
+            scorable_id=str(parent.id),
+            prompts=prompts,
+            model=model,
+            target_pool=target_pool,
+            priority="high",
+            group_key=f"nexus:{context.get('pipeline_run_id')}",
+            meta={"purpose": "nexus_blossom_refine", "parent_id": str(parent.id)},
+            response_format="text",
+        )
+        # normalize
+        return [{"job_id": jid, "return_topic": rt, "parent_id": str(parent.id), "k_index": str(i)}
+                for i, (jid, rt) in enumerate(tickets)]
+
+
+    async def _await_offloaded_candidates(
+        self,
+        tickets: List[Dict[str, str]],
+        *,
+        timeout_s: float,
+        poll_ms: int,
+    ) -> List[str]:
+        """
+        Wait for text results for given tickets. Returns list[str] texts (may be shorter on timeout).
+        Uses PromptClient if it exposes a wait API; otherwise does a simple poll loop as fallback.
+        """
+        from stephanie.prompts.prompt_client import PromptClient
+        client = PromptClient(self.cfg.blossom_cfg, self.memory, self.container, self.logger)
+
+        # Fast-path: client has a vectorized wait
+        return await client.wait_many(tickets, timeout_s=timeout_s)
+
 
     def _slog(self, event: str, payload: Dict[str, Any]):
         try:
@@ -926,3 +1036,4 @@ class NexusImproverAsyncAgent(ProgressMixin, BaseAgent):
                 logging.getLogger(__name__).warning("%s: %s", event, payload)
         except Exception:
             pass
+

@@ -8,7 +8,7 @@ import torch
 import networkx as nx
 from omegaconf import OmegaConf
 from stephanie.services.graph_layout import render_multi_layout_vpm
-from stephanie.zeromodel.state_machine import VPMGoal, VPMState, compute_phi, Thought, ThoughtExecutor
+from stephanie.components.nexus.vpm.state_machine import VPMGoal, VPMState, compute_phi, Thought, ThoughtExecutor
 from stephanie.components.nexus.utils.visual_thought import VisualThoughtOp, VisualThoughtType
 from train_vpm_thought_model import VPMThoughtModel, DEFAULT_CONFIG  # reuse defs
 

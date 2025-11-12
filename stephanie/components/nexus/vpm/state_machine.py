@@ -1,4 +1,4 @@
-# stephanie/zeromodel/state_machine.py
+# stephanie/components/nexus/vpm/state_machine.py
 from __future__ import annotations
 
 """
@@ -24,6 +24,7 @@ External Dependencies
 
 This module is intentionally dependency-light and pure-Python friendly.
 """
+from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
@@ -34,6 +35,24 @@ from PIL import Image, ImageDraw, ImageFilter
 
 from stephanie.components.nexus.utils.visual_thought import (VisualThoughtOp,
                                                              VisualThoughtType)
+
+def _clamp_int(v, lo, hi): 
+    return int(max(lo, min(hi, int(v))))
+
+def _parse_xyxy(params, W, H, default=None):
+    x1, y1, x2, y2 = (default or (W//4, H//4, 3*W//4, 3*H//4))
+    x1 = _clamp_int(params.get("x1", params.get("xyxy", (x1,y1,x2,y2))[0]), 0, W-1)
+    y1 = _clamp_int(params.get("y1", params.get("xyxy", (x1,y1,x2,y2))[1]), 0, H-1)
+    x2 = _clamp_int(params.get("x2", params.get("xyxy", (x1,y1,x2,y2))[2]), x1+1, W)
+    y2 = _clamp_int(params.get("y2", params.get("xyxy", (x1,y1,x2,y2))[3]), y1+1, H)
+    return x1, y1, x2, y2
+
+def _parse_center_scale(params, W, H):
+    cx, cy = params.get("center", (W//2, H//2))
+    cx = _clamp_int(cx, 0, W-1)
+    cy = _clamp_int(cy, 0, H-1)
+    scale = max(1.0, float(params.get("scale", 2.0)))
+    return cx, cy, scale
 
 
 # ---------------------------------------------------------------------
@@ -85,9 +104,11 @@ class VPMState:
             u += w * float(self.phi.get(k, 0.0))
         if self.goal.cost_lambda > 0:
             u -= self.goal.cost_lambda * float(self.cost_accum)
+        # include φ version so downstream can check drift
+        self.meta["_phi_version"] = self.phi.get("_phi_version", PHI_VERSION)
         return float(u)
 
-    def clone(self) -> "VPMState":
+    def clone(self) -> VPMState:
         return VPMState(
             X=self.X.copy(),
             meta=dict(self.meta),
@@ -208,6 +229,7 @@ def _crossings_proxy(ed_ch: np.ndarray, threshold: float = 0.5) -> int:
     trans = np.abs(np.diff(stripe, axis=1)).sum(axis=1)  # [H]
     return int(trans.sum())
 
+PHI_VERSION = "1.0.0"
 
 def compute_phi(vpm: np.ndarray, meta: Optional[Dict[str, Any]] = None) -> Dict[str, float]:
     """
@@ -263,6 +285,7 @@ def compute_phi(vpm: np.ndarray, meta: Optional[Dict[str, Any]] = None) -> Dict[
         "bridge_proxy": float(bridge),
         "spectral_gap": float(spectral_gap),
         "crossings": int(crossings),
+        "_phi_version": PHI_VERSION,
     }
 
 
@@ -389,37 +412,22 @@ class ThoughtExecutor:
             out[c] = np.asarray(resized, dtype=np.float32) / 255.0
         return out
 
-    def _op_bbox(self, X01: np.ndarray, params: Dict[str, Any]) -> np.ndarray:
-        """
-        Draw an outline box to emphasize a region. Rendering is additive and clipped.
-        params:
-            xyxy: (x1,y1,x2,y2)
-            width: int (line width)
-            intensity: float in [0,1] (how bright the box strokes)
-            channel: optional int to draw only on that channel; default overlays all
-        """
-        C, H, W = X01.shape
-        x1, y1, x2, y2 = map(int, params.get("xyxy", (W//4, H//4, 3*W//4, 3*H//4)))
+    def _op_bbox(self, X01, params):
+        C,H,W = X01.shape
+        x1,y1,x2,y2 = _parse_xyxy(params, W, H)
         width = int(params.get("width", 2))
         intensity = float(np.clip(params.get("intensity", 1.0), 0.0, 1.0))
-        channel = params.get("channel", None)
+        # build mask once
+        mask = np.zeros((H,W), dtype=np.float32)
+        mask[y1:y1+width, x1:x2] = 1.0
+        mask[y2-width:y2, x1:x2] = 1.0
+        mask[y1:y2, x1:x1+width] = 1.0
+        mask[y1:y2, x2-width:x2] = 1.0
+        return self._overlay_mask(X01, mask, intensity)
 
-        if channel is not None:
-            channels = [int(channel)]
-        else:
-            channels = list(range(C))
-
-        for c in channels:
-            base = (X01[c] * 255).astype(np.uint8)
-            pil = Image.fromarray(base, mode="L")
-            draw = ImageDraw.Draw(pil)
-            for w in range(width):
-                draw.rectangle(
-                    (x1 - w, y1 - w, x2 + w, y2 + w),
-                    outline=int(max(0, min(255, int(255 * intensity)))),
-                )
-            X01[c] = np.asarray(pil, dtype=np.float32) / 255.0
-        return X01
+    def _overlay_mask(self, X01: np.ndarray, mask: np.ndarray, alpha: float) -> np.ndarray:
+        # X01, mask in [0,1]; alpha in [0,1]; apply per-channel
+        return np.clip(X01*(1.0) + mask[..., None]*alpha, 0.0, 1.0) if X01.ndim==3 else np.clip(X01 + mask*alpha, 0.0, 1.0)
 
     def _op_path(self, X01: np.ndarray, params: Dict[str, Any]) -> np.ndarray:
         """
