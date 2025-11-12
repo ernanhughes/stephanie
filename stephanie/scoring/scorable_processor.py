@@ -28,7 +28,10 @@ from stephanie.scoring.adapters.db_writers import (
     EntityDBWriter,
 )
 from stephanie.core.manifest import ManifestManager, Manifest
+from stephanie.services.zeromodel_service import ZeroModelService
+
 log = logging.getLogger(__name__)
+
 
 
 class ScorableProcessor:
@@ -69,7 +72,7 @@ class ScorableProcessor:
         )
         self.persist: bool = bool(cfg.get("persist_scores", False))
 
-        # Optional model I
+        # classifier for domains
         self.domain_classifier: ScorableClassifier = ScorableClassifier(
             memory=self.memory,
             logger=self.logger,
@@ -77,6 +80,7 @@ class ScorableProcessor:
                 "domain_seed_config_path", "config/domain/seeds.yaml"
             ),
         )
+        self.persist_domains: bool = bool(cfg.get("persist_domains", False))
 
         try:
             self.entity_extractor = EntityDetector(
@@ -92,12 +96,17 @@ class ScorableProcessor:
             self.entity_extractor = None   # <- keep same name
             log.error(f"Failed to initialize EntityDetector: {e}")
 
-        self.zm = container.get("zeromodel")
+        self.zm: ZeroModelService = container.get("zeromodel")
         self.scoring: ScoringService = container.get("scoring")
 
         # Embeddings (memory embedding service must provide get_or_create / get_or_create_batch)
         self.embed = self.memory.embedding
 
+        self.include_text_features = bool(cfg.get("include_text_features", True))
+        self.persist_vpm_png = bool(cfg.get("persist_vpm_png", True))
+        self.save_vpm_channels = bool(cfg.get("save_vpm_channels", False))
+        self.vpm_out_root = Path(cfg.get("vpm_out_root", "runs/vpm"))
+        
         # Cache & manifest
         self._cache: Dict[str, Any] = {}
         self._cache_hits = 0
@@ -198,19 +207,24 @@ class ScorableProcessor:
         content_hash = self._hash_text(text)
         return f"{stype}:{sid or 'noid'}:{content_hash}"
 
+    def _text_feats(self, text: str) -> Dict[str, float]:
+        text = text or ""
+        n = len(text)
+        words = text.split()
+        nw = len(words)
+        caps = sum(1 for c in text if c.isupper())
+        punc = sum(1 for c in text if c in "!?;:,.()[]{}\"'`")
+        lines = text.count("\n") + 1
+        avgw = (sum(len(w) for w in words) / max(1, nw)) if nw else 0.0
+        return {
+            "text.len": float(n),
+            "text.words": float(nw),
+            "text.avgw": float(avgw),
+            "text.caps_ratio": float(caps / max(1, n)),
+            "text.punc_ratio": float(punc / max(1, n)),
+            "text.lines": float(lines),
+        }
 
-    def _extract_goal(self, scorable: Scorable, context: Dict[str, Any]) -> Dict[str, Any]:
-        # Best-effort: pull from scorable.meta/domains/goal_ref or conversation user text if present
-        m = scorable.meta or {}
-        if "goal_text" in m:
-            return {"text": m.get("goal_text")}
-        if "user_text" in m:
-            return {"text": m.get("user_text")}
-        # fallback: primary domain as proxy
-        d, s, src = scorable.primary_domain()
-        if d:
-            return {"text": f"[domain:{d}] {scorable.text[:4000]}"}
-        return {"text": scorable.text[:4000]}
 
     def _fold_score_bundle(self, bundle: Dict[str, Any]) -> Dict[str, float]:
         vec: Dict[str, float] = {}
@@ -332,8 +346,7 @@ class ScorableProcessor:
             except Exception as e:
                 log.warning("[SP:hydrate] %s failed: %s", name, e)
 
-        # 2) Compute missing features
-        # Embeddings
+        # 2) Embeddings
         gl = (acc.get("embeddings") or {}).get("global")
         if not (isinstance(gl, list) and gl) and text:
             t0 = time.perf_counter()
@@ -348,13 +361,17 @@ class ScorableProcessor:
             else:
                 log.debug("[SP:embed] skipped/none")
 
-        # Domains
+        # 3) Domains
         need_domains = not acc.get("domains") or len(acc["domains"]) < int(
             self.cfg.get("min_domains", 1)
         )
         if need_domains:
             t0 = time.perf_counter()
             log.debug("[SP:domain] inferring id=%s", scorable.id)
+            if self.persist_domains:
+                # Clear existing to avoid duplicates
+                acc["domains"] = []
+            
             inferred = self.domain_classifier.classify(text)
             for name, score in inferred:
                 acc.setdefault("domains", []).append({"name": name, "score": score})
@@ -362,7 +379,7 @@ class ScorableProcessor:
         else:
             log.debug("[SP:domain] hydrated %d", len(acc.get("domains") or []))
 
-        # NER
+        # 4) NER
         need_ner = not acc.get("ner") and bool(self.cfg.get("enable_ner_model", True))
         if need_ner and self.entity_extractor:
             t0 = time.perf_counter()
@@ -377,30 +394,16 @@ class ScorableProcessor:
             log.debug("[SP:ner] skipped (hydrated=%s, enabled=%s, has_detector=%s)",
                      bool(acc.get("ner")), bool(self.cfg.get("enable_ner_model", True)),
                      bool(self.entity_extractor))
-
-        # Vision/VPM
-        if self.zm and not acc.get("vision_signals"):
-            t0 = time.perf_counter()
-            log.debug("[SP:vpm] building VPM id=%s", scorable.id)
-            try:
-                vpm_u8_chw, meta = self.zm.vpm_from_scorable(scorable)
-                acc["vision_signals"] = vpm_u8_chw
-                acc["vision_signals_meta"] = meta
-                shape_desc = self._shape_dtype(vpm_u8_chw)
-                log.debug("[SP:vpm] ok %s in %s (meta keys=%d)",
-                         shape_desc, self._t(t0), len(meta or {}))
-            except Exception as e:
-                log.debug("[SP:vpm] unavailable/failed: %s", e)
-        else:
-            log.debug("[SP:vpm] skipped (has_zm=%s, already=%s)", bool(self.zm), bool(acc.get("vision_signals")))
-
-        # 3) Scores
+        
+        # 5) Scores  → build canonical metrics vector
+        metrics_columns: List[str] = []
+        metrics_values:  List[float] = []
         if self.scoring and self.cfg.get("attach_scores", True):
             t0_scores = time.perf_counter()
-            goal = self._extract_goal(scorable, context=context)
+            goal_text = Scorable.get_goal_text(scorable, context=context)
             run_id = context.get("pipeline_run_id")
-            ctx = {"goal": goal, "pipeline_run_id": run_id}
-            vector = {}
+            ctx = {"goal": {"goal_text": goal_text}, "pipeline_run_id": run_id}
+            vector: Dict[str, float] = {}
             log.debug("[SP:score] start scorers=%s dims=%s", self.scorers, self.dimensions)
 
             for name in self.scorers:
@@ -413,20 +416,63 @@ class ScorableProcessor:
                 agg = float(bundle.aggregate())
                 flat = bundle.flatten(include_scores=True, include_attributes=True, numeric_only=True)
                 for k, v in flat.items():
+                    # vector keys look like: "{alias}.{dimension_or_attr}"
                     vector[f"{model_alias}.{k}"] = float(v)
                 vector[f"{model_alias}.aggregate"] = agg
                 log.debug("[SP:score] ← %s alias=%s agg=%.4f added=%d in %s",
-                         name, model_alias, agg, len(flat) + 1, self._t(t0))
+                          name, model_alias, agg, len(flat) + 1, self._t(t0))
                 await asyncio.sleep(0)
 
-            acc["metrics_vector"] = vector
+            # Deterministic ordering
+            metrics_columns = sorted(vector.keys())
+            metrics_values  = [float(vector[c]) for c in metrics_columns]
+
+            # Stash both the dict and ordered vector for downstream consumers
+            acc["metrics_vector"]   = vector
+            acc["metrics_columns"]  = metrics_columns
+            acc["metrics_values"]   = metrics_values
+
             log.debug("[SP:score] done total_keys=%d in %s",
-                     len(vector), self._t(t0_scores))
+                      len(vector), self._t(t0_scores))
         else:
             log.debug("[SP:score] skipped (scoring=%s attach=%s)",
-                     bool(self.scoring), bool(self.cfg.get("attach_scores", True)))
+                      bool(self.scoring), bool(self.cfg.get("attach_scores", True)))
 
-        # 4) Row build
+        # 6) Vision/VPM  → ALWAYS from metrics 
+        # Require metrics unless cfg explicitly allows empty-VPM skip
+        require_metrics = bool(self.cfg.get("require_metrics_for_vpm", True))
+        have_metrics    = bool(acc.get("metrics_columns") and acc.get("metrics_values"))
+
+        if self.zm and not acc.get("vision_signals"):
+            if not have_metrics:
+                msg = "[SP:vpm] missing metrics; cannot render VPM deterministically"
+                if require_metrics:
+                    log.error(msg + " (set require_metrics_for_vpm=false to skip VPM)")
+                    raise RuntimeError("ScorableProcessor: VPM requested but metrics are missing")
+                else:
+                    log.debug(msg + " (skipping VPM per config)")
+            else:
+                t0 = time.perf_counter()
+                log.debug("[SP:vpm] rendering VPM from metrics id=%s cols=%d",
+                          scorable.id, len(acc["metrics_columns"]))
+                # Preferred path: pass metrics explicitly to ZeroModel
+                    # If you've patched ZeroModelService.vpm_from_scorable(**, metrics=...), use that:
+                vpm_u8_chw, meta = await self.zm.vpm_from_scorable(
+                    scorable,
+                    metrics_values=metrics_values,
+                    metrics_columns=metrics_columns,
+                )
+
+                acc["vision_signals"]      = vpm_u8_chw
+                acc["vision_signals_meta"] = meta
+                shape_desc = self._shape_dtype(vpm_u8_chw)
+                log.debug("[SP:vpm] ok %s in %s (meta keys=%d)",
+                          shape_desc, self._t(t0), len(meta or {}))
+        else:
+            log.debug("[SP:vpm] skipped (has_zm=%s, already=%s)",
+                      bool(self.zm), bool(acc.get("vision_signals")))
+
+        # 7) Row build
         t0 = time.perf_counter()
         row = self._build_features_row(scorable, acc)
         log.debug("[SP:row] built metrics=%d domains=%d ner=%d in %s",
@@ -435,7 +481,7 @@ class ScorableProcessor:
                  len(row.get("ner") or []),
                  self._t(t0))
 
-        # 5) Persist deltas
+        # 8) Persist deltas
         for writer in self.writers:
             t0w = time.perf_counter()
             name = writer.__class__.__name__
@@ -446,17 +492,15 @@ class ScorableProcessor:
             except Exception as e:
                 log.warning("[SP:persist] %s failed: %s", name, e)
 
-        # 6) Manifest
+        # 9) Manifest
         if self._manifest_features_path:
             await self.write_to_manifest(row)
 
-        # 7) Cache + return
+        # 10) Cache + return
         self._cache[cache_key] = row
         log.debug("[SP:process] done id=%s in %s (cache.size=%d hit_rate=%.2f)",
                  scorable.id, self._t(t_all), len(self._cache),
                  self.get_cache_stats()["hit_rate"])
-        
-
 
         return row
 

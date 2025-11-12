@@ -5,17 +5,21 @@ import asyncio
 import json
 import logging
 import os
+import math
 import time
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
+import hashlib
 
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import scipy.stats as spstats  # optional, but nice if available
+from stephanie.scoring.scorable import Scorable
+from stephanie.utils import metrics
 from zeromodel.pipeline.executor import PipelineExecutor
 from zeromodel.tools.gif_logger import GifLogger
 from zeromodel.tools.spatial_optimizer import SpatialOptimizer
@@ -2371,79 +2375,150 @@ class ZeroModelService(Service):
             "col_intensities": col_int.tolist(),
         }
 
-    def vpm_from_scorable(
-        self, scorable, *, img_size: int = 256
+
+    async def vpm_from_scorable(
+        self,
+        scorable: Scorable, 
+        metrics_values: List[float],
+        metrics_columns: list[str] | None = None,
     ) -> tuple[np.ndarray, dict]:
-        """
-        Public, stable wrapper for Scorable -> VPM (uint8[3,H,W]) + adapter meta.
-        Keeps the 'how' inside ZeroModel.
-        """
-        out_dir = self._out_dir
-        vpm_u8, meta = self._scorable_to_vpm(
-            scorable, out_dir=out_dir, img_size=img_size
-        )
-        return vpm_u8, meta
+        chw = await self._to_vpm_array(metrics_values=metrics_values, metrics_columns=metrics_columns)
+        meta = scorable.to_dict()
+        return chw, meta
 
     def vpm_rollout(
         self,
-        vpm_u8: np.ndarray,
+        vpm_u8: Optional[np.ndarray] = None,
         *,
         steps: int = 0,
-        dims: list[str] = (
-            "clarity",
-            "coherence",
-            "complexity",
-            "alignment",
-            "coverage",
-        ),
+        dims: List[str] = ("clarity", "coherence", "complexity", "alignment", "coverage"),
         strategy: str = "none",
-    ) -> tuple[list[np.ndarray], list[dict]]:
+        metrics_columns: Optional[List[str]] = None,
+        metrics_values: Optional[List[float]] = None,
+        img_size: int = 256,
+    ) -> Tuple[List[np.ndarray], List[Dict[str, Any]]]:
         """
-        Returns (frames_rgb, step_summaries). Intelligence lives here.
-        - frames_rgb: list of HxWx3 uint8 images (for filmstrip)
-        - step_summaries: list of dicts, each has {scores:{dim:float...}, overall:float, meta:{...}}
-        Default strategy='none' → just score the initial VPM composite (fast, deterministic).
+        Returns (frames_rgb, step_summaries).
+
+        Accepts either:
+          • vpm_u8: CHW uint8 VPM
+          • OR metrics_(columns, values) to deterministically recompose a VPM internally
+
+        frames_rgb: list of HxWx3 uint8 images (filmstrip)
+        step_summaries[i]: { "scores": {dim: float}, "overall": float, "meta": {...}, "step": i, "thought": {...} }
         """
-        frames, summaries = [], []
-        # initial composite & score
-        comp = vpm_u8.mean(axis=0)  # gray composite
-        s0 = self.score_vpm_image(comp, dims=list(dims))
-        frames.append(np.transpose(vpm_u8, (1, 2, 0)))  # HWC
+        # 0) Ensure we have a CHW uint8 VPM
+        vpm = self._ensure_vpm(vpm_u8, metrics_columns, metrics_values, img_size)
+
+        frames: List[np.ndarray] = []
+        summaries: List[Dict[str, Any]] = []
+
+        # step 0: composite + score
+        comp = vpm.mean(axis=0)  # gray composite
+        s0 = self.score_vpm_image(comp, dims=list(dims))  # your existing scorer
+        frames.append(self._chw_to_hwc(vpm))              # HWC
         summaries.append({**s0, "step": 0, "thought": {"op": "none"}})
 
         if steps <= 0 or strategy == "none":
             return frames, summaries
 
-        # optional: minimal deterministic zoom strategy
-        cur = vpm_u8.copy()
+        # rollouts
+        cur = vpm.copy()
         for i in range(1, steps + 1):
+            thought = {"op": "none"}
             if strategy == "zoom_max":
-                thought = self._next_thought(
-                    i, cur
-                )  # uses your existing helper
+                # your existing helpers
+                thought = self._next_thought(i, cur)
                 if thought.get("op") == "zoom":
-                    cur = self._apply_zoom(
-                        cur, thought["center"], thought["scale"]
-                    )
-            comp = cur.mean(axis=0)
-            si = self.score_vpm_image(comp, dims=list(dims))
-            frames.append(np.transpose(cur, (1, 2, 0)))
-            summaries.append(
-                {
-                    **si,
-                    "step": i,
-                    "thought": thought
-                    if strategy != "none"
-                    else {"op": "none"},
-                }
-            )
+                    cur = self._apply_zoom(cur, thought["center"], thought["scale"])
+
+            comp_i = cur.mean(axis=0)
+            si = self.score_vpm_image(comp_i, dims=list(dims))
+            frames.append(self._chw_to_hwc(cur))
+            summaries.append({**si, "step": i, "thought": thought})
 
         return frames, summaries
 
-    async def to_vpm_array(
+    # ------------------ helpers ------------------
+
+    def _ensure_vpm(
         self,
-        metrics: dict[str, float] | list[float],
-        metrics_order: list[str] | None = None,
+        vpm_u8: Optional[np.ndarray],
+        metrics_columns: Optional[List[str]],
+        metrics_values: Optional[List[float]],
+        img_size: int,
+    ) -> np.ndarray:
+        """Return CHW uint8 VPM, using metrics fallback if needed."""
+        if isinstance(vpm_u8, np.ndarray):
+            v = vpm_u8
+            # normalize to CHW uint8
+            if v.ndim == 3 and v.shape[-1] in (1, 3):  # HWC -> CHW
+                v = np.transpose(v, (2, 0, 1))
+            v = v.astype(np.uint8, copy=False)
+            return v
+
+        if metrics_columns and metrics_values:
+            # Prefer your real compositor if you have it:
+            if hasattr(self, "vpm_from_metrics"):
+                v, _meta = self.vpm_from_metrics(metrics_columns, metrics_values, img_size=img_size)
+                return v.astype(np.uint8, copy=False)
+
+            # Fallback: stable, deterministic tiling from metrics (CHW)
+            return self._fallback_vpm_from_metrics(metrics_columns, metrics_values, img_size)
+
+        raise ValueError("vpm_rollout: provide either vpm_u8 or metrics_(columns, values)")
+
+    def _fallback_vpm_from_metrics(
+        self, cols: List[str], vals: List[float], img_size: int, channels: int = 3
+    ) -> np.ndarray:
+        """
+        Deterministic, collision-tolerant compositor:
+        - Places metric tiles by a stable hash of column name.
+        - Robust 5–95% percentile normalization to avoid outliers.
+        - Same tile layout across channels (cheap but stable).
+        """
+        v = np.asarray(vals, dtype=float)
+        if v.size == 0:
+            return np.zeros((channels, img_size, img_size), dtype=np.uint8)
+
+        # normalize to 0..1 robustly
+        v = np.nan_to_num(v, nan=0.0, posinf=0.0, neginf=0.0)
+        lo, hi = np.percentile(v, 5), np.percentile(v, 95)
+        if not np.isfinite(lo): lo = 0.0
+        if not np.isfinite(hi) or hi <= lo: hi = lo + 1e-6
+        v = (v - lo) / (hi - lo)
+        n = v.size
+
+        # grid dims
+        g = int(math.ceil(math.sqrt(n)))
+        cell = max(1, img_size // g)
+
+        out = np.zeros((channels, img_size, img_size), dtype=np.uint8)
+
+        # stable placement by hashing the column name
+        order = sorted(
+            range(n),
+            key=lambda i: hashlib.blake2s(cols[i].encode("utf-8"), digest_size=8).hexdigest(),
+        )
+        for rank, idx in enumerate(order):
+            r, c = divmod(rank, g)
+            r0, c0 = r * cell, c * cell
+            r1, c1 = min(img_size, r0 + cell), min(img_size, c0 + cell)
+            val255 = int(np.clip(v[idx] * 255.0, 0, 255))
+            out[:, r0:r1, c0:c1] = val255  # same tile across channels
+
+        return out
+
+    @staticmethod
+    def _chw_to_hwc(x: np.ndarray) -> np.ndarray:
+        if x.ndim == 3 and x.shape[0] in (1, 3):
+            return np.transpose(x, (1, 2, 0))
+        return x
+
+    async def _to_vpm_array(
+        self,
+        metrics_values: list[float],
+        metrics_columns: list[str],
         *,
         normalize: str = "passthrough",
     ) -> np.ndarray:
@@ -2457,14 +2532,7 @@ class ZeroModelService(Service):
         if not self._initialized:
             self.initialize()
 
-        # ---- build a single-row matrix ----
-        if isinstance(metrics, dict):
-            cols = metrics_order or sorted(metrics.keys())
-            row = [float(metrics.get(k, 0.0)) for k in cols]
-        else:
-            row = [float(x) if np.isfinite(x) else 0.0 for x in metrics]
-            cols = [f"metric_{i}" for i in range(len(row))]
-
+        row = [float(x) if np.isfinite(x) else 0.0 for x in metrics_values]
         X = np.asarray(row, dtype=np.float32)[None, :]  # shape (1, D)
 
         # optional normalization like your timeline finalize
@@ -2483,17 +2551,17 @@ class ZeroModelService(Service):
         arr = np.nan_to_num(arr, nan=0.0, posinf=0.0, neginf=0.0)
         return arr  # HxWxC float32
 
-    def to_vpm_chw_uint8(
+    def _to_vpm_chw_uint8(
         self,
-        metrics: dict[str, float] | list[float],
-        metrics_order: list[str] | None = None,
+        metrics_values: dict[str, float] | list[float],
+        metrics_columns: list[str] | None = None,
     ) -> np.ndarray:
         """
         Convenience for VPMWorkerInline.add_vpm(...)
         Returns: uint8[3, H, W]
         """
         arr = asyncio.get_event_loop().run_until_complete(
-            self.to_vpm_array(metrics, metrics_order)
+            self._to_vpm_array(metrics_values, metrics_columns)
         )  # HxWxC float32
         if arr.ndim == 2:
             arr = arr[..., None]

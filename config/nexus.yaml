@@ -70,19 +70,20 @@ pipeline:
      - name: scorable_annotate
        description: "Annotate the loaded conversation turns with scores"
        cls: stephanie.agents.maintenance.scorable_annotate.ScorableAnnotateAgent
-       enabled: true
+       enabled: false
+       iterations: 1
 
 
      - name: nexus
        description: "Generate a memory graph"
-       cls: stephanie.components.nexus.agents.nexus_inline.NexusInlineAgent
+       cls: stephanie.components.nexus.agents.compass.CompassAgent
        enabled: true
        iterations: 1
   
      - name: nexus_improver
        description: "Improve the nexus using multi-dimensional scoring"
        cls: stephanie.components.nexus.agents.nexus_pollinator.NexusPollinatorAgent
-       enabled: true
+       enabled: false
        iterations: 1
 
      - name: nexus_improver
