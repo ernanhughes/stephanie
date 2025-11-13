@@ -16,7 +16,12 @@ from pydantic import (
     field_validator,
     model_validator,
 )
+from stephanie.constants import PROMPT_RESULT_TMPL
 
+import logging
+
+from stephanie.utils.json_sanitize import dumps_safe
+log = logging.getLogger(__name__)
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Enums & small models
@@ -230,7 +235,15 @@ class PromptJob(BaseModel):
     @field_validator("priority", mode="before")
     @classmethod
     def _priority_default(cls, v):
-        return v or Priority.normal
+        # accept None, Enum, or str ("high"/"normal"/"low")
+        if v is None:
+            return Priority.normal
+        if isinstance(v, Priority):
+            return v
+        if isinstance(v, str):
+            s = v.strip().lower()
+            return Priority(s) if s in {"high","normal","low"} else Priority.normal
+        return Priority.normal
 
     @field_validator("messages")
     @classmethod
@@ -243,10 +256,6 @@ class PromptJob(BaseModel):
     # ── Keys & hashes ─────────────────────────────────────────────────────────
 
     def compute_dedupe_key(self) -> str:
-        """
-        A stable hash that captures: model, target, prompt content, params, and scorable_id.
-        Use for exact-idempotency in the dispatcher.
-        """
         payload = {
             "model": self.model,
             "target": self.target,
@@ -258,31 +267,142 @@ class PromptJob(BaseModel):
             "top_p": self.top_p,
             "stop": self.stop,
             "scorable_id": self.scorable_id,
-            "response_format": str(self.response_format),
+            "response_format": (self.response_format.value if isinstance(self.response_format, ResponseFormat) else str(self.response_format)),
             "schema": self.schema,
             "force_json": self.force_json,
+            "priority": (self.priority.value if isinstance(self.priority, Priority) else str(self.priority)),
         }
-        s = json.dumps(
-            payload, sort_keys=True, ensure_ascii=False, separators=(",", ":")
-        )
+        s = json.dumps(payload, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
         return hashlib.sha256(s.encode("utf-8")).hexdigest()
 
     def compute_cache_key(self) -> str:
-        """
-        Cache key for exact hits. (Approx cache uses separate ANN index.)
-        """
         base = {
             "model": self.model,
             "prompt_text": self.prompt_text,
             "messages": self._stable_messages_for_hash(),
             "system": self.system,
-            "response_format": str(self.response_format),
+            "response_format": (self.response_format.value if isinstance(self.response_format, ResponseFormat) else str(self.response_format)),
             "schema": self.schema,
         }
-        s = json.dumps(
-            base, sort_keys=True, ensure_ascii=False, separators=(",", ":")
-        )
+        s = json.dumps(base, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
         return hashlib.sha256(("CACHE:" + s).encode("utf-8")).hexdigest()
+
+    # ------------------ Bus / provider payloads ------------------
+
+    def to_json(self) -> str:
+        """Stable JSON for bus publish (enums flattened)."""
+        payload = self._dump_plain(exclude_none=True)
+        return dumps_safe(payload, ensure_ascii=False, separators=(",", ":"))
+
+    def to_bytes(self) -> bytes:
+        return self.to_json().encode("utf-8")
+
+    def to_bus_payload(self) -> Dict[str, Any]:
+        """
+        Explicit bus-ready dict (for ZeroMQ/NATS). Enums -> str values.
+        Useful when the bus takes dicts (InProc/Hybrid) or when you want to
+        run your own encoder.
+        """
+        return self._dump_plain(exclude_none=True)
+
+    @classmethod
+    def from_json(cls, s: str) -> "PromptJob":
+        """Worker-side convenience for echoes/tests."""
+        data = json.loads(s)
+        return cls.model_validate(data)
+
+    def to_openai_payload(self) -> Dict[str, Any]:
+        # (unchanged except pulling from flattened enums already)
+        base: Dict[str, Any] = {
+            "model": self.model,
+            "temperature": self.temperature,
+            "top_p": self.top_p,
+            "max_tokens": self.max_tokens,
+            "stop": self.stop,
+            "frequency_penalty": self.frequency_penalty,
+            "presence_penalty": self.presence_penalty,
+        }
+        base = {k: v for k, v in base.items() if v is not None}
+        if self.messages:
+            base["messages"] = self._inject_system(self.messages, self.system)
+        else:
+            content = self.prompt_text or ""
+            if self.system:
+                base["messages"] = [
+                    {"role": "system", "content": self.system},
+                    {"role": "user", "content": content},
+                ]
+            else:
+                base["messages"] = [{"role": "user", "content": content}]
+        if self.tools:
+            base["tools"] = self.tools
+        if self.response_format == ResponseFormat.json_object and (self.force_json or self.schema):
+            base["response_format"] = {"type": "json_object"}
+        elif self.response_format == ResponseFormat.json_lines:
+            base["stream"] = True
+        if self.stream:
+            base["stream"] = True
+        return base
+
+    # ------------------ finalize_before_publish ------------------
+
+    def finalize_before_publish(self) -> None:
+        self.job_id = self.job_id or str(uuid.uuid4())
+        if not self.return_topic or self.return_topic.strip() in ("results.prompts.", "results."):
+            self.return_topic = PROMPT_RESULT_TMPL.format(job=self.job_id)
+        if not self.correlation_id:
+            self.correlation_id = self.job_id
+        if not self.trace_id:
+            self.trace_id = self.job_id
+        if not self.dedupe_key:
+            self.dedupe_key = self.compute_dedupe_key()
+        if self.ttl_s is None:
+            self.ttl_s = 3600
+
+        # 🔎 Better logging (don’t show signature as subject)
+        try:
+            rt = self.return_topic
+            rk = getattr(self.route, "group_key", None) if isinstance(self.route, RouteHints) else None
+            tp = getattr(self.route, "target_pool", None) if isinstance(self.route, RouteHints) else None
+            log.info(
+                "PromptJob ready -> job=%s model=%s target=%s priority=%s ret=%s route.group=%s route.pool=%s",
+                self.job_id,
+                (self.model.get("name") if isinstance(self.model, dict) else str(self.model)),
+                self.target,
+                (self.priority.value if isinstance(self.priority, Priority) else str(self.priority)),
+                rt,
+                rk,
+                tp,
+            )
+        except Exception:
+            # Never fail finalize on logging
+            pass
+
+    # ------------------ legacy shim ------------------
+
+    def to_kwargs(self) -> Dict[str, Any]:
+        d = self._dump_plain(exclude_none=True)
+        # Keep expected legacy keys—ensure enums are values
+        out = {
+            "job_id": d.get("job_id"),
+            "scorable_id": d.get("scorable_id"),
+            "prompt_text": d.get("prompt_text"),
+            "messages": d.get("messages"),
+            "system": d.get("system"),
+            "model": d.get("model"),
+            "target": d.get("target"),
+            "max_tokens": d.get("max_tokens"),
+            "temperature": d.get("temperature"),
+            "top_p": d.get("top_p"),
+            "stop": d.get("stop"),
+            "response_format": d.get("response_format"),
+            "schema": d.get("schema"),
+            "stream": d.get("stream"),
+            "priority": d.get("priority"),
+            "return_topic": d.get("return_topic"),
+            "metadata": d.get("metadata"),
+        }
+        return {k: v for k, v in out.items() if v is not None}
 
     def _stable_messages_for_hash(self) -> Any:
         """
@@ -299,6 +419,33 @@ class PromptJob(BaseModel):
         return msgs
 
     # ── Provider payload helpers ──────────────────────────────────────────────
+
+    def to_json(self) -> str:
+        """Stable JSON for bus publish (v2-safe)."""
+        payload = self.model_dump(exclude_none=True)
+        # separators trims bytes on the wire; keep unicode with ensure_ascii=False
+        return dumps_safe(payload, ensure_ascii=False, separators=(",", ":"))
+
+    def to_bytes(self) -> bytes:
+        return self.to_json().encode("utf-8")
+
+    def _enum_to_value(self, v):
+        # Convert Enum -> value recursively inside dict/list payloads
+        from enum import Enum as _Enum
+        if isinstance(v, _Enum):
+            return v.value
+        if isinstance(v, dict):
+            return {k: self._enum_to_value(x) for k, x in v.items()}
+        if isinstance(v, list):
+            return [self._enum_to_value(x) for x in v]
+        return v
+
+    def _dump_plain(self, *, exclude_none: bool = True) -> Dict[str, Any]:
+        """
+        model_dump + Enum flattening so bus payloads stay clean strings.
+        """
+        d = self.model_dump(exclude_none=exclude_none)
+        return self._enum_to_value(d)
 
     def to_openai_payload(self) -> Dict[str, Any]:
         """
@@ -413,6 +560,11 @@ class PromptJob(BaseModel):
         """
         Ensure keys that dispatchers/workers rely on are set.
         """
+        self.job_id = self.job_id or str(uuid.uuid4())
+
+        # Keep topic SHORT so the bus prefixes once (→ "stephanie.results.prompts.<id>")
+        if not self.return_topic or self.return_topic.strip() in ("results.prompts.", "results."):
+            self.return_topic = PROMPT_RESULT_TMPL.format(job=self.job_id)
         if not self.correlation_id:
             self.correlation_id = self.job_id
         if not self.trace_id:
@@ -421,3 +573,8 @@ class PromptJob(BaseModel):
             self.dedupe_key = self.compute_dedupe_key()
         if self.ttl_s is None:
             self.ttl_s = 3600
+
+        log.info(
+            "PromptJob -> job=%s subject=%s ret=%s",
+            self.job_id, self.signature, self.return_topic
+        )

@@ -58,7 +58,7 @@ class VPMRefinerAgent(BaseAgent):
             phi_threshold=float(cfg.get("phi_threshold", 0.90)),
             dims=list(cfg.get("dims", ["clarity", "coverage"])),
         )
-        self.executor = ThoughtExecutor(
+        self.executor: ThoughtExecutor = ThoughtExecutor(
             visual_op_cost={
                 "zoom": 1.0,
                 "bbox": 0.3,

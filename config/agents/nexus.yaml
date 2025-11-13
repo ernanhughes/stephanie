@@ -77,24 +77,23 @@ nexus:
   # Text scoring (Scorable → vector)
   # Used by NexusMetricsWorkerInline
   # ------------------------------------------------------------------
-  scoring:
-    scorers: 
-      - sicql
-      - hrm
-      - tiny
-      - ebt
-      - svm
-      - mrq
-      - knowledge
-    dimensions:
-      - alignment
-      - clarity
-      - relevance
-      - coverage
-      - faithfulness
-      - novelty
-      - implementability
-    persist: false
+  scorers: 
+    - sicql
+    - hrm
+    - tiny
+    - ebt
+    - svm
+    - mrq
+    - knowledge
+  dimensions:
+    - alignment
+    - clarity
+    - relevance
+    - coverage
+    - faithfulness
+    - novelty
+    - implementability
+  persist: false
 
 
   graph:

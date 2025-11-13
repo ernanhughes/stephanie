@@ -10,6 +10,16 @@ from stephanie.services.bus.events.prompt_job import PromptJob
 from stephanie.services.service_protocol import Service
 from stephanie.utils.llm_utils import remove_think_blocks
 from dataclasses import dataclass
+from stephanie.constants import (
+    BUS_STREAM,
+    SUBJ_SUBMIT,
+    SUBJ_SUBMIT_NS,
+    SUBJ_RESULT_NS_W,
+    SUBJ_SUBMIT_LEG,
+    SUBJ_RESULT_LEG_W,
+    SUBJ_RESULT_WC,
+    SUBJ_RESULT_NS_T, 
+)
 
 import yaml
 
@@ -18,12 +28,6 @@ from stephanie.agents.base_agent import BaseAgent
 log = logging.getLogger(__name__)
 
 # Subject constants (support both namespaced + legacy for smooth upgrades)
-BUS_STREAM = "stephanie"
-SUBJ_SUBMIT_NS = "stephanie.prompts.submit"
-SUBJ_SUBMIT_LEG = "prompts.submit"
-SUBJ_RESULT_NS_W = "stephanie.results.prompts.*"
-SUBJ_RESULT_LEG_W = "results.prompts.*"
-SUBJ_RESULT_NS_T = "stephanie.results.prompts.{job}"
 
 
 log = logging.getLogger(__name__)
@@ -149,7 +153,7 @@ class PromptService(Service):
         params: Optional[Dict[str, Any]] = None,
     ) -> str:
         call_params = dict(model.params or {})
-        if params: 
+        if params:
             call_params.update(params)
         try:
             resp = await litellm.acompletion(
@@ -160,12 +164,13 @@ class PromptService(Service):
                 **call_params,
             )
             out = resp["choices"][0]["message"]["content"]
+            log.info(
+                f"PromptService._acomplete_messages success: model={model.name} {out[:60]!r}..."
+            )
             return remove_think_blocks(out)
         except Exception:
             log.exception(
-                "PromptService._acomplete_messages failed",
-                extra={"model": model.name},
-            )
+                "PromptService._acomplete_messages failed extra=%s", model.name)
             return ""
 
     async def _acomplete(
@@ -335,7 +340,8 @@ class PromptService(Service):
             await bus.ensure_stream(
                 BUS_STREAM,
                 [
-                    "stephanie.>",
+                    f"{BUS_STREAM}.>",
+                    SUBJ_SUBMIT,
                     SUBJ_SUBMIT_NS,
                     SUBJ_RESULT_NS_W,
                     SUBJ_SUBMIT_LEG,
@@ -349,13 +355,6 @@ class PromptService(Service):
             # Subscribe to both submit subjects; process in background
             async def _submit_cb(msg):
                 self._spawn(self._handle_submit_msg(msg))
-
-            await bus.subscribe(
-                subject=SUBJ_SUBMIT_NS, queue="prompt-workers", cb=_submit_cb
-            )
-            await bus.subscribe(
-                subject=SUBJ_SUBMIT_LEG, queue="prompt-workers", cb=_submit_cb
-            )
 
             # Listen to results wildcards to populate inbox (for wait_many/try_get)
             async def _result_cb(msg):
@@ -391,12 +390,12 @@ class PromptService(Service):
                     except Exception:
                         pass
 
-            await bus.subscribe(
-                subject=SUBJ_RESULT_NS_W, queue=None, cb=_result_cb
-            )
-            await bus.subscribe(
-                subject=SUBJ_RESULT_LEG_W, queue=None, cb=_result_cb
-            )
+            # await bus.subscribe(
+            #     subject=SUBJ_SUBMIT, queue="prompt-workers", handler=_submit_cb
+            # )
+            # await bus.subscribe(
+            #     subject=SUBJ_RESULT_WC, queue=None, handler=_result_cb
+            # )
 
             self._subs_ready = True
             log.info("PromptService bus bindings ready")
@@ -409,13 +408,14 @@ class PromptService(Service):
     async def _handle_submit_msg(self, msg) -> None:
         # Parse
         try:
+            log.info("PromptService.ReceivedJob: %s", msg)
             raw = (
                 msg.data
                 if isinstance(msg.data, dict)
                 else json.loads(msg.data.decode("utf-8"))
             )
-        except Exception:
-            log.exception("PromptService.BadJSON")
+        except Exception as e:
+            log.exception("PromptService.BadJSON: %s", e)
             if hasattr(msg, "nak"):
                 try:
                     await msg.nak()
@@ -425,6 +425,7 @@ class PromptService(Service):
 
         # Validate
         try:
+            log.info("PromptService.ValidatingJob: %s", raw)
             job = PromptJob.model_validate(raw)  # Pydantic v2
         except Exception as e:
             log.error("PromptService.ValidationError %s", e)
@@ -437,6 +438,7 @@ class PromptService(Service):
 
         # Execute (messages or prompt_text)
         try:
+            log.info("PromptService.ExecutingJob: %s", job.job_id)
             model_spec = ModelSpec.from_cfg(self.cfg, job.model)
             params = {}
             # Normalized exec path with concurrency limits
@@ -457,12 +459,18 @@ class PromptService(Service):
                         text = await self._acomplete_messages(
                             model=model_spec, messages=messages, params=params
                         )
+                        log.info(
+                            f"PromptService._acomplete success: {text[:60]!r}..."
+                        )
                     else:
                         text = await self._acomplete(
                             prompt=job.prompt_text or "",
                             model=model_spec,
                             sys_preamble=job.system,
                             params=params,
+                        )
+                        log.info(
+                            f"PromptService._acomplete success: {text[:60]!r}..."
                         )
                 finally:
                     self._active_requests = max(0, self._active_requests - 1)
@@ -474,6 +482,7 @@ class PromptService(Service):
                 "scorable_id": job.scorable_id,
                 "result": {"text": text},
             }
+            log.info("PromptService.PublishingResult: %s", ret)
             await self.memory.bus.publish(ret, payload)
             if hasattr(msg, "ack"):
                 try:

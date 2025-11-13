@@ -59,7 +59,7 @@ goal:
 bus:
   backend: nats
   servers:
-    - nats://localhost:4222
+    - nats://127.0.0.1:4222
 
 knowledge_graph:
   enabled: true

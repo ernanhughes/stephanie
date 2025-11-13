@@ -1,6 +1,7 @@
 defaults:
   - _self_
   - db: postgres
+  - bus: nats   
   - plan_monitor: disabled
   - logging: json_logger
   - services: all
@@ -75,15 +76,15 @@ pipeline:
 
 
      - name: nexus
-       description: "Generate a memory graph"
+       description: "Compare two scorables list runs"
        cls: stephanie.components.nexus.agents.compass.CompassAgent
-       enabled: true
+       enabled: false
        iterations: 1
   
      - name: nexus_improver
        description: "Improve the nexus using multi-dimensional scoring"
        cls: stephanie.components.nexus.agents.nexus_pollinator.NexusPollinatorAgent
-       enabled: false
+       enabled: true
        iterations: 1
 
      - name: nexus_improver

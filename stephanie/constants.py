@@ -1,6 +1,31 @@
 # stephanie/constants.py
 from __future__ import annotations
 
+# NATS subjects and streams 
+# PLEASE KEEP CONSISTENT ACROSS FILES
+
+BUS_STREAM = "stephanie"  # your bus auto-prefixes this; keep subjects SHORT
+
+PROMPT_SUBMIT = "prompts.submit"           # submit jobs here
+PROMPT_RESULT =  "results.prompts"
+PROMPT_RESULT_WC = "results.prompts.>"     # client listens here
+PROMPT_RESULT_TMPL = "results.prompts.{job}"  # worker/client agrees on this
+BUS_STREAM = "stephanie"
+SUBJ_SUBMIT = "prompts.submit"
+SUBJ_RESULT_WC = "results.prompts.>"
+
+SUBJ_SUBMIT_NS = "stephanie.prompts.submit"
+SUBJ_SUBMIT_LEG = "prompts.submit"
+SUBJ_RESULT_NS_W = "stephanie.results.prompts.*"
+SUBJ_RESULT_LEG_W = "results.prompts.*"
+SUBJ_RESULT_NS_T = "results.prompts.{job}"
+
+PROMPT_DLQ =  "prompts.submit.DLQ"  # dead-letter queue
+HEALTH_SUBJ = "health"              # health check subject
+
+NEXUS_TIMELINE_NODE   = "nexus.timeline.node"
+NEXUS_TIMELINE_REPORT = "nexus.timeline.report"
+
 # ==== Context Keys ====
 AGENT = "Agent"
 AGENT_NAME = "agent_name"

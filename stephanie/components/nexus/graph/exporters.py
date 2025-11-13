@@ -4,20 +4,144 @@ from __future__ import annotations
 import json
 import pathlib
 from pathlib import Path
-from typing import Dict, List
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from pyvis.network import Network
 
 from stephanie.components.nexus.app.types import NexusEdge, NexusNode
 from stephanie.utils.json_sanitize import dumps_safe
 
+# =============================================================================
+# Safe helpers
+# =============================================================================
 
-def export_pyvis_html_rich(output_path: str, *, nodes, edges, positions, title: str = ""):
+def _get(obj: Any, *keys: str, default: Any = None) -> Any:
+    """
+    Safely try multiple attribute or dict keys in order; never raises.
+    Example: _get(node, "quality", "score", default=None)
+    """
+    if obj is None:
+        return default
+    for k in keys:
+        try:
+            if isinstance(obj, dict):
+                v = obj.get(k, None)
+            else:
+                v = getattr(obj, k, None)  # attr-safe (no AttributeError)
+        except Exception:
+            v = None
+        if v is not None:
+            return v
+    return default
+
+
+def _coalesce(*vals, default=None):
+    for v in vals:
+        if v is not None:
+            return v
+    return default
+
+
+def _metrics_lookup(node: Any, key: str) -> Optional[float]:
+    """
+    Try to read node.metrics.vector[key] whether metrics is a dict or an object.
+    """
+    m = getattr(node, "metrics", None)
+    if m is None:
+        return None
+    vec = None
+    if isinstance(m, dict):
+        vec = m.get("vector") if isinstance(m.get("vector"), dict) else None
+    else:
+        vec = getattr(m, "vector", None)
+    if isinstance(vec, dict):
+        return vec.get(key)
+    return None
+
+
+def _as_float(x: Any, default: Optional[float] = 0.0) -> Optional[float]:
+    try:
+        if x is None:
+            return default
+        return float(x)
+    except Exception:
+        return default
+
+
+def _as_int(x: Any, default: Optional[int] = 0) -> Optional[int]:
+    try:
+        if x is None:
+            return default
+        return int(x)
+    except Exception:
+        return default
+
+
+def _edge_type(e: Any) -> str:
+    et = _get(e, "type", "etype", "label", "title", default="edge")
+    if not isinstance(et, str):
+        try:
+            et = str(et)
+        except Exception:
+            et = "edge"
+    return et
+
+
+def _edge_weight(e: Any) -> float:
+    return _as_float(_get(e, "weight", "w", default=0.0), default=0.0) or 0.0
+
+
+def _node_degree(n: Any) -> int:
+    return _as_int(_get(n, "degree", "deg", default=0), default=0) or 0
+
+
+def _node_label(nid: str, n: Any) -> str:
+    label_src = _coalesce(
+        _get(n, "title", default=None),
+        _get(n, "text", default=None),
+        nid,
+    )
+    try:
+        label = str(label_src)
+    except Exception:
+        label = nid
+    return label[:80]
+
+
+# =============================================================================
+# Visual helpers (PyVis / HTML)
+# =============================================================================
+
+def _edge_rgba_and_width(etype: str, w: float) -> Tuple[str, float]:
+    et = (etype or "").lower()
+    # Red-ish for temporal/MST, teal-ish for KNN, soft gray default
+    if "temporal" in et or "mst" in et or "backbone" in et:
+        col = "rgba(240,113,120,0.85)"   # soft red
+    elif "knn" in et:
+        col = "rgba(138,162,178,0.60)"   # gray-blue
+    else:
+        col = "rgba(107,114,128,0.50)"   # neutral gray
+    width = max(0.6, min(1.6, 0.8 + (w or 0.0) * 0.8))
+    return col, width
+
+
+# =============================================================================
+# Rich (deterministic layout) HTML exporter
+# =============================================================================
+
+def export_pyvis_html_rich(
+    output_path: str,
+    *,
+    nodes: Dict[str, NexusNode],
+    edges: List[NexusEdge],
+    positions: Dict[str, Tuple[float, float]],
+    title: str = "",
+) -> str:
     """
     Deterministic export using vis-network with:
       - fixed positions (physics off) using provided `positions`
       - node size ~= degree
-      - edge color by type (MST vs KNN)
+      - edge color by type (MST vs KNN vs other)
       - dark theme + legend + edge toggles
       - JS-side scaling of normalized coords + fit on load/resize
     """
@@ -25,10 +149,10 @@ def export_pyvis_html_rich(output_path: str, *, nodes, edges, positions, title: 
     deg = {str(nid): 0 for nid in nodes.keys()}
 
     def _nid(x):
-        return str(getattr(x, "source", getattr(x, "src", "")))
+        return str(_get(x, "source", "src", default=""))
 
     def _tid(x):
-        return str(getattr(x, "target", getattr(x, "dst", "")))
+        return str(_get(x, "target", "dst", default=""))
 
     for e in edges:
         s, t = _nid(e), _tid(e)
@@ -44,9 +168,7 @@ def export_pyvis_html_rich(output_path: str, *, nodes, edges, positions, title: 
         j_nodes.append(
             {
                 "id": str(nid),
-                "label": getattr(n, "title", None)
-                or getattr(n, "text", "")[:80]
-                or str(nid),
+                "label": _node_label(str(nid), n),
                 "shape": "dot",
                 "color": "#90caf9",
                 "value": max(3, min(25, deg.get(str(nid), 1) + 3)),
@@ -57,37 +179,19 @@ def export_pyvis_html_rich(output_path: str, *, nodes, edges, positions, title: 
             }
         )
 
-    def _edge_type(e) -> str:
-        et = getattr(e, "type", None)
-        if et:
-            return str(et)
-        t = getattr(e, "title", "") or getattr(e, "label", "")
-        tl = t.lower()
-        if "mst" in tl:
-            return "backbone_mst"
-        if "knn" in tl:
-            return "knn_blend"
-        return "edge"
-
-    def _edge_weight(e) -> float:
-        try:
-            return float(getattr(e, "weight", 0.0) or 0.0)
-        except Exception:
-            return 0.0
-
     j_edges = []
     for e in edges:
         et = _edge_type(e)
-        color = "#f07178" if et == "backbone_mst" else "#56b6c2"  # mst red-ish, knn teal
-        w = _edge_weight(e)
+        color, width = _edge_rgba_and_width(et, _edge_weight(e))
         j_edges.append(
             {
-                "from": _nid(e),
-                "to": _tid(e),
+                "from": _get(e, "source", "src", default=""),
+                "to": _get(e, "target", "dst", default=""),
                 "arrows": "to",
                 "color": color,
-                "width": 3 if w >= 0.9 else 2 if w >= 0.8 else 1,
-                "title": f"{et} ({w:.3f})" if w else et,
+                "width": width if width else 1,
+                "title": f"{et} ({_edge_weight(e):.3f})",
+                "etype": et,
             }
         )
 
@@ -116,12 +220,12 @@ def export_pyvis_html_rich(output_path: str, *, nodes, edges, positions, title: 
       <strong>{title}</strong>
       <div class="legend">
         <span><span class="chip" style="background:#90caf9"></span>node size = degree</span>
-        <span><span class="chip" style="background:#f07178"></span>MST edges</span>
-        <span><span class="chip" style="background:#56b6c2"></span>KNN edges</span>
+        <span><span class="chip" style="background:#f07178"></span>MST/temporal</span>
+        <span><span class="chip" style="background:#8AA2B2"></span>KNN</span>
       </div>
       <div style="margin-left:auto; display:flex; gap:12px;">
         <label><input type="checkbox" id="toggleKnn" checked> Show KNN</label>
-        <label><input type="checkbox" id="toggleMst" checked> Show MST</label>
+        <label><input type="checkbox" id="toggleMst" checked> Show MST/Temporal</label>
       </div>
     </div>
   </header>
@@ -143,8 +247,11 @@ def export_pyvis_html_rich(output_path: str, *, nodes, edges, positions, title: 
   const nodes = new vis.DataSet(rawNodes);
 
   const edgesRaw = {json.dumps(j_edges)};
-  const edgesKNN = edgesRaw.filter(e => (e.title||"").toLowerCase().includes("knn"));
-  const edgesMST = edgesRaw.filter(e => (e.title||"").toLowerCase().includes("mst"));
+  const edgesKNN = edgesRaw.filter(e => (e.etype||"").toLowerCase().includes("knn"));
+  const edgesMST = edgesRaw.filter(e => {{
+    const t = (e.etype||"").toLowerCase();
+    return t.includes("mst") || t.includes("temporal") || t.includes("backbone");
+  }});
   const edges = new vis.DataSet(edgesRaw);
 
   const container = document.getElementById('mynetwork');
@@ -175,11 +282,17 @@ def export_pyvis_html_rich(output_path: str, *, nodes, edges, positions, title: 
   }}
   toggleKnn.addEventListener('change', refreshEdges);
   toggleMst.addEventListener('change', refreshEdges);
+  refreshEdges();
 </script>
 </body>
 </html>"""
     Path(output_path).write_text(html, encoding="utf-8")
+    return str(output_path)
 
+
+# =============================================================================
+# Simple PyVis exporter (force layout)
+# =============================================================================
 
 def export_pyvis_html(
     nodes: Dict[str, NexusNode],
@@ -187,11 +300,6 @@ def export_pyvis_html(
     output_path: str,
     title: str,
 ) -> str:
-    import json
-    from pathlib import Path
-
-    from pyvis.network import Network
-
     out = Path(output_path)
     out.parent.mkdir(parents=True, exist_ok=True)
 
@@ -204,7 +312,6 @@ def export_pyvis_html(
         font_color="#e5e7eb",       # light gray labels
     )
 
-    # Thinner edges + smaller arrows; allow per-edge rgba colors
     options = {
         "physics": {
             "solver": "forceAtlas2Based",
@@ -217,9 +324,9 @@ def export_pyvis_html(
             "font": {"color": "#e5e7eb"}
         },
         "edges": {
-            "arrows": {"to": {"enabled": True, "scaleFactor": 0.45}},  # smaller arrowheads
+            "arrows": {"to": {"enabled": True, "scaleFactor": 0.45}},
             "smooth": {"type": "dynamic"},
-            "color": {"inherit": False},   # we’ll send per-edge rgba
+            "color": {"inherit": False},
             "selectionWidth": 1,
             "hoverWidth": 1
         }
@@ -229,36 +336,21 @@ def export_pyvis_html(
     # Nodes
     for nid, n in nodes.items():
         nid_s = str(nid)
-        label_src = getattr(n, "title", None) or getattr(n, "text", "") or nid_s
-        label = str(label_src)[:80]
-        degree = int(getattr(n, "degree", 1) or 1)
+        label = _node_label(nid_s, n)
+        degree = _node_degree(n)
         size = max(6, min(18, int((degree ** 0.5) * 7)))
         net.add_node(
             nid_s,
             label=label,
-            title=str(getattr(n, "target_type", "node")),
+            title=str(_get(n, "target_type", default="node")),
             value=size,
         )
 
-    # Edge styling helpers
-    def _edge_rgba_and_width(etype: str, w: float):
-        et = (etype or "").lower()
-        # softer red for temporal/MST, desaturated gray-blue for KNN, neutral gray for other
-        if "temporal" in et or "mst" in et:
-            col = "rgba(240,113,120,0.85)"   # soft red (was bright red)
-        elif "knn" in et:
-            col = "rgba(138,162,178,0.60)"   # gray-blue (less neon)
-        else:
-            col = "rgba(107,114,128,0.50)"   # neutral gray
-        # much thinner lines overall
-        width = max(0.6, min(1.4, 0.8 + (w or 0.0) * 0.8))
-        return col, width
-
     # Edges
     for e in edges:
-        etype = getattr(e, "type", "edge")
-        w = float(getattr(e, "weight", 0.0) or 0.0)
-        src, dst = str(getattr(e, "src", "")), str(getattr(e, "dst", ""))
+        etype = _edge_type(e)
+        w = _edge_weight(e)
+        src, dst = str(_get(e, "src", "source", default="")), str(_get(e, "dst", "target", default=""))
         color, width = _edge_rgba_and_width(etype, w)
         net.add_edge(
             src,
@@ -273,43 +365,141 @@ def export_pyvis_html(
     return str(out)
 
 
+# =============================================================================
+# Cytoscape-friendly JSON exporter
+# =============================================================================
+
 def export_graph_json(
-    path,
+    path: Union[str, Path],
     nodes: Dict[str, NexusNode],
     edges: List[NexusEdge],
-    positions: dict | None = None,
-):
+    positions: Optional[Dict[str, Tuple[float, float]]] = None,
+    *,
+    include_channels: bool = False,
+    include_node_text: bool = True,
+    include_metrics: bool = True,
+    extra_node_fields: Optional[List[str]] = None,
+    extra_edge_fields: Optional[List[str]] = None,
+) -> str:
     """
-    Export a Cytoscape-friendly graph.json with optional positions.
+    Export a Cytoscape-friendly graph.json with optional positions and channels.
+
+    elements = {
+      "nodes": [{"data": {...}, "position": {"x":..,"y":..}} ...],
+      "edges": [{"data": {...}} ...]
+    }
+
+    - `include_channels`: if True, copy edge.channels (dict) into edge["data"]["channels"]
+    - graceful handling of missing attributes (no exceptions on absent fields)
+    - returns the string path written for convenience
     """
-    elements = {"nodes": [], "edges": []}
+    out_path = Path(path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
 
-    for nid, n in nodes.items():
-        d = {
-            "id": nid,
-            "label": getattr(n, "title", None)
-            or getattr(n, "text", "")[:80]
-            or nid,
-            "type": getattr(n, "target_type", "unknown"),
-            "deg": int(getattr(n, "degree", 0) or 0),
-        }
-        if positions and nid in positions:
-            x, y = positions[nid]
-            d["x"], d["y"] = x, y
-        elements["nodes"].append({"data": d})
+    extra_node_fields = list(extra_node_fields or [])
+    extra_edge_fields = list(extra_edge_fields or [])
 
-    for e in edges:
-        elements["edges"].append(
-            {
-                "data": {
-                    "id": f"{e.src}->{e.dst}",
-                    "source": e.src,
-                    "target": e.dst,
-                    "type": e.type,
-                    "weight": float(getattr(e, "weight", 0.0) or 0.0),
-                }
-            }
+    elements: Dict[str, list] = {"nodes": [], "edges": []}
+
+    # ---------------- Nodes ----------------
+    for nid, n in (nodes or {}).items():
+        nid_s = str(nid)
+
+        # Quality / score coalesce (safe)
+        q = _as_float(
+            _coalesce(
+                _get(n, "quality", default=None),
+                _get(n, "score", default=None),
+                _metrics_lookup(n, "quality"),
+                _metrics_lookup(n, "hrm"),
+                _metrics_lookup(n, "alignment"),
+            ),
+            default=None,
         )
 
-    pathlib.Path(path).parent.mkdir(parents=True, exist_ok=True)
-    pathlib.Path(path).write_text(dumps_safe(elements), encoding="utf-8")
+        d: Dict[str, Any] = {
+            "id": nid_s,
+            "label": _node_label(nid_s, n),
+            "type": _get(n, "target_type", default="unknown"),
+            "deg": _node_degree(n),
+        }
+        if q is not None:
+            d["quality"] = float(q)
+
+        if include_node_text:
+            txt_preview = _get(n, "text", default=None)
+            if txt_preview:
+                try:
+                    d["text"] = str(txt_preview)[:512]
+                except Exception:
+                    pass
+
+        if include_metrics:
+            # If a vector is present, we can attach a small selection for convenience
+            vec = _metrics_lookup(n, "vector")  # returns None by design; we’ll pull manually
+            m = getattr(n, "metrics", None)
+            vdict = None
+            if isinstance(m, dict):
+                vdict = m.get("vector") if isinstance(m.get("vector"), dict) else None
+            else:
+                vdict = getattr(m, "vector", None)
+
+            if isinstance(vdict, dict):
+                # Attach small, common keys (don’t bloat JSON)
+                subset_keys = ("alignment", "faithfulness", "coverage", "clarity", "coherence", "hrm")
+                d["metrics"] = {k: _as_float(vdict.get(k), None) for k in subset_keys if k in vdict}
+
+        # Optional extra node fields
+        for k in extra_node_fields:
+            v = _get(n, k, default=None)
+            if v is not None:
+                d[k] = v
+
+        rec: Dict[str, Any] = {"data": d}
+        if positions and nid in positions:
+            x, y = positions[nid]
+            rec["position"] = {"x": float(x), "y": float(y)}
+        elements["nodes"].append(rec)
+
+    # ---------------- Edges ----------------
+    for e in (edges or []):
+        src = _get(e, "src", "source", default=None)
+        dst = _get(e, "dst", "target", default=None)
+        if src is None or dst is None:
+            # Skip malformed edges gracefully
+            continue
+
+        etype = _edge_type(e)
+        w = _edge_weight(e)
+
+        data: Dict[str, Any] = {
+            "id": f"{src}->{dst}",
+            "source": str(src),
+            "target": str(dst),
+            "type": etype,
+            "weight": float(w),
+        }
+
+        if include_channels:
+            ch = _get(e, "channels", default=None)
+            if isinstance(ch, dict):
+                # Keep as-is, but also add a compact "viz" with only numeric fields for client-side sizing/color
+                data["channels"] = ch
+                viz = {}
+                for k, v in ch.items():
+                    fv = _as_float(v, None)
+                    if fv is not None:
+                        viz[k] = fv
+                if viz:
+                    data["channels_viz"] = viz
+
+        # Optional extra edge fields
+        for k in extra_edge_fields:
+            v = _get(e, k, default=None)
+            if v is not None:
+                data[k] = v
+
+        elements["edges"].append({"data": data})
+
+    out_path.write_text(dumps_safe(elements), encoding="utf-8")
+    return str(out_path)

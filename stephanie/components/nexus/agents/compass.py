@@ -20,7 +20,7 @@ from stephanie.components.nexus.app.manifest import (
 )
 from stephanie.components.nexus.graph.builder import (
     build_edges_enhanced,
-    build_nodes_from_manifest,
+    build_nodes,
 )
 from stephanie.components.nexus.graph.exporters import (
     export_graph_json,
@@ -457,12 +457,11 @@ class CompassAgent(BaseAgent, ProgressMixin):
             for idx, enhanced_scorable in enumerate(scorables):
                 sc = Scorable.from_dict(enhanced_scorable)
 
-                columns, values, vector, rows = [], [], {}, None
+                columns, values, row = [], [], {}
                 with _stage(log, "Nexus.score_and_append"):
                     row = await self.scorable_processor.process(enhanced_scorable, context=context)
                     columns = row.get("metrics_columns") or []
                     values  = row.get("metrics_values")  or []
-                    vector  = row.get("metrics_vector")  or {}
                     self.zm.timeline_append_row(run_id, metrics_columns=columns, metrics_values=values)
 
 
@@ -487,8 +486,8 @@ class CompassAgent(BaseAgent, ProgressMixin):
                 if "global" in embeddings:
                     embeddings["global"] = as_list_floats(embeddings["global"])
 
-                domains = list(enhanced_scorable.get("domains") or [])
-                ner = list(enhanced_scorable.get("ner") or [])
+                domains = list(row.get("domains") or [])
+                ner = list(row.get("ner") or [])
                 tile = _find_tile_path(item_dir)
                 item = ManifestItem(
                     item_id=item_name,
@@ -555,7 +554,7 @@ class CompassAgent(BaseAgent, ProgressMixin):
 
         # Graph build
         with _stage(log, "Nexus.graph.nodes"):
-            nodes = build_nodes_from_manifest(manifest)
+            nodes = build_nodes(manifest)
 
         items_list = [mi.to_dict() for mi in manifest.items]
 

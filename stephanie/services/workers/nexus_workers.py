@@ -14,6 +14,7 @@ from PIL import Image
 
 from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.scorable_processor import ScorableProcessor
+from stephanie.services.zeromodel_service import ZeroModelService
 from stephanie.utils.json_sanitize import dumps_safe
 from stephanie.utils.vpm_utils import vpm_image_details
 
@@ -38,8 +39,8 @@ class NexusVPMWorkerInline:
       - SP renders VPM from metrics and (optionally) persists vpm_gray.png
       - This worker only (optionally) does rollout frames + timeline append + artifacts
     """
-    sp: ScorableProcessor                   # <- the canonical path
-    zm: Any                                 # ZeroModelService (for rollout/timeline)
+    sp: ScorableProcessor 
+    zm: ZeroModelService
     logger: Any = None
 
     def __post_init__(self):
@@ -85,7 +86,7 @@ class NexusVPMWorkerInline:
 
 
         # Rollout (frames + per-step summaries) — ZeroModel owns the policy
-        frames, summaries = await _maybe_await(self.zm.vpm_rollout(
+        frames, summaries = self.zm.vpm_rollout(
             # If SP didn’t stash raw arrays, we can re-render deterministically from metrics:
             None,   # vpm array optional; ZeroModel should accept None + metrics to recompose internally
             steps=int(rollout_steps),
@@ -93,7 +94,7 @@ class NexusVPMWorkerInline:
             strategy=rollout_strategy,
             metrics_columns=row.get("metrics_columns") or [],
             metrics_values=row.get("metrics_values") or [],
-        ))
+        )
 
         # Append summaries to timeline (single source of truth = SP’s metrics columns)
         for s in summaries or []:
@@ -139,7 +140,7 @@ class NexusVPMWorkerInline:
         }
 
     async def finalize(self, run_id: str, *, out_dir: Optional[str] = None) -> Dict[str, Any]:
-        return await _maybe_await(self.zm.timeline_finalize(
-            run_id, out_path=str(out_dir or self.sp.vpm_out_root))
+        return await self.zm.timeline_finalize(
+            run_id, out_path=str(out_dir or self.sp.vpm_out_root)
         )
 

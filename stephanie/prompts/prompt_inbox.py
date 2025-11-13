@@ -1,7 +1,7 @@
 # stephanie/prompts/prompt_inbox.py
 from __future__ import annotations
 
-from typing import Dict, Iterable, List, Optional, Tuple
+from typing import Dict, Iterable
 from stephanie.memory.prompt_job_store import PromptJobStore
 
 class PromptInbox:

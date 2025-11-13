@@ -2,7 +2,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, asdict
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Callable       
+import contextlib                                                   
 import time
 import logging
 import asyncio
@@ -13,8 +14,17 @@ from stephanie.components.tree.tree_grpo import TreeGRPOAdapter, TreeGRPOConfig
 from stephanie.memory.blossom_store import BlossomStore
 from stephanie.scoring.scorable import Scorable
 from stephanie.utils.emit_broadcaster import EmitBroadcaster
+from stephanie.constants import (
+    PROMPT_SUBMIT,
+    PROMPT_RESULT_WC,          # results.prompts.>
+    PROMPT_DLQ,
+    BUS_STREAM,
+    NEXUS_TIMELINE_NODE,       # nexus.timeline.node
+    NEXUS_TIMELINE_REPORT,     # nexus.timeline.report
+)
 
 log = logging.getLogger(__name__)
+
 
 
 @dataclass
@@ -29,12 +39,12 @@ class BlossomRunConfig:
     prefer_non_buggy: bool = True
 
     # Post-processing
-    return_top_k: int = 1         # how many winning leaves to report
-    sharpen_top_k: int = 0        # 0 = disabled
+    return_top_k: int = 1          # how many winning leaves to report
+    sharpen_top_k: int = 0         # 0 = disabled
 
     # Prompt “jitter” (VPM) hinting
     enable_vpm_hint: bool = False
-    vpm_op: str = "zoom_max"      # e.g., "zoom_max" (if ZeroModel supports it)
+    vpm_op: str = "zoom_max"       # e.g., "zoom_max" (if ZeroModel supports it)
 
 
 def maybe_vpm_mutate_goal(container, goal_text: str, *, op: str = "zoom_max") -> str:
@@ -65,6 +75,7 @@ def maybe_vpm_mutate_goal(container, goal_text: str, *, op: str = "zoom_max") ->
     except Exception:
         return goal_text
 
+
 llm_cfg = {
     "name": "ollama/qwen:0.5b",
     # "name": "ollama/qwen3",
@@ -72,16 +83,14 @@ llm_cfg = {
     "api_key": None,
 }
 
-# stephanie/components/nexus/blossom/runner.py (top of file)
-
-BUS_STREAM = "stephanie"  # JetStream name
+# Single source of truth for subjects used by this agent
 SUBJ = {
-    "PROMPT_REQ":  "stephanie.blossom.prompt.request",
-    "RESP_READY":  "stephanie.blossom.prompt.responses.available",
-    # (optional) DLQ/metrics/etc. keep here for one place to change
-    "PROMPT_DLQ":  "stephanie.blossom.prompt.request.DLQ",
+    "PROMPT_REQ":      PROMPT_SUBMIT,        # where PromptJobs are submitted
+    "RESULTS_WILDCARD": PROMPT_RESULT_WC,    # results.prompts.>
+    "PROMPT_DLQ":      PROMPT_DLQ,           # optional
+    "TIMELINE_NODE":   NEXUS_TIMELINE_NODE,  # nexus timeline (nodes/events)
+    "TIMELINE_REPORT": NEXUS_TIMELINE_REPORT # nexus timeline (run summaries)
 }
-
 
 
 class BlossomRunnerAgent(BaseAgent):
@@ -97,8 +106,8 @@ class BlossomRunnerAgent(BaseAgent):
 
     def __init__(self, cfg, memory, container, logger):
         super().__init__(cfg, memory, container, logger)
-        # Keep BaseAgent.cfg (dict) intact for .get() access in LLM paths.
-        # Store the typed run config separately.
+
+        # Typed run config (keeps BaseAgent.cfg dict intact)
         self.run_cfg = BlossomRunConfig(
             M=int(cfg.get("M", 2)),
             N=int(cfg.get("N", 2)),
@@ -129,9 +138,11 @@ class BlossomRunnerAgent(BaseAgent):
         self.blossoms: BlossomStore = self.memory.blossoms
         self.scoring = container.get("scoring")
 
-        # Telemetry
-        self.msubj_req = SUBJ["PROMPT_REQ"]
-        self.ats_report = SUBJ["RESP_READY"]
+        # Telemetry subjects
+        self.subj_prompt_submit = SUBJ["PROMPT_REQ"]
+        self.subj_timeline_node = SUBJ["TIMELINE_NODE"]
+        self.subj_timeline_report = SUBJ["TIMELINE_REPORT"]
+
         # Runtime
         self.run_id: Optional[str] = None
         self._goal_text: str = ""
@@ -167,6 +178,8 @@ class BlossomRunnerAgent(BaseAgent):
     # ------------------------------------------------------------------ #
     async def run(self, context: Dict[str, Any]) -> Dict[str, Any]:
         await self._ensure_bus_ready()
+        await self._subscribe_results_probe()   
+
         goal = context.get("goal", {}) or {}
         goal_text = (goal.get("goal_text") or "").strip()
         self.run_id = context.get("pipeline_run_id")
@@ -189,10 +202,7 @@ class BlossomRunnerAgent(BaseAgent):
             "goal_id": goal.get("id"),
             "pipeline_run_id": self.run_id,
             "status": "running",
-            "params": {
-                "runner": asdict(self.run_cfg),
-                "ats": self.ats_cfg,
-            },
+            "params": {"runner": asdict(self.run_cfg), "ats": self.ats_cfg},
             "extra_data": {"goal_text": goal_text},
         })
 
@@ -246,7 +256,7 @@ class BlossomRunnerAgent(BaseAgent):
             try:
                 db_leaf_id = ext2db.get(leaf_id)
                 if db_leaf_id:
-                    node = self.blossoms.update_node(db_leaf_id, {
+                    _node = self.blossoms.update_node(db_leaf_id, {
                         "tags": ["winner"] if not sh else ["winner", "sharpened"],
                         "scores": {"reward": float(reward)},
                         "sharpen_passes": (1 if sh else 0),
@@ -271,7 +281,7 @@ class BlossomRunnerAgent(BaseAgent):
         # --- finalize episode ---
         stats = {
             "num_nodes": len(forest_out.get("nodes", []) or []),
-            "num_edges": len(forest_out.get("nodes", []) or []),  # approx: edges==nodes-#roots (cheap placeholder)
+            "num_edges": len(forest_out.get("nodes", []) or []),  # approx
             "top_reward": float(top_leaves[0][1]) if top_leaves else None,
             "winners": winners,
         }
@@ -288,40 +298,68 @@ class BlossomRunnerAgent(BaseAgent):
         }
         return context
 
-
-
+    # ------------------------------------------------------------------ #
+    # Bus helpers
+    # ------------------------------------------------------------------ #
     async def _ensure_bus_ready(self) -> None:
         """
-        Idempotent: make sure JetStream stream exists, subjects are bound,
-        and a health round-trip works before we start emitting.
+        Idempotent: ensure bus is connected and subjects are declared.
+        On ZMQ, ensure_stream is a no-op but we still log intent.
         """
+        backend = self.memory.bus.get_backend()
+        log.info("[BlossomRunner] bus.wait_ready(begin) backend=%s", backend)
+        await self.memory.bus.wait_ready(timeout=8.0)
+        log.info("[BlossomRunner] bus.wait_ready(end) backend=%s", backend)
 
-        await self.memory.bus.wait_ready(timeout=8.0)  # health RPC round-trip
-        # else: best effort, continue
+        subjects = [
+            SUBJ["PROMPT_REQ"],
+            SUBJ["RESULTS_WILDCARD"],
+            SUBJ["PROMPT_DLQ"],
+            SUBJ["TIMELINE_NODE"],
+            SUBJ["TIMELINE_REPORT"],
+        ]
+        log.info("[BlossomRunner] ensure_stream(begin) stream=%s subjects=%s", BUS_STREAM, subjects)
+        ok = await self.memory.bus.ensure_stream(BUS_STREAM, subjects=subjects)
+        log.info("[BlossomRunner] ensure_stream(end) ok=%s backend=%s", ok, backend)
 
-        # 2) Ensure stream + subjects (declare-on-use, idempotent)
-        await self.memory.bus.ensure_stream(BUS_STREAM, subjects=[
-                SUBJ["PROMPT_REQ"],
-                SUBJ["RESP_READY"],
-                SUBJ["PROMPT_DLQ"],  # harmless if you keep a DLQ
-            ])
+        # On NATS/JetStream we *can* define a durable consumer on the wildcard.
+        # On ZMQ this is a no-op; we’ll log and skip.
+        if backend == "nats":
+            log.info("[BlossomRunner] ensure_consumer(begin) stream=%s subject=%s durable=%s",
+                    BUS_STREAM, SUBJ["RESULTS_WILDCARD"], "d_blossom_results_wc")
+            with contextlib.suppress(Exception):
+                await self.memory.bus.ensure_consumer(
+                    stream=BUS_STREAM,
+                    subject=SUBJ["RESULTS_WILDCARD"],
+                    durable="d_blossom_results_wc",
+                    ack_wait=30,
+                    max_deliver=5,
+                )
+            log.info("[BlossomRunner] ensure_consumer(end) backend=%s", backend)
+        else:
+            log.info("[BlossomRunner] ensure_consumer(skip) reason=unsupported backend=%s", backend)
 
     async def _ensure_result_consumer(self):
+        """
+        Optional: If you later want this agent to *consume* results,
+        create a durable consumer on the wildcard. (Not needed for emit-only.)
+        """
         await self.memory.bus.ensure_consumer(
             stream=BUS_STREAM,
-            subject=SUBJ["RESP_READY"],
-            durable="d_blossom_resp_ready",
+            subject=SUBJ["RESULTS_WILDCARD"],  # wildcard filter
+            durable="d_blossom_results_wc",
             ack_wait=30,
             max_deliver=5,
         )
 
     async def _bus_publish_safe(self, subject: str, payload: Dict[str, Any], *, retries: int = 4):
         bus = self.memory.bus
-        encoded = payload  # your bus publishes dict→json internally; if not, json.dumps here
+        backend = self._bus_backend()
+        log.debug("[BlossomRunner] publish(begin) subj=%s backend=%s", subject, backend)
+        encoded = payload  # if your bus requires bytes, json.dumps here
 
         await bus.ensure_stream(BUS_STREAM, subjects=[subject])
 
-        # Retry with jitter; on final failure, park in DLQ if present
         backoff = 0.2
         for attempt in range(retries + 1):
             try:
@@ -329,12 +367,12 @@ class BlossomRunnerAgent(BaseAgent):
             except Exception as e:
                 if attempt == retries:
                     try:
-                        if SUBJECT := SUBJ.get("PROMPT_DLQ"):
-                            await bus.publish(subject=SUBJECT, payload={
+                        dlq = SUBJ.get("PROMPT_DLQ")
+                        if dlq:
+                            await bus.publish(subject=dlq, payload={
                                 "subject": subject, "payload": payload, "error": str(e)
                             })
                     finally:
-                        # don't raise; the caller should continue (telemetry best-effort)
                         return None
                 await asyncio.sleep(min(3.0, backoff))
                 backoff *= 2.0
@@ -349,7 +387,7 @@ class BlossomRunnerAgent(BaseAgent):
             if event == "node":
                 node = payload.get("node", payload)
                 await self._bus_publish_safe(
-                    subject=self.msubj_req,
+                    subject=self.subj_timeline_node,
                     payload={
                         "run_id": self.run_id,
                         "node_id": node.get("id"),
@@ -364,7 +402,8 @@ class BlossomRunnerAgent(BaseAgent):
                 )
             elif event == "report":
                 await self._bus_publish_safe(
-                    subject=self.ats_report, payload={"run_id": self.run_id}
+                    subject=self.subj_timeline_report,
+                    payload={"run_id": self.run_id}
                 )
         except Exception as e:
             log.warning("Blossom timeline sink failed: %s", e)
@@ -377,9 +416,6 @@ class BlossomRunnerAgent(BaseAgent):
     # Forest persistence (two pass)
     # ------------------------------------------------------------------ #
     def _persist_nodes_first_pass(self, blossom_id: int, forest_out: Dict[str, Any], ext2db: Dict[str, int]) -> None:
-        """
-        Insert all nodes with no parent first; keep mapping from external (ATS) IDs to DB IDs.
-        """
         nodes: List[Dict[str, Any]] = forest_out.get("nodes", []) or []
         by_id = {n["id"]: n for n in nodes}
 
@@ -439,19 +475,18 @@ class BlossomRunnerAgent(BaseAgent):
 
     def _topk_leaves(self, forest_out: Dict[str, Any], k: int) -> List[Tuple[str, float]]:
         nodes: List[Dict[str, Any]] = forest_out.get("nodes", []) or []
-        rewards: Dict[str, float] = {
-            nid: float(r) for nid, r in (forest_out.get("rewards") or {}).items()
-        }
+        rewards: Dict[str, float] = {nid: float(r) for nid, r in (forest_out.get("rewards") or {}).items()}
         # leaf = node id not referenced as a parent
         node_ids = [n["id"] for n in nodes]
         parents = {n["parent_id"] for n in nodes if n.get("parent_id")}
         leaves = [nid for nid in node_ids if nid not in parents]
+
         def score(nid: str) -> float:
             if nid in rewards:
                 return rewards[nid]
-            # fallback to node.metric if present
             rec = next((n for n in nodes if n["id"] == nid), None)
             return float(rec.get("metric") or 0.0) if rec else 0.0
+
         scored = [(nid, score(nid)) for nid in leaves]
         scored.sort(key=lambda t: t[1], reverse=True)
         return scored[: max(1, int(k))]
@@ -464,6 +499,41 @@ class BlossomRunnerAgent(BaseAgent):
             path.append(cur)
             cur = by_id[cur].get("parent_id")
         return list(reversed(path))
+
+    async def _subscribe_results_probe(self) -> None:
+        """
+        Optional debug hook: subscribe to results wildcard and log first few hits.
+        Controlled by cfg['debug_bus_probe'] (default False).
+        """
+        if not bool(self.cfg.get("debug_bus_probe", False)):
+            return
+
+        backend = self._bus_backend()
+        subj = SUBJ["RESULTS_WILDCARD"]
+        log.info("[BlossomRunner] probe_subscribe(begin) subject=%s backend=%s", subj, backend)
+
+        # Simple handler that logs, then stays silent after a few messages
+        self._probe_seen = 0
+
+        async def _on_probe(msg: Dict[str, Any]):
+            try:
+                jid = None
+                if isinstance(msg, dict):
+                    jid = msg.get("job_id") or msg.get("id")
+                elif hasattr(msg, "data"):
+                    raw = msg.data
+                    if isinstance(raw, dict):
+                        jid = raw.get("job_id") or raw.get("id")
+                self._probe_seen += 1
+                if self._probe_seen <= 5:
+                    log.info("[BlossomRunner] probe_result #%d job_id=%s keys=%s", self._probe_seen, jid, list(msg.keys()) if isinstance(msg, dict) else "bus-msg")
+                elif self._probe_seen == 6:
+                    log.info("[BlossomRunner] probe_result (muted after 5 messages)")
+            except Exception as e:
+                log.warning("[BlossomRunner] probe_result error: %s", e)
+
+        await self.memory.bus.subscribe(subject=subj, handler=_on_probe)
+        log.info("[BlossomRunner] probe_subscribe(end) subject=%s backend=%s", subj, backend)
 
     # ------------------------------------------------------------------ #
     # Sharpen loop (optional, scorer-backed)
@@ -478,7 +548,6 @@ class BlossomRunnerAgent(BaseAgent):
                 self._build_sharpen_prompt(context.get("goal", {}).get("goal_text", ""), plan_text),
                 context=context,
                 llm_cfg=llm_cfg,
-
             ).strip()
 
             # Re-score improved text
@@ -498,7 +567,6 @@ class BlossomRunnerAgent(BaseAgent):
                     )
                     score_val = float(res.get("overall", 0.0))
                 else:
-                    # simple fallback
                     bundle = self.scoring.score(
                         scorer_name="sicql", scorable=sc, context=context, dimensions=["alignment"]
                     )

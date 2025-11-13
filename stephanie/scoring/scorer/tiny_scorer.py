@@ -282,8 +282,7 @@ class TinyScorer(BaseScorer):
             model = self.models.get(dim)
             
             if model is None:
-                log.warning(f"No model available for dimension: {dim}")
-                self.logger.log("TinyModelMissing", {"dimension": dim})
+                log.warning(f"{self.name}: No model available for dimension: {dim}")
                 continue
 
             try:

@@ -10,7 +10,8 @@ from typing import Any, Callable, Dict, List, Optional
 from .bus_protocol import BusProtocol
 from .idempotency import InMemoryIdempotencyStore
 from .inprocess_bus import InProcessKnowledgeBus
-from .nats_bus import NatsKnowledgeBus
+from .zmq_broker import ZmqBrokerGuard
+from .zmq_knowledge_bus import ZmqKnowledgeBus
 
 log = logging.getLogger(__name__)
 
@@ -104,43 +105,18 @@ class HybridKnowledgeBus(BusProtocol):
 
         timeout = cfg["timeout"] if timeout is None else float(timeout)
 
-        # Try backend choice
-        if cfg["backend"] == "nats":
-            try:
-                nats_bus = NatsKnowledgeBus(
-                    servers=cfg["servers"],
-                    stream=cfg["stream"],
-                    logger=self.logger,
-                )
-                ok = await self._with_timeout(nats_bus.connect(), timeout)
-                if ok:
-                    self._bus = nats_bus
-                    self._backend = "nats"
-                    self._idem_store = getattr(nats_bus, "idempotency_store", None)
-                    log.info("Hybrid bus connected to NATS JetStream.")
-                    return True
-            except asyncio.TimeoutError:
-                log.warning("Hybrid bus: NATS connection timed out (<= %ss).", timeout)
-            except Exception as e:
-                log.warning("Hybrid bus: NATS connection failed: %r", e)
-
-            # If required, we won't force-raise here—first-use ops should remain non-fatal.
-            # We'll just avoid swapping to fallback if required==True.
-            if not cfg["required"]:
-                # fall back if allowed
-                if cfg["fallback"] == "inproc":
-                    try:
-                        inproc = InProcessKnowledgeBus(logger=self.logger)
-                        ok = await self._with_timeout(inproc.connect(), timeout)
-                        if ok:
-                            self._bus = inproc
-                            self._backend = "inproc"
-                            self._idem_store = getattr(inproc, "idempotency_store", None)
-                            log.debug("Hybrid bus using in-process fallback (NATS unavailable).")
-                            return True
-                    except Exception as e:
-                        log.error("Hybrid bus: InProc fallback connect error: %s", e)
-
+        try:
+            await ZmqBrokerGuard.ensure_started()
+            zmq_bus = ZmqKnowledgeBus(logger=self.logger)
+            ok = await self._with_timeout(zmq_bus.connect(), timeout)
+            if ok:
+                self._bus = zmq_bus
+                self._backend = "zmq"
+                self._idem_store = getattr(zmq_bus, "idempotency_store", None)
+                log.debug("Hybrid bus using ZMQ fallback (broker auto-started).")
+                return True
+        except Exception as e:
+            log.error("Hybrid bus: ZMQ fallback connect error: %s", e)
             # No usable backend
             self._bus = None
             self._backend = "none"
@@ -148,29 +124,6 @@ class HybridKnowledgeBus(BusProtocol):
             log.error("Hybrid bus: no backend available (NATS down, fallback disabled).")
             return False
 
-        elif cfg["backend"] == "inproc":
-            try:
-                inproc = InProcessKnowledgeBus(logger=self.logger)
-                ok = await self._with_timeout(inproc.connect(), timeout)
-                if ok:
-                    self._bus = inproc
-                    self._backend = "inproc"
-                    self._idem_store = getattr(inproc, "idempotency_store", None)
-                    log.info("Hybrid bus using in-process backend.")
-                    return True
-            except Exception as e:
-                log.error("Hybrid bus: InProc connect error: %s", e)
-            self._bus = None
-            self._backend = "none"
-            self._idem_store = None
-            return False
-
-        else:
-            # backend == "none"
-            self._bus = None
-            self._backend = "none"
-            self._idem_store = None
-            return False
 
     async def _ensure_connected_for_use(self) -> bool:
         """
@@ -313,6 +266,23 @@ class HybridKnowledgeBus(BusProtocol):
             }
 
         try:
+            if self._backend == "zmq":
+                connected = bool(getattr(self._bus, "is_connected", False))
+                details = {}
+                if hasattr(self._bus, "debug_connection_status"):
+                    details = self._bus.debug_connection_status()
+                return {
+                    "is_healthy": connected,
+                    "bus_type": "zmq",
+                    "backend": "zmq",
+                    "status": "connected" if connected else "disconnected",
+                    "details": {
+                        **details,
+                        "frontend": "tcp://127.0.0.1:5555",
+                        "backend":  "tcp://127.0.0.1:5556",
+                    },
+                }
+
             if self._backend == "nats":
                 nats_connected = bool(getattr(self._bus, "_connected", False))
                 nats_closed = bool(getattr(self._bus, "is_closed", True))
