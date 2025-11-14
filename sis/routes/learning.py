@@ -48,7 +48,7 @@ def learning_run_detail(request: Request, run_id: str):
     rows = store.payloads_by_run(run_id, limit=2000)
     
     # Build transfer matrix
-    from stephanie.tools.evidence_extractor import build_transfer_matrix_from_rows
+    from sis.tools.evidence_extractor import build_transfer_matrix_from_rows
     matrix = build_transfer_matrix_from_rows(rows)
     
     templates = request.app.state.templates
@@ -97,7 +97,7 @@ def api_learning_transfer(
         if section:
             rows = [r for r in rows if (r.get("section_name") or "") == section]
         
-        from stephanie.tools.evidence_extractor import build_transfer_matrix_from_rows
+        from sis.tools.evidence_extractor import build_transfer_matrix_from_rows
         matrix = build_transfer_matrix_from_rows(rows)
         return matrix
         
@@ -157,7 +157,7 @@ def api_learning_score(
         
         for run_id in run_id_list:
             rows = store.payloads_by_run(run_id, limit=2000)
-            from stephanie.tools.evidence_extractor import build_transfer_matrix_from_rows
+            from sis.tools.evidence_extractor import build_transfer_matrix_from_rows
             matrix = build_transfer_matrix_from_rows(rows)
             results[run_id] = matrix["kpi"]["learning_score"]
         
