@@ -1,8 +1,8 @@
 # stephanie/components/nexus/vpm/maps.py
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple
+from dataclasses import dataclass, field
+from typing import Dict, Optional
 
 import numpy as np
 from zeromodel.vpm.logic import normalize_vpm
@@ -12,19 +12,88 @@ from stephanie.components.nexus.vpm.explain_adapter import \
 from stephanie.services.zeromodel_service import ZeroModelService
 
 
+from typing import Any
+
+def _as01(x: Any) -> np.ndarray:
+    a = np.asarray(x, dtype=np.float32)
+    if a.size == 0: 
+        return np.zeros_like(a, dtype=np.float32)
+    if a.max() > 1.0 or a.min() < 0.0:
+        a = (a - a.min()) / (a.max() - a.min() + 1e-9)
+    return np.clip(a, 0.0, 1.0)
+
 @dataclass
 class MapSet:
-    quality: np.ndarray
-    novelty: np.ndarray
-    uncertainty: np.ndarray
-    extras: Dict[str, np.ndarray]  # optional, e.g., risk, coverage
-    maps: Dict[str, np.ndarray]  # name -> [H,W] float in [0,1]
+    # Named “well-known” maps (optional)
+    quality: Optional[np.ndarray] = None
+    novelty: Optional[np.ndarray] = None
+    uncertainty: Optional[np.ndarray] = None
+    # Arbitrary extras
+    extras: Dict[str, np.ndarray] = field(default_factory=dict)
+
+    # Allow a dict constructor: MapSet(maps=...) or MapSet({...})
+    def __init__(self, maps: Optional[Dict[str, Any]] = None, **named: Any):
+        object.__setattr__(self, "quality", None)
+        object.__setattr__(self, "novelty", None)
+        object.__setattr__(self, "uncertainty", None)
+        object.__setattr__(self, "extras", {})
+
+        m = dict(maps or {})
+        m.update(named or {})
+        # Pull out the canonical three if present; keep the rest in extras
+        for k in ("quality", "novelty", "uncertainty"):
+            if k in m and m[k] is not None:
+                object.__setattr__(self, k, _as01(m.pop(k)))
+        object.__setattr__(self, "extras", {k: _as01(v) for k, v in m.items()})
+
+
+    @classmethod
+    def from_dict(cls, maps: Dict[str, Any]) -> "MapSet":
+        """Back-compat for older provider code that constructs via MapSet.from_dict."""
+        return cls(maps=maps)
+
+    def to_dict(self) -> Dict[str, np.ndarray]:
+        """Convenience for callers that expect a plain dict."""
+        return self.maps
+
+    # Optional: make dict(MapSet) / iteration work if any legacy code expects it
+    def __iter__(self):
+        yield from self.maps.items()
+
+    @property
+    def maps(self) -> Dict[str, np.ndarray]:
+        out: Dict[str, np.ndarray] = dict(self.extras)
+        if self.quality is not None:    out["quality"] = self.quality
+        if self.novelty is not None:    out["novelty"] = self.novelty
+        if self.uncertainty is not None:out["uncertainty"] = self.uncertainty
+        return out
 
 
 class MapProvider:
-    """Abstract provider that returns single-channel float32 maps in [0,1]."""
-    def __init__(self, zm: ZeroModelService): 
-        self.zm = zm
+    """
+    Lightweight adapter:
+    - If a ZeroModelService exposes a map function, use it.
+    - Else return an empty MapSet() (your agent adds safe fallbacks).
+    """
+    def __init__(self, zeromodel=None):
+        self.zm = zeromodel
+
+    def build(self, X: np.ndarray) -> MapSet:
+        for attr in ("maps_from_vpm", "build_maps", "get_maps"):
+            fn = getattr(self.zm, attr, None)
+            if callable(fn):
+                try:
+                    m = fn(X)
+                    if isinstance(m, MapSet):
+                        return m
+                    if isinstance(m, dict):
+                        return MapSet(maps=m)
+                    # Any other truthy type → try best-effort dict()
+                    if m:
+                        return MapSet(maps=dict(m))
+                except Exception:
+                    pass
+        return MapSet()  # empty; agent will add safe fallbacks
     
     def get_maps(self, *, X: np.ndarray, H: int, W: int) -> MapSet:
         raise NotImplementedError
@@ -56,7 +125,7 @@ class MapProvider:
         for extra in ("risk","coverage","bridge"):
             arr = self._get(extra, H, W)
             if arr is not None: m[extra] = arr
-        return MapSet(m)
+        return MapSet.from_dict(m)
 
 class ZeroModelMapProvider(MapProvider):
     def __init__(self, zm: ZeroModelService):

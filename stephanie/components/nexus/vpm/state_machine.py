@@ -68,10 +68,12 @@ def _resolve_source(src: Any, X01: np.ndarray, meta: Dict[str, Any]) -> np.ndarr
         ch = X01[idx]
         return np.clip(ch, 0.0, 1.0)
     elif kind == "map":
-        arr = np.asarray(meta.get("maps", {}).get(str(key)))
-        if arr is None or arr.size == 0:
-            raise ValueError(f"Missing map: {key}")
-        return normalize_vpm(arr)
+        maps = meta.get("maps", {}) or {}
+        arr = maps.get(str(key), None)
+        # Graceful fallback: if missing, use a zero map shaped like a channel
+        if arr is None:
+            return np.zeros_like(X01[0], dtype=np.float32)
+        return normalize_vpm(np.asarray(arr))
     else:
         raise ValueError(f"Unknown source kind: {kind}")
 
@@ -354,7 +356,8 @@ class ThoughtExecutor:
         # Apply ops
         total_cost = float(thought.cost)
         for op in thought.ops:
-            out.X = self._apply_op(out.X, op)
+            # Pass the state's meta so logic ops can access maps safely
+            out.X = self._apply_op(out.X, op, out.meta)
             total_cost += float(self.visual_op_cost.get(op.type.value, 0.0))
 
         # Recompute φ and utility
@@ -368,13 +371,14 @@ class ThoughtExecutor:
         return out, delta, total_cost, bcs
 
     # ---- Visual Ops -------------------------------------------------
-    def _apply_op(self, X: np.ndarray, op: VisualThoughtOp) -> np.ndarray:
+    def _apply_op(self, X: np.ndarray, op: VisualThoughtOp, meta: dict | None = None) -> np.ndarray:
         """
         Apply a single VisualThoughtOp to a [C,H,W] array. Returns new array.
         """
+        meta = meta or {}
         X = np.asarray(X)
         assert X.ndim in (2, 3), f"VPM must be [C,H,W] or [H,W]; got {X.shape}"
-        was_2d = (X.ndim == 2)
+        was_2d = (X.ndim == 2) 
         if was_2d:
             X = X[None, ...]  # [1,H,W]
 
@@ -392,7 +396,7 @@ class ThoughtExecutor:
         elif op.type == VisualThoughtType.BLUR:
             X01 = self._op_blur(X01, op.params)
         elif op.type == VisualThoughtType.LOGIC:
-            X01 = self._op_logic(X01, op.params, out.meta)
+            X01 = self._op_logic(X01, op.params,meta)
         else:
             # Unknown op: no-op
             pass
