@@ -342,7 +342,7 @@ class NexusImproverAsyncAgent(ProgressMixin, BaseAgent):
         Publish K prompt jobs for this parent and return a list of tickets:
         [{job_id, return_topic, parent_id, k_index}, ...]
         """
-        from stephanie.prompts.prompt_client import PromptClient
+        from stephanie.services.bus.prompt_client import PromptClient
 
         # Build K prompts (you likely already have a prompt template in Blossom)
         prompts = []

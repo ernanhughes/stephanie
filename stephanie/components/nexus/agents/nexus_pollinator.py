@@ -27,7 +27,7 @@ from stephanie.components.nexus.blossom.viewer.renderer import (
 from stephanie.components.nexus.graph.knowledge_index import (
     compute_knowledge_index_from_files,
 )
-from stephanie.prompts.prompt_client import PromptClient
+from stephanie.services.bus.prompt_client import PromptClient
 from stephanie.services.bus.prompt_worker import PromptDispatcherWorker
 from stephanie.services.bus.events.prompt_job import Priority
 
