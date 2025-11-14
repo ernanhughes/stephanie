@@ -16,9 +16,10 @@ Key improvements:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any, Dict, List, Optional
-import asyncio
+
 from tqdm import tqdm
 
 from stephanie.agents.base_agent import BaseAgent

@@ -5,8 +5,8 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
-from stephanie.services.bus.prompt_client import PromptClient
 from stephanie.services.bus.events.prompt_job import Priority
+from stephanie.services.bus.prompt_client import PromptClient
 
 log = logging.getLogger(__name__)
 

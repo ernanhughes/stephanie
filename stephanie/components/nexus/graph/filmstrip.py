@@ -1,13 +1,15 @@
 # nexus/graph/filmstrip.py
 from __future__ import annotations
+
+import random
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Sequence, Tuple
 from pathlib import Path
+from typing import Dict, List, Optional, Sequence, Tuple
+
+import imageio.v2 as iio
 import matplotlib.pyplot as plt
 import networkx as nx
-import imageio.v2 as iio
 import numpy as np
-import random
 
 
 @dataclass

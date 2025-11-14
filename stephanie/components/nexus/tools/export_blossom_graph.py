@@ -1,13 +1,13 @@
 # stephanie/tools/export_blossom_graph.py
 from __future__ import annotations
+
 import os
 from dataclasses import dataclass
 from typing import Dict
 
+import networkx as nx
 from sqlalchemy import text
 from sqlalchemy.orm import sessionmaker
-
-import networkx as nx
 
 try:
     import pygraphviz as pgv  # optional, best quality with dot layout

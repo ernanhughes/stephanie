@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
+
 import numpy as np
 
 from stephanie.memory.nexus_store import NexusStore

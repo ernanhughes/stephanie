@@ -1,5 +1,7 @@
 from __future__ import annotations
+
 from typing import Iterable, List
+
 from stephanie.data.prompt_job import PromptJob
 from stephanie.services.bus_service import BusService
 

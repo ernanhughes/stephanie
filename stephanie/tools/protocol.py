@@ -1,5 +1,6 @@
 # stephanie/tools/protocol.py
 from __future__ import annotations
+
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable, Dict, List, Optional
 

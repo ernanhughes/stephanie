@@ -1,8 +1,12 @@
 from __future__ import annotations
-import numpy as np
+
 from pathlib import Path
+
+import numpy as np
 from PIL import Image
+
 from ..thought_trace import ThoughtTrace
+
 
 class ThoughtVPMEncoder:
     """Encodes a ThoughtTrace into a simple H×W tile with channels for score/uncertainty.

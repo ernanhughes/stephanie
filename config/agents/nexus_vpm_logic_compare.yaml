@@ -1,0 +1,27 @@
+nexus_vpm_logic_compare:
+  name: nexus_vpm_logic_compare
+  enabled: true
+  save_prompt: false
+  save_context: false
+  skip_if_completed: false
+
+  # Where to write cohort films and the side-by-side comparison
+  out_root: runs/vpm_compare
+
+  # VPM + processing
+  img_size: 256
+  topk: 5                # top K by φ-utility per cohort
+  max_steps: 2           # zoom refinements per scorable
+
+  # Occlusion (importance) settings
+  occ_patch_h: 12
+  occ_patch_w: 12
+  occ_stride: 8
+  occ_prior: top_left    # "top_left" | "uniform"
+  occ_channel_agg: mean  # "mean" | "max"
+
+  # (Optional) If your BaseAgent supports these common knobs
+  offload_prompts: false
+  offload_mode: await
+  max_inflight: 32
+  response_timeout_s: 60

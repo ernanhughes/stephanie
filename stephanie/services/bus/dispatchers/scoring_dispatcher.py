@@ -1,5 +1,7 @@
 from __future__ import annotations
+
 from typing import Iterable, List
+
 from stephanie.events.scoring_job import ScoringJob
 
 PROMPT = "scoring.eval"

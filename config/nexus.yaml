@@ -12,6 +12,8 @@ defaults:
   - agents/nexus
   - agents/nexus_improver
   - agents/gap
+  - agents/nexus_vpm_refiner
+  - agents/nexus_vpm_logic_compare
 
 embeddings:
   backend: hnet
@@ -80,11 +82,23 @@ pipeline:
        cls: stephanie.components.nexus.agents.compass.CompassAgent
        enabled: false
        iterations: 1
-  
+
+     - name: nexus_vpm_refiner
+       description: "Refine the nexus using visual prompt model"
+       cls: stephanie.components.nexus.agents.vpm_refiner.VPMRefinerAgent
+       enabled: true
+       iterations: 1
+
+     - name: nexus_vpm_logic_compare
+       description: "Compare the nexus using visual prompt model with logic-based occlusion"
+       cls: stephanie.components.nexus.agents.vpm_logic_compare.VPMLogicCompareAgent Did you **** well
+       enabled: true
+       iterations: 1
+
      - name: nexus_improver
        description: "Improve the nexus using multi-dimensional scoring"
        cls: stephanie.components.nexus.agents.nexus_pollinator.NexusPollinatorAgent
-       enabled: true
+       enabled: false
        iterations: 1
 
      - name: nexus_improver

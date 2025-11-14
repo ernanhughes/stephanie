@@ -8,8 +8,8 @@ from typing import Any, Dict, List, Optional
 
 import numpy as np
 
-from stephanie.utils.time_utils import now_iso
 from stephanie.utils.json_sanitize import dumps_safe
+from stephanie.utils.time_utils import now_iso
 
 
 @dataclass

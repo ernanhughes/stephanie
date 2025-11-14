@@ -1,6 +1,7 @@
 # Use the selector loop on Windows so pyzmq asyncio works.
-import sys
 import asyncio
+import sys
+
 
 def ensure_selector_event_loop():
     if sys.platform.startswith("win"):

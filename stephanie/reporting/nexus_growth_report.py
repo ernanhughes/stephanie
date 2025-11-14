@@ -36,9 +36,9 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
+import matplotlib.pyplot as plt
 # Minimal deps: networkx + matplotlib, imageio is optional
 import networkx as nx
-import matplotlib.pyplot as plt
 
 try:
     import imageio.v2 as imageio  # optional, for GIF

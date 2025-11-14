@@ -1,11 +1,12 @@
 from __future__ import annotations
+
 import json
 import logging
 from typing import Any, Dict
 
-from stephanie.services.prompt_service import PromptService
-from stephanie.constants import PROMPT_SUBMIT, BUS_STREAM
+from stephanie.constants import BUS_STREAM, PROMPT_SUBMIT
 from stephanie.services.bus.events.prompt_job import PromptJob, ResponseFormat
+from stephanie.services.prompt_service import PromptService
 from stephanie.utils.json_sanitize import dumps_safe
 
 log = logging.getLogger(__name__)

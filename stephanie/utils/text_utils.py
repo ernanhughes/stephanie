@@ -11,7 +11,7 @@ Features:
 """
 
 import re
-from typing import List, Set, Optional
+from typing import List, Optional
 
 # Regular expressions compiled at module level for efficiency
 SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+")  # Split on sentence boundaries

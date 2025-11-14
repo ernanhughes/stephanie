@@ -30,8 +30,7 @@ from PIL import Image
 from stephanie.components.gap.io.data_retriever import (DataRetriever,
                                                         RetrieverConfig)
 from stephanie.components.gap.models import GapConfig
-from stephanie.components.gap.processors.ab_frontier import (
-    ABFrontierProcessor)
+from stephanie.components.gap.processors.ab_frontier import ABFrontierProcessor
 from stephanie.components.gap.processors.analysis import AnalysisProcessor
 from stephanie.components.gap.processors.calibration import \
     CalibrationProcessor

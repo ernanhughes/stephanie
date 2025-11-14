@@ -2,11 +2,11 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import socket
 import time
 import traceback
 import uuid
-import logging
 from typing import Any, Awaitable, Callable, Dict, Optional
 
 from stephanie.services.bus.idempotency import (JsonlIdempotencyStore,

@@ -40,8 +40,6 @@ class WebSearchTool:
 
         return self.parse_searxng_results(html, max_results)
 
-    from bs4 import BeautifulSoup
-
     def parse_searxng_results(self, html: str, max_results: int = 20):
         soup = BeautifulSoup(html, "html.parser")
         results = []
@@ -73,8 +71,6 @@ class WebSearchTool:
                 )
 
         return results
-
-    import requests
 
     def fetch_html(self, url: str) -> str | None:
         headers = {"User-Agent": "Mozilla/5.0"}

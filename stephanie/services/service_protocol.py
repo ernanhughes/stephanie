@@ -176,30 +176,31 @@ class Service(ABC):
 
     def set_bus(self, bus: Any) -> None:
         """
-        Inject an event bus for inter-service communication.
-        
-        This method is called by the service container to provide the service
-        with access to the system's event bus. Services can use the bus to
-        publish events and subscribe to events from other services.
-        
-        Args:
-            bus: The event bus instance implementing publish/subscribe interface
-            
-        Note:
-            This method is optional - services that don't need event bus
-            integration can simply ignore it.
+        Attach a bus instance. If the bus supports request-middleware via
+        .wrap_request(), we try to install our caching middleware, but we
+        *must* tolerate hybrid buses whose underlying transport is not
+        wired yet.
         """
-        self.bus = bus
-        # Try to log the bus attachment, but fail gracefully if logging fails
-        lg = getattr(self, "logger", None) or logging.getLogger(self.name)
+        self._bus = bus
+
+        # No bus at all → nothing to do yet
+        if not bus:
+            return
+
+        # Best-effort middleware install. If the bus is a HybridBus with
+        # an uninitialized ._bus, calling wrap_request may raise; we log
+        # and move on instead of crashing early in Supervisor.__init__.
         try:
-            lg.info("ServiceBusAttached", extra={
-                "service": self.name, 
-                "backend": getattr(bus, "get_backend", lambda: "unknown")()
-            })
-        except Exception:
-            # If logging fails, continue without logging
-            pass
+            wrap = getattr(bus, "wrap_request", None)
+            if callable(wrap):
+                wrap(self._cache_request_middleware)
+        except Exception as e:
+            # Don't kill startup because the bus isn't ready yet.
+            # You can re-call cache.set_bus(...) later once the bus is fully wired.
+            self.logger.warning(
+                "[ZmqCache] Could not attach middleware to bus yet: %s",
+                e,
+            )
 
     async def subscribe(
         self,

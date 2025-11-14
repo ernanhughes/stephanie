@@ -1,6 +1,8 @@
 # stephanie/scoring/svm/svm_scorer.py
 from __future__ import annotations
 
+import logging
+
 import numpy as np
 from joblib import load
 
@@ -12,7 +14,6 @@ from stephanie.scoring.scorer.base_scorer import BaseScorer
 from stephanie.scoring.transforms.regression_tuner import RegressionTuner
 from stephanie.utils.file_utils import load_json
 
-import logging
 log = logging.getLogger(__name__)
 
 class SVMScorer(BaseScorer):

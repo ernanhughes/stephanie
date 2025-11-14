@@ -1,17 +1,17 @@
 from __future__ import annotations
+
 import asyncio
 import statistics as stats
 from dataclasses import dataclass
 from typing import Any, Dict, List, Tuple
 
-from stephanie.scoring.scorable_processor import ScorableProcessor
+from stephanie.components.vericot.vericot_verifier import \
+    VericotVerifier  # your final version
 from stephanie.core.manifest import ManifestManager
 from stephanie.memory.memcube_store import MemCubeStore
 from stephanie.scoring.scorable import Scorable
+from stephanie.scoring.scorable_processor import ScorableProcessor
 from stephanie.services.epistemic_guard_service import EpistemicGuardService
-from stephanie.components.vericot.vericot_verifier import (
-    VericotVerifier,
-)  # your final version
 from stephanie.services.scoring_service import ScoringService
 
 

@@ -1,16 +1,17 @@
 # stephanie/components/nexus/graph/builder.py
 from __future__ import annotations
 
-import math
 import logging
+import math
 from collections import Counter, defaultdict
-from typing import Any, DefaultDict, Dict, Iterable, List, Optional, Set, Tuple, Union
+from typing import (Any, DefaultDict, Dict, Iterable, List, Optional, Set,
+                    Tuple, Union)
 
 import numpy as np
 
 from stephanie.components.nexus.app.types import NexusEdge, NexusNode
-from stephanie.utils.json_sanitize import dumps_safe
 from stephanie.memory.nexus_store import NexusStore
+from stephanie.utils.json_sanitize import dumps_safe
 
 log = logging.getLogger(__name__)
 
@@ -110,7 +111,8 @@ class GraphBuilder:
         } for e in edges]
         n = self.store.write_edges(run_id, payload)
 
-        from stephanie.components.nexus.graph.exporters.pyviz import export_graph_json
+        from stephanie.components.nexus.graph.exporters.pyviz import \
+            export_graph_json
         graph_json = export_graph_json(path=export_path, nodes=nodes, edges=edges, include_channels=True)
 
         c = Counter(e["type"] for e in payload)

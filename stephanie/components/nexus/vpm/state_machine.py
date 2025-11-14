@@ -1,6 +1,4 @@
 # stephanie/components/nexus/vpm/state_machine.py
-from __future__ import annotations
-
 """
 VPM State Machine
 -----------------
@@ -32,9 +30,12 @@ from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter
+from zeromodel.vpm.logic import (normalize_vpm, vpm_and, vpm_nand, vpm_nor,
+                                 vpm_not, vpm_or, vpm_subtract, vpm_xor)
 
 from stephanie.components.nexus.utils.visual_thought import (VisualThoughtOp,
                                                              VisualThoughtType)
+
 
 def _clamp_int(v, lo, hi): 
     return int(max(lo, min(hi, int(v))))
@@ -54,6 +55,25 @@ def _parse_center_scale(params, W, H):
     scale = max(1.0, float(params.get("scale", 2.0)))
     return cx, cy, scale
 
+def _resolve_source(src: Any, X01: np.ndarray, meta: Dict[str, Any]) -> np.ndarray:
+    """
+    src can be:
+      - ("channel", idx) → returns X01[idx]
+      - ("map", name)    → returns meta["maps"][name] (2D float [0,1])
+    Always returns 2D float in [0,1].
+    """
+    kind, key = src
+    if kind == "channel":
+        idx = int(key)
+        ch = X01[idx]
+        return np.clip(ch, 0.0, 1.0)
+    elif kind == "map":
+        arr = np.asarray(meta.get("maps", {}).get(str(key)))
+        if arr is None or arr.size == 0:
+            raise ValueError(f"Missing map: {key}")
+        return normalize_vpm(arr)
+    else:
+        raise ValueError(f"Unknown source kind: {kind}")
 
 # ---------------------------------------------------------------------
 # Goal & State
@@ -371,6 +391,8 @@ class ThoughtExecutor:
             X01 = self._op_highlight(X01, op.params)
         elif op.type == VisualThoughtType.BLUR:
             X01 = self._op_blur(X01, op.params)
+        elif op.type == VisualThoughtType.LOGIC:
+            X01 = self._op_logic(X01, op.params, out.meta)
         else:
             # Unknown op: no-op
             pass
@@ -521,4 +543,45 @@ class ThoughtExecutor:
                 crop = pil.crop((x1, y1, x2, y2)).filter(ImageFilter.GaussianBlur(radius=radius))
                 pil.paste(crop, (x1, y1))
                 X01[c] = np.asarray(pil, dtype=np.float32) / 255.0
+        return X01
+
+    def _op_logic(self, X01: np.ndarray, params: Dict[str, Any], meta: Dict[str, Any]) -> np.ndarray:
+        """
+        params:
+          op:   one of {"AND","OR","NOT","SUB","XOR","NAND","NOR"}
+          a:    ("channel", i) OR ("map", "quality"/"novelty"/"uncertainty"/...)
+          b:    same as 'a' (optional for unary)
+          dst:  int channel index to write into (defaults to 0)
+          blend: float in [0,1] to blend with existing dst (default=1.0 replace)
+        """
+        op = str(params.get("op", "AND")).upper()
+        a = params.get("a", ("channel", 0))
+        b = params.get("b", None)
+        dst = int(params.get("dst", 0))
+        blend = float(np.clip(params.get("blend", 1.0), 0.0, 1.0))
+
+        C,H,W = X01.shape
+        A = _resolve_source(a, X01, meta)
+        if A.shape != (H,W):
+            A = np.asarray(Image.fromarray((A*255).astype(np.uint8)).resize((W,H), Image.BILINEAR))/255.0
+
+        if op == "NOT":
+            R = vpm_not(A)
+        else:
+            if b is None:
+                raise ValueError(f"Logic op {op} requires 'b'")
+            B = _resolve_source(b, X01, meta)
+            if B.shape != (H,W):
+                B = np.asarray(Image.fromarray((B*255).astype(np.uint8)).resize((W,H), Image.BILINEAR))/255.0
+            if op == "AND": R = vpm_and(A, B)
+            elif op == "OR": R = vpm_or(A, B)
+            elif op == "SUB": R = vpm_subtract(A, B)
+            elif op == "XOR": R = vpm_xor(A, B)
+            elif op == "NAND": R = vpm_nand(A, B)
+            elif op == "NOR": R = vpm_nor(A, B)
+            else: raise ValueError(f"Unknown logic op {op}")
+
+        # write into target channel with optional blend
+        dst = int(np.clip(dst, 0, C-1))
+        X01[dst] = np.clip((1.0 - blend)*X01[dst] + blend*R, 0.0, 1.0)
         return X01

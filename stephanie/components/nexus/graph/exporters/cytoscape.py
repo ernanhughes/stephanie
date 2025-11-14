@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List
 
+
 def to_cytoscape_json(nodes: Dict[str, Any], edges: List[Any]) -> dict:
     """
     Build Cytoscape.js-compatible JSON.

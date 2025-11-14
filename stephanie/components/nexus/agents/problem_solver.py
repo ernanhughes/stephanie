@@ -5,12 +5,13 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
 from stephanie.agents.base_agent import BaseAgent
+from stephanie.components.vericot.vericot_verifier import VericotVerifier
 from stephanie.core.manifest import ManifestManager
+from stephanie.memory.memcube_store import MemCubeStore
 from stephanie.scoring.scorable_processor import ScorableProcessor
 from stephanie.services.epistemic_guard_service import EpistemicGuardService
-from stephanie.components.vericot.vericot_verifier import VericotVerifier
 from stephanie.services.scoring_service import ScoringService
-from stephanie.memory.memcube_store import MemCubeStore
+
 
 @dataclass
 class Goal:

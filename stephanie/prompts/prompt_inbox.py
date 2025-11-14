@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 from typing import Dict, Iterable
+
 from stephanie.memory.prompt_job_store import PromptJobStore
+
 
 class PromptInbox:
     """

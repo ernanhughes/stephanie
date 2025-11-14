@@ -1,7 +1,8 @@
 from __future__ import annotations
+
 import logging
 from dataclasses import dataclass
-from typing import List, Dict, Any
+from typing import Any, Dict, List
 
 from stephanie.core.app_context import AppContext
 

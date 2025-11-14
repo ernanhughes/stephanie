@@ -1,15 +1,16 @@
 # stephanie/components/nexus/graph/graph.py
 from __future__ import annotations
 
-from dataclasses import dataclass, field, asdict
+import logging
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
-import logging
 import numpy as np
 
 from stephanie.memory.nexus_store import NexusStore
-from stephanie.models.nexus import NexusScorableORM, NexusEdgeORM, NexusMetricsORM
+from stephanie.models.nexus import (NexusEdgeORM, NexusMetricsORM,
+                                    NexusScorableORM)
 
 log = logging.getLogger(__name__)
 

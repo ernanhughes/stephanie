@@ -26,8 +26,8 @@ import argparse
 import csv
 import json
 import sys
-from pathlib import Path
 from math import isfinite
+from pathlib import Path
 
 EPS = 1e-9
 

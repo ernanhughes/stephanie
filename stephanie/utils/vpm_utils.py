@@ -1,13 +1,13 @@
 # stephanie/utils/vpm_utils.py
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import numpy as np
 from PIL import Image
 
-import logging
 log = logging.getLogger(__name__)
 
 

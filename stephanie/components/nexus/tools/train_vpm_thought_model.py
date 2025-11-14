@@ -5,20 +5,23 @@ import random
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+import networkx as nx  # keep early import
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
+from omegaconf import DictConfig, OmegaConf
 from torch.utils.data import DataLoader, IterableDataset
 from tqdm import tqdm
 
-import networkx as nx  # keep early import
-from omegaconf import OmegaConf, DictConfig
-
+from stephanie.components.nexus.utils.visual_thought import (VisualThoughtOp,
+                                                             VisualThoughtType)
+from stephanie.components.nexus.vpm.state_machine import (Thought,
+                                                          ThoughtExecutor,
+                                                          VPMGoal, VPMState,
+                                                          compute_phi)
 from stephanie.services.graph_layout import render_multi_layout_vpm
-from stephanie.components.nexus.utils.visual_thought import VisualThoughtOp, VisualThoughtType
-from stephanie.components.nexus.vpm.state_machine import VPMGoal, VPMState, compute_phi, Thought, ThoughtExecutor
 
 DEFAULT_CONFIG = {
     "model": {

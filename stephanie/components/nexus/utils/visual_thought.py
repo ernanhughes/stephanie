@@ -38,10 +38,6 @@ try:
 except Exception:  # pragma: no cover
     _HAS_PIL = False
 
-# These imports are part of your project
-# VPMState contains (X: np.ndarray [C,H,W], meta: dict, phi: dict, goal: VPMGoal, utility: float)
-# compute_phi recomputes metrics from VPM + meta (e.g., separability, symmetry, bridge_proxy ...)
-from stephanie.components.nexus.vpm.state_machine import VPMGoal, VPMState, compute_phi
 
 # --------------------------------------------------------------------------------------
 # Visual Ops
@@ -53,6 +49,8 @@ class VisualThoughtType(str, enum.Enum):
     PATH = "path"           # params: points[List[Tuple[int,int]]], arrows:bool=False, thickness:int=2
     HIGHLIGHT = "highlight" # params: polygon[List[Tuple[int,int]]], opacity:float in [0,1], boost:float
     BLUR = "blur"           # params: xyxy, k:int (odd kernel size), passes:int=1
+    LOGIC = "logic"         # 
+
 
 
 @dataclass(frozen=True)
@@ -345,7 +343,10 @@ class ThoughtExecutor:
 
     # ----------------------------- public API -----------------------------
 
-    def score_thought(self, state: VPMState, thought: Thought) -> Tuple[VPMState, float, float, float]:
+    def score_thought(self, state: Any, thought: Thought) -> Tuple[Any, float, float, float]:
+        from stephanie.components.nexus.vpm.state_machine import (VPMState,
+                                                                  compute_phi)
+
         """
         Apply a Thought to a state, recompute metrics, and return scores.
         """
@@ -442,24 +443,3 @@ def _coerce_points(val: Any) -> List[Tuple[int, int]]:
             return out
     return []
 
-
-# --------------------------------------------------------------------------------------
-# Minimal doctest
-# --------------------------------------------------------------------------------------
-
-if __name__ == "__main__":  # quick sanity
-    H = W = 64
-    X = np.zeros((3, H, W), dtype=np.uint8)
-    state = VPMState(X=X, meta={"positions": {}}, phi={"separability": 0.0}, goal=VPMGoal(weights={"separability": 1.0}))
-    ex = ThoughtExecutor()
-
-    th = Thought(
-        name="ZoomBridge",
-        ops=[
-            VisualThoughtOp(VisualThoughtType.ZOOM, {"center": (32, 32), "scale": 2.0}),
-            VisualThoughtOp(VisualThoughtType.BBOX, {"xyxy": (16, 16, 48, 48), "thickness": 2, "boost": 0.2}),
-        ],
-        intent="Focus and highlight central region",
-    )
-    new_state, delta, cost, bcs = ex.score_thought(state, th)
-    print("delta:", delta, "cost:", cost, "bcs:", bcs, "utility:", new_state.utility)

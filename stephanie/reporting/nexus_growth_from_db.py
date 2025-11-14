@@ -40,15 +40,16 @@ Frame semantics:
 """
 
 from __future__ import annotations
+
 import argparse
 import json
 import os
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
-import psycopg  # pip install psycopg[binary]
-import networkx as nx
 import matplotlib.pyplot as plt
+import networkx as nx
+import psycopg  # pip install psycopg[binary]
 
 try:
     from PIL import Image

@@ -36,7 +36,7 @@ import numpy as np
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.paper_improver.goals import GoalScorer
-from stephanie.utils.text_utils import sentences, lexical_overlap
+from stephanie.utils.text_utils import lexical_overlap, sentences
 
 # ---- cues / patterns ----
 EVIDENCE_HINTS = (

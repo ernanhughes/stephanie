@@ -2,17 +2,14 @@
 from __future__ import annotations
 
 import asyncio
-import json
-import time
-import logging
-from typing import Any, Dict, List, Optional, Tuple
 import contextlib
+import json
+import logging
+import time
+from typing import Any, Dict, List, Optional, Tuple
 
-from stephanie.services.bus.events.prompt_job import PromptJob, Priority
-from stephanie.constants import (
-    PROMPT_RESULT_WC,
-    PROMPT_SUBMIT,
-)
+from stephanie.constants import PROMPT_RESULT_WC, PROMPT_SUBMIT
+from stephanie.services.bus.events.prompt_job import Priority, PromptJob
 
 log = logging.getLogger(__name__)
 

@@ -42,7 +42,7 @@ class Supervisor:
         self.logger.log("SupervisorInit", {"cfg": cfg})
 
         # DI container
-        self.container = ServiceContainer(cfg=cfg, logger=self.logger)
+        self.container = ServiceContainer(cfg=cfg, memory=self.memory, logger=self.logger)
 
         # Load + register services from selected profile
         profile_path = self._resolve_services_profile_path(cfg)

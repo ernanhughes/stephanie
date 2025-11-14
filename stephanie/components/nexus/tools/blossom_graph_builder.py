@@ -23,9 +23,9 @@ Notes:
 
 import argparse
 import json
-from pathlib import Path
-from typing import Dict, List, Tuple, Optional, Set, Any
 from collections import defaultdict
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 # ----------------------------- IO helpers -----------------------------
 

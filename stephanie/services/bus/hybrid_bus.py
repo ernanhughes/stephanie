@@ -41,7 +41,7 @@ class HybridKnowledgeBus(BusProtocol):
         self._backend: str = "none"           # "nats" | "inproc" | "none"
         self._disabled: bool = False
         self._idem_store: Optional[InMemoryIdempotencyStore] = None
-
+        self._pending_middlewares: list[callable] = []
         # single-flight guard for concurrent first-use connects
         self._connect_lock = asyncio.Lock()
 
@@ -113,6 +113,7 @@ class HybridKnowledgeBus(BusProtocol):
                 self._backend = "zmq"
                 self._idem_store = getattr(zmq_bus, "idempotency_store", None)
                 log.debug("Hybrid bus using ZMQ fallback (broker auto-started).")
+                self.attach_bus(zmq_bus)
                 return True
         except Exception as e:
             log.error("Hybrid bus: ZMQ fallback connect error: %s", e)
@@ -142,6 +143,16 @@ class HybridKnowledgeBus(BusProtocol):
             ok = await self.connect()
             return ok
 
+    def attach_bus(self, bus) -> None:
+        """
+        Attach the real underlying bus, and apply any pending middlewares.
+        """
+        self._bus = bus
+        for mw in self._pending_middlewares:
+            if hasattr(self._bus, "wrap_request"):
+                self._bus.wrap_request(mw)
+        self._pending_middlewares.clear()
+    
     # ---------------------- Public API ----------------------
 
     async def publish(self, subject: str, payload: Dict[str, Any], headers: Optional[Dict[str, str]] = None) -> None:
@@ -244,6 +255,20 @@ class HybridKnowledgeBus(BusProtocol):
                 except Exception as e2:
                     log.error("Hybrid bus: request retry failed on %s: %s", subject, e2)
             return None  # non-fatal
+
+    def wrap_request(self, middleware):
+        """
+        Install a middleware that wraps the low-level request call.
+
+        middleware(next_handler, subject, payload, **kwargs) -> Any
+        """
+        if self._bus is None:
+            # Underlying transport not yet wired: remember it
+            self._pending_middlewares.append(middleware)
+            return
+        
+        # Save original I
+        return self._bus.wrap_request(middleware)  # type: ignore[attr-defined]
 
     def health_check(self) -> dict:
         if self._disabled:

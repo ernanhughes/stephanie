@@ -4,7 +4,8 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Dict
 
-from sqlalchemy import JSON, Boolean, Column, DateTime, Float, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import (JSON, Boolean, Column, DateTime, Float, ForeignKey,
+                        Index, Integer, String, Text)
 from sqlalchemy.orm import relationship
 
 from stephanie.models.base import Base

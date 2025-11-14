@@ -1,11 +1,12 @@
 # stephanie/components/nexus/graph_variantor.py
 from __future__ import annotations
+
 import random
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional
 
+from stephanie.components.nexus.graph.engine import Goal, NexusGraphEngine
 from stephanie.memory.nexus_store import NexusStore
-from stephanie.components.nexus.graph.engine import NexusGraphEngine, Goal
 
 PollinateFn = Callable[[str, Dict[str, Any]], List[Dict[str, Any]]]
 # returns a list of new scorables: [{"id": "...", "text": "...", "domains": [...], "entities": [...], "meta": {...}}, ...]

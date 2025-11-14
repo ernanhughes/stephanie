@@ -1,8 +1,9 @@
 from __future__ import annotations
+
+import time
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Dict, List
-import time
 
 
 class ThoughtKind(str, Enum):

@@ -59,16 +59,15 @@ content-aware splitter that plays nicely with real-world embedding services.
 
 from __future__ import annotations
 
+import re
+import unicodedata
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import List, Optional, Sequence, Tuple, Any
+from typing import Any, List, Optional, Sequence, Tuple
 
 import numpy as np
 import torch
 import torch.nn as nn
-
-import re
-import unicodedata
 
 from stephanie.tools.embedding_tool import MXBAIEmbedder
 

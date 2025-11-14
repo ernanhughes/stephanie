@@ -9,6 +9,8 @@ import psycopg2
 from pgvector.psycopg2 import register_vector
 from sqlalchemy.orm import sessionmaker
 
+from stephanie.constants import (BUS_STREAM, HEALTH_SUBJ, PROMPT_DLQ,
+                                 PROMPT_RESULT, PROMPT_SUBMIT)
 from stephanie.memory.belief_cartridge_store import BeliefCartridgeStore
 from stephanie.memory.blossom_store import BlossomStore
 from stephanie.memory.bus_event_store import BusEventStore
@@ -76,11 +78,9 @@ from stephanie.memory.vpm_store import VPMStore
 from stephanie.models.base import engine  # From your SQLAlchemy setup
 from stephanie.services.bus.hybrid_bus import HybridKnowledgeBus
 from stephanie.services.bus.knowledge_bus import KnowledgeBus
-
 from stephanie.utils.async_utils import retry
-
-from stephanie.constants import BUS_STREAM, HEALTH_SUBJ, PROMPT_DLQ, PROMPT_SUBMIT, PROMPT_RESULT
 from stephanie.utils.win_eventloop import ensure_selector_event_loop
+
 ensure_selector_event_loop()
 
 log = logging.getLogger(__name__)
@@ -111,6 +111,7 @@ class MemoryTool:
         # Idempotent connection guards
         self._bus_lock: asyncio.Lock = asyncio.Lock()
         self._bus_connected_evt: asyncio.Event = asyncio.Event()
+
 
         embedding_cfg = self.cfg.get("embeddings", {})
 

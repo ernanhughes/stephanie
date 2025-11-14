@@ -12,8 +12,8 @@ from stephanie.components.risk.features.entity_domain_features import \
     risk_from_features
 from stephanie.memory.memcube_store import MemCubeStore
 from stephanie.scoring.scorable import Scorable
-from stephanie.services.service_protocol import Service
 from stephanie.scoring.scorable_processor import ScorableProcessor
+from stephanie.services.service_protocol import Service
 
 log = logging.getLogger(__name__)
 

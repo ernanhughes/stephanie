@@ -1,7 +1,10 @@
 from __future__ import annotations
+
 from dataclasses import dataclass, field
-from typing import List, Dict, Any
+from typing import Any, Dict, List
+
 from .thought_types import Thought
+
 
 @dataclass
 class ThoughtTrace:

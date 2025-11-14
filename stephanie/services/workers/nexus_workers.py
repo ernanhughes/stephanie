@@ -8,7 +8,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-
 from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.scorable_processor import ScorableProcessor
 from stephanie.services.zeromodel_service import ZeroModelService

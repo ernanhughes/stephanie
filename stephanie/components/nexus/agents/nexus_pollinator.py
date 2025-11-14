@@ -15,27 +15,22 @@ import numpy as np
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.components.nexus.blossom.runner import BlossomRunnerAgent
+from stephanie.components.nexus.blossom.viewer.renderer import \
+    write_garden_frames
 from stephanie.components.nexus.graph.builder import GraphBuilder
-from stephanie.scoring.scorable_processor import ScorableProcessor
-from stephanie.services.scoring_service import ScoringService
+from stephanie.components.nexus.graph.graph import (GraphScore, NexusGraph,
+                                                    NexusGraphConfig,
+                                                    NexusViewManifest)
+from stephanie.components.nexus.graph.knowledge_index import \
+    compute_knowledge_index_from_files
 from stephanie.scoring.scorable import Scorable
-from stephanie.utils.json_sanitize import dumps_safe
-from stephanie.utils.progress_mixin import ProgressMixin
-from stephanie.components.nexus.blossom.viewer.renderer import (
-    write_garden_frames,
-)
-from stephanie.components.nexus.graph.knowledge_index import (
-    compute_knowledge_index_from_files,
-)
+from stephanie.scoring.scorable_processor import ScorableProcessor
+from stephanie.services.bus.events.prompt_job import Priority
 from stephanie.services.bus.prompt_client import PromptClient
 from stephanie.services.bus.prompt_worker import PromptDispatcherWorker
-from stephanie.services.bus.events.prompt_job import Priority
-from stephanie.components.nexus.graph.graph import (
-    NexusGraph,
-    NexusGraphConfig,
-    GraphScore,
-    NexusViewManifest,
-)
+from stephanie.services.scoring_service import ScoringService
+from stephanie.utils.json_sanitize import dumps_safe
+from stephanie.utils.progress_mixin import ProgressMixin
 
 log = logging.getLogger(__name__)
 
@@ -164,6 +159,12 @@ class NexusPollinatorAgent(ProgressMixin, BaseAgent):
     # --------------------------- PUBLIC ---------------------------
 
     async def run(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        cache = self.container.get("cache")
+        if cache:
+            self.memory.ensure_bus_connected()
+            cache.set_bus(self.memory.bus)     # critical line    
+            self.logger.log("CacheServiceInitialized", {"type": type(cache).__name__})
+
         prompt_worker = PromptDispatcherWorker(
             cfg=self.cfg,
             memory=self.memory,

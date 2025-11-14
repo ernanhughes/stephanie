@@ -166,8 +166,6 @@ class SharpeningAgent(BaseAgent):
                 },
             )
 
-    from datetime import datetime
-
     def log_sharpening_results(
         self, goal: str, prompt: str, original_output: str, results: list[dict]
     ):
