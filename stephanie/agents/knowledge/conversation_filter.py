@@ -36,6 +36,7 @@ import numpy as np
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.paper_improver.goals import GoalScorer
+from stephanie.utils.text_utils import sentences, lexical_overlap
 
 # ---- cues / patterns ----
 EVIDENCE_HINTS = (
@@ -56,19 +57,6 @@ TECHNICAL_TERMS = (
     "retrieval", "graph", "policy", "reward", "ablation", "evaluation"
 )
 
-_SENT_SPLIT = re.compile(r"(?<=[.!?])\s+")
-
-def _sentences(t: str) -> List[str]:
-    if not t:
-        return []
-    return [s.strip() for s in _SENT_SPLIT.split(t) if len(s.strip()) > 2]
-
-def _lex_overlap(a: str, b: str) -> float:
-    if not a or not b:
-        return 0.0
-    aw = set(re.findall(r"\b\w+\b", a.lower()))
-    bw = set(re.findall(r"\b\w+\b", b.lower()))
-    return (len(aw & bw) / max(1, len(aw))) if aw else 0.0
 
 def _cos(u: np.ndarray, v: np.ndarray) -> float:
     if u is None or v is None:
@@ -254,7 +242,7 @@ class ConversationFilterAgent(BaseAgent):
         try:
             if len(section_text) <= 2000:
                 return self._embed(section_text)
-            sents = _sentences(section_text)
+            sents = sentences(section_text)
             if len(sents) >= 3:
                 first = self._embed(sents[0][:2000])
                 mid   = self._embed(sents[len(sents)//2][:2000])
@@ -270,19 +258,19 @@ class ConversationFilterAgent(BaseAgent):
                 return _cos(self._embed(text[:2000]), sec_emb)
             # very short → lexical overlap proxy
             if len(text.split()) < 5:
-                return _lex_overlap(text, section_text)
-            sents = _sentences(text)
+                return lexical_overlap(text, section_text)
+            sents = sentences(text)
             if sents:
                 return _cos(self._embed(sents[0][:200]), sec_emb)
         except Exception:
             self.logger.log("EmbeddingFallback", {"len": len(text)})
-            return _lex_overlap(text, section_text)
+            return lexical_overlap(text, section_text)
         return 0.0
 
     def _vpm_dims(self, text: str, section_text: str) -> Dict[str, float]:
         t = text.lower()
         # correctness: overlap boosted when factual terms appear
-        correctness = 0.35 + 0.65 * _lex_overlap(text, section_text)
+        correctness = 0.35 + 0.65 * lexical_overlap(text, section_text)
         if any(k in t for k in FACTUAL_HINTS):
             correctness = min(1.0, correctness * 1.2)
         # progress: pushes toward solutions; penalize raw “error” unless analyzed
@@ -293,7 +281,7 @@ class ConversationFilterAgent(BaseAgent):
         else:
             progress = 0.5
         # evidence: hard references; otherwise overlap proxy
-        evidence = 0.9 if any(h in t for h in EVIDENCE_HINTS) else min(1.0, 1.2 * _lex_overlap(text, section_text))
+        evidence = 0.9 if any(h in t for h in EVIDENCE_HINTS) else min(1.0, 1.2 * lexical_overlap(text, section_text))
         # novelty: “we found/new/alternative…”
         novelty = 0.8 if any(k in t for k in ("new approach", "alternative", "novel", "innovative", "we found", "surprising", "counterintuitive")) else 0.35
         return {

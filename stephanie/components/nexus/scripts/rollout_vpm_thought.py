@@ -11,7 +11,7 @@ import torch
 from omegaconf import OmegaConf
 from PIL import Image
 
-from scripts.train_vpm_thought_model import (  # Reuse model definition
+from stephanie.components.nexus.tools.train_vpm_thought_model import (  # Reuse model definition
     DEFAULT_CONFIG, VPMThoughtModel)
 from stephanie.components.nexus.utils.visual_thought import (VisualThoughtOp,
                                                              VisualThoughtType)
