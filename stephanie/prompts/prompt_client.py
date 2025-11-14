@@ -6,15 +6,12 @@ import json
 import time
 import logging
 from typing import Any, Dict, List, Optional, Tuple
-import uuid
 import contextlib
 
 from stephanie.services.bus.events.prompt_job import PromptJob, Priority
 from stephanie.constants import (
-    PROMPT_RESULT,
     PROMPT_RESULT_WC,
     PROMPT_SUBMIT,
-    PROMPT_DLQ,
 )
 
 log = logging.getLogger(__name__)

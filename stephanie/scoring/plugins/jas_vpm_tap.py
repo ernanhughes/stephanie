@@ -12,8 +12,11 @@ class VPMTapPlugin:
     After each tick, write a single VPM row to DB and (optionally) push to ZeroModel timeline.
     """
     def __init__(self, container=None, logger=None, host=None, run_id: str = "jitter", log_to_zero: bool = True):
-        self.container = container; self.logger = logger; self.host = host
-        self.run_id = run_id; self.log_to_zero = bool(log_to_zero)
+        self.container = container
+        self.logger = logger
+        self.host = host
+        self.run_id = run_id
+        self.log_to_zero = bool(log_to_zero)
         self._timeline_open = False
 
     def post_tick(self, tick: int, vitals, core, triune):

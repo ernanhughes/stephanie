@@ -40,7 +40,9 @@ Frame semantics:
 """
 
 from __future__ import annotations
-import argparse, json, os
+import argparse
+import json
+import os
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 

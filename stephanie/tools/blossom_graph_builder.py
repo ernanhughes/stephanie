@@ -23,10 +23,9 @@ Notes:
 
 import argparse
 import json
-import math
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional, Set, Any
-from collections import defaultdict, deque
+from collections import defaultdict
 
 # ----------------------------- IO helpers -----------------------------
 

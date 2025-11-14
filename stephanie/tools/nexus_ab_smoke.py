@@ -27,7 +27,6 @@ import csv
 import json
 import sys
 from pathlib import Path
-from statistics import mean
 from math import isfinite
 
 EPS = 1e-9
@@ -492,7 +491,7 @@ def main():
             print(colorize(f" - {fmsg}", "r"))
         sys.exit(1)
     elif ('failures' in locals()) and failures:
-        print(colorize(f"\nGuard checks failed (non-strict).", "y"))
+        print(colorize("\nGuard checks failed (non-strict).", "y"))
     else:
         print(colorize("\nAll guard checks passed.", "g"))
 

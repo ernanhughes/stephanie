@@ -39,6 +39,7 @@ class LLMScorer(BaseScorer):
 
         for dim in dimensions:
             prompt = self._render_prompt(context, scorable, dim)
+            prompt_hash = hash(prompt)
 
             if not self.force_rescore:
                 cached_result = self.memory.scores.get_score_by_prompt_hash(prompt_hash)

@@ -1,11 +1,10 @@
 # stephanie/components/nexus/graph_variantor.py
 from __future__ import annotations
 import random
-from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional, Tuple
-import numpy as np
+from dataclasses import dataclass
+from typing import Any, Callable, Dict, List, Optional
 
-from stephanie.memory.nexus_store import NexusStore, NexusEdgeORM
+from stephanie.memory.nexus_store import NexusStore
 from stephanie.components.nexus.graph.engine import NexusGraphEngine, Goal
 
 PollinateFn = Callable[[str, Dict[str, Any]], List[Dict[str, Any]]]
@@ -103,7 +102,6 @@ class GraphVariantor:
 
         # 4) PERTURB_WEIGHTS
         if spec.perturb_sigma > 0.0:
-            import math
             edges = self.store.list_edges(variant_run, limit=200000)
             for e in edges:
                 if e.type == "knn_global":

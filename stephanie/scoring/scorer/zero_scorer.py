@@ -68,15 +68,18 @@ class ZeroScorer(BaseScorer):
 
     @staticmethod
     def _cosine(a: np.ndarray, b: np.ndarray) -> float:
-        na = float(np.linalg.norm(a)); nb = float(np.linalg.norm(b))
-        if na == 0 or nb == 0: return 0.0
+        na = float(np.linalg.norm(a))
+        nb = float(np.linalg.norm(b))
+        if na == 0 or nb == 0:
+            return 0.0
         return float(np.dot(a, b) / (na * nb))
 
     def _alignment_score(self, names: List[str], vec: np.ndarray) -> float:
         if not self.align_keys:
             return float(np.mean(vec))
         idx = [i for i, n in enumerate(names) if any(key.lower() in n.lower() for key in self.align_keys)]
-        if not idx: return float(np.mean(vec))
+        if not idx:
+            return float(np.mean(vec))
         return float(np.mean(vec[idx]))
 
     def _contradiction_score(self, names: List[str], vec: np.ndarray) -> float:
@@ -93,7 +96,8 @@ class ZeroScorer(BaseScorer):
                 scores.append(abs(vec[ia] - vec[ib]))
             except StopIteration:
                 continue
-        if not scores: return 0.0
+        if not scores:
+            return 0.0
         return float(np.clip(np.mean(scores), 0.0, 1.0))
 
     def _novelty_score(self, sc: VPMScorable, weighted_vec: np.ndarray) -> float:

@@ -37,8 +37,6 @@ from stephanie.scoring.scorable import Scorable, ScorableFactory
 from stephanie.scoring.scorer.base_scorer import BaseScorer
 from stephanie.services.service_protocol import Service
 from stephanie.services.zeromodel_service import ZeroModelService
-from stephanie.utils.score_utils import (clip01, median, safe_mean,
-                                         weighted_mean)
 
 log = logging.getLogger(__name__)
 

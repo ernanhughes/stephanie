@@ -2,7 +2,6 @@ from __future__ import annotations
 import numpy as np
 from pathlib import Path
 from PIL import Image
-from typing import Tuple
 from ..thought_trace import ThoughtTrace
 
 class ThoughtVPMEncoder:

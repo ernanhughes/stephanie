@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import numpy as np
-from sqlalchemy import desc, text, and_, or_, func
+from sqlalchemy import desc, text, and_, or_
 from sqlalchemy.orm import Session
 
 

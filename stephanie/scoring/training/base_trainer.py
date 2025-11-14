@@ -190,19 +190,27 @@ class BaseTrainer:
     # ----------------------------- Numerics -----------------------------
     def _as_1d_list(self, x):
         if isinstance(x, torch.Tensor): return x.detach().cpu().view(-1).tolist()
-        if isinstance(x, np.ndarray):   return x.reshape(-1).tolist()
-        if isinstance(x, (int, float)): return [x]
-        try: return list(x)
-        except Exception: return [x]
+        if isinstance(x, np.ndarray):
+            return x.reshape(-1).tolist()
+        if isinstance(x, (int, float)):
+            return [x]
+        try:
+            return list(x)
+        except Exception:
+            return [x]
 
     def _as_np_1d(self, x):
-        if isinstance(x, torch.Tensor): return x.detach().cpu().view(-1).numpy()
-        if isinstance(x, np.ndarray):   return x.reshape(-1)
-        if isinstance(x, (list, tuple)):return np.asarray(x, dtype=np.float32).reshape(-1)
+        if isinstance(x, torch.Tensor):
+            return x.detach().cpu().view(-1).numpy()
+        if isinstance(x, np.ndarray):
+            return x.reshape(-1)
+        if isinstance(x, (list, tuple)):
+            return np.asarray(x, dtype=np.float32).reshape(-1)
         return np.asarray([x], dtype=np.float32)
 
     def _spearmanr(self, a, b):
-        a = np.asarray(a); b = np.asarray(b)
+        a = np.asarray(a)
+        b = np.asarray(b)
         ra = a.argsort().argsort().astype(np.float64)
         rb = b.argsort().argsort().astype(np.float64)
         ra = (ra - ra.mean()) / (ra.std() + 1e-9)
@@ -301,7 +309,8 @@ class BaseTrainer:
             # Optionally map logits → probabilities
             if apply_sigmoid:
                 p = 1.0 / (1.0 + np.exp(-np.clip(p, -50.0, 50.0)))
-            preds_all.append(p); acts_all.append(a_np)
+            preds_all.append(p)
+            acts_all.append(a_np)
 
         if not preds_all:
             return np.array([]), np.array([])
@@ -312,26 +321,33 @@ class BaseTrainer:
     def binary_cls_metrics(self, dataloader, forward_fn):
         Ls, Ys = [], []
         for batch in dataloader:
-            if len(batch) == 3: X, y, _ = batch
-            else:               X, y    = batch
+            if len(batch) == 3:
+                X, y, _ = batch
+            else:
+                X, y    = batch
             logits = forward_fn(X).view(-1).detach().cpu().numpy()
-            Ls.append(logits); Ys.append(y.view(-1).detach().cpu().numpy().astype(np.float32))
+            Ls.append(logits)
+            Ys.append(y.view(-1).detach().cpu().numpy().astype(np.float32))
         if not Ls:
             return {"pair_acc": float("nan"), "auc": float("nan"), "logloss": float("nan"), "pos_rate": float("nan")}
-        L = np.concatenate(Ls); Y = np.concatenate(Ys)
+        L = np.concatenate(Ls)
+        Y = np.concatenate(Ys)
         pair_acc = float(((L > 0).astype(np.float32) == Y).mean())
         pos_rate = float((L > 0).mean())
         # rank-based AUC (safe)
         try:
             order = np.argsort(L)
-            ranks = np.empty_like(order); ranks[order] = np.arange(len(L))
-            pos = (Y == 1).astype(np.float64); neg = 1.0 - pos
+            ranks = np.empty_like(order)
+            ranks[order] = np.arange(len(L))
+            pos = (Y == 1).astype(np.float64)
+            neg = 1.0 - pos
             n_pos, n_neg = pos.sum(), neg.sum()
             auc = float(((ranks[pos == 1]).sum() - n_pos*(n_pos-1)/2) / max(n_pos*n_neg, 1.0)) if n_pos>0 and n_neg>0 else float("nan")
         except Exception:
             auc = float("nan")
         # logloss
-        P = 1.0 / (1.0 + np.exp(-L)); eps = 1e-7
+        P = 1.0 / (1.0 + np.exp(-L))
+        eps = 1e-7
         logloss = float(-np.mean(Y*np.log(P+eps) + (1-Y)*np.log(1-P+eps)))
         return {"pair_acc": pair_acc, "auc": auc, "logloss": logloss, "pos_rate": pos_rate}
 
@@ -345,9 +361,12 @@ class BaseTrainer:
     def init_pos_weight_and_bias(self, dataloader, out_layer, clamp=(0.2, 5.0)):
         ys = []
         for batch in dataloader:
-            if len(batch) == 3: _, y, _ = batch
-            elif len(batch) == 2: _, y = batch
-            else: continue
+            if len(batch) == 3:
+                _, y, _ = batch
+            elif len(batch) == 2:
+                _, y = batch
+            else:
+                continue
             ys.append(y.detach().cpu().view(-1))
         y_all = torch.cat(ys) if ys else torch.tensor([])
         p_pos = float((y_all > 0.5).float().mean()) if y_all.numel() > 0 else 0.5

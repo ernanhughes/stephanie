@@ -63,6 +63,24 @@ class RunManifest:
     preproc_version: str = "v1"
     created_at: float = field(default_factory=lambda: time.time())
 
+
+def start_run(run_id, dataset: str, models: dict, base_root: str = "data/gap_runs") -> RunManifest:
+    """
+    Create a reproducible run folder structure and a manifest.json.
+
+    Layout:
+      gap_runs/<run_id>/
+        raw/ aligned/ visuals/ metrics/ reports/
+        manifest.json
+    """
+    base = os.path.join(base_root, run_id)
+    for sub in ("raw", "aligned", "visuals", "metrics", "reports"):
+        os.makedirs(os.path.join(base, sub), exist_ok=True)
+    m = RunManifest(run_id=run_id, dataset=dataset, models=models)
+    with open(os.path.join(base, "manifest.json"), "w", encoding="utf-8") as f:
+        f.write(dumps_safe(asdict(m), indent=2))
+    return m
+
 # [S3.a] IO helpers for timelines/matrices -----------------------------------
 def _load_triples_jsonl(path: str) -> List[dict]:
     rows = []
@@ -430,7 +448,7 @@ class GapAgent(BaseAgent):
             raise ValueError("GapAgent requires context['pipeline_run_id']")
 
         manifest = start_run(run_id=pipeline_run_id, dataset=dataset_name, models=models, base_root=str(self.base_dir))
-        # after manifest = start_run(...)
+
         base = os.path.join(str(self.base_dir), manifest.run_id)
         manifest_dict = asdict(manifest)
         manifest_dict["dimensions"] = self.dimensions

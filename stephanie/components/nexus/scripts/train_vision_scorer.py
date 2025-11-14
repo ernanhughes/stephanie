@@ -97,7 +97,6 @@ import networkx as nx
 import numpy as np
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 from omegaconf import DictConfig, OmegaConf
 
 from stephanie.services.graph_layout import \

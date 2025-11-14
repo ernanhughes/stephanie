@@ -85,7 +85,8 @@ class HRMTrainer(BaseTrainer):
             return {"status": "failed", "message": "Dataloader creation failed."}
 
         losses = []
-        best = float("inf"); wait = 0
+        best = float("inf")
+        wait = 0
 
         # epoch progress bar
         epoch_iter = self.progress(range(self.epochs), desc=f"HRM[{dimension}] epochs", leave=False)
@@ -256,8 +257,10 @@ class HRMTrainer(BaseTrainer):
                 a_val = s.get("value_a", None)
                 b_val = s.get("value_b", None)
                 if a_out or b_out:
-                    if a_out and (a_val is not None): _maybe_push(title, a_out, a_val)
-                    if b_out and (b_val is not None): _maybe_push(title, b_out, b_val)
+                    if a_out and (a_val is not None):
+                        _maybe_push(title, a_out, a_val)
+                    if b_out and (b_val is not None):
+                        _maybe_push(title, b_out, b_val)
                 else:
                     skipped += 1
                 continue
@@ -305,7 +308,8 @@ class HRMTrainer(BaseTrainer):
                                 dtype=torch.float32, device=self.device)
                 x = torch.cat([ctx, doc], dim=-1)                 # [2*D]
                 y = torch.tensor([_norm(value)], dtype=torch.float32, device=self.device)  # [1]
-                xs.append(x); ys.append(y)
+                xs.append(x)
+                ys.append(y)
             except Exception as e:
                 skipped += 1
                 self.logger.log("HRMDataError", {"error": str(e), "sample_goal_preview": goal_text[:80]})
@@ -361,7 +365,9 @@ class HRMTrainer(BaseTrainer):
             if p.grad is not None:
                 g = p.grad.detach()
                 num += float(torch.sum(g * g))
-        return float(np.sqrt(num)) if num > 0 else 0.0
+            if p.is_floating_point(): # Only consider floating point parameters for norm
+                den += float(torch.sum(p * p))
+        return float(np.sqrt(num)) / (float(np.sqrt(den)) + 1e-8) if den > 0 else 0.0
 
 
     def _save_model(self, dimension: str):

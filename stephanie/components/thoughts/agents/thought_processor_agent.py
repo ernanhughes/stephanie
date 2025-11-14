@@ -2,10 +2,8 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List
 
-from stephanie.core.app_context import AppContext
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.services.scoring_service import ScoringService  # existing in your repo
-from stephanie.memcube.memcube_factory import MemCubeFactory    # typical pattern
 from stephanie.components.thoughts.vpm.thought_vpm_encoder import ThoughtVPMEncoder
 from ..thought_types import Thought, ThoughtKind, Evidence
 from ..thought_trace import ThoughtTrace

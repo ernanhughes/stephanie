@@ -2,7 +2,7 @@
 from __future__ import annotations
 import os
 from dataclasses import dataclass
-from typing import Optional, Dict, Any, List
+from typing import Dict
 
 from sqlalchemy import text
 from sqlalchemy.orm import sessionmaker

@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, asdict
-from typing import Any, Dict, List, Optional, Tuple, Callable       
+from typing import Any, Dict, List, Optional, Tuple       
 import contextlib                                                   
 import time
 import logging

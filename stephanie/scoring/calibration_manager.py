@@ -363,17 +363,7 @@ class CalibrationManager:
         self.models[domain] = data
         return True
 
-    def get_calibrated_probability(self, domain: str, raw_sim: float) -> float:
-        self._ensure_loaded(domain)
-        model = self.models.get(domain) or {"coefficients": [1.0, 0.0]}
-        coeffs = model.get("coefficients", [1.0, 0.0])
-        # polynomial transform; clamp to [0,1]
-        try:
-            import numpy as np
-            val = float(np.polyval(coeffs, raw_sim))
-        except Exception:
-            val = float(raw_sim)
-        return max(0.0, min(1.0, val))
+
 
     def get_calibrated_probability(self, domain: str, raw_sim: float) -> float:
         domain = domain or "general"

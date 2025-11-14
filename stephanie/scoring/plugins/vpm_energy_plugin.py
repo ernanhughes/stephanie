@@ -27,7 +27,8 @@ def _to_vec(x) -> np.ndarray:
     return (x / n).astype(np.float32)
 
 def _cosine(a: np.ndarray, b: np.ndarray) -> float:
-    a = _to_vec(a); b = _to_vec(b)
+    a = _to_vec(a)
+    b = _to_vec(b)
     return float(np.clip(np.dot(a, b), -1.0, 1.0))
 
 @register("vpm_energy")
@@ -79,7 +80,8 @@ class VPMEnergyPlugin:
                     self._proto = _to_vec(p)
                     return self._proto
         except Exception as e:
-            if self.logger: self.logger.log("VPMEnergy.get_proto.error", {"error": str(e)})
+            if self.logger:
+                self.logger.log("VPMEnergy.get_proto.error", {"error": str(e)})
         return None
 
     def _ema_update_proto(self, x: np.ndarray):
@@ -95,7 +97,8 @@ class VPMEnergyPlugin:
             if self.vpms and hasattr(self.vpms, "set_core_prototype"):
                 self.vpms.set_core_prototype(self._proto.tolist())
         except Exception as e:
-            if self.logger: self.logger.log("VPMEnergy.ema.error", {"error": str(e)})
+            if self.logger:
+                self.logger.log("VPMEnergy.ema.error", {"error": str(e)})
 
     def post_process(self, *, tap_output: Dict[str, Any]) -> Dict[str, float]:
         attrs = tap_output.get("attributes") or {}

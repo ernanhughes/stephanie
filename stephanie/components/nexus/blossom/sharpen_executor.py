@@ -2,12 +2,10 @@
 from __future__ import annotations
 
 import math
-import time
 from typing import Any, Dict, List, Optional, Tuple
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.thought.paper_blog import SimplePaperBlogAgent
-from stephanie.scoring.scorable import ScorableType
 
 # Reuse your sharpening prompt/logic patterns
 # If you want to import directly from SharpenedPaperSummarizerAgent, you can.

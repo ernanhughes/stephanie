@@ -31,7 +31,7 @@ from stephanie.components.gap.io.data_retriever import (DataRetriever,
                                                         RetrieverConfig)
 from stephanie.components.gap.models import GapConfig
 from stephanie.components.gap.processors.ab_frontier import (
-    ABFrontierConfig, ABFrontierProcessor)
+    ABFrontierProcessor)
 from stephanie.components.gap.processors.analysis import AnalysisProcessor
 from stephanie.components.gap.processors.calibration import \
     CalibrationProcessor

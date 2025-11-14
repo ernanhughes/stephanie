@@ -1,27 +1,8 @@
 # stephanie/scoring/model/vpm_model.py
 from __future__ import annotations
 
-"""
-vpm_transformer_scorer.py
-=========================
-Vision Transformer-based scorer for Visual Policy Maps (VPMs).
-
-This implementation:
-- Uses a custom TinyVisionTransformer architecture optimized for VPMs
-- Treats VPMs as epistemic states to be scored on cognitive dimensions
-- Includes both inference and training capabilities
-- Integrates with Stephanie's scoring ecosystem
-- Provides visual introspection via attention maps
-
-Key improvements over heuristic VPMScorer:
-- Learned patterns instead of handcrafted heuristics
-- Multi-dimensional scoring with proper gradient flow
-- Attention mechanisms for explainable AI
-- Trainable parameters that improve over time
-- Better generalization across VPM types and resolutions
-"""
-
 import logging
+
 from dataclasses import dataclass
 from enum import Enum
 from typing import Dict, List, Optional, Tuple

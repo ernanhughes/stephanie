@@ -17,7 +17,6 @@ from stephanie.constants import (
     SUBJ_RESULT_NS_W,
     SUBJ_SUBMIT_LEG,
     SUBJ_RESULT_LEG_W,
-    SUBJ_RESULT_WC,
     SUBJ_RESULT_NS_T, 
 )
 

@@ -4,7 +4,6 @@ from __future__ import annotations
 import time
 from collections import defaultdict, deque
 from typing import Any, Dict, List, Optional
-import traceback
 from stephanie.services.service_protocol import Service
 
 

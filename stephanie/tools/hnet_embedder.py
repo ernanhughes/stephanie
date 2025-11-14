@@ -266,7 +266,6 @@ def _nearest_delim(bytes_buf: bytes, idx: int, search_radius: int = 64) -> int:
                 best_dist = d
     return best
 
-import unicodedata
 
 def _left_adjust_utf8_safe(tokens: List[int], end_idx: int, adjust_chars: int = 4) -> int:
     """

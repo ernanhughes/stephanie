@@ -19,7 +19,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import scipy.stats as spstats  # optional, but nice if available
 from stephanie.scoring.scorable import Scorable
-from stephanie.utils import metrics
 from zeromodel.pipeline.executor import PipelineExecutor
 from zeromodel.tools.gif_logger import GifLogger
 from zeromodel.tools.spatial_optimizer import SpatialOptimizer

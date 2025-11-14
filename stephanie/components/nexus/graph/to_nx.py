@@ -1,5 +1,5 @@
 # nexus/graph/to_nx.py
-from typing import Dict, List, Any, Tuple
+from typing import Dict, List, Any
 import networkx as nx
 
 def to_networkx(nodes: Dict[str, Any], edges: List[Any]) -> nx.DiGraph:

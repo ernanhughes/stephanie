@@ -1,7 +1,7 @@
 # nexus/graph/filmstrip.py
 from __future__ import annotations
 from dataclasses import dataclass
-from typing import Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 from pathlib import Path
 import matplotlib.pyplot as plt
 import networkx as nx
@@ -45,7 +45,7 @@ class GraphFilmstrip:
         G = baseG.copy()
 
         # baseline frame
-        frames.append(self._draw(G, out_dir / f"frame_000.png"))
+        frames.append(self._draw(G, out_dir / "frame_000.png"))
 
         # event frames
         for i, ev in enumerate(events, start=1):

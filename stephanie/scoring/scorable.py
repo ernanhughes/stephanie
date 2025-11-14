@@ -147,21 +147,8 @@ class Scorable:
             ),
         )
         top = ranked[0]
-        return (
-            str(top.get("domain")),
-            float(top.get("score", 0.0)),
-            str(top.get("source")),
-        )
+        return str(top.get("domain")), float(top.get("score", 0.0)), str(top.get("source"))
 
-    def to_dict(self) -> dict:
-        return {
-            "id": self._id,
-            "text": self._text,
-            "target_type": self._target_type,
-            "metadata": self._metadata,
-            "domains": self._domains,
-            "ner": self._ner,
-        }
 
     @staticmethod
     def from_dict(d: Dict[str, Any]) -> Scorable:

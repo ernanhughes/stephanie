@@ -9,7 +9,6 @@ from typing import Any, Callable, Dict, List, Optional
 
 from .bus_protocol import BusProtocol
 from .idempotency import InMemoryIdempotencyStore
-from .inprocess_bus import InProcessKnowledgeBus
 from .zmq_broker import ZmqBrokerGuard
 from .zmq_knowledge_bus import ZmqKnowledgeBus
 

@@ -322,7 +322,6 @@ class TinyScorer(BaseScorer):
 
                 # Apply scaling and metadata adjustments
                 meta = self.model_meta.get(dim, {})
-                final_score = _tf(aux.get("score"))
                 tiny_score01 = raw01
                 tiny_score100 = round(_safe_scale_0_100(tiny_score01, meta), 4)
                 log.debug(f"Scaled scores - 01: {tiny_score01:.3f}, 100: {tiny_score100}")

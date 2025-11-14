@@ -18,6 +18,7 @@ from stephanie.memory.memory_tool import MemoryTool
 from stephanie.supervisor import Supervisor
 from stephanie.utils.file_utils import save_to_timestamped_file
 from stephanie.utils.run_utils import generate_run_id, get_log_file_path
+from contextlib import suppress
 
 logger = logging.getLogger(__name__)
 
@@ -39,12 +40,19 @@ def run(cfg: DictConfig):
         # ✅ Batch Mode: input_file provided
         if "input_file" in cfg and cfg.input_file:
             logger.info(f"📂 Batch mode: Loading from file: {cfg.input_file}")
-            result = await supervisor.run_pipeline_config(
-                {"input_file": cfg.input_file}
-            )
-            logger.info(
-                f"✅ Batch run completed for file: {cfg.input_file}: {str(result)[:100]}"
-            )
+            try:
+                result = await supervisor.run_pipeline_config(
+                        {"input_file": cfg.input_file}
+                    )
+                logger.info(
+                        f"✅ Batch run completed for file: {cfg.input_file}: {str(result)[:100]}"
+                    )
+            finally:
+                # orderly shutdown; ignore CancelledError noise on exit
+                from stephanie.services.bus.zmq_broker import ZMQBroker
+                with suppress(asyncio.CancelledError):
+                    await ZMQBroker.close()
+                
             return
 
         # ✅ Single goal mode
@@ -58,7 +66,13 @@ def run(cfg: DictConfig):
             "run_id": run_id,
         }
 
-        result = await supervisor.run_pipeline_config(context)
+        try:
+            result = await supervisor.run_pipeline_config(context)
+        finally:
+            # orderly shutdown; ignore CancelledError noise on exit
+            from stephanie.services.bus.zmq_broker import ZMQBroker
+            with suppress(asyncio.CancelledError):
+                await ZMQBroker.close()
 
         if cfg.report.get("save_context_result", False):
             save_json_result(log_path, result)

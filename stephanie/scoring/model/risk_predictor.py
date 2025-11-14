@@ -174,7 +174,7 @@ class DomainCalibratedRiskPredictor:
                 if k not in self.bundle.feature_names
             ]
             if missing:
-                logn(
+                log.warning(
                     f"Risk bundle missing features used by featurizer: {missing}"
                 )
 

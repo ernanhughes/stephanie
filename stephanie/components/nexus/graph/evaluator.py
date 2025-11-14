@@ -1,7 +1,8 @@
 from __future__ import annotations
-import asyncio, time, statistics as stats
+import asyncio
+import statistics as stats
 from dataclasses import dataclass
-from typing import Any, Dict, List, Tuple, Optional
+from typing import Any, Dict, List, Tuple
 
 from stephanie.scoring.scorable_processor import ScorableProcessor
 from stephanie.core.manifest import ManifestManager
