@@ -134,7 +134,7 @@ class PromptJobORM(Base):
 
     # output & validation
     response_format = Column(String, nullable=False, default="text")   # text|json_object|json_lines
-    schema = Column(JSONType, nullable=True)
+    prompt_schema = Column(JSONType, nullable=True)
     force_json = Column(Boolean, nullable=False, default=False)
     enforce_schema = Column(Boolean, nullable=False, default=False)
     stream = Column(Boolean, nullable=False, default=False)
@@ -201,7 +201,7 @@ class PromptJobORM(Base):
             "attachments": self.attachments,
             "gen_params": self.gen_params,
             "response_format": self.response_format,
-            "schema": self.schema,
+            "prompt_schema": self.prompt_schema,
             "force_json": self.force_json,
             "enforce_schema": self.enforce_schema,
             "stream": self.stream,
@@ -265,7 +265,7 @@ class PromptJobORM(Base):
             "stop": self.stop,
             "scorable_id": self.scorable_id,
             "response_format": self.response_format,
-            "schema": self.schema,
+            "prompt_schema": self.prompt_schema,
             "force_json": self.force_json,
         }
         s = json.dumps(payload, sort_keys=True, ensure_ascii=False)

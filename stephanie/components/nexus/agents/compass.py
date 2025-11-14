@@ -22,7 +22,7 @@ from stephanie.components.nexus.graph.builder import (
     build_edges_enhanced,
     build_nodes,
 )
-from stephanie.components.nexus.graph.exporters import (
+from stephanie.components.nexus.graph.exporters.pyviz import (
     export_graph_json,
     export_pyvis_html,
     export_pyvis_html_rich,

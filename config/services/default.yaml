@@ -119,6 +119,14 @@ services:
       logger: ${logger}
       container: ${container}
 
+  cache:
+    enabled: true
+    cls: stephanie.services.zmq_cache_service.ZmqCacheService
+    dependencies: []
+    args: 
+      cfg: ${cfg}
+      memory: ${memory}
+      logger: ${logger}
 
   kbase:
     enabled: true

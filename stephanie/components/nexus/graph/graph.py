@@ -1,4 +1,4 @@
-# stephanie/components/nexus/graph.py
+# stephanie/components/nexus/graph/graph.py
 from __future__ import annotations
 
 from dataclasses import dataclass, field, asdict
@@ -133,6 +133,11 @@ class NexusViewManifest:
             encoding="utf-8",
         )
 
+@dataclass(slots=True)
+class NexusGraphConfig:
+    run_id: str
+    namespace: str = "nexus"
+    default_edge_weight: float = 1.0
 
 # --------------------------------------------------------------------------- #
 # NexusGraph – the reusable Nexus component                                  #
@@ -154,15 +159,17 @@ class NexusGraph:
 
     def __init__(
         self,
+        cfg: NexusGraphConfig,
         memory,
+        logger,
         *,
         run_id: str,
-        logger: Optional[logging.Logger] = None,
     ) -> None:
+        self.cfg = cfg
         self.memory = memory
+        self.logger = logger
         self.store: NexusStore = memory.nexus
         self.run_id = run_id
-        self.log = logger or log
 
     # --------------------------------------------------------------------- Nodes
 
@@ -301,6 +308,126 @@ class NexusGraph:
             edge_count=edge_count,
             mean_dims=mean_dims,
         )
+
+    # ------------------ ingest nodes ------------------
+
+    def ingest_manifest(
+        self,
+        manifest: Dict[str, Any],
+        *,
+        qualities: Optional[Dict[str, float]] = None,
+        metrics: Optional[Dict[str, Dict[str, float]]] = None,
+        phase: str = "baseline",
+    ) -> None:
+        items = manifest.get("items") or []
+        q = qualities or {}
+        m = metrics or {}
+
+        for item in items:
+            scorable_id = item.get("scorable_id") or item.get("item_id")
+            if not scorable_id:
+                continue
+            sid = str(scorable_id)
+
+            near = item.get("near_identity") or {}
+            row = {
+                "id": sid,
+                "chat_id": item.get("chat_id"),
+                "turn_index": item.get("turn_index"),
+                "target_type": item.get("scorable_type", "document"),
+                "text": near.get("text") or "",
+                "domains": item.get("domains"),
+                "entities": item.get("entities"),
+                "meta": {
+                    "run_id": self.cfg.run_id,
+                    "phase": phase,
+                    "namespace": self.cfg.namespace,
+                },
+            }
+            try:
+                self.store.upsert_scorable(row)
+            except Exception as e:
+                log.warning("NexusGraph.upsert_scorable failed for %s: %s", sid, e)
+                continue
+
+            vec = dict(m.get(sid) or {})
+            if sid in q:
+                try:
+                    vec.setdefault("quality", float(q[sid]))
+                except Exception:
+                    pass
+
+            if not vec:
+                continue
+
+            try:
+                cols = list(vec.keys())
+                vals = [float(vec[c]) for c in cols]
+                self.store.upsert_metrics(
+                    scorable_id=sid,
+                    columns=cols,
+                    values=vals,
+                    vector=vec,
+                )
+            except Exception as e:
+                log.warning("NexusGraph.upsert_metrics failed for %s: %s", sid, e)
+
+    # ------------------ ingest edges ------------------
+
+    def write_edges_from_graph_json(
+        self,
+        graph_json: Dict[str, Any],
+        *,
+        phase: str,
+        channel: str,
+    ) -> None:
+        if not graph_json:
+            return
+
+        edges_in = graph_json.get("edges") or []
+        if not edges_in:
+            return
+
+        edges_out: List[Dict[str, Any]] = []
+        for e in edges_in:
+            data = e.get("data", e) or {}
+            src = data.get("source") or data.get("src")
+            dst = data.get("target") or data.get("dst")
+            if not src or not dst:
+                continue
+
+            etype = data.get("edge_type") or data.get("type") or channel
+            weight = data.get("weight", self.cfg.default_edge_weight)
+            try:
+                w = float(weight)
+            except Exception:
+                w = self.cfg.default_edge_weight
+
+            edges_out.append(
+                {
+                    "src": str(src),
+                    "dst": str(dst),
+                    "type": str(etype),
+                    "weight": w,
+                    "channels": {
+                        "namespace": self.cfg.namespace,
+                        "phase": phase,
+                        "channel": channel,
+                    },
+                }
+            )
+
+        if not edges_out:
+            return
+
+        try:
+            self.store.write_edges(self.cfg.run_id, edges_out)
+        except Exception as e:
+            log.warning(
+                "NexusGraph.write_edges_from_graph_json failed for run %s: %s",
+                self.cfg.run_id,
+                e,
+            )
 
     # --------------------------------------------------------------------- Visualization export
 

@@ -9,12 +9,14 @@ import imageio.v2 as iio
 import numpy as np
 import random
 
+
 @dataclass
 class FrameEvent:
     flash_nodes: Sequence[str] = ()
     flash_edges: Sequence[Tuple[str, str]] = ()
     persist_nodes: Sequence[Tuple[str, Dict]] = ()
     persist_edges: Sequence[Tuple[str, str, Dict]] = ()
+
 
 class GraphFilmstrip:
     def __init__(self, seed: int = 42):
@@ -23,9 +25,12 @@ class GraphFilmstrip:
 
     def _stable_pos(self, G: nx.Graph) -> Dict[str, Tuple[float, float]]:
         # reuse previous positions for stability; seed for determinism
-        random.seed(self.seed); np.random.seed(self.seed)
+        random.seed(self.seed)
+        np.random.seed(self.seed)
         if self.pos_cache:
-            pos = nx.spring_layout(G, pos=self.pos_cache, seed=self.seed, k=None, iterations=200)
+            pos = nx.spring_layout(
+                G, pos=self.pos_cache, seed=self.seed, k=None, iterations=200
+            )
         else:
             pos = nx.spring_layout(G, seed=self.seed, iterations=300)
         self.pos_cache = {n: (float(x), float(y)) for n, (x, y) in pos.items()}
@@ -58,13 +63,16 @@ class GraphFilmstrip:
                     G.add_edge(u, v, **(attrs or {}))
 
             # draw with flashes
-            frames.append(self._draw(
-                G, out_dir / f"frame_{i:03d}.png",
-                flash_nodes=set(ev.flash_nodes),
-                flash_edges=set(ev.flash_edges),
-                node_attr_quality=node_attr_quality,
-                edge_attr_weight=edge_attr_weight,
-            ))
+            frames.append(
+                self._draw(
+                    G,
+                    out_dir / f"frame_{i:03d}.png",
+                    flash_nodes=set(ev.flash_nodes),
+                    flash_edges=set(ev.flash_edges),
+                    node_attr_quality=node_attr_quality,
+                    edge_attr_weight=edge_attr_weight,
+                )
+            )
 
         # gif
         gif_path = out_dir / "graph_filmstrip.gif"
@@ -92,33 +100,59 @@ class GraphFilmstrip:
         qualities = []
         for n, d in G.nodes(data=True):
             q = d.get(node_attr_quality, 0.5)
-            try: q = float(q)
-            except: q = 0.5
+            try:
+                q = float(q)
+            except:
+                q = 0.5
             qualities.append(q)
-        node_sizes = [80 + 220*q for q in qualities]
+        node_sizes = [80 + 220 * q for q in qualities]
         node_colors = qualities  # colormap maps 0..1
 
         # base edges
         weights = []
         for u, v, d in G.edges(data=True):
             w = d.get(edge_attr_weight, 0.2)
-            try: w = float(w)
-            except: w = 0.2
-            weights.append(0.5 + 2.5*w)
+            try:
+                w = float(w)
+            except:
+                w = 0.2
+            weights.append(0.5 + 2.5 * w)
 
         nx.draw_networkx_edges(G, pos, width=weights, alpha=0.35)
 
         # flashes on top
         if flash_edges:
             nx.draw_networkx_edges(
-                G, pos, edgelist=list(flash_edges), width=3.5, alpha=0.85, style="solid"
+                G,
+                pos,
+                edgelist=list(flash_edges),
+                width=3.5,
+                alpha=0.85,
+                style="solid",
             )
 
         cmap = plt.cm.viridis
-        nx.draw_networkx_nodes(G, pos, node_size=node_sizes, node_color=node_colors, cmap=cmap, alpha=0.9, linewidths=0.0)
+        nx.draw_networkx_nodes(
+            G,
+            pos,
+            node_size=node_sizes,
+            node_color=node_colors,
+            cmap=cmap,
+            alpha=0.9,
+            linewidths=0.0,
+        )
 
         if flash_nodes:
-            nx.draw_networkx_nodes(G, pos, nodelist=list(flash_nodes), node_size=260, node_color="none", edgecolors="white", linewidths=2.5, alpha=0.95)
+            nx.draw_networkx_nodes(
+                G,
+                pos,
+                nodelist=list(flash_nodes),
+                node_size=260,
+                node_color="none",
+                edgecolors="white",
+                linewidths=2.5,
+                alpha=0.95,
+            )
 
         # optional labels for small graphs
         if G.number_of_nodes() <= 60:

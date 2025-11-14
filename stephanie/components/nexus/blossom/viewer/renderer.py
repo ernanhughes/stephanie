@@ -82,7 +82,7 @@ def write_garden_frames(run_dir: Path, *, baseline_graph_json: Optional[str] = N
 
     # 5) optional HTML (if your PyVis exporter is available)
     try:
-        from stephanie.components.nexus.graph.exporters import export_pyvis_html
+        from stephanie.components.nexus.graph.exporters.pyviz import export_pyvis_html
         export_pyvis_html(output_path=(run_dir / "garden.html").as_posix(),
                         nodes=graph["nodes"], edges=graph["edges"],
                         title="Nexus Garden — Blossoms")

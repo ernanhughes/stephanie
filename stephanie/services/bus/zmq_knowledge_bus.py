@@ -1,4 +1,6 @@
+# stephanie/services/bus/zmq_knowledge_bus.py
 from __future__ import annotations
+
 import asyncio
 import json
 import uuid
@@ -40,7 +42,10 @@ class ZmqKnowledgeBus:
         self._worker_task: Optional[asyncio.Task] = None
         self._subs: Dict[str, Callable[[Dict[str, Any]], Any]] = {}  # pattern -> handler
 
-
+        self._owns_bind = False
+        self._last_activity_ts: float | None = None
+        self._idle_seconds: int | None = None  # set by start()
+        
         self._connected = False
 
     # -------- lifecycle ----------

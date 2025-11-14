@@ -19,8 +19,8 @@ from stephanie.constants import (AGENT, API_BASE, API_KEY, BATCH_SIZE, CONTEXT,
                                  OUTPUT_KEY, PIPELINE, PIPELINE_RUN_ID,
                                  PROMPT_MATCH_RE, PROMPT_PATH, SAVE_CONTEXT,
                                  SAVE_PROMPT, SOURCE, STRATEGY)
-from stephanie.models import PromptORM
-from stephanie.prompts import PromptLoader
+from stephanie.models.prompt import PromptORM
+from stephanie.prompts.prompt_loader import PromptLoader
 from stephanie.services.scoring_service import ScoringService
 from stephanie.utils.llm_utils import remove_think_blocks
 

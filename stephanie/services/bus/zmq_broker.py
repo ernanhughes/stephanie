@@ -1,5 +1,6 @@
-# zmq_broker.py
+# stephanie/services/bus/zmq_broker.py
 from __future__ import annotations
+
 import asyncio
 from contextlib import suppress
 import logging

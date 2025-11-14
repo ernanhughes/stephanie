@@ -26,6 +26,12 @@ HEALTH_SUBJ = "health"              # health check subject
 NEXUS_TIMELINE_NODE   = "nexus.timeline.node"
 NEXUS_TIMELINE_REPORT = "nexus.timeline.report"
 
+
+# Scorables queues/subjects
+SCORABLE_SUBMIT = "scorable.submit"
+SCORABLE_PROCESS = "scorable.process"
+
+
 # ==== Context Keys ====
 AGENT = "Agent"
 AGENT_NAME = "agent_name"

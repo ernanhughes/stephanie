@@ -15,7 +15,7 @@ from stephanie.constants import (GOAL, NAME, PIPELINE, PIPELINE_RUN_ID,
 from stephanie.core.logging.json_logger import JSONLogger
 from stephanie.engine.context_manager import ContextManager
 from stephanie.memory.memory_tool import MemoryTool
-from stephanie.reporting import ReportFormatter
+from stephanie.reporting.formatter import ReportFormatter
 from stephanie.services.plan_trace_service import PlanTraceService
 from stephanie.services.registry_loader import load_services_profile
 from stephanie.services.rules_service import RulesService
