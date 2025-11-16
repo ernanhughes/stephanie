@@ -1,4 +1,4 @@
-# stephanie/components/nexus/services/graph_layout.py
+# stephanie/components/nexus/graph/graph_layout.py
 from __future__ import annotations
 
 import hashlib

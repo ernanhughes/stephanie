@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 from PIL import Image
+from stephanie.scoring.scorable import Scorable
 
 log = logging.getLogger(__name__)
 
@@ -139,13 +140,11 @@ def vpm_image_details(
     out_path: Path,
     *,
     save_per_channel: bool = False,
-    logger: Any = None,
 ) -> Dict[str, Any]:
     """
     Normalize any CHW/HWC/HW/1D VPM to grayscale uint8, save it,
     optionally save per-channel PNGs, and return descriptive stats & file paths.
     """
-    logger = logger or log
     arr = np.asarray(vpm)
     layout = detect_vpm_layout(arr)
     shape = tuple(arr.shape)
@@ -177,7 +176,7 @@ def vpm_image_details(
             if p:
                 channel_paths.append(p)
 
-    logger.info(
+    log.info(
         "VPM details: layout=%s shape=%s dtype=%s min=%.4f max=%.4f mean=%.4f std=%.4f p1=%.4f p99=%.4f "
         "degenerate=%s gray_saved=%s channels_saved=%d",
         layout, shape, dtype, stats["min"], stats["max"], stats["mean"], stats["std"], stats["p1"], stats["p99"],
@@ -314,3 +313,35 @@ def occlusion_importance(
         imp /= imp.max()
     return imp.astype(np.float32)
 
+
+def resize_bilinear_np(X01: np.ndarray, new_h: int, new_w: int) -> np.ndarray:
+    # X01: [C,H,W] float32 in [0,1]
+    C, H, W = X01.shape
+    if H == new_h and W == new_w:
+        return X01.copy() 
+    ys = np.linspace(0, H - 1, new_h, dtype=np.float32)
+    xs = np.linspace(0, W - 1, new_w, dtype=np.float32)
+    y0 = np.floor(ys).astype(np.int32); y1 = np.clip(y0 + 1, 0, H - 1)
+    x0 = np.floor(xs).astype(np.int32); x1 = np.clip(x0 + 1, 0, W - 1)
+    wy = (ys - y0).reshape(1, new_h, 1)      # [1,Nh,1]
+    wx = (xs - x0).reshape(1, 1, new_w)      # [1,1,Nw]
+
+    out = np.empty((C, new_h, new_w), dtype=np.float32)
+    for c in range(C):
+        Ia = X01[c][y0[:, None], x0[None, :]]
+        Ib = X01[c][y1[:, None], x0[None, :]]
+        Ic = X01[c][y0[:, None], x1[None, :]]
+        Id = X01[c][y1[:, None], x1[None, :]]
+        top = Ia * (1 - wx) + Ic * wx
+        bot = Ib * (1 - wx) + Id * wx
+        out[c] = top * (1 - wy) + bot * wy
+    return np.clip(out, 0.0, 1.0)
+
+def normalize01(x: np.ndarray) -> np.ndarray:
+    x = np.asarray(x, dtype=np.float32)
+    if x.size == 0:
+        return x
+    mn, mx = float(x.min()), float(x.max())
+    if mx - mn <= 1e-9:
+        return np.zeros_like(x, dtype=np.float32)
+    return np.clip((x - mn) / (mx - mn), 0.0, 1.0)

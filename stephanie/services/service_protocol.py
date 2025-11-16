@@ -190,17 +190,17 @@ class Service(ABC):
         # Best-effort middleware install. If the bus is a HybridBus with
         # an uninitialized ._bus, calling wrap_request may raise; we log
         # and move on instead of crashing early in Supervisor.__init__.
-        try:
-            wrap = getattr(bus, "wrap_request", None)
-            if callable(wrap):
-                wrap(self._cache_request_middleware)
-        except Exception as e:
-            # Don't kill startup because the bus isn't ready yet.
-            # You can re-call cache.set_bus(...) later once the bus is fully wired.
-            self.logger.warning(
-                "[ZmqCache] Could not attach middleware to bus yet: %s",
-                e,
-            )
+        # try:
+        #     wrap = getattr(bus, "wrap_request", None)
+        #     if callable(wrap):
+        #         wrap(self._cache_request_middleware)
+        # except Exception as e:
+        #     # Don't kill startup because the bus isn't ready yet.
+        #     # You can re-call cache.set_bus(...) later once the bus is fully wired.
+        #     self.logger.warning(
+        #         "[ZmqCache] Could not attach middleware to bus yet: %s",
+        #         e,
+        #     )
 
     async def subscribe(
         self,

@@ -1,4 +1,4 @@
-# stephanie/components/nexus/viewer/exporters.py
+# stephanie/components/nexus/graph/exporters/pyvis_exporter.py
 from __future__ import annotations
 
 import json
@@ -13,6 +13,74 @@ from stephanie.utils.json_sanitize import dumps_safe
 # =============================================================================
 # Safe helpers
 # =============================================================================
+
+
+from stephanie.components.nexus.graph.exporters.base import BaseGraphExporter
+
+
+
+class PyVisGraphExporter(BaseGraphExporter):
+    """
+    Graph-level PyVis exporter.
+
+    Usage:
+        exporter = PyVisGraphExporter(graph, title="My run")
+        exporter.export("runs/nexus_viz/run_123_pyvis.html", rich=True, positions=pos)
+
+    `rich=True` + `positions` -> deterministic vis-network-style HTML
+    `rich=False` or no positions -> force-layout PyVis HTML
+    """
+
+    def export_from_materialized(
+        self,
+        *,
+        nodes: Dict[str, Any],
+        edges: List[Any],
+        output_path: Path,
+        **kwargs,
+    ) -> str:
+        rich: bool = bool(kwargs.get("rich", True))
+        positions: Optional[Dict[str, Tuple[float, float]]] = kwargs.get("positions")
+
+        if rich and positions is not None:
+            # Deterministic, position-aware rendering
+            return export_pyvis_html_rich(
+                output_path=str(output_path),
+                nodes=nodes,
+                edges=edges,
+                positions=positions,
+                title=self.title,
+            )
+
+        # Fallback to regular PyVis layout
+        return export_pyvis_html(
+            nodes=nodes,
+            edges=edges,
+            output_path=str(output_path),
+            title=self.title,
+        )
+
+
+def export_pyvis_for_graph(
+    graph: Any,
+    output_path: Union[str, Path],
+    *,
+    title: str = "",
+    rich: bool = True,
+    positions: Optional[Dict[str, Tuple[float, float]]] = None,
+) -> str:
+    """
+    Convenience wrapper so existing code can keep using a function-style API.
+
+    Internally just instantiates PyVisGraphExporter and calls .export().
+    """
+    exporter = PyVisGraphExporter(graph, title=title)
+    return exporter.export(
+        output_path=output_path,
+        rich=rich,
+        positions=positions,
+    )
+
 
 def _get(obj: Any, *keys: str, default: Any = None) -> Any:
     """
@@ -259,17 +327,15 @@ def export_pyvis_html_rich(
     physics: false,
     interaction: {{ hover: false, zoomView: true, dragView: true }},
     nodes: {{ shape:'dot', scaling: {{ min:3, max:25 }} }},
-    edges: {{ smooth: false }}, // perf-friendly on Windows
-    layout: {{ improvedLayout: false }} // skip extra layout passes
+    edges: {{ smooth: false }},
+    layout: {{ improvedLayout: false }}
   }};
 
   const network = new vis.Network(container, data, options);
 
-  // Frame content on first draw + when resizing
   network.once('afterDrawing', () => network.fit({{ animation: false }}));
-  window.addEventListener('resize', () => network.fit({{ animation: false }}));
+  window.addEventListener('resize', () => network.fit({{ animation: false }});
 
-  // Edge toggles
   const toggleKnn = document.getElementById('toggleKnn');
   const toggleMst = document.getElementById('toggleMst');
   function refreshEdges() {{
@@ -307,8 +373,8 @@ def export_pyvis_html(
         width="100%",
         directed=True,
         notebook=False,
-        bgcolor="#0e0e0e",          # black background
-        font_color="#e5e7eb",       # light gray labels
+        bgcolor="#0e0e0e",
+        font_color="#e5e7eb",
     )
 
     options = {
@@ -382,15 +448,6 @@ def export_graph_json(
 ) -> str:
     """
     Export a Cytoscape-friendly graph.json with optional positions and channels.
-
-    elements = {
-      "nodes": [{"data": {...}, "position": {"x":..,"y":..}} ...],
-      "edges": [{"data": {...}} ...]
-    }
-
-    - `include_channels`: if True, copy edge.channels (dict) into edge["data"]["channels"]
-    - graceful handling of missing attributes (no exceptions on absent fields)
-    - returns the string path written for convenience
     """
     out_path = Path(path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -404,7 +461,6 @@ def export_graph_json(
     for nid, n in (nodes or {}).items():
         nid_s = str(nid)
 
-        # Quality / score coalesce (safe)
         q = _as_float(
             _coalesce(
                 _get(n, "quality", default=None),
@@ -434,8 +490,6 @@ def export_graph_json(
                     pass
 
         if include_metrics:
-            # If a vector is present, we can attach a small selection for convenience
-            vec = _metrics_lookup(n, "vector")  # returns None by design; we’ll pull manually
             m = getattr(n, "metrics", None)
             vdict = None
             if isinstance(m, dict):
@@ -444,11 +498,9 @@ def export_graph_json(
                 vdict = getattr(m, "vector", None)
 
             if isinstance(vdict, dict):
-                # Attach small, common keys (don’t bloat JSON)
                 subset_keys = ("alignment", "faithfulness", "coverage", "clarity", "coherence", "hrm")
                 d["metrics"] = {k: _as_float(vdict.get(k), None) for k in subset_keys if k in vdict}
 
-        # Optional extra node fields
         for k in extra_node_fields:
             v = _get(n, k, default=None)
             if v is not None:
@@ -465,7 +517,6 @@ def export_graph_json(
         src = _get(e, "src", "source", default=None)
         dst = _get(e, "dst", "target", default=None)
         if src is None or dst is None:
-            # Skip malformed edges gracefully
             continue
 
         etype = _edge_type(e)
@@ -482,7 +533,6 @@ def export_graph_json(
         if include_channels:
             ch = _get(e, "channels", default=None)
             if isinstance(ch, dict):
-                # Keep as-is, but also add a compact "viz" with only numeric fields for client-side sizing/color
                 data["channels"] = ch
                 viz = {}
                 for k, v in ch.items():
@@ -492,7 +542,6 @@ def export_graph_json(
                 if viz:
                     data["channels_viz"] = viz
 
-        # Optional extra edge fields
         for k in extra_edge_fields:
             v = _get(e, k, default=None)
             if v is not None:
@@ -502,3 +551,60 @@ def export_graph_json(
 
     out_path.write_text(dumps_safe(elements), encoding="utf-8")
     return str(out_path)
+
+
+# =============================================================================
+# NexusGraph-level convenience wrapper
+# =============================================================================
+
+def export_pyvis_for_graph(
+    graph: Any,
+    output_path: Union[str, Path],
+    *,
+    positions: Optional[Dict[str, Tuple[float, float]]] = None,
+    title: str = "",
+    rich: bool = True,
+) -> str:
+    """
+    High-level helper: given a NexusGraph-like object, export a PyVis HTML.
+
+    Requirements on `graph`:
+      - has attribute .run_id (optional, used for default title)
+      - has method .iter_nodes_for_run() -> Iterable[node]
+      - has method .list_edges() -> List[edge]
+    Nodes must expose id/text/target_type; edges must expose src/dst/type/weight.
+
+    If `positions` is provided and `rich=True`, uses export_pyvis_html_rich
+    (deterministic layout with fixed positions). Otherwise falls back to
+    export_pyvis_html (force-based PyVis layout).
+    """
+    out_path = str(output_path)
+
+    # Pull nodes/edges from the graph abstraction
+    nodes_dict: Dict[str, Any] = {}
+    for n in graph.iter_nodes_for_run():
+        nid = getattr(n, "id", None)
+        if nid is None:
+            continue
+        nodes_dict[str(nid)] = n
+
+    edges = list(getattr(graph, "list_edges")() or [])
+
+    effective_title = title or f"Nexus run {getattr(graph, 'run_id', '')}".strip()
+
+    if rich and positions is not None:
+        return export_pyvis_html_rich(
+            out_path,
+            nodes=nodes_dict,
+            edges=edges,
+            positions=positions,
+            title=effective_title,
+        )
+
+    # No positions → let PyVis compute layout
+    return export_pyvis_html(
+        nodes=nodes_dict,
+        edges=edges,
+        output_path=out_path,
+        title=effective_title,
+    )

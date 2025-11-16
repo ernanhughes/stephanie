@@ -22,6 +22,7 @@ External Dependencies
 
 This module is intentionally dependency-light and pure-Python friendly.
 """
+
 from __future__ import annotations
 
 import math
@@ -30,32 +31,58 @@ from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter
-from zeromodel.vpm.logic import (normalize_vpm, vpm_and, vpm_nand, vpm_nor,
-                                 vpm_not, vpm_or, vpm_subtract, vpm_xor)
+from zeromodel.vpm.logic import (
+    normalize_vpm,
+    vpm_and,
+    vpm_nand,
+    vpm_nor,
+    vpm_not,
+    vpm_or,
+    vpm_subtract,
+    vpm_xor,
+)
+from stephanie.utils.vpm_utils import (
+    resize_bilinear_np,
+)
 
-from stephanie.components.nexus.utils.visual_thought import (VisualThoughtOp,
-                                                             VisualThoughtType)
+from stephanie.components.nexus.utils.visual_thought import (
+    VisualThoughtOp,
+    VisualThoughtType,
+)
 
 
-def _clamp_int(v, lo, hi): 
+def _clamp_int(v, lo, hi):
     return int(max(lo, min(hi, int(v))))
 
+
 def _parse_xyxy(params, W, H, default=None):
-    x1, y1, x2, y2 = (default or (W//4, H//4, 3*W//4, 3*H//4))
-    x1 = _clamp_int(params.get("x1", params.get("xyxy", (x1,y1,x2,y2))[0]), 0, W-1)
-    y1 = _clamp_int(params.get("y1", params.get("xyxy", (x1,y1,x2,y2))[1]), 0, H-1)
-    x2 = _clamp_int(params.get("x2", params.get("xyxy", (x1,y1,x2,y2))[2]), x1+1, W)
-    y2 = _clamp_int(params.get("y2", params.get("xyxy", (x1,y1,x2,y2))[3]), y1+1, H)
+    x1, y1, x2, y2 = default or (W // 4, H // 4, 3 * W // 4, 3 * H // 4)
+    x1 = _clamp_int(
+        params.get("x1", params.get("xyxy", (x1, y1, x2, y2))[0]), 0, W - 1
+    )
+    y1 = _clamp_int(
+        params.get("y1", params.get("xyxy", (x1, y1, x2, y2))[1]), 0, H - 1
+    )
+    x2 = _clamp_int(
+        params.get("x2", params.get("xyxy", (x1, y1, x2, y2))[2]), x1 + 1, W
+    )
+    y2 = _clamp_int(
+        params.get("y2", params.get("xyxy", (x1, y1, x2, y2))[3]), y1 + 1, H
+    )
     return x1, y1, x2, y2
 
+
 def _parse_center_scale(params, W, H):
-    cx, cy = params.get("center", (W//2, H//2))
-    cx = _clamp_int(cx, 0, W-1)
-    cy = _clamp_int(cy, 0, H-1)
+    cx, cy = params.get("center", (W // 2, H // 2))
+    cx = _clamp_int(cx, 0, W - 1)
+    cy = _clamp_int(cy, 0, H - 1)
     scale = max(1.0, float(params.get("scale", 2.0)))
     return cx, cy, scale
 
-def _resolve_source(src: Any, X01: np.ndarray, meta: Dict[str, Any]) -> np.ndarray:
+
+def _resolve_source(
+    src: Any, X01: np.ndarray, meta: Dict[str, Any]
+) -> np.ndarray:
     """
     src can be:
       - ("channel", idx) → returns X01[idx]
@@ -77,6 +104,7 @@ def _resolve_source(src: Any, X01: np.ndarray, meta: Dict[str, Any]) -> np.ndarr
     else:
         raise ValueError(f"Unknown source kind: {kind}")
 
+
 # ---------------------------------------------------------------------
 # Goal & State
 # ---------------------------------------------------------------------
@@ -87,6 +115,7 @@ class VPMGoal:
     Example:
         VPMGoal(weights={"separability": 1.0, "bridge_proxy": -1.0}, task_type="bottleneck_detection")
     """
+
     weights: Mapping[str, float]
     task_type: str = "generic"
     # Optional cost regularizer (per cumulative op-cost unit)
@@ -107,12 +136,15 @@ class VPMState:
     cost_accum : float        cumulative action cost applied so far
     dtype_range : Tuple[float, float]  original (min, max) to preserve scaling on write-back
     """
+
     X: np.ndarray
     meta: Dict[str, Any]
     phi: Dict[str, float]
     goal: VPMGoal
     cost_accum: float = 0.0
-    dtype_range: Tuple[float, float] = field(default_factory=lambda: (0.0, 1.0))
+    dtype_range: Tuple[float, float] = field(
+        default_factory=lambda: (0.0, 1.0)
+    )
 
     @property
     def utility(self) -> float:
@@ -159,14 +191,16 @@ def _as_float01(x: np.ndarray) -> Tuple[np.ndarray, Tuple[float, float]]:
     return ((x.astype(np.float32) - xmin) / rng), (xmin, xmax)
 
 
-def _to_dtype_range(x01: np.ndarray, rng: Tuple[float, float], dtype) -> np.ndarray:
+def _to_dtype_range(
+    x01: np.ndarray, rng: Tuple[float, float], dtype
+) -> np.ndarray:
     """
     Map float32 [0,1] back to original numeric range & dtype.
     """
     lo, hi = rng
     if hi - lo <= 0:
         return (x01 * 0).astype(dtype)
-    out = (x01 * (hi - lo) + lo)
+    out = x01 * (hi - lo) + lo
     if dtype == np.uint8:
         out = np.clip(out, 0, 255).astype(np.uint8)
     else:
@@ -246,14 +280,20 @@ def _crossings_proxy(ed_ch: np.ndarray, threshold: float = 0.5) -> int:
     band_w = max(2, W // 16)
     mid_l = (W - band_w) // 2
     mid_r = mid_l + band_w
-    stripe = (ed_ch[:, mid_l:mid_r] > threshold).astype(np.uint8)  # [H, band_w]
+    stripe = (ed_ch[:, mid_l:mid_r] > threshold).astype(
+        np.uint8
+    )  # [H, band_w]
     # Count transitions per row and sum
     trans = np.abs(np.diff(stripe, axis=1)).sum(axis=1)  # [H]
     return int(trans.sum())
 
+
 PHI_VERSION = "1.0.0"
 
-def compute_phi(vpm: np.ndarray, meta: Optional[Dict[str, Any]] = None) -> Dict[str, float]:
+
+def compute_phi(
+    vpm: np.ndarray, meta: Optional[Dict[str, Any]] = None
+) -> Dict[str, float]:
     """
     Compute a compact set of structural metrics from VPM channels + meta.
     Assumes typical channel semantics:
@@ -274,16 +314,24 @@ def compute_phi(vpm: np.ndarray, meta: Optional[Dict[str, Any]] = None) -> Dict[
     meta = meta or {}
     X = np.asarray(vpm)
     assert X.ndim in (2, 3), f"VPM must be [C,H,W] or [H,W]; got {X.shape}"
-
     if X.ndim == 2:
         X = X[None, ...]  # [1,H,W]
 
-    X01, _rng = _as_float01(X)  # [C,H,W] in [0,1]
+    X01, _rng = _as_float01(X)  # [C,H,W] → float in [0,1]
     C, H, W = X01.shape
 
-    node = X01[0]
-    edge = X01[1] if C > 1 else node
-    heat = X01[2] if C > 2 else node
+    # NEW: channel semantics (default 0/1/2)
+    ch_sem = meta.get("channel_semantics", {"node": 0, "edge": 1, "heat": 2})
+    node_idx = int(ch_sem.get("node", 0))
+    edge_idx = int(ch_sem.get("edge", 1))
+    heat_idx = int(ch_sem.get("heat", 2))
+
+    def _safe_ch(idx: int) -> np.ndarray:
+        return X01[idx] if 0 <= idx < C else X01[0]
+
+    node = _safe_ch(node_idx)
+    edge = _safe_ch(edge_idx)
+    heat = _safe_ch(heat_idx)
 
     # Core metrics
     separability = _bimodal_separability(node)
@@ -299,7 +347,9 @@ def compute_phi(vpm: np.ndarray, meta: Optional[Dict[str, Any]] = None) -> Dict[
             spectral_gap = float(1.0 - math.exp(-abs(spectral_gap)))
     else:
         # Coarse proxy: more separable + symmetric → larger "gap"
-        spectral_gap = float(np.clip(0.5 * separability + 0.5 * vision_symmetry, 0.0, 1.0))
+        spectral_gap = float(
+            np.clip(0.5 * separability + 0.5 * vision_symmetry, 0.0, 1.0)
+        )
 
     return {
         "separability": float(separability),
@@ -320,6 +370,7 @@ class Thought:
     A single reasoning step comprised of one or more visual operations.
     'cost' is a nominal compute/latency budget unit (tuned in your pipeline).
     """
+
     name: str
     ops: List[VisualThoughtOp]
     intent: Optional[str] = None
@@ -371,14 +422,16 @@ class ThoughtExecutor:
         return out, delta, total_cost, bcs
 
     # ---- Visual Ops -------------------------------------------------
-    def _apply_op(self, X: np.ndarray, op: VisualThoughtOp, meta: dict | None = None) -> np.ndarray:
+    def _apply_op(
+        self, X: np.ndarray, op: VisualThoughtOp, meta: dict | None = None
+    ) -> np.ndarray:
         """
         Apply a single VisualThoughtOp to a [C,H,W] array. Returns new array.
         """
         meta = meta or {}
         X = np.asarray(X)
         assert X.ndim in (2, 3), f"VPM must be [C,H,W] or [H,W]; got {X.shape}"
-        was_2d = (X.ndim == 2) 
+        was_2d = X.ndim == 2
         if was_2d:
             X = X[None, ...]  # [1,H,W]
 
@@ -396,7 +449,7 @@ class ThoughtExecutor:
         elif op.type == VisualThoughtType.BLUR:
             X01 = self._op_blur(X01, op.params)
         elif op.type == VisualThoughtType.LOGIC:
-            X01 = self._op_logic(X01, op.params,meta)
+            X01 = self._op_logic(X01, op.params, meta)
         else:
             # Unknown op: no-op
             pass
@@ -407,53 +460,49 @@ class ThoughtExecutor:
         return X_out
 
     # ---- Concrete op implementations -------------------------------
-    def _op_zoom(self, X01: np.ndarray, params: Dict[str, Any]) -> np.ndarray:
-        """
-        Zoom into a region around 'center' with a given 'scale' (>1 zoom-in).
-        params:
-            center: (cx, cy) in pixel coords of the HxW plane
-            scale:  float, >= 1.0
-        """
-        C, H, W = X01.shape
-        cx = int(params.get("center", (W // 2, H // 2))[0])
-        cy = int(params.get("center", (W // 2, H // 2))[1])
-        scale = float(params.get("scale", 2.0))
-        scale = max(1.0, float(scale))
 
-        # Compute crop box
+    def _op_zoom(self, X01: np.ndarray, params: Dict[str, Any]) -> np.ndarray:
+        C, H, W = X01.shape
+        cx, cy, scale = _parse_center_scale(params, W, H)
         crop_w = max(2, int(round(W / scale)))
         crop_h = max(2, int(round(H / scale)))
         x1 = int(np.clip(cx - crop_w // 2, 0, W - crop_w))
         y1 = int(np.clip(cy - crop_h // 2, 0, H - crop_h))
-        x2 = x1 + crop_w
-        y2 = y1 + crop_h
-
-        # Crop & resize each channel with PIL for simplicity/quality
-        out = np.zeros_like(X01)
-        for c in range(C):
-            ch = (X01[c] * 255).astype(np.uint8)
-            pil = Image.fromarray(ch, mode="L")
-            crop = pil.crop((x1, y1, x2, y2))
-            resized = crop.resize((W, H), resample=Image.BICUBIC)
-            out[c] = np.asarray(resized, dtype=np.float32) / 255.0
-        return out
+        x2, y2 = x1 + crop_w, y1 + crop_h
+        cropped = X01[:, y1:y2, x1:x2]
+        try:
+            # Fast, dependency-free
+            return resize_bilinear_np(cropped, H, W)
+        except Exception:
+            # Universal fallback via PIL
+            out = np.zeros_like(X01)
+            for c in range(C):
+                pil = Image.fromarray((cropped[c] * 255).astype(np.uint8), mode="L")
+                out[c] = np.asarray(pil.resize((W, H), Image.BICUBIC), dtype=np.float32) / 255.0
+            return out
 
     def _op_bbox(self, X01, params):
-        C,H,W = X01.shape
-        x1,y1,x2,y2 = _parse_xyxy(params, W, H)
+        C, H, W = X01.shape
+        x1, y1, x2, y2 = _parse_xyxy(params, W, H)
         width = int(params.get("width", 2))
         intensity = float(np.clip(params.get("intensity", 1.0), 0.0, 1.0))
         # build mask once
-        mask = np.zeros((H,W), dtype=np.float32)
-        mask[y1:y1+width, x1:x2] = 1.0
-        mask[y2-width:y2, x1:x2] = 1.0
-        mask[y1:y2, x1:x1+width] = 1.0
-        mask[y1:y2, x2-width:x2] = 1.0
+        mask = np.zeros((H, W), dtype=np.float32)
+        mask[y1 : y1 + width, x1:x2] = 1.0
+        mask[y2 - width : y2, x1:x2] = 1.0
+        mask[y1:y2, x1 : x1 + width] = 1.0
+        mask[y1:y2, x2 - width : x2] = 1.0
         return self._overlay_mask(X01, mask, intensity)
 
-    def _overlay_mask(self, X01: np.ndarray, mask: np.ndarray, alpha: float) -> np.ndarray:
+    def _overlay_mask(
+        self, X01: np.ndarray, mask: np.ndarray, alpha: float
+    ) -> np.ndarray:
         # X01, mask in [0,1]; alpha in [0,1]; apply per-channel
-        return np.clip(X01*(1.0) + mask[..., None]*alpha, 0.0, 1.0) if X01.ndim==3 else np.clip(X01 + mask*alpha, 0.0, 1.0)
+        return (
+            np.clip(X01 * (1.0) + mask[..., None] * alpha, 0.0, 1.0)
+            if X01.ndim == 3
+            else np.clip(X01 + mask * alpha, 0.0, 1.0)
+        )
 
     def _op_path(self, X01: np.ndarray, params: Dict[str, Any]) -> np.ndarray:
         """
@@ -485,7 +534,9 @@ class ThoughtExecutor:
             X01[c] = np.asarray(pil, dtype=np.float32) / 255.0
         return X01
 
-    def _op_highlight(self, X01: np.ndarray, params: Dict[str, Any]) -> np.ndarray:
+    def _op_highlight(
+        self, X01: np.ndarray, params: Dict[str, Any]
+    ) -> np.ndarray:
         """
         Fill a polygon or rectangular region with semi-opaque emphasis.
         params:
@@ -500,18 +551,27 @@ class ThoughtExecutor:
 
         if "polygon" in params and params["polygon"]:
             poly = params["polygon"]
+
             def draw_on(pil):
                 overlay = Image.new("L", pil.size, 0)
                 d = ImageDraw.Draw(overlay)
                 d.polygon(poly, fill=color_val)
-                return Image.composite(Image.new("L", pil.size, 255), pil, overlay)
+                return Image.composite(
+                    Image.new("L", pil.size, 255), pil, overlay
+                )
         else:
-            x1, y1, x2, y2 = map(int, params.get("xyxy", (W//3, H//3, 2*W//3, 2*H//3)))
+            x1, y1, x2, y2 = map(
+                int,
+                params.get("xyxy", (W // 3, H // 3, 2 * W // 3, 2 * H // 3)),
+            )
+
             def draw_on(pil):
                 overlay = Image.new("L", pil.size, 0)
                 d = ImageDraw.Draw(overlay)
                 d.rectangle((x1, y1, x2, y2), fill=color_val)
-                return Image.composite(Image.new("L", pil.size, 255), pil, overlay)
+                return Image.composite(
+                    Image.new("L", pil.size, 255), pil, overlay
+                )
 
         channels = [int(channel)] if channel is not None else list(range(C))
         for c in channels:
@@ -544,12 +604,16 @@ class ThoughtExecutor:
             else:
                 x1, y1, x2, y2 = map(int, xyxy)
                 # Extract region, blur, paste back
-                crop = pil.crop((x1, y1, x2, y2)).filter(ImageFilter.GaussianBlur(radius=radius))
+                crop = pil.crop((x1, y1, x2, y2)).filter(
+                    ImageFilter.GaussianBlur(radius=radius)
+                )
                 pil.paste(crop, (x1, y1))
                 X01[c] = np.asarray(pil, dtype=np.float32) / 255.0
         return X01
 
-    def _op_logic(self, X01: np.ndarray, params: Dict[str, Any], meta: Dict[str, Any]) -> np.ndarray:
+    def _op_logic(
+        self, X01: np.ndarray, params: Dict[str, Any], meta: Dict[str, Any]
+    ) -> np.ndarray:
         """
         params:
           op:   one of {"AND","OR","NOT","SUB","XOR","NAND","NOR"}
@@ -564,10 +628,17 @@ class ThoughtExecutor:
         dst = int(params.get("dst", 0))
         blend = float(np.clip(params.get("blend", 1.0), 0.0, 1.0))
 
-        C,H,W = X01.shape
+        C, H, W = X01.shape
         A = _resolve_source(a, X01, meta)
-        if A.shape != (H,W):
-            A = np.asarray(Image.fromarray((A*255).astype(np.uint8)).resize((W,H), Image.BILINEAR))/255.0
+        if A.shape != (H, W):
+            A = (
+                np.asarray(
+                    Image.fromarray((A * 255).astype(np.uint8)).resize(
+                        (W, H), Image.BILINEAR
+                    )
+                )
+                / 255.0
+            )
 
         if op == "NOT":
             R = vpm_not(A)
@@ -575,17 +646,31 @@ class ThoughtExecutor:
             if b is None:
                 raise ValueError(f"Logic op {op} requires 'b'")
             B = _resolve_source(b, X01, meta)
-            if B.shape != (H,W):
-                B = np.asarray(Image.fromarray((B*255).astype(np.uint8)).resize((W,H), Image.BILINEAR))/255.0
-            if op == "AND": R = vpm_and(A, B)
-            elif op == "OR": R = vpm_or(A, B)
-            elif op == "SUB": R = vpm_subtract(A, B)
-            elif op == "XOR": R = vpm_xor(A, B)
-            elif op == "NAND": R = vpm_nand(A, B)
-            elif op == "NOR": R = vpm_nor(A, B)
-            else: raise ValueError(f"Unknown logic op {op}")
+            if B.shape != (H, W):
+                B = (
+                    np.asarray(
+                        Image.fromarray((B * 255).astype(np.uint8)).resize(
+                            (W, H), Image.BILINEAR
+                        )
+                    )
+                    / 255.0
+                )
+            if op == "AND":
+                R = vpm_and(A, B)
+            elif op == "OR":
+                R = vpm_or(A, B)
+            elif op == "SUB":
+                R = vpm_subtract(A, B)
+            elif op == "XOR":
+                R = vpm_xor(A, B)
+            elif op == "NAND":
+                R = vpm_nand(A, B)
+            elif op == "NOR":
+                R = vpm_nor(A, B)
+            else:
+                raise ValueError(f"Unknown logic op {op}")
 
         # write into target channel with optional blend
-        dst = int(np.clip(dst, 0, C-1))
-        X01[dst] = np.clip((1.0 - blend)*X01[dst] + blend*R, 0.0, 1.0)
+        dst = int(np.clip(dst, 0, C - 1))
+        X01[dst] = np.clip((1.0 - blend) * X01[dst] + blend * R, 0.0, 1.0)
         return X01

@@ -9,7 +9,7 @@ from typing import Dict, List, Optional
 import networkx as nx
 import numpy as np
 
-from ..guard.graph_layout import render_multi_layout_vpm
+from stephanie.components.nexus.graph.graph_layout import render_multi_layout_vpm
 
 try:
     import torch  # optional; used only if a jit model is supplied

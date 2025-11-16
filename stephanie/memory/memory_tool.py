@@ -14,6 +14,7 @@ from stephanie.constants import (BUS_STREAM, HEALTH_SUBJ, PROMPT_DLQ,
 from stephanie.memory.belief_cartridge_store import BeliefCartridgeStore
 from stephanie.memory.blossom_store import BlossomStore
 from stephanie.memory.bus_event_store import BusEventStore
+from stephanie.memory.cache_store import CacheStore
 from stephanie.memory.calibration_event_store import CalibrationEventStore
 from stephanie.memory.cartridge_domain_store import CartridgeDomainStore
 from stephanie.memory.cartridge_store import CartridgeStore
@@ -214,6 +215,7 @@ class MemoryTool:
         self.register_store(ScorableEntityStore(self.session_maker, logger))
         self.register_store(BlossomStore(self.session_maker, logger))
         self.register_store(NexusStore(self.session_maker, logger))
+        self.register_store(CacheStore(self.session_maker, logger))
 
         if cfg.get("extra_stores"):
             for store_class in cfg.get("extra_stores", []):

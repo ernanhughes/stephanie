@@ -26,7 +26,7 @@ from stephanie.scoring.scorable import Scorable
 from stephanie.services.event_service import EventService
 from stephanie.services.service_protocol import Service
 from stephanie.utils.json_sanitize import dumps_safe
-from stephanie.utils.vpm_utils import ensure_hwc_u8, ensure_chw_u8, vpm_image_details
+from stephanie.utils.vpm_utils import ensure_chw_u8
 
 if matplotlib.get_backend().lower() != "agg":
     matplotlib.use("Agg")
@@ -2789,32 +2789,3 @@ def _robust_scale_cols(M: np.ndarray, lo_p=1.0, hi_p=99.0) -> np.ndarray:
             continue
         X[:, j] = np.clip((col - lo) / (hi - lo), 0.0, 1.0)
     return X
-
-def _ensure_hwc_u8(self, arr) -> np.ndarray:
-    """Return HxWxC uint8; handles HW, HWC float/u8."""
-    import numpy as np
-    a = np.asarray(arr)
-    if a.ndim == 2:                 # HW → HW1
-        a = a[..., None]
-    if a.ndim != 3:
-        raise ValueError(f"expected 2D/3D image, got {a.shape}")
-    # float→[0,255]
-    if a.dtype != np.uint8:
-        a = np.nan_to_num(a.astype(np.float32), nan=0.0, posinf=0.0, neginf=0.0)
-        if a.max() <= 1.0:
-            a = (a * 255.0).clip(0, 255)
-        a = a.astype(np.uint8)
-    # ensure 3 channels (tile if single-channel)
-    if a.shape[-1] == 1:
-        a = np.repeat(a, 3, axis=-1)
-    elif a.shape[-1] > 3:
-        a = a[..., :3]
-    return a
-
-@staticmethod
-def _hwc_to_chw_u8(a: np.ndarray) -> np.ndarray:
-    """HWC u8 → CHW u8."""
-    if a.ndim != 3 or a.shape[-1] not in (1, 3):
-        raise ValueError(f"expected HWC with 1/3 channels, got {a.shape}")
-    import numpy as np
-    return np.transpose(a, (2, 0, 1)).astype(np.uint8, copy=False)

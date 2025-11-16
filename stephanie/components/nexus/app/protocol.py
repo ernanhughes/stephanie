@@ -3,8 +3,6 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
-from ..guard.graph_layout import NexusService
-
 
 class NexusProtocol:
     def __init__(self, cfg: Dict, memory, bus=None) -> None:

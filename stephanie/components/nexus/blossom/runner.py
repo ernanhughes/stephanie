@@ -182,7 +182,7 @@ class BlossomRunnerAgent(BaseAgent):
         self._goal_text = goal_text
 
         # VPM “jitter” hint (optional)
-        if self.run_cfg.enable_vpm_hint:
+        if self.run_cfg.enable_vpm_hint: 
             goal_text = maybe_vpm_mutate_goal(self.container, goal_text, op=self.run_cfg.vpm_op)
             context = {**context, "goal": {**goal, "goal_text": goal_text}}
             self._goal_text = goal_text
@@ -332,6 +332,8 @@ class BlossomRunnerAgent(BaseAgent):
                     max_deliver=5,
                 )
             log.info("[BlossomRunner] ensure_consumer(end) backend=%s", backend)
+        if backend == "zmq":
+            log.info("[BlossomRunner] ensure_consumer(ok) reason=zmq backend=%s noop on servi All right well I did my exercises ce", backend)
         else:
             log.info("[BlossomRunner] ensure_consumer(skip) reason=unsupported backend=%s", backend)
 
@@ -347,6 +349,11 @@ class BlossomRunnerAgent(BaseAgent):
             ack_wait=30,
             max_deliver=5,
         )
+
+    def _bus_backend(self) -> str:
+        if self.memory.bus:
+            return self.memory.bus.get_backend()
+        return "unknown"
 
     async def _bus_publish_safe(self, subject: str, payload: Dict[str, Any], *, retries: int = 4):
         bus = self.memory.bus

@@ -19,7 +19,7 @@ from stephanie.components.nexus.vpm.state_machine import (Thought,
                                                           ThoughtExecutor,
                                                           VPMGoal, VPMState,
                                                           compute_phi)
-from stephanie.services.graph_layout import render_multi_layout_vpm
+from stephanie.components.nexus.graph.graph_layout import render_multi_layout_vpm
 
 
 # --------------------------- Helpers ---------------------------

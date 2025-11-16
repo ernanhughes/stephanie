@@ -50,7 +50,7 @@ from stephanie.utils.vpm_utils import (
     vpm_quick_dump,
 )
 
-log = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -171,7 +171,7 @@ class VPMRefinerAgent(BaseAgent):
         self.exec = ThoughtExecutor(visual_op_cost=self.cfg.operation_costs)
         self.map_provider = MapProvider(self.zm)
         
-        log.debug("VPMRefinerAgent initialized with config: %s", self.cfg)
+        logger.debug("VPMRefinerAgent initialized with config: %s", self.cfg)
 
     async def run(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -190,12 +190,12 @@ class VPMRefinerAgent(BaseAgent):
         Returns:
             Updated context with refinement results and artifacts
         """
-        log.info("Starting VPM refinement process")
+        logger.info("Starting VPM refinement process")
         
         # Validate input
         scorables = list(context.get("scorables") or [])
         if not scorables:
-            log.warning("No scorables supplied; nothing to refine.")
+            logger.warning("No scorables supplied; nothing to refine.")
             context[self.output_key] = {"status": "no_scorables"}
             return context
 
@@ -255,7 +255,7 @@ class VPMRefinerAgent(BaseAgent):
         # Phase 2: Iterative refinement
         for step in range(self.cfg.max_steps):
             if state.utility >= self.cfg.utility_threshold:
-                log.info("Early stop at step %d: utility=%.4f ≥ threshold=%.4f", 
+                logger.info("Early stop at step %d: utility=%.4f ≥ threshold=%.4f", 
                            step, state.utility, self.cfg.utility_threshold)
                 break
 
@@ -283,7 +283,7 @@ class VPMRefinerAgent(BaseAgent):
                               frames: List[np.ndarray], steps_meta: List[Dict]) -> VPMState:
         """Apply zoom focus operation."""
         cy, cx = self._attention_centroid(state.X[0], top_k_ratio=0.05)
-        log.debug("Zoom focus target: center(x=%d, y=%d) scale=2.0", int(cx), int(cy))
+        logger.debug("Zoom focus target: center(x=%d, y=%d) scale=2.0", int(cx), int(cy))
         
         state, zoom_rec = self._apply_and_log(
             state,
@@ -305,7 +305,7 @@ class VPMRefinerAgent(BaseAgent):
         """Setup and return the run directory for artifacts."""
         run_dir = Path(self.cfg.out_root) / f"{run_id}"
         (run_dir / "vpm_debug").mkdir(parents=True, exist_ok=True)
-        log.info("VPMRefiner run_id=%s out_dir=%s", run_id, run_dir)
+        logger.info("VPMRefiner run_id=%s out_dir=%s", run_id, run_dir)
         return run_dir
 
     async def _extract_metrics(self, seed: Scorable, context: Dict[str, Any]) -> Tuple[List[float], List[str]]:
@@ -313,7 +313,7 @@ class VPMRefinerAgent(BaseAgent):
         row = await self.scorable_processor.process(seed, context=context)
         metrics_values = row.get("metrics_values", []) or []
         metrics_columns = row.get("metrics_columns", []) or []
-        log.debug("Extracted metrics: %d columns, %d values", 
+        logger.debug("Extracted metrics: %d columns, %d values", 
                     len(metrics_columns), len(metrics_values))
         return metrics_values, metrics_columns
 
@@ -324,15 +324,15 @@ class VPMRefinerAgent(BaseAgent):
             chw_u8, adapter_meta = await self.zm.vpm_from_scorable(
                 seed, metrics_values=metrics_values, metrics_columns=metrics_columns
             )
-            log.info("VPM generated via ZeroModel, layout: %s", detect_vpm_layout(chw_u8))
+            logger.info("VPM generated via ZeroModel, layout: %s", detect_vpm_layout(chw_u8))
         except Exception as e:
-            log.error("ZeroModel VPM generation failed: %s, using fallback", e)
+            logger.error("ZeroModel VPM generation failed: %s, using fallback", e)
             chw_u8 = self._fallback_vpm_from_metrics(metrics_values, metrics_columns)
             adapter_meta = {"fallback": True}
 
         # Debug dump and validation
         dump_info = vpm_quick_dump(chw_u8, run_dir / "vpm_debug", "sample")
-        log.debug("VPM debug info: layout=%s shape=%s", dump_info["layout"], dump_info["shape"])
+        logger.debug("VPM debug info: layout=%s shape=%s", dump_info["layout"], dump_info["shape"])
         
         return chw_u8, adapter_meta
 
@@ -342,7 +342,7 @@ class VPMRefinerAgent(BaseAgent):
         # Ensure proper visual format
         chw_u8 = self._ensure_visual_chw(chw_u8)
         C, H, W = chw_u8.shape
-        log.debug("Visual tensor prepared: C=%d H=%d W=%d", C, H, W)
+        logger.debug("Visual tensor prepared: C=%d H=%d W=%d", C, H, W)
 
         # Store original for comparison
         initial_rgb = self._hwc(chw_u8)
@@ -366,9 +366,9 @@ class VPMRefinerAgent(BaseAgent):
         """Initialize and augment maps for VPM refinement."""
         try:
             maps = self.map_provider.build(X).maps
-            log.debug("MapProvider generated maps: %s", sorted(maps.keys()))
+            logger.debug("MapProvider generated maps: %s", sorted(maps.keys()))
         except Exception as e:
-            log.warning("MapProvider failed: %s, using fallback maps", e)
+            logger.warning("MapProvider failed: %s, using fallback maps", e)
             maps = {}
             
         return self._augment_maps(maps, X)
@@ -392,7 +392,7 @@ class VPMRefinerAgent(BaseAgent):
         executable_ops = self._build_executable_operations(sequence_specs, sequence_name, state)
         
         if not executable_ops:
-            log.info("[%s] No executable operations", sequence_name)
+            logger.info("[%s] No executable operations", sequence_name)
             return state, None
             
         return self._apply_and_log(state, sequence_name, executable_ops)
@@ -409,7 +409,7 @@ class VPMRefinerAgent(BaseAgent):
             if not self._should_skip_operation(params, state.meta.get("maps", {})):
                 executable_ops.append(VisualThoughtOp(op_type, params))
             else:
-                log.debug("[%s] Skipping operation due to missing map dependencies", sequence_name)
+                logger.debug("[%s] Skipping operation due to missing map dependencies", sequence_name)
                 
         return executable_ops
 
@@ -612,11 +612,11 @@ class VPMRefinerAgent(BaseAgent):
         if "risk" not in augmented_maps:
             if "uncertainty" in augmented_maps:
                 augmented_maps["risk"] = augmented_maps["uncertainty"].copy()
-                log.debug("Using uncertainty as risk fallback")
+                logger.debug("Using uncertainty as risk fallback")
             else:
                 quality = augmented_maps.get("quality", attention_proxy)
                 augmented_maps["risk"] = np.clip(1.0 - quality, 0.0, 1.0)
-                log.debug("Synthesized risk from inverse quality")
+                logger.debug("Synthesized risk from inverse quality")
                 
         if "bridge" not in augmented_maps:
             bridge_width = max(1, width // 16)
@@ -674,7 +674,7 @@ class VPMRefinerAgent(BaseAgent):
 
     def _log_state(self, tag: str, phi: Dict[str, float], utility: float) -> None:
         """Log VPM state metrics."""
-        log.info(
+        logger.info(
             "[%s] φ: sep=%.4f bridge=%.4f spec_gap=%.4f symmetry=%.4f crossings=%s | utility=%.4f",
             tag,
             float(phi.get("separability", 0.0)),
@@ -688,7 +688,7 @@ class VPMRefinerAgent(BaseAgent):
     def _log_operation_accepted(self, op_name: str, phi_before: Dict, phi_after: Dict,
                               util_before: float, util_after: float, cost: float, bcs: float) -> None:
         """Log accepted operation details."""
-        log.info(
+        logger.info(
             "[%s:accepted] Δφ: sep=%+0.4f bridge=%+0.4f spec_gap=%+0.4f symmetry=%+0.4f | "
             "Δutility=%+0.4f cost=%.3f bcs=%+.4f | utility=%.4f",
             op_name,
@@ -705,7 +705,7 @@ class VPMRefinerAgent(BaseAgent):
     def _log_operation_rejected(self, op_name: str, util_before: float, 
                               util_after: float, cost: float, bcs: float) -> None:
         """Log rejected operation details."""
-        log.info(
+        logger.info(
             "[%s:rejected] Δutility=%.4f cost=%.3f bcs=%+.4f → REVERT", 
             op_name, float(util_after - util_before), float(cost), float(bcs)
         )
@@ -744,7 +744,7 @@ class VPMRefinerAgent(BaseAgent):
             "artifacts_dir": str(run_dir),
         }
 
-        log.info("VPM refinement completed: final_utility=%.4f, steps=%d, artifacts=%s",
+        logger.info("VPM refinement completed: final_utility=%.4f, steps=%d, artifacts=%s",
                    final_state.utility, len(steps_meta), run_dir)
 
         return context
@@ -763,4 +763,4 @@ class VPMRefinerAgent(BaseAgent):
         with open(run_dir / "metrics.json", "w", encoding="utf-8") as f:
             json.dump({"steps": steps_meta}, f, indent=2)
 
-        log.info("Filmstrip artifacts saved: %d frames → %s", len(frames), run_dir)
+        logger.info("Filmstrip artifacts saved: %d frames → %s", len(frames), run_dir)

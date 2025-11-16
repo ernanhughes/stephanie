@@ -9,6 +9,7 @@ from typing import (Any, DefaultDict, Dict, Iterable, List, Optional, Set,
 
 import numpy as np
 
+from stephanie.components.nexus.app.manifest import ManifestItem
 from stephanie.components.nexus.app.types import NexusEdge, NexusNode
 from stephanie.memory.nexus_store import NexusStore
 from stephanie.utils.json_sanitize import dumps_safe
@@ -74,7 +75,7 @@ class GraphBuilder:
             if isinstance(it, dict):
                 norm_items.append(it)
             else:
-                # Best-effort mapping from Scorable
+                # Best-effort mapping from S Hey Cortana corable
                 norm_items.append({
                     "item_id": getattr(it, "id", None) or getattr(it, "scorable_id", None),
                     "scorable_id": getattr(it, "id", None),
@@ -437,17 +438,16 @@ def _make_node(node_id: str, scorable_id: str, scorable_type: str) -> NexusNode:
 
 
 def _pick_title_text(item: Dict[str, Any]) -> tuple[str, str]:
-    near = item.get("near_identity") or {}
+    near = item.near_identity if hasattr(item, "near_identity") else item.get("near_identity") or {}
     title = (
         near.get("title")
         or near.get("summary")
-        or item.get("scorable_id")
-        or item.get("item_id")
+        or item.scorable_id if hasattr(item, "scorable_id") else item.get("scorable_id")
+        or item.item_id if hasattr(item, "item_id") else item.get("item_id")
         or "item"
     )
     text = (near.get("text") or near.get("body") or near.get("snippet") or title)
     return str(title), str(text)
-
 
 def _pick_embed_global(emb: Optional[Dict[str, Any]]) -> Optional[np.ndarray]:
     if not emb:
@@ -475,46 +475,51 @@ def build_nodes(
     *,
     namespace: str = "vpm",
 ) -> Dict[str, NexusNode]:
-    items = list(manifest.get("items") or [])
+    if isinstance(manifest, dict):
+        items = list(manifest.get("items") or [])
+    else:
+        items = list(manifest.items if hasattr(manifest, "items") else manifest.get("items") or [])
     nodes: Dict[str, NexusNode] = {}
 
     for it in items:
-        item_id = it.get("item_id") or it.get("scorable_id") or ""
-        node_id = f"{namespace}://{run_id}/{item_id}"
-        scorable_type = it.get("scorable_type") or "unknown"
-        scorable_id = it.get("scorable_id") or item_id
+        if isinstance(it, ManifestItem):
+            it = it.to_dict()
+       
+        item_id = it.item_id if hasattr(it, "item_id") else it.get("item_id")
+        node_id = f"{namespace}://{run_id}/{item_id}" 
+        scorable_type = it.scorable_type if hasattr(it, "scorable_type") else it.get("scorable_type") or "unknown"
+        scorable_id = it.scorable_id if hasattr(it, "scorable_id") else it.get("scorable_id") or item_id
         node = _make_node(node_id, scorable_id=scorable_id, scorable_type=scorable_type)
 
         setattr(node, "id", node_id)
         setattr(node, "run_id", run_id)
         setattr(node, "item_id", item_id)
-        setattr(node, "scorable_id", it.get("scorable_id"))
+        setattr(node, "scorable_id", scorable_id)
 
         title, text = _pick_title_text(it)
         setattr(node, "title", title)
         setattr(node, "text", text)
 
-        setattr(node, "target_type", it.get("scorable_type") or "unknown")
-        setattr(node, "chat_id", it.get("chat_id"))
-        setattr(node, "turn_index", it.get("turn_index"))
+        setattr(node, "target_type", scorable_type or "unknown")
+        setattr(node, "chat_id", it.chat_id if hasattr(it, "chat_id") else it.get("chat_id"))
+        setattr(node, "turn_index", it.turn_index if hasattr(it, "turn_index") else it.get("turn_index"))
 
-        setattr(node, "domains", it.get("domains") or [])
-        ents = it.get("entities")
+        setattr(node, "domains", it.domains if hasattr(it, "domains") else it.get("domains") or [])
+        ents = it.entities if hasattr(it, "entities") else it.get("entities")
         if isinstance(ents, dict):
             ents = list(ents.keys())
         setattr(node, "entities", ents or [])
-        setattr(node, "near_identity", it.get("near_identity") or {})
+        setattr(node, "near_identity", it.near_identity if hasattr(it, "near_identity") else it.get("near_identity") or {})
+        setattr(node, "metrics_columns", it.metrics_columns if hasattr(it, "metrics_columns") else it.get("metrics_columns") or [])
+        setattr(node, "metrics_values", it.metrics_values if hasattr(it, "metrics_values") else it.get("metrics_values") or [])
+        setattr(node, "metrics_vector", it.metrics_vector if hasattr(it, "metrics_vector") else it.get("metrics_vector") or {})
 
-        setattr(node, "metrics_columns", it.get("metrics_columns") or [])
-        setattr(node, "metrics_values", it.get("metrics_values") or [])
-        setattr(node, "metrics_vector", it.get("metrics_vector") or {})
-
-        embs = it.get("embeddings") or {}
+        embs = it.embeddings if hasattr(it, "embeddings") else it.get("embeddings") or {}
         setattr(node, "embeddings", embs)
         setattr(node, "embed_global", _pick_embed_global(embs))
 
-        setattr(node, "vpm_png", it.get("vpm_png"))
-        setattr(node, "rollout", it.get("rollout") or {})
+        setattr(node, "vpm_png", it.vpm_png if hasattr(it, "vpm_png") else it.get("vpm_png"))
+        setattr(node, "rollout", it.rollout if hasattr(it, "rollout") else it.get("rollout") or {})
 
         setattr(node, "degree", 0)
         nodes[node_id] = node

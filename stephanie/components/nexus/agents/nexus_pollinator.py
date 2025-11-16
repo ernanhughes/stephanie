@@ -161,7 +161,7 @@ class NexusPollinatorAgent(ProgressMixin, BaseAgent):
     async def run(self, context: Dict[str, Any]) -> Dict[str, Any]:
         cache = self.container.get("cache")
         if cache:
-            self.memory.ensure_bus_connected()
+            await self.memory.ensure_bus_connected()
             cache.set_bus(self.memory.bus)     # critical line    
             self.logger.log("CacheServiceInitialized", {"type": type(cache).__name__})
 
