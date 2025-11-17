@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+# stephanie/tools/nexus_ab_smoke.py
 """
 A/B smoke checks for nexus_vpm runs + NexusImprover integration.
 
@@ -21,6 +21,7 @@ Notes
 - NexusImprover is optional. If provided, we compare:
     win_rate, mean_lift, topk_lift, diversity pre/post, novelty retention.
 """
+from __future__ import annotations
 
 import argparse
 import csv

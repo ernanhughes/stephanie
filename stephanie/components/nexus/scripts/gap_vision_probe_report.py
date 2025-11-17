@@ -1,3 +1,6 @@
+# stephanie/components/nexus/scripts/gap_vision_probe_report.py
+from __future__ import annotations
+
 import json
 from pathlib import Path
 from typing import Dict, List, Tuple

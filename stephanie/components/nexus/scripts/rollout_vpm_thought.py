@@ -1,3 +1,6 @@
+# stephanie/components/nexus/scripts/rollout_vpm_thought.py
+from __future__ import annotations
+
 import argparse
 import json
 import random

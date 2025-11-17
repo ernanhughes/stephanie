@@ -1,4 +1,6 @@
-# scripts/train_vpm_thought_model.py
+# stephanie/components/nexus/scripts/train_vpm_thought_model.py
+from __future__ import annotations
+
 import argparse
 import json
 import random

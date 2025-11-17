@@ -1,9 +1,11 @@
+# stephanie/components/ssp/utils/filters.py
 """
 Rule-Based Filters for SSP
 
 This module implements the rule-based filters required before
 RAG-gated verification, as specified in the SSP paper.
 """
+from __future__ import annotations
 
 import re
 from typing import List

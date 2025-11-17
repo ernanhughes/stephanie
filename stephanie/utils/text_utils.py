@@ -1,3 +1,4 @@
+# stephanie/utils/text_utils.py
 """
 Text Processing Utilities
 
@@ -9,6 +10,7 @@ Features:
 - Word tokenization with Unicode support
 - Lexical overlap (Jaccard similarity) calculation
 """
+from __future__ import annotations
 
 import re
 from typing import List, Optional

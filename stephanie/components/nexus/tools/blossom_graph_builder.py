@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+# stephanie/components/nexus/tools/blossom_graph_builder.py
 """
 Blossom Graph Builder
 ---------------------
@@ -20,6 +20,7 @@ Notes:
 - Layout is a tidy layered tree layout based on parent→children edges.
 - If there's more than one root, roots are arranged side-by-side.
 """
+from __future__ import annotations
 
 import argparse
 import json

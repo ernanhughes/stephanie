@@ -1,4 +1,5 @@
 # stephanie/components/nexus/app/manifest.py
+from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 from pathlib import Path

@@ -1,5 +1,9 @@
+# stephanie/components/nexus/utils/similarity_query_engine.py
+from __future__ import annotations
+
 from dataclasses import dataclass
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, List, Optional
+
 
 # Returned shapes
 @dataclass
@@ -10,10 +14,12 @@ class NodeHit:
     similarity: float
     meta: Dict[str, Any]
 
+
 @dataclass
 class EmbeddingBackend:
     get_embedding: Any
     query: Any
+
 
 class SimilarityQueryEngine:
     def __init__(self, backend: EmbeddingBackend):
@@ -29,21 +35,24 @@ class SimilarityQueryEngine:
     ) -> List[NodeHit]:
         q = self._b.get_embedding(text, cfg="graph_nodes")
         results = self._b.query(
-            q, top_k=top_k,
+            q,
+            top_k=top_k,
             filters={"node_kinds": node_kinds, "graph_ids": graph_ids},
         )
         hits: List[NodeHit] = []
         for r in results:
             sim = float(r.get("similarity", 0.0))
-            if sim < min_similarity: 
+            if sim < min_similarity:
                 continue
-            hits.append(NodeHit(
-                node_id=r["node_id"],
-                graph_id=r.get("graph_id"),
-                scorable_kind=r.get("scorable_kind"),
-                similarity=sim,
-                meta=r.get("meta", {}),
-            ))
+            hits.append(
+                NodeHit(
+                    node_id=r["node_id"],
+                    graph_id=r.get("graph_id"),
+                    scorable_kind=r.get("scorable_kind"),
+                    similarity=sim,
+                    meta=r.get("meta", {}),
+                )
+            )
         return hits
 
     # Convenience filters

@@ -1,4 +1,6 @@
 # stephanie/models/prompt_job_types.py
+from __future__ import annotations
+
 import base64
 import uuid
 from enum import Enum
