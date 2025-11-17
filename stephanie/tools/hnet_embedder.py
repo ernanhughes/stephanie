@@ -732,7 +732,7 @@ def get_embedding(text: str, cfg: dict) -> List[float]:
     max_bytes = int(emcfg.get("max_prompt_bytes", 1024))
     min_bytes = int(emcfg.get("min_prompt_bytes", 256))
     threshold = float(emcfg.get("hnet_threshold", 0.70))
-    device = emcfg.get("device")  # "cuda", "cpu", or None
+    device = emcfg.get("device", "cpu")  # "cuda", "cpu", or None
     use_learned = bool(emcfg.get("use_learned_boundaries", False))
     max_predict_tokens = int(emcfg.get("max_predict_tokens", 16384))
     seed = int(emcfg.get("seed", 1234))

@@ -32,11 +32,10 @@ from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import yaml
+from sklearn.metrics.pairwise import cosine_similarity
 
 from stephanie.services.bus.bus_protocol import BusProtocol
 from stephanie.services.bus.idempotency import InMemoryIdempotencyStore
-from stephanie.utils.similarity_utils import (cosine, euclidean_distance,
-                                              huber_loss)
 
 log = logging.getLogger(__name__)
 
@@ -278,20 +277,10 @@ class ScorableClassifier:
     # -------------------- existing code with hooks --------------------
 
     @lru_cache(maxsize=2048)
-    def _classify_cached(
-        self,
-        text: str,
-        metric: str,
-        top_k: int,
-        min_value: float,
-        context_tags: Tuple[str, ...],
-    ) -> List[Tuple[str, float]]:
+    def _classify_cached(self, text: str, metric: str, top_k: int, min_value: float, context_tags: Tuple[str, ...]) -> List[Tuple[str, float]]:
         # Guard against empty text
         if not text or not text.strip():
-            self.logger.log(
-                "ClassificationSkippedEmpty",
-                {"message": "Skipped classification because input text is empty"},
-            )
+            self.logger.log("ClassificationSkippedEmpty", {"message": "Skipped classification because input text is empty"})
             return []
 
         # 1) Persistent KV check (fast-return on hit)
@@ -303,20 +292,19 @@ class ScorableClassifier:
 
         # 2) Compute as before
         emb = self.memory.embedding.get_or_create(text)
-        scores: Dict[str, float] = {}
-
+        # self.logger.log("TextEmbeddingCreated", {"text_length": len(text), "embedding_shape": len(emb), "message": "Created embedding for input text"})
+        scores = {}
         for domain, centroid in self.centroids.items():
             if metric == "cosine":
-                score = cosine(emb, centroid)
+                score = self._cosine_distance(emb, centroid)
             elif metric == "euclidean":
-                score = euclidean_distance(emb, centroid)
+                score = self._euclidean_distance(emb, centroid)
             elif metric == "huber":
-                score = huber_loss(emb, centroid)
+                score = self._huber_distance(emb, centroid)
             else:
                 raise ValueError(f"Unknown metric: {metric}")
             scores[domain] = score
 
-        # Context tags always use cosine similarity and get boosted
         for tag in context_tags:
             tag_emb = self.memory.embedding.get_or_create(tag)
             score = self._cosine_distance(emb, tag_emb) * 1.5
@@ -329,6 +317,81 @@ class ScorableClassifier:
         self._kv_put(key, results)
 
         return results
+
+    def _cosine_distance(self, emb1: np.array, emb2: np.array) -> float:
+        """
+        Calculate cosine similarity between two embeddings.
+        
+        Args:
+            emb1: First embedding vector
+            emb2: Second embedding vector
+            
+        Returns:
+            Cosine similarity score between -1 and 1
+        """
+        similarity = float(cosine_similarity([emb1], [emb2])[0][0])
+        log.debug("DistanceCalculation"
+            "metric: cosine"
+            f"similarity: {similarity}"
+            "message Calculated cosine similarity"
+        )
+        return similarity
+
+    def _euclidean_distance(self, emb1: np.array, emb2: np.array) -> float:
+        """
+        Calculate negative Euclidean distance between two embeddings.
+        
+        Note: Returns negative value so higher scores indicate better matches,
+        consistent with other distance metrics in this class.
+        
+        Args:
+            emb1: First embedding vector
+            emb2: Second embedding vector
+            
+        Returns:
+            Negative Euclidean distance (higher values indicate closer matches)
+        """
+        distance = np.linalg.norm(emb1 - emb2)
+        negative_distance = -distance  # Convert to negative for consistency
+        log.debug("DistanceCalculation"
+            "metric: euclidean"
+            f"distance: {distance}"
+            f"negative_distance: {negative_distance}"
+            "message: Calculated Euclidean distance"
+        )
+        return negative_distance
+
+    def _huber_distance(self, emb1: np.array, emb2: np.array, delta: float = 1.0) -> float:
+        """
+        Calculate Huber loss-based similarity between two embeddings.
+        
+        Huber loss is less sensitive to outliers than Euclidean distance.
+        This implementation follows Domain2Vec's approach.
+        
+        Args:
+            emb1: First embedding vector
+            emb2: Second embedding vector
+            delta: Threshold parameter for Huber loss
+            
+        Returns:
+            Negative Huber loss (higher values indicate closer matches)
+        """
+        diff = emb1 - emb2
+        abs_diff = np.abs(diff)
+        quadratic = np.minimum(abs_diff, delta)
+        linear = abs_diff - quadratic
+        huber_loss = np.mean(0.5 * quadratic**2 + delta * linear)
+        negative_huber = -huber_loss  # Convert to negative for consistency
+        
+        log.debug("DistanceCalculation"
+            "metric: huber"
+            f"huber_loss: {huber_loss}"
+            f"negative_huber: {negative_huber}"
+            f"delta: {delta}"
+            "message: Calculated Huber distance"
+        )
+        
+        return negative_huber
 
     def _domain_centroids(self) -> Dict[str, np.array]:
         """
