@@ -51,6 +51,95 @@ END;
 $$;
 
 --
+-- Name: trg_blossom_edges_legacy_fill(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.trg_blossom_edges_legacy_fill() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+  -- Keep episode_id in sync with blossom_id if omitted by writers
+  IF NEW.episode_id IS NULL THEN
+    NEW.episode_id := NEW.blossom_id;
+  END IF;
+
+  -- Optional: default relation if omitted
+  IF NEW.relation IS NULL THEN
+    NEW.relation := 'child';
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+--
+-- Name: trg_blossom_nodes_legacy_fill(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.trg_blossom_nodes_legacy_fill() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+  -- existing compat from earlier steps…
+  IF NEW.node_id IS NULL THEN
+    NEW.node_id := COALESCE(NEW.extra_data->>'ext_id', NEW.id::text);
+  END IF;
+
+  IF NEW.root_node_id IS NULL THEN
+    NEW.root_node_id := COALESCE(NEW.extra_data->>'root_id', NEW.node_id, NEW.id::text);
+  END IF;
+
+  IF NEW.episode_id IS NULL THEN
+    NEW.episode_id := NEW.blossom_id;
+  END IF;
+
+  IF NEW.node_type IS NULL THEN
+    NEW.node_type := COALESCE(
+      NEW.extra_data->>'type',
+      CASE WHEN NEW.parent_id IS NULL OR COALESCE(NEW.depth,0)=0 THEN 'seed' ELSE 'draft' END
+    );
+  END IF;
+
+  -- 🔑 NEW: keep plan_text populated even if only state_text is provided
+  IF NEW.plan_text IS NULL THEN
+    NEW.plan_text := COALESCE(NEW.state_text, NEW.sharpened_text, '');
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+--
+-- Name: trg_blossom_nodes_set_node_id(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.trg_blossom_nodes_set_node_id() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+  IF NEW.node_id IS NULL THEN
+    NEW.node_id := COALESCE(NEW.extra_data->>'ext_id', NEW.id::text);
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+--
+-- Name: trg_blossom_nodes_sync_episode_id(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.trg_blossom_nodes_sync_episode_id() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+  IF NEW.episode_id IS NULL AND NEW.blossom_id IS NOT NULL THEN
+    NEW.episode_id := NEW.blossom_id;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+--
 -- Name: agent_lightning; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -210,6 +299,188 @@ CREATE SEQUENCE public.blog_drafts_id_seq
 --
 
 ALTER SEQUENCE public.blog_drafts_id_seq OWNED BY public.blog_drafts.id;
+
+--
+-- Name: blossom_edges; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.blossom_edges (
+    id bigint NOT NULL,
+    blossom_id bigint,
+    episode_id bigint,
+    src_node_id text,
+    dst_node_id text,
+    src_bn_id bigint,
+    dst_bn_id bigint,
+    relation text DEFAULT 'child'::text,
+    score double precision,
+    rationale text,
+    extra_data jsonb,
+    created_at timestamp with time zone DEFAULT now(),
+    updated_at timestamp with time zone DEFAULT now()
+);
+
+--
+-- Name: blossom_edges_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.blossom_edges_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+--
+-- Name: blossom_edges_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.blossom_edges_id_seq OWNED BY public.blossom_edges.id;
+
+--
+-- Name: blossom_graph_edges_v; Type: VIEW; Schema: public; Owner: -
+--
+
+CREATE VIEW public.blossom_graph_edges_v AS
+ SELECT blossom_id,
+    (src_node_id)::bigint AS src_id,
+    (dst_node_id)::bigint AS dst_id,
+    COALESCE(NULLIF(relation, ''::text), 'edge'::text) AS relation,
+    score,
+    rationale
+   FROM public.blossom_edges e;
+
+--
+-- Name: blossom_nodes; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.blossom_nodes (
+    id bigint NOT NULL,
+    blossom_id bigint,
+    episode_id bigint,
+    node_id text,
+    parent_id text,
+    root_node_id text,
+    node_type text,
+    depth integer DEFAULT 0,
+    order_index integer,
+    prompt_id bigint,
+    prompt_program_id bigint,
+    plan_text text,
+    state_text text,
+    sharpened_text text,
+    accepted boolean DEFAULT false,
+    rationale text,
+    scores jsonb,
+    features jsonb,
+    tags jsonb,
+    sharpen_passes integer DEFAULT 0,
+    sharpen_gain double precision,
+    extra_data jsonb,
+    created_at timestamp with time zone DEFAULT now(),
+    updated_at timestamp with time zone DEFAULT now(),
+    sharpen_meta jsonb
+);
+
+--
+-- Name: blossom_graph_nodes_v; Type: VIEW; Schema: public; Owner: -
+--
+
+CREATE VIEW public.blossom_graph_nodes_v AS
+ SELECT id AS node_id,
+    blossom_id,
+    COALESCE(NULLIF(sharpened_text, ''::text), NULLIF(state_text, ''::text), '(empty)'::text) AS full_text,
+    "left"(COALESCE(NULLIF(sharpened_text, ''::text), NULLIF(state_text, ''::text), '(empty)'::text), 140) AS label,
+    COALESCE(extra_data, '{}'::jsonb) AS extra
+   FROM public.blossom_nodes n;
+
+--
+-- Name: blossom_nodes_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.blossom_nodes_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+--
+-- Name: blossom_nodes_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.blossom_nodes_id_seq OWNED BY public.blossom_nodes.id;
+
+--
+-- Name: blossom_winners; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.blossom_winners (
+    id bigint NOT NULL,
+    episode_id bigint NOT NULL,
+    leaf_bn_id bigint,
+    leaf_node_id text,
+    reward double precision NOT NULL,
+    path_bn_ids bigint[],
+    path_node_ids text[],
+    sharpened jsonb,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+--
+-- Name: blossom_winners_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.blossom_winners_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+--
+-- Name: blossom_winners_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.blossom_winners_id_seq OWNED BY public.blossom_winners.id;
+
+--
+-- Name: blossoms; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.blossoms (
+    id bigint NOT NULL,
+    goal_id bigint,
+    pipeline_run_id text,
+    agent_name text,
+    strategy text,
+    seed_type text,
+    seed_id bigint,
+    status text DEFAULT 'running'::text,
+    started_at timestamp with time zone DEFAULT now(),
+    completed_at timestamp with time zone,
+    params jsonb,
+    extra_data jsonb,
+    root_node_id text,
+    stats jsonb
+);
+
+--
+-- Name: blossoms_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.blossoms_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+--
+-- Name: blossoms_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.blossoms_id_seq OWNED BY public.blossoms.id;
 
 --
 -- Name: bus_events; Type: TABLE; Schema: public; Owner: -
@@ -2493,6 +2764,90 @@ CREATE SEQUENCE public.mrq_preference_pairs_id_seq
 ALTER SEQUENCE public.mrq_preference_pairs_id_seq OWNED BY public.mrq_preference_pairs.id;
 
 --
+-- Name: nexus_edge; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.nexus_edge (
+    run_id character varying NOT NULL,
+    src character varying NOT NULL,
+    dst character varying NOT NULL,
+    type character varying NOT NULL,
+    weight double precision DEFAULT 0.0 NOT NULL,
+    channels jsonb,
+    created_ts timestamp with time zone DEFAULT now()
+);
+
+--
+-- Name: nexus_embedding; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.nexus_embedding (
+    scorable_id character varying NOT NULL,
+    embed_global jsonb NOT NULL,
+    norm_l2 double precision
+);
+
+--
+-- Name: nexus_metrics; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.nexus_metrics (
+    scorable_id character varying NOT NULL,
+    columns jsonb NOT NULL,
+    "values" jsonb NOT NULL,
+    vector jsonb
+);
+
+--
+-- Name: nexus_pulse; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.nexus_pulse (
+    id integer NOT NULL,
+    ts timestamp without time zone,
+    scorable_id character varying NOT NULL,
+    goal_id character varying,
+    score double precision,
+    neighbors jsonb,
+    subgraph_size integer,
+    meta jsonb
+);
+
+--
+-- Name: nexus_pulse_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.nexus_pulse_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+--
+-- Name: nexus_pulse_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.nexus_pulse_id_seq OWNED BY public.nexus_pulse.id;
+
+--
+-- Name: nexus_scorable; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.nexus_scorable (
+    id character varying NOT NULL,
+    created_ts timestamp with time zone DEFAULT now(),
+    chat_id character varying,
+    turn_index integer,
+    target_type character varying,
+    text text,
+    domains jsonb,
+    entities jsonb,
+    meta jsonb
+);
+
+--
 -- Name: nodes; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -2525,6 +2880,30 @@ CREATE SEQUENCE public.nodes_id_seq
 --
 
 ALTER SEQUENCE public.nodes_id_seq OWNED BY public.nodes.id;
+
+--
+-- Name: ollama_embeddings; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.ollama_embeddings (
+    id integer NOT NULL,
+    text text,
+    embedding public.vector(1024),
+    created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    text_hash text
+);
+
+--
+-- Name: ollama_embeddings_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.ollama_embeddings_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
 
 --
 -- Name: paper_source_queue; Type: TABLE; Schema: public; Owner: -
@@ -2766,6 +3145,37 @@ CREATE SEQUENCE public.plan_trace_reuse_links_id_seq
 ALTER SEQUENCE public.plan_trace_reuse_links_id_seq OWNED BY public.plan_trace_reuse_links.id;
 
 --
+-- Name: plan_trace_revisions; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.plan_trace_revisions (
+    id integer NOT NULL,
+    plan_trace_id character varying NOT NULL,
+    revision_type character varying NOT NULL,
+    revision_text text NOT NULL,
+    source character varying,
+    created_at timestamp without time zone
+);
+
+--
+-- Name: plan_trace_revisions_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.plan_trace_revisions_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+--
+-- Name: plan_trace_revisions_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.plan_trace_revisions_id_seq OWNED BY public.plan_trace_revisions.id;
+
+--
 -- Name: plan_traces; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -2789,7 +3199,9 @@ CREATE TABLE public.plan_traces (
     skills_used jsonb DEFAULT '[]'::jsonb,
     repair_links jsonb DEFAULT '[]'::jsonb,
     domains text[] DEFAULT '{}'::text[],
-    extra_data jsonb
+    extra_data jsonb,
+    rolw text,
+    status text
 );
 
 --
@@ -2884,6 +3296,76 @@ CREATE SEQUENCE public.prompt_history_id_seq
 --
 
 ALTER SEQUENCE public.prompt_history_id_seq OWNED BY public.prompt_history.id;
+
+--
+-- Name: prompt_jobs; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.prompt_jobs (
+    id bigint NOT NULL,
+    job_id text NOT NULL,
+    scorable_id text,
+    correlation_id text,
+    parent_job_id text,
+    trace_id text,
+    model text NOT NULL,
+    target text DEFAULT 'auto'::text NOT NULL,
+    priority text DEFAULT 'normal'::text NOT NULL,
+    prompt_text text,
+    messages jsonb,
+    system text,
+    tools jsonb,
+    attachments jsonb,
+    input_vars jsonb,
+    gen_params jsonb,
+    response_format text DEFAULT 'text'::text NOT NULL,
+    prompt_schema jsonb,
+    force_json boolean DEFAULT false NOT NULL,
+    enforce_schema boolean DEFAULT false NOT NULL,
+    stream boolean DEFAULT false NOT NULL,
+    route jsonb,
+    retry jsonb,
+    cache jsonb,
+    safety jsonb,
+    return_topic text,
+    dedupe_key text,
+    cache_key text,
+    signature text,
+    version text DEFAULT 'v2'::text NOT NULL,
+    status text DEFAULT 'queued'::text NOT NULL,
+    created_at timestamp with time zone DEFAULT now(),
+    updated_at timestamp with time zone,
+    started_at timestamp with time zone,
+    completed_at timestamp with time zone,
+    deadline_ts double precision,
+    ttl_s integer,
+    result_text text,
+    result_json jsonb,
+    partial jsonb,
+    error text,
+    cost jsonb,
+    latency_ms double precision,
+    provider text,
+    cache_hit boolean DEFAULT false NOT NULL,
+    metadata jsonb
+);
+
+--
+-- Name: prompt_jobs_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.prompt_jobs_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+--
+-- Name: prompt_jobs_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.prompt_jobs_id_seq OWNED BY public.prompt_jobs.id;
 
 --
 -- Name: prompt_programs; Type: TABLE; Schema: public; Owner: -
@@ -4134,6 +4616,21 @@ CREATE SEQUENCE public.worldviews_id_seq
 ALTER SEQUENCE public.worldviews_id_seq OWNED BY public.worldviews.id;
 
 --
+-- Name: zmq_cache_entries; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.zmq_cache_entries (
+    key text NOT NULL,
+    scope text,
+    value_bytes bytea,
+    value_json jsonb,
+    created_at double precision NOT NULL,
+    accessed_at double precision NOT NULL,
+    ttl_seconds integer,
+    CONSTRAINT zmq_cache_value_present_chk CHECK (((value_bytes IS NOT NULL) OR (value_json IS NOT NULL)))
+);
+
+--
 -- Name: agent_lightning id; Type: DEFAULT; Schema: public; Owner: -
 --
 
@@ -4156,6 +4653,30 @@ ALTER TABLE ONLY public.belief_graph_versions ALTER COLUMN id SET DEFAULT nextva
 --
 
 ALTER TABLE ONLY public.blog_drafts ALTER COLUMN id SET DEFAULT nextval('public.blog_drafts_id_seq'::regclass);
+
+--
+-- Name: blossom_edges id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.blossom_edges ALTER COLUMN id SET DEFAULT nextval('public.blossom_edges_id_seq'::regclass);
+
+--
+-- Name: blossom_nodes id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.blossom_nodes ALTER COLUMN id SET DEFAULT nextval('public.blossom_nodes_id_seq'::regclass);
+
+--
+-- Name: blossom_winners id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.blossom_winners ALTER COLUMN id SET DEFAULT nextval('public.blossom_winners_id_seq'::regclass);
+
+--
+-- Name: blossoms id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.blossoms ALTER COLUMN id SET DEFAULT nextval('public.blossoms_id_seq'::regclass);
 
 --
 -- Name: bus_events id; Type: DEFAULT; Schema: public; Owner: -
@@ -4476,6 +4997,12 @@ ALTER TABLE ONLY public.mrq_memory ALTER COLUMN id SET DEFAULT nextval('public.m
 ALTER TABLE ONLY public.mrq_preference_pairs ALTER COLUMN id SET DEFAULT nextval('public.mrq_preference_pairs_id_seq'::regclass);
 
 --
+-- Name: nexus_pulse id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.nexus_pulse ALTER COLUMN id SET DEFAULT nextval('public.nexus_pulse_id_seq'::regclass);
+
+--
 -- Name: nodes id; Type: DEFAULT; Schema: public; Owner: -
 --
 
@@ -4512,6 +5039,12 @@ ALTER TABLE ONLY public.pipeline_stages ALTER COLUMN id SET DEFAULT nextval('pub
 ALTER TABLE ONLY public.plan_trace_reuse_links ALTER COLUMN id SET DEFAULT nextval('public.plan_trace_reuse_links_id_seq'::regclass);
 
 --
+-- Name: plan_trace_revisions id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.plan_trace_revisions ALTER COLUMN id SET DEFAULT nextval('public.plan_trace_revisions_id_seq'::regclass);
+
+--
 -- Name: plan_traces id; Type: DEFAULT; Schema: public; Owner: -
 --
 
@@ -4528,6 +5061,12 @@ ALTER TABLE ONLY public.prompt_evaluations ALTER COLUMN id SET DEFAULT nextval('
 --
 
 ALTER TABLE ONLY public.prompt_history ALTER COLUMN id SET DEFAULT nextval('public.prompt_history_id_seq'::regclass);
+
+--
+-- Name: prompt_jobs id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.prompt_jobs ALTER COLUMN id SET DEFAULT nextval('public.prompt_jobs_id_seq'::regclass);
 
 --
 -- Name: prompt_versions id; Type: DEFAULT; Schema: public; Owner: -
@@ -4743,6 +5282,34 @@ ALTER TABLE ONLY public.belief_graph_versions
 
 ALTER TABLE ONLY public.blog_drafts
     ADD CONSTRAINT blog_drafts_pkey PRIMARY KEY (id);
+
+--
+-- Name: blossom_edges blossom_edges_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.blossom_edges
+    ADD CONSTRAINT blossom_edges_pkey PRIMARY KEY (id);
+
+--
+-- Name: blossom_nodes blossom_nodes_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.blossom_nodes
+    ADD CONSTRAINT blossom_nodes_pkey PRIMARY KEY (id);
+
+--
+-- Name: blossom_winners blossom_winners_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.blossom_winners
+    ADD CONSTRAINT blossom_winners_pkey PRIMARY KEY (id);
+
+--
+-- Name: blossoms blossoms_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.blossoms
+    ADD CONSTRAINT blossoms_pkey PRIMARY KEY (id);
 
 --
 -- Name: bus_events bus_events_subject_event_id_key; Type: CONSTRAINT; Schema: public; Owner: -
@@ -5221,6 +5788,41 @@ ALTER TABLE ONLY public.mrq_preference_pairs
     ADD CONSTRAINT mrq_preference_pairs_pkey PRIMARY KEY (id);
 
 --
+-- Name: nexus_edge nexus_edge_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.nexus_edge
+    ADD CONSTRAINT nexus_edge_pkey PRIMARY KEY (run_id, src, dst, type);
+
+--
+-- Name: nexus_embedding nexus_embedding_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.nexus_embedding
+    ADD CONSTRAINT nexus_embedding_pkey PRIMARY KEY (scorable_id);
+
+--
+-- Name: nexus_metrics nexus_metrics_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.nexus_metrics
+    ADD CONSTRAINT nexus_metrics_pkey PRIMARY KEY (scorable_id);
+
+--
+-- Name: nexus_pulse nexus_pulse_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.nexus_pulse
+    ADD CONSTRAINT nexus_pulse_pkey PRIMARY KEY (id);
+
+--
+-- Name: nexus_scorable nexus_scorable_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.nexus_scorable
+    ADD CONSTRAINT nexus_scorable_pkey PRIMARY KEY (id);
+
+--
 -- Name: nodes nodes_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -5277,6 +5879,13 @@ ALTER TABLE ONLY public.plan_trace_reuse_links
     ADD CONSTRAINT plan_trace_reuse_links_pkey PRIMARY KEY (id);
 
 --
+-- Name: plan_trace_revisions plan_trace_revisions_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.plan_trace_revisions
+    ADD CONSTRAINT plan_trace_revisions_pkey PRIMARY KEY (id);
+
+--
 -- Name: plan_traces plan_traces_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -5303,6 +5912,20 @@ ALTER TABLE ONLY public.prompt_evaluations
 
 ALTER TABLE ONLY public.prompt_history
     ADD CONSTRAINT prompt_history_pkey PRIMARY KEY (id);
+
+--
+-- Name: prompt_jobs prompt_jobs_job_id_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.prompt_jobs
+    ADD CONSTRAINT prompt_jobs_job_id_key UNIQUE (job_id);
+
+--
+-- Name: prompt_jobs prompt_jobs_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.prompt_jobs
+    ADD CONSTRAINT prompt_jobs_pkey PRIMARY KEY (id);
 
 --
 -- Name: prompt_programs prompt_programs_pkey; Type: CONSTRAINT; Schema: public; Owner: -
@@ -5704,6 +6327,13 @@ ALTER TABLE ONLY public.worldviews
     ADD CONSTRAINT worldviews_pkey PRIMARY KEY (id);
 
 --
+-- Name: zmq_cache_entries zmq_cache_entries_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.zmq_cache_entries
+    ADD CONSTRAINT zmq_cache_entries_pkey PRIMARY KEY (key);
+
+--
 -- Name: chat_conversations_tsv_gin; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -5744,6 +6374,90 @@ CREATE INDEX gin_expo_buf_meta ON public.expository_buffers USING gin (meta);
 --
 
 CREATE INDEX gin_expo_buf_snippet_ids ON public.expository_buffers USING gin (snippet_ids);
+
+--
+-- Name: idx_be_blossom; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_be_blossom ON public.blossom_edges USING btree (blossom_id);
+
+--
+-- Name: idx_be_dst_ext; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_be_dst_ext ON public.blossom_edges USING btree (dst_node_id);
+
+--
+-- Name: idx_be_dstbn; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_be_dstbn ON public.blossom_edges USING btree (dst_bn_id);
+
+--
+-- Name: idx_be_src_ext; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_be_src_ext ON public.blossom_edges USING btree (src_node_id);
+
+--
+-- Name: idx_be_srcbn; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_be_srcbn ON public.blossom_edges USING btree (src_bn_id);
+
+--
+-- Name: idx_blossom_winners_episode; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_blossom_winners_episode ON public.blossom_winners USING btree (episode_id);
+
+--
+-- Name: idx_blossom_winners_reward; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_blossom_winners_reward ON public.blossom_winners USING btree (episode_id, reward DESC);
+
+--
+-- Name: idx_blossom_winners_sharpened_gin; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_blossom_winners_sharpened_gin ON public.blossom_winners USING gin (sharpened);
+
+--
+-- Name: idx_blossoms_goal; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_blossoms_goal ON public.blossoms USING btree (goal_id);
+
+--
+-- Name: idx_blossoms_pipeline; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_blossoms_pipeline ON public.blossoms USING btree (pipeline_run_id);
+
+--
+-- Name: idx_bn_blossom; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_bn_blossom ON public.blossom_nodes USING btree (blossom_id);
+
+--
+-- Name: idx_bn_nodeid; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_bn_nodeid ON public.blossom_nodes USING btree (node_id);
+
+--
+-- Name: idx_bn_parentid; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_bn_parentid ON public.blossom_nodes USING btree (parent_id);
+
+--
+-- Name: idx_bn_root_ext; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_bn_root_ext ON public.blossom_nodes USING btree (root_node_id);
 
 --
 -- Name: idx_bus_events_case; Type: INDEX; Schema: public; Owner: -
@@ -5938,6 +6652,18 @@ CREATE INDEX idx_measurements_entity_metric ON public.measurements USING btree (
 CREATE INDEX idx_measurements_value_gin ON public.measurements USING gin (value);
 
 --
+-- Name: idx_nexus_edge_dst; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_nexus_edge_dst ON public.nexus_edge USING btree (run_id, dst);
+
+--
+-- Name: idx_nexus_edge_src; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_nexus_edge_src ON public.nexus_edge USING btree (run_id, src);
+
+--
 -- Name: idx_nodes_goal_id; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -6038,6 +6764,30 @@ CREATE INDEX idx_plan_traces_trace_id ON public.plan_traces USING btree (trace_i
 --
 
 CREATE INDEX idx_prompt_agent ON public.prompts USING btree (source);
+
+--
+-- Name: idx_prompt_jobs_cache_key; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_prompt_jobs_cache_key ON public.prompt_jobs USING btree (cache_key);
+
+--
+-- Name: idx_prompt_jobs_dedupe; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_prompt_jobs_dedupe ON public.prompt_jobs USING btree (dedupe_key);
+
+--
+-- Name: idx_prompt_jobs_scorable; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_prompt_jobs_scorable ON public.prompt_jobs USING btree (scorable_id);
+
+--
+-- Name: idx_prompt_jobs_status_priority_created; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_prompt_jobs_status_priority_created ON public.prompt_jobs USING btree (status, priority, created_at);
 
 --
 -- Name: idx_prompt_strategy; Type: INDEX; Schema: public; Owner: -
@@ -6310,6 +7060,24 @@ CREATE INDEX ix_model_snapshots_name ON public.experiment_model_snapshots USING 
 CREATE INDEX ix_model_snapshots_version ON public.experiment_model_snapshots USING btree (version);
 
 --
+-- Name: ix_nexus_pulse_goal_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_nexus_pulse_goal_id ON public.nexus_pulse USING btree (goal_id);
+
+--
+-- Name: ix_nexus_pulse_scorable_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_nexus_pulse_scorable_id ON public.nexus_pulse USING btree (scorable_id);
+
+--
+-- Name: ix_nexus_pulse_ts; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_nexus_pulse_ts ON public.nexus_pulse USING btree (ts);
+
+--
 -- Name: ix_psq_topic_status; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -6442,6 +7210,30 @@ CREATE INDEX ix_vpm_created_at ON public.vpms USING btree (created_at);
 CREATE INDEX ix_vpm_run_id ON public.vpms USING btree (run_id);
 
 --
+-- Name: ix_zmq_cache_entries_accessed_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_zmq_cache_entries_accessed_at ON public.zmq_cache_entries USING btree (accessed_at);
+
+--
+-- Name: ix_zmq_cache_entries_created_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_zmq_cache_entries_created_at ON public.zmq_cache_entries USING btree (created_at);
+
+--
+-- Name: ix_zmq_cache_entries_scope; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_zmq_cache_entries_scope ON public.zmq_cache_entries USING btree (scope);
+
+--
+-- Name: ix_zmq_cache_entries_value_json_gin; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_zmq_cache_entries_value_json_gin ON public.zmq_cache_entries USING gin (value_json);
+
+--
 -- Name: unique_text_hash; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -6567,6 +7359,20 @@ ALTER TABLE ONLY public.belief_cartridges
 
 ALTER TABLE ONLY public.belief_cartridges
     ADD CONSTRAINT belief_cartridges_goal_id_fkey FOREIGN KEY (goal_id) REFERENCES public.goals(id) ON DELETE SET NULL;
+
+--
+-- Name: blossom_edges blossom_edges_blossom_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.blossom_edges
+    ADD CONSTRAINT blossom_edges_blossom_id_fkey FOREIGN KEY (blossom_id) REFERENCES public.blossoms(id) ON DELETE CASCADE;
+
+--
+-- Name: blossom_nodes blossom_nodes_blossom_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.blossom_nodes
+    ADD CONSTRAINT blossom_nodes_blossom_id_fkey FOREIGN KEY (blossom_id) REFERENCES public.blossoms(id) ON DELETE CASCADE;
 
 --
 -- Name: cartridge_domains cartridge_domains_cartridge_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
@@ -7057,6 +7863,13 @@ ALTER TABLE ONLY public.plan_trace_reuse_links
 
 ALTER TABLE ONLY public.plan_trace_reuse_links
     ADD CONSTRAINT plan_trace_reuse_links_parent_trace_id_fkey FOREIGN KEY (parent_trace_id) REFERENCES public.plan_traces(trace_id) ON DELETE CASCADE;
+
+--
+-- Name: plan_trace_revisions plan_trace_revisions_plan_trace_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.plan_trace_revisions
+    ADD CONSTRAINT plan_trace_revisions_plan_trace_id_fkey FOREIGN KEY (plan_trace_id) REFERENCES public.plan_traces(trace_id) ON DELETE CASCADE;
 
 --
 -- Name: plan_traces plan_traces_goal_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
