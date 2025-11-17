@@ -7,9 +7,12 @@ import logging
 import os
 import re
 from datetime import datetime
+from sqlite3 import IntegrityError
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
+from stephanie.models.scorable_embedding import ScorableEmbeddingORM
+from stephanie.scoring.scorable import Scorable
 import torch
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
@@ -156,10 +159,12 @@ class BaseEmbeddingStore(BaseSQLAlchemyStore):
     def get_or_create(self, text: str):
         text_hash = self.get_text_hash(text)
         cached = self._cache.get(text_hash)
-        if cached is not None:                      # avoid truthiness surprises
+        if cached is not None:
             return cached[1]
 
-        # --- fetch path ---
+        row = None
+
+        # ---- 1) Short read-only transaction to check for existing embedding ----
         try:
             with self.conn.cursor() as cur:
                 cur.execute(
@@ -167,17 +172,26 @@ class BaseEmbeddingStore(BaseSQLAlchemyStore):
                     (text_hash,),
                 )
                 row = cur.fetchone()
-                if row:
-                    embedding_id, embedding = row
-                    embedding = _normalize_vector(embedding)     # ← normalize on read
-                    self._cache.set(text_hash, (embedding_id, embedding))
-                    return embedding
+            # Close the transaction immediately, even on pure SELECT.
+            self.conn.commit()
         except Exception as e:
+            try:
+                self.conn.rollback()
+            except Exception:
+                pass
             self.logger and self.logger.log("EmbeddingFetchFailed", {"error": str(e)})
 
-        # --- create path ---
+        if row:
+            embedding_id, embedding = row
+            embedding = _normalize_vector(embedding)
+            self._cache.set(text_hash, (embedding_id, embedding))
+            return embedding
+
+        # ---- 2) Heavy work OUTSIDE any open transaction ----
         embedding = self.embed_fn(text, self.cfg)
-        embedding = _normalize_vector(embedding)                 # ← normalize on create
+        embedding = _normalize_vector(embedding)
+
+        # ---- 3) Insert in a fresh, short transaction using ON CONFLICT guard ----
         embedding_id = None
         try:
             with self.conn.cursor() as cur:
@@ -191,10 +205,14 @@ class BaseEmbeddingStore(BaseSQLAlchemyStore):
                     (text, text_hash, embedding),
                 )
                 row = cur.fetchone()
-                if row:
-                    embedding_id = row[0]
             self.conn.commit()
+            if row:
+                embedding_id = row[0]
         except Exception as e:
+            try:
+                self.conn.rollback()
+            except Exception:
+                pass
             log.error(f"EmbeddingInsertFailed error: {str(e)}")
 
         if embedding_id is None:
@@ -206,7 +224,7 @@ class BaseEmbeddingStore(BaseSQLAlchemyStore):
             {"len": len(text or ""), "text": f"{text[:80]}..."},
         )
         return embedding
-
+    
     def get_id_for_text(self, text: str) -> Optional[int]:
         """Return embedding id for a text, cached if available."""
         text_hash = self.get_text_hash(text)
@@ -218,11 +236,16 @@ class BaseEmbeddingStore(BaseSQLAlchemyStore):
             with self.conn.cursor() as cur:
                 cur.execute(f"SELECT id FROM {self.table} WHERE text_hash = %s", (text_hash,))
                 row = cur.fetchone()
-                if row:
-                    embedding_id = row[0]
-                    self._cache.set(text_hash, (embedding_id, None))  # no vector
-                    return embedding_id
+            self.conn.commit()
+            if row:
+                embedding_id = row[0]
+                self._cache.set(text_hash, (embedding_id, None))  # no vector
+                return embedding_id
         except Exception as e:
+            try:
+                self.conn.rollback()
+            except Exception:
+                pass
             self.logger and self.logger.log("EmbeddingIdFetchFailed", {"error": str(e)})
         return None
 
