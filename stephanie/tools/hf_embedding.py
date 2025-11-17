@@ -1,12 +1,12 @@
 # stephanie/embeddings/huggingface_embedder.py
 from __future__ import annotations
 
+import logging
 import time
 
 import torch
 from sentence_transformers import SentenceTransformer
 
-import logging
 log = logging.getLogger(__name__)
 
 class HuggingFaceEmbedder:

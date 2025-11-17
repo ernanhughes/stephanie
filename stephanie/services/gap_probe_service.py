@@ -8,7 +8,8 @@ import networkx as nx
 import numpy as np
 from PIL import Image
 
-from stephanie.components.nexus.graph.graph_layout import render_multi_layout_vpm
+from stephanie.components.nexus.graph.graph_layout import \
+    render_multi_layout_vpm
 
 
 # ---------- Utils ----------

@@ -1,7 +1,7 @@
 defaults:
   - _self_
   - db: postgres
-  - bus: nats   
+  - bus: zmq   
   - plan_monitor: disabled
   - logging: json_logger
   - services: all
@@ -9,6 +9,10 @@ defaults:
 
   - agents/nexus_scorable_loader
   - agents/scorable_annotate
+  - agents/survey
+  - agents/search_orchestrator
+  - agents/document_profiler
+  - agents/document_profiler
   - agents/nexus
   - agents/nexus_improver
   - agents/gap
@@ -19,10 +23,7 @@ defaults:
   - agents/memento
   - agents/generation
   - agents/cbr_dspy
-  - agents/cartridge
   - agents/document_loader
-  - agents/document_profiler
-  - agents/hrm_trainer
   - agents/document_reward_scorer
   - agents/icl_reasoning
   - agents/knowledge_loader
@@ -30,50 +31,12 @@ defaults:
   - agents/planner_revise
   - agents/knowledge_db_loader
   - agents/pipeline_judge
-  - agents/paper_score
-  - agents/agent_scorer
-  - agents/plan_trace_scorer
-  - logging/json_logger
-
-
-
-embeddings:
-  backend: hnet
 
 goal:
-  source: "driver"              # or "from_turn" if you want the turn to override
-  goal_text: >
-    Construct a goal-conditioned Nexus from chat turns, perform blossom search
-    (Tree/Graph-of-Thoughts) to propose candidate trajectories, render a
-    synchronized A/B filmstrip (baseline | targeted | delta), compute global
-    sensemaking metrics (community detection + summaries), and pick the winner
-    by SICQL/EBT/HRM signals. Export artifacts + deltas for GAP analysis.
-  goal_type: "tactical"
-  goal_category: "nexus_ab_compare"
-  focus_area: "visual_graph_memory"
-  strategy:
-    - "graph_search"
-    - "stepwise_decomposition"
-    - "global_sensemaking"
-  difficulty: "medium-high"
-  expected_formats:
-    - "symbolic_prompt_plan"
-    - "stepwise_reasoning_trace"
-    - "annotated_score_vector"
-    - "ab_filmstrip_gif"
-    - "graph_compare_json"
-    - "community_summaries_md"
-  success_criteria:
-    min_goal_alignment_improvement: 0.05        # targ.mean - base.mean
-    min_community_lift_p90: 0.05                # p90(goal_alignment in top communities)
-    prefer_lower_spatial_edge_len: true         # shorter edges indicate tighter coherence
-  scorer_signals:
-    - "SICQL"
-    - "EBT"
-    - "HRM"
-  calibration:
-    color_scale: "global_both_runs"             # stable intensity across A/B
-    winsorize_pct: 1.0                          # clip extremes for readability
+  goal_text: "https://arxiv.org/pdf/2308.09687"
+  goal_type: "similar_papers"
+  focus_area: "graph learning"
+
 paths:
   prompts: ${hydra:runtime.cwd}/prompts
 
@@ -86,21 +49,19 @@ pipeline:
   tag: chat_training
   description: "Uses chat history to train models. Different dynamics than traditional training."
   stages:
-     - name: arxiv_search
-       agent_role: retrieve
-       description: "📥 Retrieve: search Arxiv for candidate documents (knowledge cases)"
-       cls: stephanie.agents.knowledge.arxiv_search.ArxivSearchAgent
+     - name: survey
+       cls: stephanie.agents.knowledge.survey.SurveyAgent
        enabled: true
        iterations: 1
-
+     - name: search_orchestrator
+       cls: stephanie.agents.knowledge.search_orchestrator.SearchOrchestratorAgent
+       enabled: true
+       iterations: 1
      - name: document_loader
-       description: "Load and summarize candidate documents"
        cls: stephanie.agents.knowledge.document_loader.DocumentLoaderAgent
        enabled: true
        iterations: 1
-
      - name: document_profiler
-       description: "Profile documents into structured sections for reuse"
-       cls: stephanie.agents.knowledge.document_profiler.DocumentProfilerAgent
+       cls: stephanie.agents.info.document_section_profiler.DocumentSectionProfilerAgent
        enabled: true
        iterations: 1

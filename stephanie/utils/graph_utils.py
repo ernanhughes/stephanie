@@ -4,8 +4,10 @@ from __future__ import annotations
 import math
 from collections import defaultdict
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
-from stephanie.components.nexus.app.types import NexusEdge, NexusNode
+
 import networkx as nx
+
+from stephanie.components.nexus.app.types import NexusEdge, NexusNode
 from stephanie.utils.embed_utils import as_list_floats, cos_safe
 
 

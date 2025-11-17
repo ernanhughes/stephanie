@@ -28,6 +28,7 @@ from typing import Any, Dict, List, Tuple
 
 import numpy as np
 from pydantic import BaseModel, Field, validator
+
 from stephanie.utils.similarity_utils import cosine
 
 log = logging.getLogger("stephanie.jitter.cognition.sense_making")

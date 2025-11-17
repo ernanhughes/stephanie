@@ -31,24 +31,12 @@ from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter
-from zeromodel.vpm.logic import (
-    normalize_vpm,
-    vpm_and,
-    vpm_nand,
-    vpm_nor,
-    vpm_not,
-    vpm_or,
-    vpm_subtract,
-    vpm_xor,
-)
-from stephanie.utils.vpm_utils import (
-    resize_bilinear_np,
-)
+from zeromodel.vpm.logic import (normalize_vpm, vpm_and, vpm_nand, vpm_nor,
+                                 vpm_not, vpm_or, vpm_subtract, vpm_xor)
 
-from stephanie.components.nexus.utils.visual_thought import (
-    VisualThoughtOp,
-    VisualThoughtType,
-)
+from stephanie.components.nexus.utils.visual_thought import (VisualThoughtOp,
+                                                             VisualThoughtType)
+from stephanie.utils.vpm_utils import resize_bilinear_np
 
 
 def _clamp_int(v, lo, hi):

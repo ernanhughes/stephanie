@@ -23,10 +23,10 @@ from stephanie.scoring.adapters.db_writers import (DomainDBWriter,
 from stephanie.scoring.feature_io import (FeatureProvider, FeatureWriter,
                                           ScoringService)
 from stephanie.scoring.scorable import Scorable, ScorableFactory
+from stephanie.scoring.scorable_row import ScorableRow
 from stephanie.services.zeromodel_service import ZeroModelService
 from stephanie.services.zmq_cache_service import ZmqCacheService
 from stephanie.utils.json_sanitize import dumps_safe
-from stephanie.scoring.scorable_row import ScorableRow
 
 log = logging.getLogger(__name__)
 

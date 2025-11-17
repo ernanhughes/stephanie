@@ -1,10 +1,9 @@
 # stephanie/components/nexus/app/types.py
 from __future__ import annotations
 
-from enum import Enum
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional
-from typing import List, Literal
+from enum import Enum
+from typing import Any, Dict, List, Literal, Optional
 
 import numpy as np
 

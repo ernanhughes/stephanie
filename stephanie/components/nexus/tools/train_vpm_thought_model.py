@@ -17,13 +17,14 @@ from omegaconf import DictConfig, OmegaConf
 from torch.utils.data import DataLoader, IterableDataset
 from tqdm import tqdm
 
+from stephanie.components.nexus.graph.graph_layout import \
+    render_multi_layout_vpm
 from stephanie.components.nexus.utils.visual_thought import (VisualThoughtOp,
                                                              VisualThoughtType)
 from stephanie.components.nexus.vpm.state_machine import (Thought,
                                                           ThoughtExecutor,
                                                           VPMGoal, VPMState,
                                                           compute_phi)
-from stephanie.components.nexus.graph.graph_layout import render_multi_layout_vpm
 
 DEFAULT_CONFIG = {
     "model": {

@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 import numpy as np
 from zeromodel.vpm.logic import normalize_vpm
@@ -11,8 +11,6 @@ from stephanie.components.nexus.vpm.explain_adapter import \
     occlusion_importance_from_vpm
 from stephanie.services.zeromodel_service import ZeroModelService
 
-
-from typing import Any
 
 def _as01(x: Any) -> np.ndarray:
     a = np.asarray(x, dtype=np.float32)

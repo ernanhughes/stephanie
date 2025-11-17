@@ -21,34 +21,25 @@ import logging
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Tuple, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import imageio.v2 as iio
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
 from stephanie.agents.base_agent import BaseAgent
+from stephanie.components.nexus.utils.visual_thought import (VisualThoughtOp,
+                                                             VisualThoughtType)
+from stephanie.components.nexus.vpm.maps import MapProvider
+from stephanie.components.nexus.vpm.state_machine import (Thought,
+                                                          ThoughtExecutor,
+                                                          VPMGoal, VPMState,
+                                                          compute_phi)
 from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.scorable_processor import ScorableProcessor
 from stephanie.services.zeromodel_service import ZeroModelService
-
-from stephanie.components.nexus.utils.visual_thought import (
-    VisualThoughtOp,
-    VisualThoughtType,
-)
-from stephanie.components.nexus.vpm.state_machine import (
-    VPMState,
-    VPMGoal,
-    Thought,
-    ThoughtExecutor,
-    compute_phi,
-)
-from stephanie.components.nexus.vpm.maps import MapProvider
-from stephanie.utils.vpm_utils import (
-    ensure_chw_u8,
-    detect_vpm_layout,
-    vpm_quick_dump,
-)
+from stephanie.utils.vpm_utils import (detect_vpm_layout, ensure_chw_u8,
+                                       vpm_quick_dump)
 
 logger = logging.getLogger(__name__)
 

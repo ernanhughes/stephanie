@@ -32,8 +32,8 @@ from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.utils.text_utils import lexical_overlap, sentences
 from stephanie.utils.similarity_utils import cosine
+from stephanie.utils.text_utils import lexical_overlap, sentences
 
 log = logging.getLogger(__name__)
 

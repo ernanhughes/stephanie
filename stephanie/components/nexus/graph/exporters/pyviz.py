@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 from pyvis.network import Network
 
 from stephanie.components.nexus.app.types import NexusEdge, NexusNode
+from stephanie.components.nexus.graph.exporters.base import BaseGraphExporter
 from stephanie.utils.json_sanitize import dumps_safe
 
 # =============================================================================
@@ -15,7 +16,6 @@ from stephanie.utils.json_sanitize import dumps_safe
 # =============================================================================
 
 
-from stephanie.components.nexus.graph.exporters.base import BaseGraphExporter
 
 
 

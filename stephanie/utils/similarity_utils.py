@@ -32,12 +32,12 @@ Notes:
 from __future__ import annotations
 
 import itertools
+import logging
 import math
 import re
 from typing import List, Optional, Sequence, Tuple, Union
 
 import numpy as np
-import logging
 
 log = logging.getLogger(__name__)
 

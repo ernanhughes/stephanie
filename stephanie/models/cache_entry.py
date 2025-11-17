@@ -4,7 +4,8 @@ from __future__ import annotations
 from typing import Any, Dict, Optional
 
 import sqlalchemy as sa
-from sqlalchemy import Column, Float, Integer, String, JSON, LargeBinary, Index
+from sqlalchemy import JSON, Column, Float, Index, Integer, LargeBinary, String
+
 from stephanie.models.base import Base
 
 

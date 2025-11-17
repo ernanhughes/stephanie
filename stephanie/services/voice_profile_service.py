@@ -7,7 +7,9 @@ import time
 import traceback
 from collections import Counter
 from typing import Any, Dict, List, Optional
+
 from stephanie.utils.similarity_utils import cosine
+
 
 def _nz(x, lo: float = 0.0, hi: float = 1.0) -> float:
     """

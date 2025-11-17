@@ -14,6 +14,8 @@ import torch
 from omegaconf import OmegaConf
 from PIL import Image
 
+from stephanie.components.nexus.graph.graph_layout import \
+    render_multi_layout_vpm
 from stephanie.components.nexus.tools.train_vpm_thought_model import (  # Reuse model definition
     DEFAULT_CONFIG, VPMThoughtModel)
 from stephanie.components.nexus.utils.visual_thought import (VisualThoughtOp,
@@ -22,7 +24,6 @@ from stephanie.components.nexus.vpm.state_machine import (Thought,
                                                           ThoughtExecutor,
                                                           VPMGoal, VPMState,
                                                           compute_phi)
-from stephanie.components.nexus.graph.graph_layout import render_multi_layout_vpm
 
 
 # --------------------------- Helpers ---------------------------

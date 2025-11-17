@@ -1,24 +1,27 @@
 # stephanie/components/nexus/agents/vpm_logic_compare.py
 from __future__ import annotations
 
-import json, uuid, logging
+import json
+import logging
+import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
-import numpy as np
 import imageio.v2 as iio
+import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
 from stephanie.agents.base_agent import BaseAgent
+from stephanie.components.nexus.utils.visual_thought import (VisualThoughtOp,
+                                                             VisualThoughtType)
+from stephanie.components.nexus.vpm.maps import MapProvider
+from stephanie.components.nexus.vpm.state_machine import (Thought,
+                                                          ThoughtExecutor,
+                                                          VPMGoal, VPMState,
+                                                          compute_phi)
 from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.scorable_processor import ScorableProcessor
 from stephanie.services.zeromodel_service import ZeroModelService
-
-from stephanie.components.nexus.vpm.state_machine import (
-    VPMState, VPMGoal, Thought, ThoughtExecutor, compute_phi
-)
-from stephanie.components.nexus.vpm.maps import MapProvider
-from stephanie.components.nexus.utils.visual_thought import VisualThoughtOp, VisualThoughtType
 
 log = logging.getLogger(__name__)
 

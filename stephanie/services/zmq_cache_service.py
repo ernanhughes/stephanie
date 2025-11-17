@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 from typing import Any, Awaitable, Callable, Dict, Optional, Tuple
 
@@ -11,7 +12,6 @@ from stephanie.memory.cache_store import CacheStore
 from stephanie.services.service_protocol import Service
 from stephanie.utils.json_sanitize import dumps_safe
 
-import logging
 log = logging.getLogger(__name__)
 
 

@@ -2,6 +2,12 @@
 defaults:
   - _self_
   - db: postgres
+  - bus: zmq   
+  - plan_monitor: disabled
+  - logging: json_logger
+  - services: all
+  - scorer: all  
+
   - agents/arxiv_search
   - agents/cartridge
   - agents/document_loader

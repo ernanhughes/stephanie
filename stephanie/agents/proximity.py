@@ -9,6 +9,7 @@ from stephanie.scoring.scorable import ScorableFactory, ScorableType
 from stephanie.scoring.scorer.proximity_scorer import ProximityScorer
 from stephanie.utils.similarity_utils import cosine
 
+
 class ProximityAgent(BaseAgent):
     """
     Agent wrapper for the ProximityScorer.

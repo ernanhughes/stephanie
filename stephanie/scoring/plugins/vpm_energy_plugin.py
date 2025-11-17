@@ -6,8 +6,9 @@ from typing import Any, Dict, Optional
 
 import numpy as np
 
-from .registry import register
 from stephanie.utils.similarity_utils import cosine
+
+from .registry import register
 
 
 def _to_vec(x) -> np.ndarray:

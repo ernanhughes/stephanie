@@ -33,10 +33,10 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 import yaml
 
-
 from stephanie.services.bus.bus_protocol import BusProtocol
 from stephanie.services.bus.idempotency import InMemoryIdempotencyStore
-from stephanie.utils.similarity_utils import cosine, euclidean_distance, huber_loss
+from stephanie.utils.similarity_utils import (cosine, euclidean_distance,
+                                              huber_loss)
 
 log = logging.getLogger(__name__)
 

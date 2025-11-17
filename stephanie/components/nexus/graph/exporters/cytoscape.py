@@ -2,13 +2,12 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict, List, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, List
 
 from .base import BaseGraphExporter
 
 if TYPE_CHECKING:
-    from stephanie.components.nexus.graph.graph import NexusGraph
-    from stephanie.components.nexus.graph.graph import NexusNode
+    from stephanie.components.nexus.graph.graph import NexusGraph, NexusNode
     from stephanie.models.nexus import NexusEdgeORM
 
 

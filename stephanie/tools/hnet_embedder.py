@@ -59,6 +59,7 @@ content-aware splitter that plays nicely with real-world embedding services.
 
 from __future__ import annotations
 
+import logging
 import re
 import unicodedata
 from contextlib import contextmanager
@@ -71,6 +72,7 @@ import torch.nn as nn
 
 from stephanie.tools.embedding_tool import MXBAIEmbedder
 
+log = logging.getLogger(__name__)
 
 @contextmanager
 def _cudnn_flags(enabled: bool):
@@ -378,11 +380,36 @@ class HNetChunker:
 
     @torch.no_grad()
     def _predict_boundary_probs(self, tokens: List[int]) -> torch.Tensor:
-        """Return boundary probabilities per byte (0..1). Falls back to zeros if model absent."""
-        if not tokens:
-            return torch.empty(0, device=self.boundary_predictor.boundary_scorer.weight.device)
-        scores = self.boundary_predictor(tokens)  # [N] in [0,1]
-        return scores
+        """
+        Return boundary probabilities per byte (0..1).
+
+        This is a *best-effort* helper:
+        - If anything goes wrong (cuDNN NOT_SUPPORTED, OOM, etc.), we
+          log and fall back to an all-zero vector so the caller can
+          gracefully revert to fixed windows.
+        """
+        device = self.boundary_predictor.boundary_scorer.weight.device
+        n = len(tokens)
+        if n == 0:
+            return torch.empty(0, device=device)
+
+        try:
+            scores = self.boundary_predictor(tokens)  # [N] in [0,1]
+            return scores
+        except RuntimeError as e:
+            msg = str(e)
+            if "CUDNN_STATUS" in msg or "cudnn error" in msg.lower():
+                log.warning(
+                    "HNetChunker: boundary predictor failed for N=%d "
+                    "with cuDNN error (%s); falling back to zeros.",
+                    n,
+                    msg,
+                )
+                # All zeros → _choose_boundaries() will effectively ignore
+                # learned boundaries and rely on hard windows.
+                return torch.zeros(n, device=device)
+            # Anything else should still surface
+            raise
 
     def _choose_boundaries(self, tokens: List[int], probs: torch.Tensor) -> List[int]:
         n = len(tokens)
@@ -471,25 +498,44 @@ class HNetChunker:
         if n == 0:
             return []
 
-        # Prefer learned boundaries with auto-tuned threshold
-        probs = self._predict_boundary_probs(tokens) if n > 1 else torch.tensor([1.0], device=self.boundary_predictor.boundary_scorer.weight.device)
-        ends = self._choose_boundaries(tokens, probs) if probs.numel() else self._generate_fixed_boundaries(n)
+        # Decide if we are allowed to use the tiny LSTM.
+        # - must be explicitly enabled
+        # - sequence length must be within max_predict_tokens
+        use_learned = (
+            self.cfg.use_learned
+            and n > 1
+            and n <= self.cfg.max_predict_tokens
+        )
+
+        if use_learned:
+            probs = self._predict_boundary_probs(tokens)
+            if probs.numel():
+                ends = self._choose_boundaries(tokens, probs)
+            else:
+                # Shouldn't usually happen, but be robust
+                ends = self._generate_fixed_boundaries(n)
+        else:
+            # Pure fixed-window mode: no LSTM, no cuDNN.
+            ends = self._generate_fixed_boundaries(n)
 
         out: List[str] = []
         prev = -1
         max_b = self.cfg.max_bytes
         for e in ends:
             # slice [prev+1, e] inclusive
-            seg_bytes = bytes(tokens[prev + 1: e + 1])
+            seg_bytes = bytes(tokens[prev + 1 : e + 1])
+
             # Hard post-check: enforce max_bytes with left nudge if needed
             if len(seg_bytes) > max_b:
                 # nudge left to satisfy max_bytes without breaking UTF-8
                 cut = prev + max_b
                 cut = _left_adjust_utf8_safe(tokens, cut, adjust_chars=4)
-                seg_bytes = bytes(tokens[prev + 1: cut + 1])
+                seg_bytes = bytes(tokens[prev + 1 : cut + 1])
                 e = cut
+
             out.append(seg_bytes.decode("utf-8", errors="ignore"))
             prev = e
+
         return out
 
 

@@ -5,6 +5,7 @@ import json
 from typing import Any, List
 
 from tqdm import tqdm
+
 from stephanie.utils.similarity_utils import cosine
 
 
