@@ -12,7 +12,9 @@ import numpy as np
 from stephanie.components.nexus.app.manifest import ManifestItem
 from stephanie.components.nexus.app.types import NexusEdge, NexusNode
 from stephanie.memory.nexus_store import NexusStore
+from stephanie.scoring.scorable_processor import ScorableProcessor
 from stephanie.utils.json_sanitize import dumps_safe
+from stephanie.scoring.scorable_row import ScorableRow
 
 log = logging.getLogger(__name__)
 
@@ -31,11 +33,46 @@ class GraphBuilder:
       into `run_id` e.g., "run100__exp03". Node id -> f"{namespace}://{run_id}/{item_id}"
     """
 
-    def __init__(self, cfg, memory, logger):
+    def __init__(self, cfg, memory, container, logger):
         self.cfg = cfg
         self.memory = memory
         self.store: NexusStore = memory.nexus
         self.logger = logger
+        self.scorable_processor = ScorableProcessor(cfg, memory, logger)
+
+
+
+    def add_scorable_row(
+        self,
+        row: ScorableRow,
+        *,
+        graph_id: str,
+        extra_attrs: dict | None = None,
+    ) -> str:
+        """
+        Pure-topology node insert from a ScorableRow.
+        No embeddings here; we keep it dumb by design.
+        """
+        node_id = f"{graph_id}:{row.scorable_id}"
+        attrs = {
+            "graph_id": graph_id,
+            "scorable_id": row.scorable_id,
+            "scorable_kind": row.scorable_type,     # use your string type
+            "title": row.title,
+            "content_hash16": row.content_hash16,
+            "metrics_columns": row.metrics_columns,
+            "metrics_values": row.metrics_values,
+        }
+        if extra_attrs:
+            attrs.update(extra_attrs)
+
+        self.add_node(node_id, "scorable", **attrs)
+        return node_id
+
+    def add_similarity_edge(self, a: str, b: str, *, similarity: float, rel: str = "similar_to"):
+        if a != b:
+            self.add_similar_edge(a, b, rel=rel, similarity=float(similarity))
+
 
     def build(
         self,
@@ -129,6 +166,7 @@ class GraphBuilder:
 
     # ---- store helpers -----------------------------------------------------
 
+
     def _upsert_nodes(self, run_id: str, nodes: Dict[str, NexusNode]) -> None:
         # Expect NexusStore to support a bulk upsert. If not present, implement one.
         # Minimal payload: id, run_id, scorable_id, type, title, text, domains, entities, embed dims/exists
@@ -159,6 +197,106 @@ class GraphBuilder:
                     self.store.upsert_node(run_id, r)
             else:
                 log.warning("NexusStore lacks upsert_nodes/upsert_node; nodes not persisted.")
+
+
+
+    # --- Action nodes ------------------------------------------------------------
+
+    def add_action(
+        self,
+        action_id: str,
+        *,
+        kind: str,               # e.g. "vote", "red_flag", "tool_call"
+        name: str,
+        agent: str | None = None,
+        protocol: str | None = None,
+        step_index: int | None = None,
+        trace_id: str | None = None,
+        params: dict | None = None,
+        graph_id: str | None = None,
+        **attrs,
+    ) -> str:
+        """
+        Add an ACTION node to the graph. Pure topology: only attrs, no embeddings.
+        """
+        node_attrs = {
+            "node_type": "action",
+            "action_kind": kind,
+            "action_name": name,
+            "agent": agent,
+            "protocol": protocol,
+            "step_index": step_index,
+            "trace_id": trace_id,
+            "params": params or {},
+            "graph_id": graph_id,
+        }
+        node_attrs.update(attrs)
+        # Reuse your existing add-node path; if it’s NexusStore-backed, just pass attrs
+        self._add_node(action_id, **node_attrs)   # or whatever your internal add is
+        return action_id
+
+
+    def add_scorable(
+        self,
+        scorable_id: str,
+        *,
+        scorable_kind: str,          # "document_section" | "conversation_turn" | ...
+        embedding_key: str | None = None,
+        content_hash: str | None = None,
+        graph_id: str | None = None,
+        **attrs,
+    ) -> str:
+        """
+        Add a SCORABLE node with lightweight metadata only.
+        """
+        node_attrs = {
+            "node_type": "scorable",
+            "scorable_kind": scorable_kind,
+            "embedding_key": embedding_key,
+            "content_hash": content_hash,
+            "graph_id": graph_id,
+        }
+        node_attrs.update(attrs)
+        self._add_node(scorable_id, **node_attrs)
+        return scorable_id
+
+
+    def connect_action_io(
+        self,
+        *,
+        action_id: str,
+        input_scorable_ids: Iterable[str] = (),
+        output_scorable_ids: Iterable[str] = (),
+    ) -> None:
+        for sid in input_scorable_ids:
+            self._add_edge(sid, action_id, rel="consumes")
+        for sid in output_scorable_ids:
+            self._add_edge(action_id, sid, rel="produces")
+
+
+    def connect_action_flow(
+        self,
+        prev_action_id: str | None,
+        action_id: str,
+        *,
+        rel: str = "follows",
+    ) -> None:
+        if prev_action_id:
+            self._add_edge(prev_action_id, action_id, rel=rel)
+
+
+    def add_similar_edge(
+        self,
+        source_id: str,
+        target_id: str,
+        similarity: float,
+        threshold: float = 0.75,
+        **attrs,
+    ) -> None:
+        if similarity >= threshold:
+            meta = {"rel": "similar_to", "similarity": float(similarity)}
+            meta.update(attrs)
+            self._add_edge(source_id, target_id, **meta)
 
 
 # ---- pure functions (no store side-effects) --------------------------------

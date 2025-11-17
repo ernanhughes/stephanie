@@ -1,20 +1,25 @@
 # stephanie/services/cache/zmq_cache_service.py
+from __future__ import annotations
+
 import asyncio
-import sqlite3
 import time
 from typing import Any, Awaitable, Callable, Dict, Optional, Tuple
 
 from cachetools import TTLCache
 
+from stephanie.memory.cache_store import CacheStore
 from stephanie.services.service_protocol import Service
 from stephanie.utils.json_sanitize import dumps_safe
+
+import logging
+log = logging.getLogger(__name__)
 
 
 class ZmqCacheService(Service):
     """
     ZeroMQ-native cache service with two-tier storage:
     - L1: In-memory LRU+TTL
-    - L2: SQLite circular buffer
+    - L2: SQL store via CacheStore (Postgres/SQLite/DuckDB, etc.)
 
     Features:
     - Singleflight protection
@@ -26,21 +31,19 @@ class ZmqCacheService(Service):
         self.cfg = cfg or {}
         self.memory = memory
         self.logger = logger
-        self._ready = False
 
         # Config with sane defaults
         self.cache_cfg = {
             "l1_size": self.cfg.get("l1_size", 50_000),
-            "l2_size": self.cfg.get("l2_size", 2_000_000),
+            "l2_size": self.cfg.get("l2_size", 2_000_000),   # informational; capacity is enforced by store jobs
             "ttl_seconds": self.cfg.get("ttl_seconds", 24 * 60 * 60),
             "singleflight_timeout": self.cfg.get("singleflight_timeout", 5.0),
             "enable": self.cfg.get("enable", True),
-            "db_path": self.cfg.get("db_path", "data/cache/zmq_cache.db"),
+            # 'scope' lets you segment cache space (e.g., 'rpc', 'vpm')
+            "scope": self.cfg.get("scope", "rpc"),
             "circuit_breaker_threshold": self.cfg.get("circuit_breaker_threshold", 10),
             "circuit_breaker_reset": self.cfg.get("circuit_breaker_reset", 30.0),
-            "no_cache_subjects": self.cfg.get(
-                "no_cache_subjects", ["results.", "debug."]
-            ),
+            "no_cache_subjects": self.cfg.get("no_cache_subjects", ["results.", "debug."]),
         }
 
         # L1 cache (in-memory)
@@ -70,11 +73,19 @@ class ZmqCacheService(Service):
         }
 
         self._bus = None
-        self._conn: Optional[sqlite3.Connection] = None
+        self.scope: str = self.cache_cfg["scope"]
+
+        # Pull the L2 store from memory (preferred attribute name: zmq_cache; fallback to cache)
+        store = getattr(memory, "zmq_cache", None) or getattr(memory, "cache", None)
+        if not isinstance(store, CacheStore):
+            raise RuntimeError("ZmqCacheService requires memory.zmq_cache (or memory.cache) to be a CacheStore instance")
+        self._l2_store: CacheStore = store
+
+        self._ready = True  # store is injected synchronously; ready immediately
 
     @property
     def name(self) -> str:
-        return "zmq-cache-v1"
+        return "zmq-cache-v1-sqlstore"
 
     # -------- Service lifecycle --------
 
@@ -84,84 +95,17 @@ class ZmqCacheService(Service):
         """
         self._bus = bus
         # if hasattr(bus, "wrap_request"):
-            # self._bus.wrap_request(self._cache_request_middleware)
+        #     self._bus.wrap_request(self._cache_request_middleware)
 
     def initialize(self, **kwargs) -> None:
-        """Synchronous init; lazy DB setup happens on first use."""
+        """Synchronous init; store is already injected via memory."""
         if kwargs:
             self.cache_cfg.update(kwargs)
-
-    async def _ensure_ready(self) -> None:
-        """Lazy initialization of SQLite database."""
-        if self._ready:
-            return
-
-        try:
-            import os
-
-            os.makedirs(
-                os.path.dirname(self.cache_cfg["db_path"]), exist_ok=True
-            )
-
-            # Autocommit mode: isolation_level=None
-            self._conn = sqlite3.connect(
-                self.cache_cfg["db_path"],
-                check_same_thread=False,
-                timeout=5.0,
-                isolation_level=None,
-            )
-            self._conn.execute("PRAGMA journal_mode=WAL;")
-            self._conn.execute("PRAGMA synchronous=NORMAL;")
-            self._conn.execute("PRAGMA cache_size=-20000;")  # ~20MB
-
-            self._conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS cache (
-                    key TEXT PRIMARY KEY,
-                    value BLOB NOT NULL,
-                    created_at REAL NOT NULL,
-                    accessed_at REAL NOT NULL
-                );
-                """
-            )
-
-            self._conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_accessed ON cache(accessed_at);"
-            )
-
-            self._conn.execute(
-                f"""
-                CREATE TRIGGER IF NOT EXISTS maintain_capacity 
-                AFTER INSERT ON cache 
-                WHEN (SELECT COUNT(*) FROM cache) > {self.cache_cfg['l2_size']}
-                BEGIN
-                    DELETE FROM cache 
-                    WHERE rowid IN (
-                        SELECT rowid FROM cache 
-                        ORDER BY accessed_at ASC 
-                        LIMIT 100
-                    );
-                END;
-                """
-            )
-
-            self._ready = True
-            self.logger.info(
-                "[ZmqCache] Ready: L1=%d, L2=%d, TTL=%ds",
-                self.cache_cfg["l1_size"],
-                self.cache_cfg["l2_size"],
-                self.cache_cfg["ttl_seconds"],
-            )
-        except Exception as e:
-            self.logger.error("[ZmqCache] Failed to initialize DB: %s", e)
-            raise
+        # Keep scope attribute in sync if updated post-construct
+        self.scope = self.cache_cfg.get("scope", self.scope)
 
     def shutdown(self) -> None:
-        if self._conn:
-            try:
-                self._conn.close()
-            except Exception:
-                pass
+        # Store lifecycle is owned by the memory object
         self._ready = False
 
     def health_check(self) -> Dict[str, Any]:
@@ -170,10 +114,11 @@ class ZmqCacheService(Service):
             "l1_size": self.cache_cfg["l1_size"],
             "l2_size": self.cache_cfg["l2_size"],
             "l1_entries": len(self._l1_cache),
-            "l2_entries": self._get_l2_count() if self._ready else 0,
+            "l2_entries": (self._l2_store.count(scope=self.scope) if (self._ready and self._l2_store) else 0),
             "metrics": dict(self._metrics),
             "circuit_open": self._circuit_open,
             "ready": self._ready,
+            "scope": self.scope,
         }
 
     # -------- Core API --------
@@ -198,7 +143,6 @@ class ZmqCacheService(Service):
             raw = await self._do_raw_request(subject, payload, timeout_s, do_request)
             return self._normalize_to_bytes(raw), False
 
-        await self._ensure_ready()
         key = self._stable_key(subject, payload, version=version)
 
         # L1
@@ -226,9 +170,7 @@ class ZmqCacheService(Service):
                 if key in self._in_flight:
                     self._metrics["waits"] += 1
                     fut = self._in_flight[key]
-                    result = await asyncio.wait_for(
-                        fut, timeout=self.cache_cfg["singleflight_timeout"]
-                    )
+                    result = await asyncio.wait_for(fut, timeout=self.cache_cfg["singleflight_timeout"])
                     return result, False
 
             fut: asyncio.Future[bytes] = loop.create_future()
@@ -247,11 +189,7 @@ class ZmqCacheService(Service):
 
             elapsed = time.time() - start
             if elapsed > 1.0:
-                self.logger.warning(
-                    "[ZmqCache] Slow request subject=%s took %.2fs",
-                    subject,
-                    elapsed,
-                )
+                self.logger.warning("[ZmqCache] Slow request subject=%s took %.2fs", subject, elapsed)
 
             # Complete any waiters
             if fut and not fut.done():
@@ -263,29 +201,20 @@ class ZmqCacheService(Service):
             # Circuit breaker around L2 operations
             self._circuit_failures += 1
             self._circuit_last_failure = time.time()
-            if (
-                self._circuit_failures
-                >= self.cache_cfg["circuit_breaker_threshold"]
-            ):
+            if self._circuit_failures >= self.cache_cfg["circuit_breaker_threshold"]:
                 self._circuit_open = True
                 self._metrics["circuit_breaker_trips"] += 1
-                self.logger.error(
-                    "[ZmqCache] CIRCUIT OPEN after %d failures",
-                    self._circuit_failures,
-                )
+                self.logger.error("[ZmqCache] CIRCUIT OPEN after %d failures", self._circuit_failures)
             raise e
         finally:
             if singleflight:
                 async with self._lock:
                     self._in_flight.pop(key, None)
 
-    async def get_raw(
-        self, subject: str, payload: Any, *, version: str = "v1"
-    ) -> Optional[bytes]:
+    async def get_raw(self, subject: str, payload: Any, *, version: str = "v1") -> Optional[bytes]:
         if not self.cache_cfg["enable"]:
             return None
 
-        await self._ensure_ready()
         key = self._stable_key(subject, payload, version=version)
 
         if key in self._l1_cache:
@@ -294,10 +223,8 @@ class ZmqCacheService(Service):
 
         return await self._get_l2(key)
 
-    async def invalidate(
-        self, subject: str, payload: Any, *, version: str = "v1"
-    ) -> None:
-        if not self.cache_cfg["enable"] or not self._ready:
+    async def invalidate(self, subject: str, payload: Any, *, version: str = "v1") -> None:
+        if not self.cache_cfg["enable"] or not self._ready or not self._l2_store:
             return
 
         key = self._stable_key(subject, payload, version=version)
@@ -307,13 +234,10 @@ class ZmqCacheService(Service):
 
         try:
             await asyncio.get_running_loop().run_in_executor(
-                None,
-                lambda: self._conn.execute(
-                    "DELETE FROM cache WHERE key = ?", (key,)
-                ),
+                None, lambda: self._l2_store.delete(key, scope=self.scope)
             )
         except Exception as e:
-            self.logger.error("[ZmqCache] DB delete failed: %s", e)
+            self.logger.error("[ZmqCache] L2 delete failed: %s", e)
             self._metrics["db_errors"] += 1
 
     # -------- ZMQ middleware integration --------
@@ -352,7 +276,6 @@ class ZmqCacheService(Service):
         try:
             text = result_bytes.decode("utf-8")
             import json
-
             return json.loads(text)
         except Exception:
             return result_bytes
@@ -383,7 +306,6 @@ class ZmqCacheService(Service):
 
     def _stable_key(self, subject: str, payload: Any, *, version: str = "v1") -> str:
         import hashlib
-
         h = hashlib.blake2s(digest_size=16)
         h.update(subject.encode("utf-8"))
         h.update(b"\x00")
@@ -405,10 +327,7 @@ class ZmqCacheService(Service):
 
         # Circuit breaker: half-open logic
         if self._circuit_open:
-            if (
-                time.time() - self._circuit_last_failure
-                < self.cache_cfg["circuit_breaker_reset"]
-            ):
+            if (time.time() - self._circuit_last_failure) < self.cache_cfg["circuit_breaker_reset"]:
                 return None
             # Reset
             self._circuit_open = False
@@ -416,35 +335,18 @@ class ZmqCacheService(Service):
 
         try:
             loop = asyncio.get_running_loop()
-            result = await loop.run_in_executor(
+            return await loop.run_in_executor(
                 None,
-                lambda: self._conn.execute(
-                    "SELECT value FROM cache WHERE key = ? AND accessed_at > ?",
-                    (key, time.time() - self.cache_cfg["ttl_seconds"]),
-                ).fetchone(),
-            )
-
-            if result:
-                # Touch accessed_at
-                await loop.run_in_executor(
-                    None,
-                    lambda: self._conn.execute(
-                        "UPDATE cache SET accessed_at = ? WHERE key = ?",
-                        (time.time(), key),
-                    ),
+                lambda: self._l2_store.get_bytes(
+                    key, scope=self.scope, ttl_override=self.cache_cfg["ttl_seconds"]
                 )
-                return result[0]
-
-            return None
+            )
         except Exception as e:
             self.logger.error("[ZmqCache] L2 lookup failed: %s", e)
             self._metrics["db_errors"] += 1
             self._circuit_failures += 1
             self._circuit_last_failure = time.time()
-            if (
-                self._circuit_failures
-                >= self.cache_cfg["circuit_breaker_threshold"]
-            ):
+            if self._circuit_failures >= self.cache_cfg["circuit_breaker_threshold"]:
                 self._circuit_open = True
                 self._metrics["circuit_breaker_trips"] += 1
             return None
@@ -452,26 +354,14 @@ class ZmqCacheService(Service):
     async def _put(self, key: str, value: bytes) -> None:
         self._l1_cache[key] = value
 
-        if self._ready and not self._circuit_open:
+        if self._ready and not self._circuit_open and self._l2_store:
             try:
                 await asyncio.get_running_loop().run_in_executor(
                     None,
-                    lambda: self._conn.execute(
-                        """
-                        INSERT OR REPLACE INTO cache
-                        (key, value, created_at, accessed_at)
-                        VALUES (?, ?, ?, ?)
-                        """,
-                        (key, value, time.time(), time.time()),
-                    ),
+                    lambda: self._l2_store.put_bytes(
+                        key, value, scope=self.scope, ttl_override=self.cache_cfg["ttl_seconds"]
+                    )
                 )
             except Exception as e:
                 self.logger.error("[ZmqCache] L2 store failed: %s", e)
                 self._metrics["db_errors"] += 1
-
-    def _get_l2_count(self) -> int:
-        try:
-            row = self._conn.execute("SELECT COUNT(*) FROM cache").fetchone()
-            return row[0] if row else 0
-        except Exception:
-            return 0

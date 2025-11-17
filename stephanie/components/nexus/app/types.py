@@ -1,8 +1,10 @@
 # stephanie/components/nexus/app/types.py
 from __future__ import annotations
 
+from enum import Enum
 from dataclasses import dataclass, field
-from typing import Dict, List, Literal, Optional
+from typing import Any, Dict, Optional
+from typing import List, Literal
 
 import numpy as np
 
@@ -14,6 +16,32 @@ EdgeType = Literal[
     "policy_shift",
     "anomaly_escape",
 ]
+
+
+class NexusNodeType(str, Enum):
+    SCORABLE = "scorable"
+    ACTION = "action"
+
+class ActionKind(str, Enum):
+    SCORE = "score"
+    GENERATE = "generate"
+    VOTE = "vote"
+    RED_FLAG = "red_flag"
+    TOOL_CALL = "tool_call"
+    PLAN_STEP = "plan_step"     # generic ExecutionStep
+    MDAP_STEP = "mdap_step"     # if you want to tag MDAP micro-steps
+    OTHER = "other"
+
+@dataclass
+class ActionNodeMeta:
+    kind: ActionKind
+    name: str
+    agent: Optional[str] = None        # e.g. "MakerExecutionAgent", "NexusPollinator"
+    protocol: Optional[str] = None     # e.g. "MDAPProtocol", "CoTProtocol"
+    step_index: Optional[int] = None   # for PlanTrace
+    trace_id: Optional[str] = None     # PlanTrace / run id
+    params: Dict[str, Any] = field(default_factory=dict)
+
 
 @dataclass
 class NexusNode:

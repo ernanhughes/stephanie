@@ -7,6 +7,7 @@ from typing import Any, Dict, Optional
 import numpy as np
 
 from .registry import register
+from stephanie.utils.similarity_utils import cosine
 
 
 def _to_vec(x) -> np.ndarray:
@@ -25,11 +26,6 @@ def _to_vec(x) -> np.ndarray:
     x = x - x.mean()
     n = float(np.linalg.norm(x)) + 1e-8
     return (x / n).astype(np.float32)
-
-def _cosine(a: np.ndarray, b: np.ndarray) -> float:
-    a = _to_vec(a)
-    b = _to_vec(b)
-    return float(np.clip(np.dot(a, b), -1.0, 1.0))
 
 @register("vpm_energy")
 class VPMEnergyPlugin:
@@ -108,7 +104,7 @@ class VPMEnergyPlugin:
 
         x = _to_vec(emb)
         proto = self._get_proto() or x  # self-compat if no proto yet
-        cos = _cosine(x, proto)
+        cos = cosine(x, proto)
         energy = (1.0 - cos) * 0.5               # [0,1]
         compat = 1.0 - energy
         threat = 1.0 / (1.0 + math.exp(-(self.gain * energy + self.bias)))  # σ

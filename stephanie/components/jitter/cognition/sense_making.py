@@ -28,6 +28,7 @@ from typing import Any, Dict, List, Tuple
 
 import numpy as np
 from pydantic import BaseModel, Field, validator
+from stephanie.utils.similarity_utils import cosine
 
 log = logging.getLogger("stephanie.jitter.cognition.sense_making")
 
@@ -316,7 +317,7 @@ class SenseMakingEngine:
         """Calculate similarity between two sensory inputs"""
         # For VPM embeddings
         if "vpm_embedding" in sensory_a and "vpm_embedding" in sensory_b:
-            return self._cosine_similarity(
+            return cosine(
                 sensory_a["vpm_embedding"], 
                 sensory_b["vpm_embedding"]
             )
@@ -334,17 +335,6 @@ class SenseMakingEngine:
         if action_a.get("type") == action_b.get("type"):
             return 0.8  # High similarity if same action type
         return 0.2  # Low similarity if different action types
-    
-    def _cosine_similarity(self, a: np.ndarray, b: np.ndarray) -> float:
-        """Calculate cosine similarity between two vectors"""
-        if isinstance(a, list):
-            a = np.array(a)
-        if isinstance(b, list):
-            b = np.array(b)
-            
-        a = a / (np.linalg.norm(a) + 1e-8)
-        b = b / (np.linalg.norm(b) + 1e-8)
-        return float(np.clip(np.dot(a, b), -1.0, 1.0))
     
     def _create_meaning(
         self, 

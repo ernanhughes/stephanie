@@ -12,15 +12,7 @@ from stephanie.models.nexus import (NexusEdgeORM, NexusEmbeddingORM,
                                     NexusMetricsORM, NexusPulseORM,
                                     NexusScorableORM)
 
-# -------- Helpers: nodes/edges for a run ---------------------------------
-
-
-def _cosine(a: np.ndarray, b: np.ndarray) -> float:
-    na = np.linalg.norm(a)
-    nb = np.linalg.norm(b)
-    if na <= 1e-8 or nb <= 1e-8:
-        return 0.0
-    return float(np.dot(a, b) / (na * nb))
+from stephanie.utils.similarity_utils import cosine
 
 
 class NexusStore(BaseSQLAlchemyStore):
@@ -42,7 +34,6 @@ class NexusStore(BaseSQLAlchemyStore):
         self.embedding_dim = int(embedding_dim)
 
     # ------------------------------------------------------------------ Scorables
-
     def upsert_scorable(self, row: Dict[str, Any]) -> NexusScorableORM:
         """
         Insert or update a scorable.
@@ -239,7 +230,7 @@ class NexusStore(BaseSQLAlchemyStore):
                 if not jv:
                     continue
                 v = np.array(jv, dtype=float)
-                sim = _cosine(q, v)
+                sim = cosine(q, v)
                 if sim >= float(min_sim):
                     sims.append((sid, float(sim)))
             sims.sort(key=lambda t: t[1], reverse=True)

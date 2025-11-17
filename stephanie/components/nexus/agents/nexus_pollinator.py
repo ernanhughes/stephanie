@@ -150,7 +150,7 @@ class NexusPollinatorAgent(ProgressMixin, BaseAgent):
             cfg=cfg, memory=memory, container=container, logger=logger
         )
         self.graph_builder = GraphBuilder(
-            cfg=self.cfg, memory=self.memory, logger=self.logger
+            cfg=self.cfg, memory=self.memory, container=self.container, logger=self.logger
         )
         self._attr_budget = int(self.cfg.attr_enrichment.get("max_total", 200))
         self._attr_inflight = asyncio.Semaphore(int(self.cfg.attr_enrichment.get("max_inflight", 4)))

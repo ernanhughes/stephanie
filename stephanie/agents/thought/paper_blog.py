@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.scoring.scorable import ScorableType
 from stephanie.utils.casebook_utils import generate_casebook_name
+from stephanie.utils.similarity_utils import cosine
 
 SENTS_MIN_DEFAULT = 4
 SENTS_MAX_DEFAULT = 20
@@ -364,10 +365,10 @@ class SimplePaperBlogAgent(BaseAgent):
 
         # 2) Faithfulness via cosine on embeddings (summary vs sources)
         abstract_sim = (
-            self._cosine_similarity(summary, abstract) if abstract else 0.0
+            self.similarity(summary, abstract) if abstract else 0.0
         )
         author_sim = (
-            self._cosine_similarity(summary, arxiv_summary)
+            self.similarity(summary, arxiv_summary)
             if arxiv_summary
             else 0.0
         )
@@ -417,18 +418,14 @@ class SimplePaperBlogAgent(BaseAgent):
             )
         return ""
 
-    def _cosine_similarity(self, a: str, b: str) -> float:
+    def similarity(self, a: str, b: str) -> float:
         try:
             va = self.memory.embedding.get_or_create(a)
             vb = self.memory.embedding.get_or_create(b)
         except Exception as e:
             self.logger.log("EmbedSimFallback", {"error": str(e)})
             return 0.0
-        # cosine
-        dot = sum(x * y for x, y in zip(va, vb))
-        na = max(1e-8, sum(x * x for x in va) ** 0.5)
-        nb = max(1e-8, sum(y * y for y in vb) ** 0.5)
-        return float(dot / (na * nb))
+        return cosine(va, vb)
 
     def _extract_key_claims(self, abstract: str) -> List[str]:
         if not abstract:
@@ -450,7 +447,7 @@ class SimplePaperBlogAgent(BaseAgent):
 
     def _contains_concept(self, text: str, claim: str) -> bool:
         # quick semantic+lexical check
-        if self._cosine_similarity(text, claim) >= 0.65:
+        if self.similarity(text, claim) >= 0.65:
             return True
         # fallback lexical overlap
         t = set(re.findall(r"[a-z0-9]+", text.lower()))
@@ -501,10 +498,10 @@ class SimplePaperBlogAgent(BaseAgent):
             if len(s.strip()) > 0
         ]:
             sim_a = (
-                self._cosine_similarity(sent, abstract) if abstract else 0.0
+                self.similarity(sent, abstract) if abstract else 0.0
             )
             sim_b = (
-                self._cosine_similarity(sent, arxiv_summary)
+                self.similarity(sent, arxiv_summary)
                 if arxiv_summary
                 else 0.0
             )

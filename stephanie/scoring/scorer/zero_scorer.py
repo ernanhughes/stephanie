@@ -11,6 +11,7 @@ from stephanie.data.score_result import ScoreResult
 from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.scorer.base_scorer import BaseScorer
 from stephanie.scoring.vpm_scorable import VPMScorable
+from stephanie.utils.similarity_utils import cosine
 
 
 class ZeroScorer(BaseScorer):
@@ -66,14 +67,6 @@ class ZeroScorer(BaseScorer):
         tot = float(np.sum(v) + 1e-9)
         return min(1.0, max(0.0, top / tot))
 
-    @staticmethod
-    def _cosine(a: np.ndarray, b: np.ndarray) -> float:
-        na = float(np.linalg.norm(a))
-        nb = float(np.linalg.norm(b))
-        if na == 0 or nb == 0:
-            return 0.0
-        return float(np.dot(a, b) / (na * nb))
-
     def _alignment_score(self, names: List[str], vec: np.ndarray) -> float:
         if not self.align_keys:
             return float(np.mean(vec))
@@ -112,7 +105,7 @@ class ZeroScorer(BaseScorer):
         d = min(mat.shape[1], weighted_vec.size)
         R = mat[:, :d]
         v = weighted_vec[:d]
-        sims = [self._cosine(v, R[i]) for i in range(R.shape[0])]
+        sims = [cosine(v, R[i]) for i in range(R.shape[0])]
         # novelty ↑ when similarity ↓
         return float(np.clip(1.0 - np.mean(sims), 0.0, 1.0))
 

@@ -33,6 +33,7 @@ import numpy as np
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.utils.text_utils import lexical_overlap, sentences
+from stephanie.utils.similarity_utils import cosine
 
 log = logging.getLogger(__name__)
 
@@ -40,12 +41,6 @@ log = logging.getLogger(__name__)
 # ----------------------------
 # Utilities
 # ----------------------------
-def _cosine(u: np.ndarray, v: np.ndarray) -> float:
-    if u is None or v is None:
-        return 0.0
-    num = float(np.dot(u, v))
-    den = (float(np.dot(u, u)) ** 0.5) * (float(np.dot(v, v)) ** 0.5) + 1e-8
-    return num / den
 
 
 @dataclass
@@ -245,7 +240,7 @@ class ConversationTrajectoryMapper(BaseAgent):
                     continue
                 try:
                     e = self._embed(t[:2000])
-                    emb_sims.append(_cosine(e, section_emb))
+                    emb_sims.append(cosine(e, section_emb))
                 except Exception:
                     pass
 
@@ -320,7 +315,7 @@ class ConversationTrajectoryMapper(BaseAgent):
                     for ss, se in zip(section_sents, section_sent_embs):
                         if se is None:
                             continue
-                        sim = _cosine(te, se)
+                        sim = cosine(te, se)
                         if sim > best:
                             best, best_ss = sim, ss
                 else:
