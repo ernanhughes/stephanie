@@ -21,7 +21,6 @@ defaults:
   - agents/document_reward_scorer
   - agents/document_svm_trainer
   - agents/document_svm_inference
-  - agents/scorable_embedding_backfill
   - agents/document_llm_inference
   - agents/knowledge_db_loader
   - agents/gild_trainer
