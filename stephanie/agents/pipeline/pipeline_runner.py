@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.utils.pipeline_runner import PipelineRunner
+from stephanie.tools.pipeline_runner import PipelineRunner
 
 
 class PipelineRunnerAgent(BaseAgent):

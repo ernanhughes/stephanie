@@ -605,7 +605,7 @@ class Supervisor:
         return context
 
     def analyze_pipeline_deltas(self, goal_id: int):
-        from stephanie.analysis.reflection_delta import compare_pipeline_runs
+        from stephanie.utils.pipeline_utils import compare_pipeline_runs
 
         deltas = compare_pipeline_runs(self.memory, goal_id)
         for delta in deltas:

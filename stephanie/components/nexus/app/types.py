@@ -16,6 +16,15 @@ EdgeType = Literal[
     "anomaly_escape",
 ]
 
+@dataclass
+class GraphPrompt:
+    prompt_id: str
+    graph_id: str              # which NexusGraph / run
+    node_ids: List[str]        # nodes included in this subgraph
+    edge_ids: List[str]
+    embedding: np.ndarray      # subgraph embedding
+    label: Dict[str, Any]      # task-specific outcome (score, decision, tag)
+    meta: Dict[str, Any]       # dimension, run_id, etc.
 
 class NexusNodeType(str, Enum):
     SCORABLE = "scorable"

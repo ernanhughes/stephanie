@@ -22,7 +22,7 @@ log = logging.getLogger(__name__)
 
 class PolicyAnalyzer:
     def __init__(self, session_or_maker, logger=None):
-        self.session = session
+        self.session_or_maker = session_or_maker
         self.logger = logger
         self.uncertainty_threshold = 0.3  # From config
 
@@ -60,7 +60,7 @@ class PolicyAnalyzer:
     def _get_sicql_data(self, dimension: str, pipeline_run_id: int = None) -> List[Dict]:
         """Get SICQL policy data from database with optional pipeline run filter, including target matching keys"""
         query = (
-            self.session.query(EvaluationAttributeORM, EvaluationORM)
+            self.session_or_maker.query(EvaluationAttributeORM, EvaluationORM)
             .join(EvaluationORM)
             .filter(
                 EvaluationAttributeORM.dimension == dimension,
@@ -101,7 +101,7 @@ class PolicyAnalyzer:
     def _get_mrq_data(self, dimension: str, pipeline_run_id: int = None) -> List[Dict]:
         """Get MRQ scores for comparison, including target matching keys"""
         query = (
-            self.session.query(ScoreORM, EvaluationORM)
+            self.session_or_maker.query(ScoreORM, EvaluationORM)
             .join(EvaluationORM)
             .filter(
                 ScoreORM.dimension == dimension,
@@ -119,7 +119,7 @@ class PolicyAnalyzer:
     def _get_svm_data(self, dimension: str, pipeline_run_id: int = None) -> List[Dict]:
         """Get SVM scores for comparison with target identifiers included"""
         query = (
-            self.session.query(ScoreORM, EvaluationORM)
+            self.session_or_maker.query(ScoreORM, EvaluationORM)
             .join(EvaluationORM)
             .filter(
                 ScoreORM.dimension == dimension,
@@ -148,7 +148,7 @@ class PolicyAnalyzer:
     def _get_ebt_data(self, dimension: str, pipeline_run_id: int = None) -> List[Dict]:
         """Get EBT scores with target IDs for comparison"""
         query = (
-            self.session.query(ScoreORM, EvaluationORM)
+            self.session_or_maker.query(ScoreORM, EvaluationORM)
             .join(EvaluationORM)
             .filter(
                 ScoreORM.dimension == dimension,
@@ -164,7 +164,7 @@ class PolicyAnalyzer:
     def _get_llm_data(self, dimension: str, pipeline_run_id: int = None) -> List[Dict]:
         """Get LLM-based evaluation scores"""
         query = (
-            self.session.query(ScoreORM, EvaluationORM)
+            self.session_or_maker.query(ScoreORM, EvaluationORM)
             .join(EvaluationORM)
             .filter(
                 ScoreORM.dimension == dimension,

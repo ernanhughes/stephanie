@@ -18,7 +18,7 @@ from typing import List, Optional
 # Regular expressions compiled at module level for efficiency
 SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+")  # Split on sentence boundaries
 WORD_PATTERN = re.compile(r"\b\w+\b", re.UNICODE)  # Match words with Unicode support
-
+ALPHA_WORD_PATTERN = re.compile(r"[A-Za-z]+", re.UNICODE)  # Strict alphabetic words
 
 def sentences(text: str, max_sents: Optional[int] = None) -> List[str]:
     """
@@ -147,6 +147,57 @@ def jaccard_similarity(a: str, b: str) -> float:
 
 # Alternative name for lexical_overlap for clarity
 text_coverage = lexical_overlap
+
+
+# ---- Section / quality helpers ----------------------------------------
+
+
+def alpha_words(text: str) -> List[str]:
+    """
+    Extract alphabetic-only words from text (A–Z), lowercased.
+
+    This intentionally ignores numbers / weird tokens like 'cid89', so that
+    section quality isn't inflated by LaTeX artifacts or encoding noise.
+    """
+    if not text:
+        return []
+    return ALPHA_WORD_PATTERN.findall(text.lower())
+
+
+def count_alpha_words(text: str) -> int:
+    """Convenience wrapper around alpha_words."""
+    return len(alpha_words(text))
+
+
+def section_quality(text: str, min_words: int = 30) -> float:
+    """
+    Compute a simple section quality score in [0.0, 1.0].
+
+    - Strip to alphabetic words
+    - Score = min(1.0, word_count / min_words)
+
+    So:
+      - 0 words      -> 0.0
+      - 15 words     -> 0.5  (if min_words=30)
+      - 30+ words    -> 1.0
+    """
+    n = count_alpha_words(text)
+    if n <= 0:
+        return 0.0
+    return min(1.0, n / float(min_words))
+
+
+def is_high_quality_section(text: str, min_words: int = 30) -> bool:
+    """
+    Return True if this looks like a 'real' section for our purposes.
+
+    Right now the rule is:
+      - After stripping to alphabetic words, we require at least min_words.
+
+    You can evolve this later (e.g. add sentence count, stopword ratio, etc.)
+    without touching all the callers.
+    """
+    return section_quality(text, min_words=min_words) >= 1.0
 
 
 if __name__ == "__main__":
