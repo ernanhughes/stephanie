@@ -486,7 +486,9 @@ class ScorableProcessor:
         if not (isinstance(gl, list) and gl) and text:
             t0 = time.perf_counter()
             log.debug("[SP:embed] computing global id=%s", scorable.id)
+            t1 = time.perf_counter()
             emb = self.memory.embedding.get_or_create(text)
+            log.info("[SP:embed] computed global id=%s in %s", scorable.id, self._t(t1 - t0))
             floats = self._ensure_float_list(emb)
             if floats is not None:
                 acc.setdefault("embeddings", {})
@@ -708,71 +710,12 @@ class ScorableProcessor:
             context.get("pipeline_run_id"),
         )
 
-        # Normalize to Scorable & spot texts for prebatch
-        texts_to_embed: List[str] = []
-        idxs: List[int] = []
-        norm: List[Scorable] = []
-
-        for i, item in enumerate(inputs):
-            sc = item if isinstance(item, Scorable) else ScorableFactory.from_dict(item)
-            norm.append(sc)
-            if sc.text and self.embed:
-                texts_to_embed.append(sc.text)
-                idxs.append(i)
-
-        log.debug(
-            "[SP:many] prebatch candidates=%d has_batch_fn=%s",
-            len(idxs),
-            bool(getattr(self.embed, "get_or_create_batch", None)),
-        )
-
-        # Batch embeddings only (still useful in inline mode)
-        batched: Dict[int, List[float]] = {}
-        batch_fn = getattr(self.embed, "get_or_create_batch", None)
-        if texts_to_embed and callable(batch_fn):
-            t0 = time.perf_counter()
-            try:
-                arrs = await batch_fn(texts_to_embed)  # -> List[np.ndarray]
-                for i, arr in zip(idxs, arrs):
-                    if arr is not None:
-                        batched[i] = np.asarray(arr, dtype=np.float32).tolist()
-                log.debug(
-                    "[SP:many] prebatch ok count=%d in %s",
-                    len(batched),
-                    self._t(t0),
-                )
-            except Exception as e:
-                log.debug("[SP:many] prebatch failed: %s", e)
-        else:
-            log.debug("[SP:many] prebatch skipped")
 
         # Process items (each may go inline or via bus, depending on mode)
         out: List[Dict[str, Any]] = []
-        for i, sc in enumerate(norm):
+        for i, sc in enumerate(inputs):
             t0i = time.perf_counter()
-            if i in batched and self.offload_mode == "inline":
-                # Pre-batched embeddings are only used in inline mode.
-                log.debug(
-                    "[SP:many:item] %d/%d id=%s (with prebatched embed)",
-                    i + 1,
-                    n,
-                    sc.id,
-                )
-                row = await self.process(
-                    {
-                        "id": sc.id,
-                        "target_type": sc.target_type,
-                        "text": sc.text,
-                        "embeddings": {"global": batched[i]},
-                        "metadata": sc.meta,
-                        "domains": sc.domains,
-                        "ner": sc.ner,
-                    },
-                    context,
-                )
-            else:
-                log.debug("[SP:many:item] %d/%d id=%s", i + 1, n, sc.id)
-                row = await self.process(sc, context)
+            row = await self.process(sc, context)
 
             out.append(row)
             log.debug(
@@ -932,12 +875,6 @@ class ScorableProcessor:
                 await self.write_to_manifest(row_dict)
             except Exception as e:
                 log.warning("[SP:manifest] write_from_bus failed: %s", e)
-
-        cache_key = self._generate_cache_key(scorable)
-        try:
-            self._cache[cache_key] = row_dict
-        except Exception:
-            pass
 
         log.debug(
             "[SP:process:bus-rpc] done id=%s in %s",

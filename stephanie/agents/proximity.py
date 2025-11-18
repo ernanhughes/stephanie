@@ -29,7 +29,7 @@ class ProximityAgent(BaseAgent):
         self.metrics = cfg.get("metrics", {})
 
     async def run(self, context: dict) -> dict:
-        documents = self.get_scorables(context)
+        documents = context.get(self.input_key, [])
         proximity_results = []
 
         # --- score incoming hypotheses against goal

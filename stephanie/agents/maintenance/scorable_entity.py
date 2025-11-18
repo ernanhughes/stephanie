@@ -29,7 +29,7 @@ class ScorableEntityAgent(BaseAgent):
         Enrich all scorables in context with entities.
         """
         try:
-            scorables = self.get_scorables(context)
+            scorables = context.get(self.input_key, [])
             enriched = []
 
             for sc in scorables:

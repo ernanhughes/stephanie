@@ -245,39 +245,6 @@ class BaseAgent(ABC):
             entry.update(metadata)
         context["prompt_history"][self.name].append(entry)
 
-    def get_scorables(self, context: dict) -> list[dict]:
-        try:
-            if self.source == "context":
-                scorable_dicts = context.get(self.input_key, [])
-                if not scorable_dicts:
-                    self.logger.log("NoScorablesInContext", {"agent": self.name})
-                return scorable_dicts
-
-            elif self.source == "database":
-                goal = context.get(GOAL)
-                scorables = self.get_scorables_from_db(goal.get("goal_text"))
-                if not scorables:
-                    self.logger.log(
-                        "NoScorablesInDatabase", {"agent": self.name, "goal": goal}
-                    )
-                return [h.to_dict() for h in scorables] if scorables else []
-
-            else:
-                self.logger.log(
-                    "InvalidSourceConfig", {"agent": self.name, "source": self.source}
-                )
-        except Exception as e:
-            print(f"❌ Exception: {type(e).__name__}: {e}")
-            self.logger.log(
-                "ScorableFetchError",
-                {"agent": self.name, "source": self.source, "error": str(e)},
-            )
-
-        return []
-
-    def get_scorables_from_db(self, goal_text: str):
-        return self.memory.hypotheses.get_latest(goal_text, self.batch_size)
-
     @staticmethod
     def extract_goal_text(goal):
         return goal.get("goal_text") if isinstance(goal, dict) else goal

@@ -36,7 +36,7 @@ class UnifiedMRQAgent(BaseAgent):
         self.logger.log("UnifiedMRQStarted", {})
 
         # Step 1: Load hypotheses and scores
-        hypotheses = self.get_scorables(context)
+        hypotheses = context.get(self.input_key, [])
         if not hypotheses:
             self.logger.log("NoHypothesesFound", {})
             return context
