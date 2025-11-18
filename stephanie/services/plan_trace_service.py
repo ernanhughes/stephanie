@@ -56,6 +56,7 @@ class PlanTraceService(Service):
             self.agent_scorer = AgentScorerAgent(cfg, memory, container, logger)
             self.agent_scorer.container = self.container
     
+     
         self._initialized = False
 
     # === Service Protocol ===
@@ -129,10 +130,6 @@ class PlanTraceService(Service):
 
         """Create PlanTrace when pipeline starts"""
         goal = context.get("goal", {})
-        essential_config = {
-            k: v for k, v in OmegaConf.to_container(self.cfg, resolve=True).items()
-            if k in ["pipeline", "model", "scorer", "dimensions", "enabled_scorers"]
-        }
         
         # Create PlanTrace for this pipeline execution
         self.current_plan_trace = PlanTrace(
@@ -150,7 +147,6 @@ class PlanTraceService(Service):
                 "agent_name": "PlanTraceMonitor",
                 "started_at": time.time(),
                 "pipeline_run_id": pipeline_run_id,
-                "pipeline_config": essential_config
             }
         )
 
