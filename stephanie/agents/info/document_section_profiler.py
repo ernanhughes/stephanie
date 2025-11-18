@@ -80,6 +80,7 @@ class DocumentSectionProfilerAgent(BaseAgent):
             }
         )
 
+        all_sections = []
         for doc in documents:
             try:
                 doc_id = doc["id"]
@@ -99,6 +100,7 @@ class DocumentSectionProfilerAgent(BaseAgent):
                             "details": "Sections already in memory; skipping.",
                         }
                     )
+                    all_sections.append([e.to_dict() for e in existing_sections])
                     continue
 
                 # STEP 1: unstructured parsing into arbitrary sections
@@ -189,6 +191,7 @@ class DocumentSectionProfilerAgent(BaseAgent):
                             "domains": domains_payload,
                         }
                     )
+                    all_sections.append(record.to_dict())
 
                 self.report(
                     {
@@ -218,7 +221,7 @@ class DocumentSectionProfilerAgent(BaseAgent):
                 )
 
         # Attach flat list of sections to context
-        context[self.output_key] = section_records
+        context[self.output_key] = all_sections
 
         self.report(
             {

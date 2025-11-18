@@ -27,4 +27,4 @@ hwm: 1000                  # High Water Mark: max in-flight messages per socket
 # Fallback behaviour if ZeroMQ can’t be used
 # - "inproc": fall back to in-process bus
 # - "none": hard fail if required=true, else disable bus
-fallback: inproc
+fallback: none

@@ -140,26 +140,11 @@ def _try_load_df(raw_dir: str) -> pd.DataFrame | None:
     return None
 
 
-def _pick_metric_column(df: pd.DataFrame, base: str) -> str | None:
-    if base in df.columns:
-        return base
-    for suf in CAND_SUFFIXES:
-        cand = f"{base}{suf}"
-        if cand in df.columns:
-            return cand
-    pref = f"{base}."
-    for c in df.columns:
-        if isinstance(c, str) and c.startswith(pref):
-            return c
-    return None
-
 def _project_dimensions(
     df_in: pd.DataFrame,
     dims: list[str],
-    logger,
-    *,
-    alias_A: str,
-    alias_B: str,
+    alias_a: str,
+    alias_b: str,
 ) -> pd.DataFrame:
     """
     Project a rows_for_df table into:
@@ -212,9 +197,9 @@ def _project_dimensions(
         "node_id": df_in["node_id"].astype(str).values
     }
 
-    missing: dict[str, list[str]] = {alias_A: [], alias_B: []}
+    missing: dict[str, list[str]] = {alias_a: [], alias_b: []}
 
-    for alias in (alias_A, alias_B):
+    for alias in (alias_a, alias_b):
         for d in dims:
             col = _pick_metric_column_for_alias(df_in.columns, alias, d)
             key = f"{alias}.{d}"
@@ -226,15 +211,15 @@ def _project_dimensions(
 
     # logging: what’s present/missing per alias
     present = {
-        alias_A: [c for c in df_in.columns if isinstance(c, str) and c.lower().startswith(alias_A.lower() + ".")],
-        alias_B: [c for c in df_in.columns if isinstance(c, str) and c.lower().startswith(alias_B.lower() + ".")],
+        alias_a: [c for c in df_in.columns if isinstance(c, str) and c.lower().startswith(alias_a.lower() + ".")],
+        alias_b: [c for c in df_in.columns if isinstance(c, str) and c.lower().startswith(alias_b.lower() + ".")],
     }
-    logger.log("PHOSColumnDiscovery", {
-        "rows": int(df_in.shape[0]),
-        "dims": dims,
-        "present": present,
-        "missing_dims": missing,
-    })
+    log.info("ColumnDiscovery"
+        f"rows: {int(df_in.shape[0])}"
+        f"dims: {dims}"
+        f"present: {present}"
+        f"missing_dims: {missing}"
+    )
 
     return pd.DataFrame(out)
 
@@ -861,7 +846,7 @@ class GapAgent(BaseAgent):
             keep = ["node_id"] + [c for c in df_raw.columns
                                 if isinstance(c, str) and (c.startswith("hrm.") or c.startswith("tiny."))]
             df_raw = df_raw[keep]
-            df_proj = _project_dimensions(df_raw, self.dimensions, self.logger, alias_a, alias_b)
+            df_proj = _project_dimensions(df_raw, self.dimensions, alias_a=alias_a, alias_b=alias_b)
 
             # 5.2 Build PHOS-guarded artifacts using your zeromodel helper
             from stephanie.zeromodel.vpm_phos import build_compare_guarded

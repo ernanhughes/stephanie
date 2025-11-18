@@ -11,7 +11,7 @@ import numpy as np
 from stephanie.memory.nexus_store import NexusStore
 from stephanie.models.nexus import (NexusEdgeORM, NexusMetricsORM,
                                     NexusScorableORM)
-from stephanie.scoring.scorable_row import ScorableRow
+from stephanie.data.scorable_row import ScorableRow
 
 log = logging.getLogger(__name__)
 

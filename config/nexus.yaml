@@ -1,7 +1,7 @@
 defaults:
   - _self_
   - db: postgres
-  - bus: nats   
+  - bus: zmq   
   - plan_monitor: disabled
   - logging: json_logger
   - services: all
@@ -98,7 +98,7 @@ pipeline:
      - name: nexus_improver
        description: "Improve the nexus using multi-dimensional scoring"
        cls: stephanie.components.nexus.agents.nexus_pollinator.NexusPollinatorAgent
-       enabled: true
+       enabled: false
        iterations: 1
 
      - name: nexus_improver

@@ -23,7 +23,7 @@ from stephanie.scoring.adapters.db_writers import (DomainDBWriter,
 from stephanie.scoring.feature_io import (FeatureProvider, FeatureWriter,
                                           ScoringService)
 from stephanie.scoring.scorable import Scorable, ScorableFactory
-from stephanie.scoring.scorable_row import ScorableRow
+from stephanie.data.scorable_row import ScorableRow
 from stephanie.services.zeromodel_service import ZeroModelService
 from stephanie.services.zmq_cache_service import ZmqCacheService
 from stephanie.utils.json_sanitize import dumps_safe
@@ -55,6 +55,7 @@ class ScorableProcessor:
     def __init__(self, cfg, memory, container, logger):
         self.cfg = cfg or {}
         self.memory = memory
+        self.bus = memory.bus
         self.container = container
         self.logger = logger
 
@@ -120,8 +121,7 @@ class ScorableProcessor:
         self.enable_manifest: bool = bool(self.cfg.get("enable_manifest", True))
 
         # Bus/offload configuration (ZeroMQ or any BusProtocol-compatible adapter)
-        self.bus = None
-        self.offload_mode: str = self.cfg.get("offload_mode", "inline")  # "inline" | "rpc" | "async"
+        self.offload_mode: str = self.cfg.get("offload_mode", "rpc")  # "inline" | "rpc" | "async"
         self.bus_subject_sync: str = self.cfg.get(
             "bus_subject_sync", SCORABLE_PROCESS
         )
@@ -129,30 +129,10 @@ class ScorableProcessor:
             "bus_subject_async", SCORABLE_SUBMIT
         )
         self.bus_timeout: float = float(self.cfg.get("bus_timeout", 30.0))
-        bus_service_name = self.cfg.get("bus_service_name")
 
-        if bus_service_name:
-            try:
-                self.bus = container.get(bus_service_name)
-                log.info(
-                    "[ScorableProcessor:init] bus attached='%s' mode=%s subject_sync=%s",
-                    bus_service_name,
-                    self.offload_mode,
-                    self.bus_subject_sync,
-                )
-            except Exception as e:
-                log.warning(
-                    "[ScorableProcessor:init] bus_service_name='%s' unavailable (%s); using inline mode",
-                    bus_service_name,
-                    e,
-                )
-                self.bus = None
-                self.offload_mode = "inline"
+        # Cache stats (actual caching is handled at bus level via ZmqCacheService middleware)
+        self.cache_service: Optional[ZmqCacheService] = container.get("cache")
 
-        # Cache & manifest
-        self._cache: ZmqCacheService = container.get("cache")
-        self._cache_hits = 0
-        self._cache_misses = 0
 
         self.manifest_mgr: Optional[ManifestManager] = None
         self.manifest: Optional[Manifest] = None
@@ -347,6 +327,59 @@ class ScorableProcessor:
             created_utc=time.time(),
         )
         return row
+
+
+    async def register_bus_handlers(self) -> None:
+        """
+        Expose handlers on the bus that forward to `_process_inline(...)`.
+        - RPC handler (bus_subject_sync) returns a fully processed row.
+        - Async submit handler (bus_subject_async) processes fire-and-forget.
+        """
+        if not self.bus:
+            log.debug("register_bus_handlers: no bus configured; skipping")
+            return
+
+        subject_rpc = self.bus_subject_sync
+        subject_async = self.bus_subject_async
+
+        async def _rpc_handler(message: Dict[str, Any]) -> Dict[str, Any]:
+            # Support bus adapters that wrap message in {"data": ...}
+            payload = message.get("data") if isinstance(message, dict) and "data" in message else message
+            scorable = self._unpack_scorable(payload if isinstance(payload, dict) else {})
+            context = (payload or {}).get("context") or {}
+            t0 = time.perf_counter()
+            row = await self._process_inline(scorable, context, t0)
+            return {"ok": True, "row": row}
+
+        async def _submit_handler(message: Dict[str, Any]) -> None:
+            payload = message.get("data") if isinstance(message, dict) and "data" in message else message
+            scorable = self._unpack_scorable(payload if isinstance(payload, dict) else {})
+            context = (payload or {}).get("context") or {}
+            try:
+                await self._process_inline(scorable, context, time.perf_counter())
+            except Exception as e:
+                log.warning("Scorable submit failed: %s", e)
+
+        # Attach RPC
+        if hasattr(self.bus, "expose_rpc"):
+            await self.bus.expose_rpc(subject_rpc, _rpc_handler)
+        elif hasattr(self.bus, "handle"):
+            await self.bus.handle(subject_rpc, _rpc_handler)
+        elif hasattr(self.bus, "subscribe_rpc"):
+            await self.bus.subscribe_rpc(subject_rpc, _rpc_handler)
+        else:
+            raise RuntimeError("Bus does not support RPC handler registration")
+
+        # Attach async submit if supported
+        if hasattr(self.bus, "subscribe"):
+            await self.bus.subscribe(subject_async, _submit_handler)
+        elif hasattr(self.bus, "consume"):
+            await self.bus.consume(subject_async, _submit_handler)
+        else:
+            log.debug("Bus does not support subscribe/consume; async submit disabled")
+
+        log.info("[ScorableProcessor] RPC handler on '%s' and submit handler on '%s' registered (inline delegate)",
+                 subject_rpc, subject_async)
 
     def _build_minimal_row(self, scorable: Scorable) -> ScorableRow:
         """
@@ -655,7 +688,7 @@ class ScorableProcessor:
 
         # 10) Cache + return
        
-        log.debug(
+        log.info(
             "[SP:process:inline] done id=%s in %s ",
             scorable.id,
             self._t(t_all),
@@ -663,90 +696,6 @@ class ScorableProcessor:
 
         return row
 
-    async def _process_via_bus(
-        self,
-        input_data: Union[Scorable, Dict[str, Any]],
-        context: Dict[str, Any],
-        t_all: float,
-    ) -> Dict[str, Any]:
-        if not self.bus:
-            raise RuntimeError("ScorableProcessor: bus is not configured")
-
-        if isinstance(input_data, Scorable):
-            scorable = input_data
-            scorable_dict = {
-                "id": scorable.id,
-                "target_type": scorable.target_type,
-                "text": scorable.text,
-                "metadata": scorable.meta,
-                "domains": scorable.domains,
-                "ner": scorable.ner,
-            }
-        else:
-            scorable = ScorableFactory.from_dict(input_data)
-            scorable_dict = dict(input_data)
-
-        payload: Dict[str, Any] = {
-            "scorable": scorable_dict,
-            "context": context,
-            "config": {
-                "scorers": self.scorers,
-                "dimensions": self.dimensions,
-                "persist_scores": self.persist,
-                "attach_scores": bool(self.cfg.get("attach_scores", True)),
-                "require_metrics_for_vpm": bool(
-                    self.cfg.get("require_metrics_for_vpm", True)
-                ),
-            },
-            # Optionally, workers can use this info to write manifest on their side.
-            "manifest": {
-                "run_id": self.manifest.run_id if (self.manifest and self.enable_manifest) else None,
-            },
-        }
-
-        if self.offload_mode == "async":
-            # Fire-and-forget: submit job, return minimal row immediately.
-            await self.bus.publish(self.bus_subject_async, payload)
-            row_obj = self._build_minimal_row(scorable)
-            row = row_obj.to_dict()
-            log.debug(
-                "[SP:process:bus-async] offloaded id=%s subject=%s in %s (cache.size=%d hit_rate=%.2f)",
-                scorable.id,
-                self.bus_subject_async,
-                self._t(t_all),
-                len(self._cache),
-                self.get_cache_stats()["hit_rate"],
-            )
-            return row
-
-        # RPC mode: wait for a fully processed row from worker
-        resp = await self.bus.request(
-            self.bus_subject_sync, payload, timeout=self.bus_timeout
-        )
-        if not resp:
-            raise RuntimeError("ScorableProcessor: bus RPC returned no response")
-        row_dict = resp.get("row") or resp.get("data") or resp
-        if not isinstance(row_dict, dict):
-            raise RuntimeError(
-                f"ScorableProcessor: bus RPC malformed response: {row_dict!r}"
-            )
-
-        # Optional local manifest write even if worker did its own persistence
-        if self.enable_manifest and self._manifest_features_path:
-            try:
-                await self.write_to_manifest(row_dict)
-            except Exception as e:
-                log.warning("[SP:manifest] write_from_bus failed: %s", e)
-
-        self._cache[cache_key] = row_dict
-        log.debug(
-            "[SP:process:bus-rpc] done id=%s in %s (cache.size=%d hit_rate=%.2f)",
-            scorable.id,
-            self._t(t_all),
-            len(self._cache),
-            self.get_cache_stats()["hit_rate"],
-        )
-        return row_dict
 
     async def process_many(
         self, inputs: List[Union[Scorable, Dict[str, Any]]], context: Dict[str, Any]
@@ -836,15 +785,6 @@ class ScorableProcessor:
         log.debug("[SP:many] done batch_size=%d in %s", n, self._t(t_all))
         return out
 
-    def get_cache_stats(self) -> Dict[str, float]:
-        total = self._cache_hits + self._cache_misses
-        return {
-            "hits": float(self._cache_hits),
-            "misses": float(self._cache_misses),
-            "total": float(total),
-            "hit_rate": (self._cache_hits / total) if total > 0 else 0.0,
-        }
-
     def _t(self, t0: float) -> str:
         return f"{(time.perf_counter() - t0)*1000:.1f}ms"
 
@@ -876,3 +816,179 @@ class ScorableProcessor:
                 type(emb).__name__,
             )
             return None
+
+    async def _process_via_bus(
+        self,
+        input_data: Union[Scorable, Dict[str, Any]],
+        context: Dict[str, Any],
+        t_all: float,
+    ) -> Dict[str, Any]:
+        if not self.bus:
+            # No bus at all → just do inline
+            return await self._process_inline(
+                input_data if isinstance(input_data, Scorable) else ScorableFactory.from_dict(input_data),
+                context,
+                t_all,
+            )
+
+        # Normalize to Scorable
+        scorable = input_data if isinstance(input_data, Scorable) else ScorableFactory.from_dict(input_data)
+
+        job_id = self._generate_cache_key(scorable)
+        scorable_dict = {
+            "id": scorable.id,
+            "target_type": scorable.target_type,
+            "text": scorable.text,
+            "metadata": scorable.meta,
+            "domains": scorable.domains,
+            "ner": scorable.ner,
+        }
+
+        payload: Dict[str, Any] = {
+            "job_id": job_id,
+            "scorable": scorable_dict,
+            "context": context,
+            "config": {
+                "scorers": self.scorers,
+                "dimensions": self.dimensions,
+                "persist_scores": self.persist,
+                "attach_scores": bool(self.cfg.get("attach_scores", True)),
+                "require_metrics_for_vpm": bool(
+                    self.cfg.get("require_metrics_for_vpm", True)
+                ),
+            },
+            "manifest": {
+                "run_id": self.manifest.run_id
+                if (self.manifest and self.enable_manifest)
+                else None,
+            },
+        }
+
+        # ---------- ASYNC OFFLOAD ----------
+        if self.offload_mode == "async":
+            try:
+                await self.bus.publish(self.bus_subject_async, payload)
+            except Exception as e:
+                log.warning(
+                    "[SP:process:bus-async] publish failed id=%s err=%s; falling back to inline",
+                    scorable.id,
+                    e,
+                )
+                return await self._process_inline(scorable, context, t_all)
+
+            row_obj = self._build_minimal_row(scorable)
+            log.debug(
+                "[SP:process:bus-async] offloaded id=%s subject=%s in %s",
+                scorable.id,
+                self.bus_subject_async,
+                self._t(t_all),
+            )
+            return row_obj.to_dict()
+
+        # ---------- RPC OFFLOAD ----------
+        try:
+            resp = await self.bus.request(
+                self.bus_subject_sync, payload, timeout=self.bus_timeout
+            )
+        except (asyncio.TimeoutError, asyncio.CancelledError) as e:
+            log.warning(
+                "[SP:process:bus-rpc] timeout/cancel after %.2fs on subject=%s id=%s (%s); falling back to inline",
+                self.bus_timeout,
+                self.bus_subject_sync,
+                scorable.id,
+                e,
+            )
+            return await self._process_inline(scorable, context, t_all)
+        except Exception as e:
+            log.warning(
+                "[SP:process:bus-rpc] error on subject=%s id=%s err=%s; falling back to inline",
+                self.bus_subject_sync,
+                scorable.id,
+                e,
+            )
+            return await self._process_inline(scorable, context, t_all)
+
+        if not resp:
+            log.error(
+                "[SP:process:bus-rpc] no response on subject=%s id=%s; falling back to inline",
+                self.bus_subject_sync,
+                scorable.id,
+            )
+            return await self._process_inline(scorable, context, t_all)
+
+        row_dict = resp.get("row") or resp.get("data") or resp
+        if not isinstance(row_dict, dict):
+            log.error(
+                "[SP:process:bus-rpc] malformed response on subject=%s id=%s: %r; falling back to inline",
+                self.bus_subject_sync,
+                scorable.id,
+                row_dict,
+            )
+            return await self._process_inline(scorable, context, t_all)
+
+        # Optional local manifest write
+        if self.enable_manifest and self._manifest_features_path:
+            try:
+                await self.write_to_manifest(row_dict)
+            except Exception as e:
+                log.warning("[SP:manifest] write_from_bus failed: %s", e)
+
+        cache_key = self._generate_cache_key(scorable)
+        try:
+            self._cache[cache_key] = row_dict
+        except Exception:
+            pass
+
+        log.debug(
+            "[SP:process:bus-rpc] done id=%s in %s",
+            scorable.id,
+            self._t(t_all),
+        )
+        return row_dict
+
+    async def bus_rpc_handler(self, body: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Worker-side handler for SCORABLE_PROCESS.
+        Delegates to `_process_inline` so bus and local processing share one code path.
+        """
+        job_id = body.get("job_id")
+        sc_data = dict(body.get("scorable") or {})
+
+        # Normalize 'metadata' -> 'meta' for ScorableFactory
+        if "metadata" in sc_data and "meta" not in sc_data:
+            sc_data["meta"] = sc_data.pop("metadata")
+
+        scorable = ScorableFactory.from_dict(sc_data)
+        context = body.get("context") or {}
+
+        t0 = time.perf_counter()
+        row = await self._process_inline(scorable, context, t0)
+
+        resp: Dict[str, Any] = {"row": row, "status": "ok"}
+        if job_id:
+            resp["job_id"] = job_id
+        return resp
+
+    async def register_bus_handlers(self) -> None:
+        """
+        Call this once at startup in any process that should act as a
+        scorable-processing *worker*.
+
+        It wires this processor instance into the bus for both sync + async subjects.
+        """
+        if not self.bus:
+            log.warning("[ScorableProcessor] no bus configured; skipping handler registration")
+            return
+
+        # HybridKnowledgeBus.subscribe() auto-calls _ensure_connected_for_use(),
+        # which in turn starts ZMQ broker + connects ZmqKnowledgeBus if needed.
+        await self.bus.subscribe(self.bus_subject_sync, self.bus_rpc_handler)
+        await self.bus.subscribe(self.bus_subject_async, self.bus_rpc_handler)
+
+        backend = self.bus.get_backend()
+        log.info(
+            "[ScorableProcessor] bus handlers registered (sync=%s async=%s backend=%s)",
+            self.bus_subject_sync,
+            self.bus_subject_async,
+            backend,
+        )

@@ -1,4 +1,4 @@
-# stephanie/scoring/scorable_row.py
+# stephanie/data/scorable_row.py
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field

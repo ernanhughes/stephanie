@@ -14,3 +14,5 @@ scorable_annotate:
   progress: true
   filter_role: false         # set true to filter by role
   scorable_role: "assistant" # used if filter_role: true
+  input_key: "scorables"
+  output_key: "scorable_features"
