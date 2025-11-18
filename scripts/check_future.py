@@ -176,7 +176,7 @@ def main() -> int:
             for e in errs:
                 print(f"    · {e}")
     else:
-        print(f"All good. Checked {scanned} files; all requirements satisfied.")
+        print(f"✅✅✅ All good. Checked {scanned} files; all requirements satisfied.")
 
     if args.fix:
         print(f"\nAuto-fix inserted 'from __future__ import annotations' into {fixed_count} file(s).")

@@ -26,10 +26,10 @@ Optional helpers (default no-ops; backends may override):
 
 from __future__ import annotations
 
+import base64
 from abc import ABC, abstractmethod
 from datetime import timedelta
 from typing import Any, Callable, Dict, List, Optional, Union
-import base64
 
 
 class BusProtocol(ABC):

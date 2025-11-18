@@ -1,13 +1,13 @@
 # stephanie/services/tool_registry_service.py
 from __future__ import annotations
 
-
 import importlib
 import pkgutil
 from typing import Any, Dict, List, Tuple
 
 from stephanie.services.service_protocol import Service
-from stephanie.tools.protocol import registered_tools, ToolSpec
+from stephanie.tools.protocol import ToolSpec, registered_tools
+
 
 class ToolRegistryService(Service):
     """

@@ -1,0 +1,30 @@
+enabled: true
+backend: zmq              # "zmq" | "nats" | "inproc"
+
+# ZeroMQ endpoint(s). For a simple single-node setup, one endpoint is enough.
+endpoint: "tcp://127.0.0.1:5555"
+
+# Messaging pattern used by your ZMQ bus implementation:
+# - "dealer-router" for request/reply via a broker
+# - "pub-sub" for fire-and-forget broadcasting
+pattern: "dealer-router"
+
+# If true, treat bus as mandatory (fail fast if cannot connect)
+required: true
+
+# Legacy alias, keep behaviour consistent with NATS config
+strict: true
+
+# Connection / socket behaviour
+connect_timeout_s: 1.5     # how long we wait on initial connect
+recv_timeout_s: 5.0        # how long we wait for replies
+send_timeout_s: 5.0        # how long we wait on send before error
+
+# Socket-level tuning
+linger_ms: 0               # 0: drop unsent messages on close (fail fast)
+hwm: 1000                  # High Water Mark: max in-flight messages per socket
+
+# Fallback behaviour if ZeroMQ can’t be used
+# - "inproc": fall back to in-process bus
+# - "none": hard fail if required=true, else disable bus
+fallback: none

@@ -4,21 +4,14 @@ from __future__ import annotations
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import numpy as np
-from sqlalchemy import desc, text
+from sqlalchemy import and_, desc, or_, text
 from sqlalchemy.orm import Session
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
 from stephanie.models.nexus import (NexusEdgeORM, NexusEmbeddingORM,
                                     NexusMetricsORM, NexusPulseORM,
                                     NexusScorableORM)
-
-
-def _cosine(a: np.ndarray, b: np.ndarray) -> float:
-    na = np.linalg.norm(a)
-    nb = np.linalg.norm(b)
-    if na <= 1e-8 or nb <= 1e-8:
-        return 0.0
-    return float(np.dot(a, b) / (na * nb))
+from stephanie.utils.similarity_utils import cosine
 
 
 class NexusStore(BaseSQLAlchemyStore):
@@ -40,7 +33,6 @@ class NexusStore(BaseSQLAlchemyStore):
         self.embedding_dim = int(embedding_dim)
 
     # ------------------------------------------------------------------ Scorables
-
     def upsert_scorable(self, row: Dict[str, Any]) -> NexusScorableORM:
         """
         Insert or update a scorable.
@@ -237,7 +229,7 @@ class NexusStore(BaseSQLAlchemyStore):
                 if not jv:
                     continue
                 v = np.array(jv, dtype=float)
-                sim = _cosine(q, v)
+                sim = cosine(q, v)
                 if sim >= float(min_sim):
                     sims.append((sid, float(sim)))
             sims.sort(key=lambda t: t[1], reverse=True)
@@ -249,3 +241,62 @@ class NexusStore(BaseSQLAlchemyStore):
         if prefer_pgvector:
             return self.knn_pgvector(query_vec, k=k, min_sim=min_sim)
         return self.knn_python(query_vec, k=k, min_sim=min_sim)
+
+
+
+    def list_run_nodes(self, run_id: str, limit: int = 200000) -> List[str]:
+        """Return unique node ids that appear in edges for this run."""
+        def op(s: Session):
+            q = s.query(NexusEdgeORM.src, NexusEdgeORM.dst).filter(NexusEdgeORM.run_id == run_id)
+            nodes = set()
+            for src, dst in q.limit(limit).all():
+                nodes.add(str(src)); nodes.add(str(dst))
+            return list(nodes)
+        return self._run(op) or []
+
+    def list_edges_typed(self, run_id: str, edge_type: Optional[str] = None, limit: int = 200000) -> List[NexusEdgeORM]:
+        def op(s: Session):
+            q = s.query(NexusEdgeORM).filter(NexusEdgeORM.run_id == run_id)
+            if edge_type:
+                q = q.filter(NexusEdgeORM.type == edge_type)
+            return q.order_by(desc(NexusEdgeORM.created_ts)).limit(limit).all()
+        return self._run(op) or []
+
+    def update_edge(self, run_id: str, src: str, dst: str, type_: str, *, weight: Optional[float] = None, channels: Optional[Dict[str, Any]] = None) -> bool:
+        """Update a single edge if it exists."""
+        def op(s: Session):
+            e = s.get(NexusEdgeORM, {"run_id": run_id, "src": src, "dst": dst, "type": type_})
+            if not e:
+                return False
+            if weight is not None: e.weight = float(weight)
+            if channels is not None: e.channels = channels
+            s.flush()
+            return True
+        return bool(self._run(op))
+
+    def delete_edges_for_nodes(self, run_id: str, node_ids: List[str]) -> int:
+        """Delete all edges touching any of the given nodes (chunked)."""
+        if not node_ids: return 0
+        CHUNK = 500
+        total = 0
+        for i in range(0, len(node_ids), CHUNK):
+            chunk = node_ids[i:i+CHUNK]
+            def op(s: Session):
+                q = s.query(NexusEdgeORM).filter(
+                    and_(NexusEdgeORM.run_id == run_id,
+                         or_(NexusEdgeORM.src.in_(chunk), NexusEdgeORM.dst.in_(chunk)))
+                )
+                n = q.count()
+                q.delete(synchronize_session=False)
+                return n
+            total += int(self._run(op) or 0)
+        return total
+
+    def degree_stats(self, run_id: str) -> Dict[str, int]:
+        """Approximate degree per node (undirected count from edges)."""
+        edges = self.list_edges(run_id, limit=200000)
+        deg = {}
+        for e in edges:
+            deg[e.src] = deg.get(e.src, 0) + 1
+            deg[e.dst] = deg.get(e.dst, 0) + 1
+        return deg

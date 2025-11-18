@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+# stephanie/tools/nexus_ab_smoke.py
 """
 A/B smoke checks for nexus_vpm runs + NexusImprover integration.
 
@@ -21,14 +21,14 @@ Notes
 - NexusImprover is optional. If provided, we compare:
     win_rate, mean_lift, topk_lift, diversity pre/post, novelty retention.
 """
+from __future__ import annotations
 
 import argparse
 import csv
 import json
 import sys
-from pathlib import Path
-from statistics import mean
 from math import isfinite
+from pathlib import Path
 
 EPS = 1e-9
 
@@ -492,7 +492,7 @@ def main():
             print(colorize(f" - {fmsg}", "r"))
         sys.exit(1)
     elif ('failures' in locals()) and failures:
-        print(colorize(f"\nGuard checks failed (non-strict).", "y"))
+        print(colorize("\nGuard checks failed (non-strict).", "y"))
     else:
         print(colorize("\nAll guard checks passed.", "g"))
 

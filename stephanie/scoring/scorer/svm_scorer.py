@@ -1,6 +1,8 @@
 # stephanie/scoring/svm/svm_scorer.py
 from __future__ import annotations
 
+import logging
+
 import numpy as np
 from joblib import load
 
@@ -12,6 +14,7 @@ from stephanie.scoring.scorer.base_scorer import BaseScorer
 from stephanie.scoring.transforms.regression_tuner import RegressionTuner
 from stephanie.utils.file_utils import load_json
 
+log = logging.getLogger(__name__)
 
 class SVMScorer(BaseScorer):
     def __init__(self, cfg: dict, memory, container, logger):
@@ -44,6 +47,9 @@ class SVMScorer(BaseScorer):
 
         results = {}
         for dim in dimensions:
+            if dim not in self.models:
+                log.warning(f"{self.name}: No model available for dimension: {dim}")
+                continue
             scaler, model = self.models[dim]
             tuner = self.tuners[dim]
             meta = self.metas.get(dim, {"min_value": 0, "max_value": 100})

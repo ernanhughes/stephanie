@@ -2,10 +2,12 @@
 from __future__ import annotations
 
 import uuid
-from stephanie.services.bus.events.prompt_job import PromptJob
+
 from stephanie.prompts.dispatcher import PromptDispatcher
-from stephanie.prompts.targets_bootstrap import build_default_registry
 from stephanie.prompts.result_listener import ResultListener
+from stephanie.prompts.targets_bootstrap import build_default_registry
+from stephanie.services.bus.events.prompt_job import PromptJob
+
 
 class BusLLM:
     def __init__(self, model="gpt-4o-mini", target="auto", priority="normal"):

@@ -1,4 +1,4 @@
-# stephanie/reports/formatter.py
+#  stephanie/reporting/formatter.py
 from __future__ import annotations
 
 import re

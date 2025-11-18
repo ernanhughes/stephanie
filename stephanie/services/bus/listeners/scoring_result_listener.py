@@ -1,7 +1,9 @@
 
 from __future__ import annotations
+
 import asyncio
 from typing import Dict, List
+
 from stephanie.services.bus_service import BusService
 
 RESULT_BASE = "results.scoring"

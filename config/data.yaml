@@ -6,11 +6,10 @@
 defaults:
   - _self_
   - db: postgres
+  - bus: zmq   
   - plan_monitor: disabled
-  - scoring/service/default
-  - logging/json_logger
-  - mars/default
-
+  - logging: json_logger
+  - services: all
   - scorer: all  
 
   - agents/arxiv_search

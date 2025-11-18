@@ -14,20 +14,12 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageSequence
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.components.nexus.app.manifest import (
-    ManifestItem,
-    NexusRunManifest,
-)
-from stephanie.components.nexus.graph.builder import (
-    build_edges_enhanced,
-    build_nodes_from_manifest,
-)
-from stephanie.components.nexus.graph.exporters import (
-    export_graph_json,
-    export_pyvis_html,
-    export_pyvis_html_rich,
-)
-from stephanie.components.nexus.graph.layout import compute_positions
+from stephanie.components.nexus.app.manifest import (ManifestItem,
+                                                     NexusRunManifest)
+from stephanie.components.nexus.graph.builder import (build_edges_enhanced,
+                                                      build_nodes)
+from stephanie.components.nexus.graph.exporters.pyviz import (
+    export_graph_json, export_pyvis_html, export_pyvis_html_rich)
 from stephanie.constants import PIPELINE_RUN_ID
 from stephanie.scoring.scorable import Scorable, ScorableType
 from stephanie.scoring.scorable_processor import ScorableProcessor
@@ -35,7 +27,9 @@ from stephanie.services.scoring_service import ScoringService
 from stephanie.services.workers.nexus_workers import NexusVPMWorkerInline
 from stephanie.services.zeromodel_service import ZeroModelService
 from stephanie.utils.embed_utils import as_list_floats, cos_safe, has_vec
-from stephanie.utils.graph_utils import compute_run_metrics
+from stephanie.utils.graph_utils import (compute_positions,
+                                         compute_run_metrics,
+                                         consensus_walk_order)
 from stephanie.utils.json_sanitize import dumps_safe
 from stephanie.utils.progress_mixin import ProgressMixin
 
@@ -93,95 +87,6 @@ def _find_tile_path(item_dir: Path) -> Optional[Path]:
             except Exception:
                 return None
     return None
-
-
-def _consensus_walk_order(
-    scorables: list[dict],
-    *,
-    goal_vec,
-    alpha: float = 0.7,
-    limit: int | None = None,
-) -> list[int]:
-    """
-    Greedy run ordering that 'thinks':
-      pick an item, update consensus (centroid of picked), then pick the next
-      that maximizes: alpha*sim(goal) + (1-alpha)*sim(consensus).
-
-    Safe for numpy arrays / mixed vector shapes. Falls back to metrics_vector if no embedding.
-    """
-    # --- collect vectors safely (no ndarray truthiness) ---
-    vecs: list[list[float]] = []
-    for s in scorables:
-        v = as_list_floats((s.get("embeddings") or {}).get("global"))
-        if not v:
-            mv = s.get("metrics_vector")
-            if isinstance(mv, dict):
-                v = as_list_floats(list(mv.values()))
-        vecs.append(v)
-
-    n = len(scorables)
-    if n == 0:
-        return []
-
-    tgt = as_list_floats(goal_vec)
-
-    # If absolutely no vectors, keep stable order up to limit
-    if not any(vecs):
-        want = limit or n
-        return list(range(min(want, n)))
-
-    # --- start at argmax sim to goal (ties stable) ---
-    sims_to_goal = [(cos_safe(v, tgt), i) for i, v in enumerate(vecs)]
-    start_idx = max(sims_to_goal, key=lambda t: (t[0], -t[1]))[1]
-
-    picked: list[int] = [start_idx]
-    picked_set = {start_idx}
-
-    # running centroid (len = dim of first non-empty picked vector)
-    def centroid(indices: list[int]) -> list[float]:
-        for i in indices:
-            if vecs[i]:
-                d = len(vecs[i])
-                break
-        else:
-            return []
-        acc = [0.0] * d
-        cnt = 0
-        for i in indices:
-            v = vecs[i]
-            if not v:
-                continue
-            cnt += 1
-            # tolerate length mismatch: add up to min(d, len(v))
-            m = min(d, len(v))
-            for k in range(m):
-                acc[k] += v[k]
-        if cnt == 0:
-            return []
-        return [x / cnt for x in acc]
-
-    c = centroid(picked)
-    want = limit or n
-
-    while len(picked) < want:
-        best_score = -1e9
-        best_j = None
-        for j in range(n):
-            if j in picked_set:
-                continue
-            v = vecs[j]
-            s_goal = cos_safe(v, tgt)
-            s_cons = cos_safe(v, c) if c else 0.0
-            score = alpha * s_goal + (1.0 - alpha) * s_cons
-            if score > best_score:
-                best_score, best_j = score, j
-        if best_j is None:
-            break
-        picked.append(best_j)
-        picked_set.add(best_j)
-        c = centroid(picked)
-
-    return picked
 
 
 class CompassAgent(BaseAgent, ProgressMixin):
@@ -439,7 +344,7 @@ class CompassAgent(BaseAgent, ProgressMixin):
         if strategy == "consensus-walk":
             goal_vec = target_vec or []
             with _stage(log, "Nexus.consensus_walk_order", n=len(scorables)):
-                order = _consensus_walk_order(
+                order = consensus_walk_order(
                     scorables,
                     goal_vec=goal_vec,
                     alpha=float(
@@ -457,12 +362,11 @@ class CompassAgent(BaseAgent, ProgressMixin):
             for idx, enhanced_scorable in enumerate(scorables):
                 sc = Scorable.from_dict(enhanced_scorable)
 
-                columns, values, vector, rows = [], [], {}, None
+                columns, values, row = [], [], {}
                 with _stage(log, "Nexus.score_and_append"):
                     row = await self.scorable_processor.process(enhanced_scorable, context=context)
                     columns = row.get("metrics_columns") or []
                     values  = row.get("metrics_values")  or []
-                    vector  = row.get("metrics_vector")  or {}
                     self.zm.timeline_append_row(run_id, metrics_columns=columns, metrics_values=values)
 
 
@@ -487,8 +391,8 @@ class CompassAgent(BaseAgent, ProgressMixin):
                 if "global" in embeddings:
                     embeddings["global"] = as_list_floats(embeddings["global"])
 
-                domains = list(enhanced_scorable.get("domains") or [])
-                ner = list(enhanced_scorable.get("ner") or [])
+                domains = list(row.get("domains") or [])
+                ner = list(row.get("ner") or [])
                 tile = _find_tile_path(item_dir)
                 item = ManifestItem(
                     item_id=item_name,
@@ -555,7 +459,7 @@ class CompassAgent(BaseAgent, ProgressMixin):
 
         # Graph build
         with _stage(log, "Nexus.graph.nodes"):
-            nodes = build_nodes_from_manifest(manifest)
+            nodes = build_nodes(run_id=run_id, manifest=manifest)
 
         items_list = [mi.to_dict() for mi in manifest.items]
 

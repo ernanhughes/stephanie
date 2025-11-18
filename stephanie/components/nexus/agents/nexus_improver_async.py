@@ -14,11 +14,11 @@ import numpy as np
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.components.nexus.blossom.runner import BlossomRunnerAgent
-from stephanie.components.nexus.blossom.viewer.renderer import write_garden_frames
-from stephanie.services.scoring_service import ScoringService
+from stephanie.components.nexus.blossom.viewer.renderer import \
+    write_garden_frames
 from stephanie.scoring.scorable import Scorable
+from stephanie.services.scoring_service import ScoringService
 from stephanie.utils.progress_mixin import ProgressMixin
-
 
 # --------------------------- CONFIG ---------------------------
 
@@ -342,7 +342,7 @@ class NexusImproverAsyncAgent(ProgressMixin, BaseAgent):
         Publish K prompt jobs for this parent and return a list of tickets:
         [{job_id, return_topic, parent_id, k_index}, ...]
         """
-        from stephanie.prompts.prompt_client import PromptClient
+        from stephanie.services.bus.prompt_client import PromptClient
 
         # Build K prompts (you likely already have a prompt template in Blossom)
         prompts = []

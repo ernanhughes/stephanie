@@ -47,7 +47,8 @@ class SCMServicePlugin:
                 stats = self.host._ll_stats(goal, resp) or {}
             except Exception as e:
                 stats = {}
-                if self.logger: self.logger.log("SCMPlugin_ll_stats_error", {"error": str(e)})
+                if self.logger:
+                    self.logger.log("SCMPlugin_ll_stats_error", {"error": str(e)})
 
         if not stats or not self.scm_svc:
             # Nothing to add.
@@ -72,7 +73,8 @@ class SCMServicePlugin:
                 vocab_size=vocab_size
             )
         except Exception as e:
-            if self.logger: self.logger.log("SCMServiceError", {"error": str(e)})
+            if self.logger:
+                self.logger.log("SCMServiceError", {"error": str(e)})
             return {}
 
         # (Optional) top-k token payload hook; keep out of vector
@@ -98,5 +100,7 @@ class SCMServicePlugin:
 
     @staticmethod
     def _finite(x) -> bool:
-        try: return math.isfinite(float(x))
-        except Exception: return False
+        try:
+            return math.isfinite(float(x))
+        except Exception:
+            return False

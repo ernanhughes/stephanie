@@ -305,7 +305,7 @@ class HRMModel(nn.Module):
             score01: Primary quality score ∈ [0,1] [batch, 1]
             aux: Dictionary of raw and derived diagnostic outputs
         """
-        batch_size = x.size(0)
+
 
         # Input projection and hierarchical processing
         x_tilde = self.input_projector(x)     # [batch, h_dim]

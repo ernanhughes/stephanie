@@ -1,47 +1,343 @@
 # stephanie/components/nexus/graph/builder.py
 from __future__ import annotations
 
+import logging
 import math
-from collections import defaultdict
+from collections import Counter, defaultdict
 from typing import (Any, DefaultDict, Dict, Iterable, List, Optional, Set,
                     Tuple, Union)
 
 import numpy as np
 
+from stephanie.components.nexus.app.manifest import ManifestItem
 from stephanie.components.nexus.app.types import NexusEdge, NexusNode
+from stephanie.memory.nexus_store import NexusStore
+from stephanie.scoring.scorable_processor import ScorableProcessor
+from stephanie.data.scorable_row import ScorableRow
 from stephanie.utils.json_sanitize import dumps_safe
+
+log = logging.getLogger(__name__)
+
+ManifestLike = Union[Dict[str, Any], List[Dict[str, Any]]]
+
+
+class GraphBuilder:
+    """
+    Build a Nexus graph (nodes + blended edges) from a scorable manifest.
+
+    - Accepts either:
+      * plain list:     [ ...scorable dicts... ]
+    - Persists nodes before edges.
+    - Supports multiple edge families (KNN, temporal, domain/entity cliques, MST).
+    - Versioning: keep `namespace` for modality (e.g., "vpm"); encode variants
+      into `run_id` e.g., "run100__exp03". Node id -> f"{namespace}://{run_id}/{item_id}"
+    """
+
+    def __init__(self, cfg, memory, container, logger):
+        self.cfg = cfg
+        self.memory = memory
+        self.store: NexusStore = memory.nexus
+        self.logger = logger
+        self.scorable_processor = ScorableProcessor(cfg, memory, logger)
+
+
+
+    def add_scorable_row(
+        self,
+        row: ScorableRow,
+        *,
+        graph_id: str,
+        extra_attrs: dict | None = None,
+    ) -> str:
+        """
+        Pure-topology node insert from a ScorableRow.
+        No embeddings here; we keep it dumb by design.
+        """
+        node_id = f"{graph_id}:{row.scorable_id}"
+        attrs = {
+            "graph_id": graph_id,
+            "scorable_id": row.scorable_id,
+            "scorable_kind": row.scorable_type,     # use your string type
+            "title": row.title,
+            "content_hash16": row.content_hash16,
+            "metrics_columns": row.metrics_columns,
+            "metrics_values": row.metrics_values,
+        }
+        if extra_attrs:
+            attrs.update(extra_attrs)
+
+        self.add_node(node_id, "scorable", **attrs)
+        return node_id
+
+    def add_similarity_edge(self, a: str, b: str, *, similarity: float, rel: str = "similar_to"):
+        if a != b:
+            self.add_similar_edge(a, b, rel=rel, similarity=float(similarity))
+
+
+    def build(
+        self,
+        run_id: str,
+        scorables_or_manifest: Any,                # NEW name
+        *,
+        namespace: str = "vpm",                    # NEW
+        knn_k: int = 8,
+        sim_threshold: float = 0.35,
+        max_edges_per_node: int = 24,
+        add_temporal: bool = True,
+        add_mst_backbone: bool = True,
+        add_domain_edges: bool = True,
+        add_entity_edges: bool = True,
+        knn_edge_type: str = "knn_global",
+        weights: Optional[Dict[str, float]] = None,
+        caps: Optional[Dict[str, int]] = None,
+        export_path: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        # Normalize input to a manifest dict with an 'items' list
+        if isinstance(scorables_or_manifest, dict) and "items" in scorables_or_manifest:
+            manifest = scorables_or_manifest
+            items = list(manifest.get("items") or [])
+        elif isinstance(scorables_or_manifest, (list, tuple)):
+            items = list(scorables_or_manifest)
+            manifest = {"run_id": run_id, "items": items}
+        else:
+            items = []
+            manifest = {"run_id": run_id, "items": items}
+
+        # Build nodes with run_id + namespace (fix)
+        nodes = build_nodes(run_id=run_id, manifest=manifest, namespace=namespace)
+
+        # Items for temporal/domain/entity edges must be dicts; tolerate Scorables
+        norm_items = []
+        for it in items:
+            if isinstance(it, dict):
+                norm_items.append(it)
+            else:
+                # Best-effort mapping from S Hey Cortana corable
+                norm_items.append({
+                    "item_id": getattr(it, "id", None) or getattr(it, "scorable_id", None),
+                    "scorable_id": getattr(it, "id", None),
+                    "scorable_type": getattr(it, "target_type", "document"),
+                    "near_identity": {"title": None, "text": getattr(it, "text", None)},
+                    "domains": getattr(it, "domains", None),
+                    "entities": getattr(it, "entities", None),
+                    "chat_id": getattr(it, "chat_id", None),
+                    "turn_index": getattr(it, "turn_index", None),
+                    "metrics_values": getattr(it, "metrics_values", None),
+                    "embeddings": {"global": getattr(it, "embed_global", None)},
+                })
+
+        edges = build_edges_enhanced(
+            nodes,
+            norm_items,
+            run_id=run_id,
+            knn_k=knn_k,
+            sim_threshold=sim_threshold,
+            max_edges_per_node=max_edges_per_node,
+            weights=weights,
+            caps=caps,
+            add_temporal=add_temporal,
+            add_mst_backbone=add_mst_backbone,
+            add_domain_edges=add_domain_edges,
+            add_entity_edges=add_entity_edges,
+            knn_edge_type=knn_edge_type,
+        )
+
+        payload = [{
+            "src": e.src, "dst": e.dst, "type": e.type,
+            "weight": float(e.weight or 0.0),
+            "channels": getattr(e, "channels", None)
+        } for e in edges]
+        n = self.store.write_edges(run_id, payload)
+
+        from stephanie.components.nexus.graph.exporters.pyviz import \
+            export_graph_json
+        graph_json = export_graph_json(path=export_path, nodes=nodes, edges=edges, include_channels=True)
+
+        c = Counter(e["type"] for e in payload)
+        return {
+            "run_id": run_id,
+            "edges_written": n,
+            "by_type": dict(c),
+            "node_count": len(nodes),
+            "nodes": nodes,
+            "edges": edges,
+            "graph_json": graph_json,               # NEW convenience
+        }
+
+    # ---- store helpers -----------------------------------------------------
+
+
+    def _upsert_nodes(self, run_id: str, nodes: Dict[str, NexusNode]) -> None:
+        # Expect NexusStore to support a bulk upsert. If not present, implement one.
+        # Minimal payload: id, run_id, scorable_id, type, title, text, domains, entities, embed dims/exists
+        rows = []
+        for nid, n in nodes.items():
+            rows.append(
+                {
+                    "node_id": nid,
+                    "run_id": getattr(n, "run_id", run_id),
+                    "scorable_id": getattr(n, "scorable_id", None),
+                    "scorable_type": getattr(n, "target_type", None),
+                    "title": getattr(n, "title", None),
+                    "text": getattr(n, "text", None),
+                    "domains": getattr(n, "domains", None),
+                    "entities": getattr(n, "entities", None),
+                    "metrics_columns": getattr(n, "metrics_columns", None),
+                    "metrics_values": getattr(n, "metrics_values", None),
+                    "embeddings": getattr(n, "embeddings", None),
+                }
+            )
+        # If your store API differs, adapt here.
+        if hasattr(self.store, "upsert_nodes"):
+            self.store.upsert_nodes(run_id, rows)
+        else:
+            # Fallback: create nodes one by one if that’s all you have.
+            if hasattr(self.store, "upsert_node"):
+                for r in rows:
+                    self.store.upsert_node(run_id, r)
+            else:
+                log.warning("NexusStore lacks upsert_nodes/upsert_node; nodes not persisted.")
+
+
+
+    # --- Action nodes ------------------------------------------------------------
+
+    def add_action(
+        self,
+        action_id: str,
+        *,
+        kind: str,               # e.g. "vote", "red_flag", "tool_call"
+        name: str,
+        agent: str | None = None,
+        protocol: str | None = None,
+        step_index: int | None = None,
+        trace_id: str | None = None,
+        params: dict | None = None,
+        graph_id: str | None = None,
+        **attrs,
+    ) -> str:
+        """
+        Add an ACTION node to the graph. Pure topology: only attrs, no embeddings.
+        """
+        node_attrs = {
+            "node_type": "action",
+            "action_kind": kind,
+            "action_name": name,
+            "agent": agent,
+            "protocol": protocol,
+            "step_index": step_index,
+            "trace_id": trace_id,
+            "params": params or {},
+            "graph_id": graph_id,
+        }
+        node_attrs.update(attrs)
+        # Reuse your existing add-node path; if it’s NexusStore-backed, just pass attrs
+        self._add_node(action_id, **node_attrs)   # or whatever your internal add is
+        return action_id
+
+
+    def add_scorable(
+        self,
+        scorable_id: str,
+        *,
+        scorable_kind: str,          # "document_section" | "conversation_turn" | ...
+        embedding_key: str | None = None,
+        content_hash: str | None = None,
+        graph_id: str | None = None,
+        **attrs,
+    ) -> str:
+        """
+        Add a SCORABLE node with lightweight metadata only.
+        """
+        node_attrs = {
+            "node_type": "scorable",
+            "scorable_kind": scorable_kind,
+            "embedding_key": embedding_key,
+            "content_hash": content_hash,
+            "graph_id": graph_id,
+        }
+        node_attrs.update(attrs)
+        self._add_node(scorable_id, **node_attrs)
+        return scorable_id
+
+
+    def connect_action_io(
+        self,
+        *,
+        action_id: str,
+        input_scorable_ids: Iterable[str] = (),
+        output_scorable_ids: Iterable[str] = (),
+    ) -> None:
+        for sid in input_scorable_ids:
+            self._add_edge(sid, action_id, rel="consumes")
+        for sid in output_scorable_ids:
+            self._add_edge(action_id, sid, rel="produces")
+
+
+    def connect_action_flow(
+        self,
+        prev_action_id: str | None,
+        action_id: str,
+        *,
+        rel: str = "follows",
+    ) -> None:
+        if prev_action_id:
+            self._add_edge(prev_action_id, action_id, rel=rel)
+
+
+    def add_similar_edge(
+        self,
+        source_id: str,
+        target_id: str,
+        similarity: float,
+        threshold: float = 0.75,
+        **attrs,
+    ) -> None:
+        if similarity >= threshold:
+            meta = {"rel": "similar_to", "similarity": float(similarity)}
+            meta.update(attrs)
+            self._add_edge(source_id, target_id, **meta)
+
+
+# ---- pure functions (no store side-effects) --------------------------------
+
+def _as_manifest_dict_from_any(run_id: str, m: ManifestLike) -> Dict[str, Any]:
+    """Accept a dict manifest or a plain list of items and return a manifest dict."""
+    if isinstance(m, dict):
+        out = _as_manifest_dict(m)
+        # Guarantee run_id presence/override
+        out["run_id"] = run_id
+        return out
+    elif isinstance(m, list):
+        return {"run_id": run_id, "items": m, "extras": {}}
+    else:
+        raise TypeError("scorables must be a dict manifest or a list of items")
 
 
 def _topk_indices_desc(row: np.ndarray, k: int, exclude_self: int) -> np.ndarray:
-    # returns indices of the largest k entries (descending), excluding self
-    # uses argpartition for O(N) selection then sorts that small set
     N = row.shape[0]
-    k_eff = min(k + 1, N)  # (+1) because we may exclude self
-    idx = np.argpartition(-row, kth=k_eff-1)[:k_eff]
-    # full sort of the small slice
+    k_eff = min(k + 1, N)
+    idx = np.argpartition(-row, kth=k_eff - 1)[:k_eff]
     idx = idx[np.argsort(-row[idx])]
-    # drop self if present
     if exclude_self in idx:
         idx = idx[idx != exclude_self]
     return idx[:k]
+
 
 def build_edges_enhanced(
     nodes: Dict[str, Any],
     items: List[Dict[str, Any]],
     *,
     run_id: Optional[str],
-    # KNN blend
+    namespace: str = "vpm",
     knn_k: int = 8,
+    knn_edge_type: str = "knn_global",
     sim_threshold: float = 0.35,
     max_edges_per_node: int = 24,
-    # channel weights
     weights: Optional[Dict[str, float]] = None,
-    # per-type caps (extra safety)
     caps: Optional[Dict[str, int]] = None,
-    # structure helpers
     add_temporal: bool = True,
     add_mst_backbone: bool = True,
-    # optional extra edge families
     add_domain_edges: bool = True,
     add_entity_edges: bool = True,
     max_domain_edges_per_node: int = 6,
@@ -66,11 +362,13 @@ def build_edges_enhanced(
     S, C = _pairwise_blend(ids, nodes, w)
 
     edges: List[NexusEdge] = []
-    seen: Set[Tuple[str, str, str]] = set()       # (src,dst,type)
-    degree = defaultdict(int)                     # node -> deg cap
+    seen: Set[Tuple[str, str, str]] = set()  # (src,dst,type)
+    degree = defaultdict(int)
     per_type_count = defaultdict(int)
+    # ensure a cap entry that matches the actual edge type string used
+    knn_cap_key = knn_edge_type
     cap = {
-        "knn_blend": 10**9,
+        knn_cap_key: 10**9,
         "temporal_next": 10**9,
         "backbone_mst": 10**9,
         "shared_domain": 100000,
@@ -78,7 +376,7 @@ def build_edges_enhanced(
         **(caps or {}),
     }
 
-    # ---------- blended KNN (fast top-k per row) ----------
+    # ---------- blended KNN ----------
     N = len(ids)
     for i, src in enumerate(ids):
         row = S[i]
@@ -90,24 +388,28 @@ def build_edges_enhanced(
             if sim < sim_threshold:
                 continue
             dst = ids[j]
-            if degree[src] >= max_edges_per_node: break
-            if degree[dst] >= max_edges_per_node: continue
-            if per_type_count["knn_blend"] >= cap["knn_blend"]:
+            if degree[src] >= max_edges_per_node:
                 break
-            key = (src, dst, "knn_blend")
+            if degree[dst] >= max_edges_per_node:
+                continue
+            if per_type_count[knn_cap_key] >= cap[knn_cap_key]:
+                break
+
+            etype = knn_edge_type
+            key = (src, dst, etype)
             if key in seen or src == dst:
                 continue
 
             ch = {k: float(C[k][i, j]) for k in C.keys()}
-            edges.append(NexusEdge(src, dst, "knn_blend", sim, channels=ch))
+            edges.append(NexusEdge(src, dst, etype, sim, channels=ch))
             seen.add(key)
             degree[src] += 1
             degree[dst] += 1
-            per_type_count["knn_blend"] += 1
+            per_type_count[etype] += 1
 
     # ---------- temporal chain ----------
     if add_temporal:
-        t_edges = _temporal_edges(items, nodes, run_id)
+        t_edges = _temporal_edges(items, nodes, run_id, namespace)
         for e in t_edges:
             if e.src == e.dst:
                 continue
@@ -124,34 +426,31 @@ def build_edges_enhanced(
             degree[e.dst] += 1
             per_type_count["temporal_next"] += 1
 
-    # ---------- optional domain/entity cliques (bounded) ----------
+    # ---------- optional domain/entity cliques ----------
     if (add_domain_edges or add_entity_edges) and items:
-        # Build quick maps: item_id -> node_id
         item_to_node = {}
         for nid in ids:
             tail = nid.rsplit("/", 1)[-1]
             item_to_node[tail] = nid
 
-        # Domains
         if add_domain_edges:
             dmap: DefaultDict[str, List[str]] = defaultdict(list)
             for it in items:
                 iid = it.get("item_id")
                 nid = item_to_node.get(iid)
-                if not nid: continue
+                if not nid:
+                    continue
                 for d in it.get("domains") or []:
                     dmap[str(d)].append(nid)
 
             for domain, nids in dmap.items():
                 if len(nids) <= 1:
                     continue
-                # create a light clique with per-node edge cap
                 for a_i, src in enumerate(nids):
                     added = 0
                     if degree[src] >= max_edges_per_node:
                         continue
-                    # connect to next few neighbors only (to avoid O(m^2))
-                    for dst in nids[a_i+1:a_i+1+max_domain_edges_per_node]:
+                    for dst in nids[a_i + 1 : a_i + 1 + max_domain_edges_per_node]:
                         if src == dst:
                             continue
                         if degree[src] >= max_edges_per_node or degree[dst] >= max_edges_per_node:
@@ -161,7 +460,9 @@ def build_edges_enhanced(
                         key = (src, dst, "shared_domain")
                         if key in seen:
                             continue
-                        edges.append(NexusEdge(src, dst, "shared_domain", 0.5, channels={"domain": domain}))
+                        edges.append(
+                            NexusEdge(src, dst, "shared_domain", 0.5, channels={"domain": domain})
+                        )
                         seen.add(key)
                         degree[src] += 1
                         degree[dst] += 1
@@ -170,13 +471,13 @@ def build_edges_enhanced(
                         if added >= max_domain_edges_per_node:
                             break
 
-        # Entities
         if add_entity_edges:
             emap: DefaultDict[str, List[str]] = defaultdict(list)
             for it in items:
                 iid = it.get("item_id")
                 nid = item_to_node.get(iid)
-                if not nid: continue
+                if not nid:
+                    continue
                 ents = it.get("entities") or []
                 if isinstance(ents, dict):
                     ents = list(ents.keys())
@@ -190,7 +491,7 @@ def build_edges_enhanced(
                     added = 0
                     if degree[src] >= max_edges_per_node:
                         continue
-                    for dst in nids[a_i+1:a_i+1+max_entity_edges_per_node]:
+                    for dst in nids[a_i + 1 : a_i + 1 + max_entity_edges_per_node]:
                         if src == dst:
                             continue
                         if degree[src] >= max_edges_per_node or degree[dst] >= max_edges_per_node:
@@ -200,7 +501,9 @@ def build_edges_enhanced(
                         key = (src, dst, "shared_entity")
                         if key in seen:
                             continue
-                        edges.append(NexusEdge(src, dst, "shared_entity", 0.45, channels={"entity": ent}))
+                        edges.append(
+                            NexusEdge(src, dst, "shared_entity", 0.45, channels={"entity": ent})
+                        )
                         seen.add(key)
                         degree[src] += 1
                         degree[dst] += 1
@@ -209,7 +512,7 @@ def build_edges_enhanced(
                         if added >= max_entity_edges_per_node:
                             break
 
-    # ---------- MST backbone (guarantee connectivity) ----------
+    # ---------- MST backbone ----------
     if add_mst_backbone:
         mst = _mst_edges(ids, S)
         for e in mst:
@@ -232,70 +535,59 @@ def build_edges_enhanced(
 
 
 def _as_manifest_dict(m: Any) -> Dict[str, Any]:
-    """
-    Accepts NexusRunManifest or dict and returns a plain dict:
-      { "run_id": str, "items": [ { ...item fields... } ], "extras": {...} }
-    """
     if isinstance(m, dict):
-        return m
+        out = {
+            "run_id": m.get("run_id"),
+            "items": list(m.get("items") or []),
+            "extras": m.get("extras") or {},
+        }
+        return out
 
-    # Likely NexusRunManifest
-    out = {
-        "run_id": getattr(m, "run_id", None),
-        "items": [],
-        "extras": getattr(m, "extras", {}) or {},
-    }
+    # Likely NexusRunManifest-like object
+    out = {"run_id": getattr(m, "run_id", None), "items": [], "extras": getattr(m, "extras", {}) or {}}
     items: Iterable[Any] = getattr(m, "items", []) or []
     for it in items:
         if hasattr(it, "to_dict"):
             out["items"].append(it.to_dict())
         else:
-            # Try dataclass-like attributes
-            out["items"].append({
-                "item_id": getattr(it, "item_id", None),
-                "scorable_id": getattr(it, "scorable_id", None),
-                "scorable_type": getattr(it, "scorable_type", None),
-                "turn_index": getattr(it, "turn_index", None),
-                "chat_id": getattr(it, "chat_id", None),
-                "domains": getattr(it, "domains", None),
-                "entities": getattr(it, "entities", None),
-                "near_identity": getattr(it, "near_identity", None),
-                "metrics_columns": getattr(it, "metrics_columns", None),
-                "metrics_values": getattr(it, "metrics_values", None),
-                "metrics_vector": getattr(it, "metrics_vector", None),
-                "embeddings": getattr(it, "embeddings", None),
-                "vpm_png": getattr(it, "vpm_png", None),
-                "rollout": getattr(it, "rollout", None),
-            })
+            out["items"].append(
+                {
+                    "item_id": getattr(it, "item_id", None),
+                    "scorable_id": getattr(it, "scorable_id", None),
+                    "scorable_type": getattr(it, "scorable_type", None),
+                    "turn_index": getattr(it, "turn_index", None),
+                    "chat_id": getattr(it, "chat_id", None),
+                    "domains": getattr(it, "domains", None),
+                    "entities": getattr(it, "entities", None),
+                    "near_identity": getattr(it, "near_identity", None),
+                    "metrics_columns": getattr(it, "metrics_columns", None),
+                    "metrics_values": getattr(it, "metrics_values", None),
+                    "metrics_vector": getattr(it, "metrics_vector", None),
+                    "embeddings": getattr(it, "embeddings", None),
+                    "vpm_png": getattr(it, "vpm_png", None),
+                    "rollout": getattr(it, "rollout", None),
+                }
+            )
     return out
 
 
 def _make_node(node_id: str, scorable_id: str, scorable_type: str) -> NexusNode:
-    """
-    Construct a NexusNode regardless of the constructor signature.
-    Prefers NexusNode(id=...), falls back to NexusNode(node_id).
-    """
     return NexusNode(node_id=node_id, scorable_id=scorable_id, scorable_type=scorable_type)  # type: ignore
 
 
 def _pick_title_text(item: Dict[str, Any]) -> tuple[str, str]:
-    """
-    Choose a human label and a longer text for the node from near_identity /
-    scorable hints. Falls back to item_id.
-    """
-    near = item.get("near_identity") or {}
-    title = (near.get("title") or near.get("summary") or item.get("scorable_id")
-             or item.get("item_id") or "item")
-    text = (near.get("text") or near.get("body") or near.get("snippet")
-            or title)
+    near = item.near_identity if hasattr(item, "near_identity") else item.get("near_identity") or {}
+    title = (
+        near.get("title")
+        or near.get("summary")
+        or item.scorable_id if hasattr(item, "scorable_id") else item.get("scorable_id")
+        or item.item_id if hasattr(item, "item_id") else item.get("item_id")
+        or "item"
+    )
+    text = (near.get("text") or near.get("body") or near.get("snippet") or title)
     return str(title), str(text)
 
-
 def _pick_embed_global(emb: Optional[Dict[str, Any]]) -> Optional[np.ndarray]:
-    """
-    Return a float32 numpy vector if available. Prefers 'global', otherwise the
-    first numeric vector found.
-    """
     if not emb:
         return None
     if "global" in emb and isinstance(emb["global"], (list, tuple)):
@@ -304,8 +596,7 @@ def _pick_embed_global(emb: Optional[Dict[str, Any]]) -> Optional[np.ndarray]:
             return v if v.size else None
         except Exception:
             pass
-    # fallback: first numeric
-    for k, v in emb.items():
+    for k, v in (emb or {}).items():
         if isinstance(v, (list, tuple)):
             try:
                 vec = np.asarray(v, dtype=np.float32)
@@ -316,246 +607,105 @@ def _pick_embed_global(emb: Optional[Dict[str, Any]]) -> Optional[np.ndarray]:
     return None
 
 
-def build_nodes_from_manifest(
-    manifest: Union[Dict[str, Any], Any],
+def build_nodes(
+    run_id: str,
+    manifest: Dict[str, Any],
     *,
     namespace: str = "vpm",
 ) -> Dict[str, NexusNode]:
-    """
-    Build {node_id -> NexusNode} from a Nexus manifest.
-
-    Node id scheme:  f"{namespace}://{run_id}/{item_id}"
-      - Ensures uniqueness across runs
-      - Matches what your edge builder expects
-
-    Populated attributes (if NexusNode supports dynamic attrs):
-      - id, run_id, item_id, scorable_id, target_type
-      - chat_id, turn_index
-      - domains, entities, near_identity
-      - metrics_columns, metrics_values, metrics_vector
-      - embeddings, embed_global (np.ndarray or None)
-      - title, text, degree (init 0)
-      - vpm_png, rollout
-    """
-    m = _as_manifest_dict(manifest)
-    run_id = str(m.get("run_id") or "")
-    items = list(m.get("items") or [])
+    if isinstance(manifest, dict):
+        items = list(manifest.get("items") or [])
+    else:
+        items = list(manifest.items if hasattr(manifest, "items") else manifest.get("items") or [])
     nodes: Dict[str, NexusNode] = {}
 
     for it in items:
-        item_id = it.get("item_id") or it.get("scorable_id") or ""
-        node_id = f"{namespace}://{run_id}/{item_id}"
-        scorable_type = it.get("scorable_type") or "unknown"
-        scorable_id = it.get("scorable_id") or item_id
+        if isinstance(it, ManifestItem):
+            it = it.to_dict()
+       
+        item_id = it.item_id if hasattr(it, "item_id") else it.get("item_id")
+        node_id = f"{namespace}://{run_id}/{item_id}" 
+        scorable_type = it.scorable_type if hasattr(it, "scorable_type") else it.get("scorable_type") or "unknown"
+        scorable_id = it.scorable_id if hasattr(it, "scorable_id") else it.get("scorable_id") or item_id
         node = _make_node(node_id, scorable_id=scorable_id, scorable_type=scorable_type)
 
-        # Core ids
         setattr(node, "id", node_id)
         setattr(node, "run_id", run_id)
         setattr(node, "item_id", item_id)
-        setattr(node, "scorable_id", it.get("scorable_id"))
+        setattr(node, "scorable_id", scorable_id)
 
-        # Label + body text
         title, text = _pick_title_text(it)
         setattr(node, "title", title)
         setattr(node, "text", text)
 
-        # Type / indices
-        setattr(node, "target_type", it.get("scorable_type") or "unknown")
-        setattr(node, "chat_id", it.get("chat_id"))
-        setattr(node, "turn_index", it.get("turn_index"))
+        setattr(node, "target_type", scorable_type or "unknown")
+        setattr(node, "chat_id", it.chat_id if hasattr(it, "chat_id") else it.get("chat_id"))
+        setattr(node, "turn_index", it.turn_index if hasattr(it, "turn_index") else it.get("turn_index"))
 
-        # Semantic/contextual tags
-        setattr(node, "domains", it.get("domains") or [])
-        # entities can be list or dict keys
-        ents = it.get("entities")
+        setattr(node, "domains", it.domains if hasattr(it, "domains") else it.get("domains") or [])
+        ents = it.entities if hasattr(it, "entities") else it.get("entities")
         if isinstance(ents, dict):
             ents = list(ents.keys())
         setattr(node, "entities", ents or [])
-        setattr(node, "near_identity", it.get("near_identity") or {})
+        setattr(node, "near_identity", it.near_identity if hasattr(it, "near_identity") else it.get("near_identity") or {})
+        setattr(node, "metrics_columns", it.metrics_columns if hasattr(it, "metrics_columns") else it.get("metrics_columns") or [])
+        setattr(node, "metrics_values", it.metrics_values if hasattr(it, "metrics_values") else it.get("metrics_values") or [])
+        setattr(node, "metrics_vector", it.metrics_vector if hasattr(it, "metrics_vector") else it.get("metrics_vector") or {})
 
-        # Metrics
-        setattr(node, "metrics_columns", it.get("metrics_columns") or [])
-        setattr(node, "metrics_values", it.get("metrics_values") or [])
-        setattr(node, "metrics_vector", it.get("metrics_vector") or {})
-
-        # Embeddings
-        embs = it.get("embeddings") or {}
+        embs = it.embeddings if hasattr(it, "embeddings") else it.get("embeddings") or {}
         setattr(node, "embeddings", embs)
         setattr(node, "embed_global", _pick_embed_global(embs))
 
-        # VPM / rollout artifacts
-        setattr(node, "vpm_png", it.get("vpm_png"))
-        setattr(node, "rollout", it.get("rollout") or {})
+        setattr(node, "vpm_png", it.vpm_png if hasattr(it, "vpm_png") else it.get("vpm_png"))
+        setattr(node, "rollout", it.rollout if hasattr(it, "rollout") else it.get("rollout") or {})
 
-        # Degree starts at 0; router JS recomputes from edges
         setattr(node, "degree", 0)
-
         nodes[node_id] = node
 
     return nodes
 
-def build_edges(
-    nodes: Dict[str, NexusNode],
-    items: List[Dict],
-    knn_k: int = 12,
-    add_temporal: bool = True,
-    sim_threshold: float = 0.35,
-    bidirectional_knn: bool = False,
-    run_id: Optional[str] = None,
-) -> List[NexusEdge]:
-    """
-    Build edges for the Nexus graph.
-
-    - KNN edges over node.embed_global (cosine similarity).
-    - Optional temporal edges using (chat_id, turn_index).
-
-    Args:
-        nodes: node_id -> NexusNode
-        items: manifest['items'] list (must contain 'item_id', and for temporal: 'chat_id','turn_index')
-        knn_k: neighbors per node (max)
-        add_temporal: add edges linking consecutive turns within a chat
-        sim_threshold: minimum cosine similarity for KNN edges
-        bidirectional_knn: add reverse edge for each KNN pair
-        run_id: if provided, temporal src/dst = f"vpm://{run_id}/{item_id}";
-                else, we infer by matching the trailing '/{item_id}' in nodes.
-
-    Returns:
-        List[NexusEdge]
-    """
-    edges: List[NexusEdge] = []
-    seen: Set[Tuple[str, str, str]] = set()  # (src,dst,type)
-
-    # -----------------------------
-    # KNN over global embeddings
-    # -----------------------------
-    keyed = [(nid, n.embed_global) for nid, n in nodes.items() if n.embed_global is not None]
-    if keyed:
-        ids, mats = zip(*keyed)                     # ids: tuple[str], mats: tuple[np.ndarray]
-        M = np.stack(mats, axis=0).astype(np.float32)  # [N, d]
-        # normalize rows to unit length to make cosine = dot
-        norms = np.linalg.norm(M, axis=1, keepdims=True)
-        norms[norms < 1e-9] = 1e-9
-        U = M / norms
-
-        # cosine similarities to each row vector
-        # For large N you’ll want FAISS; this is fine for small/medium
-        for i in range(U.shape[0]):
-            sims = U @ U[i]                      # [N]
-            order = np.argsort(-sims)            # descending
-            picked = 0
-            for j in order:
-                if i == j:
-                    continue
-                sim = float(sims[j])
-                if sim < sim_threshold:
-                    break
-                src, dst = ids[i], ids[j]
-                key = (src, dst, "knn_global")
-                if key not in seen:
-                    edges.append(NexusEdge(src=src, dst=dst, type="knn_global", weight=sim))
-                    seen.add(key)
-                if bidirectional_knn:
-                    key2 = (dst, src, "knn_global")
-                    if key2 not in seen:
-                        edges.append(NexusEdge(src=dst, dst=src, type="knn_global", weight=sim))
-                        seen.add(key2)
-                picked += 1
-                if picked >= knn_k:
-                    break
-
-    # -----------------------------
-    # Temporal chain per chat
-    # -----------------------------
-    if add_temporal and items:
-        # Map item_id -> node_id
-        item_to_node: Dict[str, str] = {}
-
-        if run_id is not None:
-            # Fast path: we know the prefix format
-            for it in items:
-                iid = it.get("item_id")
-                if iid:
-                    nid = f"vpm://{run_id}/{iid}"
-                    if nid in nodes:
-                        item_to_node[iid] = nid
-
-        # Fallback: infer by suffix match (last path component == item_id)
-        if not item_to_node:
-            # Precompute tail -> node_id mapping
-            tail_map: Dict[str, str] = {}
-            for nid in nodes.keys():
-                tail = nid.rsplit("/", 1)[-1]
-                tail_map[tail] = nid
-            for it in items:
-                iid = it.get("item_id")
-                if iid and iid in tail_map:
-                    item_to_node[iid] = tail_map[iid]
-
-        # Group by chat_id
-        from collections import defaultdict
-        chats = defaultdict(list)
-        for it in items:
-            chat_id = it.get("chat_id")
-            turn_idx = it.get("turn_index")
-            iid = it.get("item_id")
-            if chat_id and isinstance(turn_idx, int) and iid in item_to_node:
-                chats[chat_id].append((turn_idx, iid))
-
-        # Link consecutive turns
-        for chat_id, arr in chats.items():
-            arr.sort(key=lambda x: x[0])  # by turn_index
-            for (_, iid_cur), (_, iid_next) in zip(arr, arr[1:]):
-                src = item_to_node.get(iid_cur)
-                dst = item_to_node.get(iid_next)
-                if src and dst:
-                    key = (src, dst, "temporal_next")
-                    if key not in seen:
-                        edges.append(NexusEdge(src=src, dst=dst, type="temporal_next", weight=1.0))
-                        seen.add(key)
-
-    return edges
 
 def _cos(a: Optional[np.ndarray], b: Optional[np.ndarray]) -> float:
-    if a is None or b is None: return 0.0
-    na = float(np.linalg.norm(a)); nb = float(np.linalg.norm(b))
-    if na <= 1e-9 or nb <= 1e-9: return 0.0
+    if a is None or b is None:
+        return 0.0
+    na = float(np.linalg.norm(a))
+    nb = float(np.linalg.norm(b))
+    if na <= 1e-9 or nb <= 1e-9:
+        return 0.0
     return float(np.dot(a, b) / (na * nb))
 
+
 def _z(x: Optional[np.ndarray]) -> Optional[np.ndarray]:
-    if x is None: return None
+    if x is None:
+        return None
     x = np.asarray(x, dtype=np.float32)
-    if x.size == 0: return x
-    mu = x.mean(); sd = x.std() + 1e-8
+    if x.size == 0:
+        return x
+    mu = x.mean()
+    sd = x.std() + 1e-8
     return (x - mu) / sd
 
+
 def _normalize_token_list(v, *, key: str | None = None) -> list[str]:
-    """
-    Turn a heterogeneous list (strings / dicts / scalars) into a list of
-    lowercase string tokens that are safe to put in a set.
-    If key is provided and an element is a dict, use dict[key] when present,
-    else fall back to a canonical JSON form of the dict.
-    """
     if v is None:
         return []
     if isinstance(v, (str, int, float, bool, dict)):
-        v = [v]  # make it iterable
-
+        v = [v]
     out: list[str] = []
     for item in v:
         if isinstance(item, str):
             out.append(item.strip().lower())
+        elif item is None:
+            continue
         elif isinstance(item, dict):
             if key and (key in item) and item[key] is not None:
                 out.append(str(item[key]).strip().lower())
             else:
-                # canonicalize whole dict to a stable string
                 out.append(dumps_safe(item, sort_keys=True, ensure_ascii=False).lower())
-        elif item is None:
-            continue
         else:
             out.append(str(item).strip().lower())
     return out
+
 
 def _jaccard_list(a, b, *, key: str | None = None) -> float:
     A = set(_normalize_token_list(a, key=key))
@@ -564,35 +714,30 @@ def _jaccard_list(a, b, *, key: str | None = None) -> float:
         return 0.0
     return len(A & B) / float(len(A | B))
 
+
 def _char_shingles_jaccard(a: Optional[str], b: Optional[str], k: int = 5, max_len: int = 4000) -> float:
-    if not a or not b: return 0.0
-    # limit to keep it fast
-    a = a[:max_len]; b = b[:max_len]
-    Sa = {a[i:i+k] for i in range(0, max(0, len(a)-k+1))}
-    Sb = {b[i:i+k] for i in range(0, max(0, len(b)-k+1))}
-    if not Sa and not Sb: return 0.0
+    if not a or not b:
+        return 0.0
+    a = a[:max_len]
+    b = b[:max_len]
+    Sa = {a[i : i + k] for i in range(0, max(0, len(a) - k + 1))}
+    Sb = {b[i : i + k] for i in range(0, max(0, len(b) - k + 1))}
+    if not Sa and not Sb:
+        return 0.0
     return len(Sa & Sb) / max(1, len(Sa | Sb))
 
+
 def _norm01_rowwise(S: np.ndarray) -> np.ndarray:
-    # normalize each row to 0..1 to make thresholds robust across corpora
     out = S.copy()
     for i in range(out.shape[0]):
         r = out[i]
         mn, mx = r.min(initial=0.0), r.max(initial=0.0)
         denom = (mx - mn) if (mx - mn) > 1e-8 else 1.0
         out[i] = (r - mn) / denom
-    # keep symmetric
     return (out + out.T) / 2.0
 
-# ---------- composite scoring ----------
 
 def _pairwise_blend(ids: List[str], nodes: Dict[str, Any], w: Dict[str, float]) -> Tuple[np.ndarray, Dict[str, np.ndarray]]:
-    """
-    Returns:
-      S : [N,N] blended similarity in [0,1]
-      C : per-channel score matrices keyed by channel name
-    Channels: embed, metrics, lexical, domains, entities, agreement, stability
-    """
     N = len(ids)
     S = np.zeros((N, N), dtype=np.float32)
     C: Dict[str, np.ndarray] = {
@@ -605,7 +750,7 @@ def _pairwise_blend(ids: List[str], nodes: Dict[str, Any], w: Dict[str, float]) 
         "stability": np.zeros((N, N), dtype=np.float32),
     }
 
-    E = [nodes[i].embed_global if hasattr(nodes[i], "embed_global") else None for i in ids]
+    E = [getattr(nodes[i], "embed_global", None) for i in ids]
     M = [np.asarray(getattr(nodes[i], "metrics_values", []), dtype=np.float32) for i in ids]
     Mz = [(_z(m) if m.size else None) for m in M]
     T = [getattr(nodes[i], "text", None) for i in ids]
@@ -615,44 +760,40 @@ def _pairwise_blend(ids: List[str], nodes: Dict[str, Any], w: Dict[str, float]) 
     U = [getattr(nodes[i], "stability", None) for i in ids]
 
     for i in range(N):
-        for j in range(i+1, N):
-            s_embed   = _cos(E[i], E[j])
+        for j in range(i + 1, N):
+            s_embed = _cos(E[i], E[j])
             s_metrics = _cos(Mz[i], Mz[j]) if (Mz[i] is not None and Mz[j] is not None) else 0.0
-            s_lex     = _char_shingles_jaccard(T[i], T[j], k=5)
-            s_dom = _jaccard_list(D[i], D[j], key="domain")      # domains: [{"domain": "...", "score": ...}, ...]
-            s_ent = _jaccard_list(E[i], E[j], key="text")        # entities: [{"text": "...", "label": ...}, ...]
+            s_lex = _char_shingles_jaccard(T[i], T[j], k=5)
+            s_dom = _jaccard_list(D[i], D[j], key="domain")
+            s_ent = _jaccard_list(G[i], G[j], key="text")
+            s_agree = min(A[i], A[j]) if (A[i] is not None and A[j] is not None) else 0.0
+            s_stab = min(U[i], U[j]) if (U[i] is not None and U[j] is not None) else 0.0
 
-
-            # agreement/stability: use *min* to propagate weakest link
-            s_agree   = min(A[i], A[j]) if (A[i] is not None and A[j] is not None) else 0.0
-            s_stab    = min(U[i], U[j]) if (U[i] is not None and U[j] is not None) else 0.0
-
-            C["embed"][i, j]    = C["embed"][j, i]    = s_embed
-            C["metrics"][i, j]  = C["metrics"][j, i]  = s_metrics
-            C["lexical"][i, j]  = C["lexical"][j, i]  = s_lex
-            C["domains"][i, j]  = C["domains"][j, i]  = s_dom
+            C["embed"][i, j] = C["embed"][j, i] = s_embed
+            C["metrics"][i, j] = C["metrics"][j, i] = s_metrics
+            C["lexical"][i, j] = C["lexical"][j, i] = s_lex
+            C["domains"][i, j] = C["domains"][j, i] = s_dom
             C["entities"][i, j] = C["entities"][j, i] = s_ent
-            C["agreement"][i, j]= C["agreement"][j, i]= s_agree
-            C["stability"][i, j]= C["stability"][j, i]= s_stab
+            C["agreement"][i, j] = C["agreement"][j, i] = s_agree
+            C["stability"][i, j] = C["stability"][j, i] = s_stab
 
-    # blend (pre-normalize rows for stability, then weight)
     for k in C.keys():
         C[k] = _norm01_rowwise(C[k])
 
     S = (
-        w.get("embed",0)*C["embed"] +
-        w.get("metrics",0)*C["metrics"] +
-        w.get("lexical",0)*C["lexical"] +
-        w.get("domains",0)*C["domains"] +
-        w.get("entities",0)*C["entities"] +
-        w.get("agreement",0)*C["agreement"] +
-        w.get("stability",0)*C["stability"]
+        w.get("embed", 0) * C["embed"]
+        + w.get("metrics", 0) * C["metrics"]
+        + w.get("lexical", 0) * C["lexical"]
+        + w.get("domains", 0) * C["domains"]
+        + w.get("entities", 0) * C["entities"]
+        + w.get("agreement", 0) * C["agreement"]
+        + w.get("stability", 0) * C["stability"]
     )
-    # re-normalize after blend for robust thresholding
     S = _norm01_rowwise(S)
     return S, C
 
-def _temporal_edges(items: List[Dict[str, Any]], nodes: Dict[str, Any], run_id: Optional[str]) -> List[NexusEdge]:
+
+def _temporal_edges(items: List[Dict[str, Any]], nodes: Dict[str, Any], run_id: str, namespace: str) -> List[NexusEdge]:
     edges: List[NexusEdge] = []
     chats: DefaultDict[str, List[Dict[str, Any]]] = defaultdict(list)
     for it in items:
@@ -661,19 +802,17 @@ def _temporal_edges(items: List[Dict[str, Any]], nodes: Dict[str, Any], run_id: 
     for _, arr in chats.items():
         arr.sort(key=lambda x: x["turn_index"])
         for a, b in zip(arr, arr[1:]):
-            src = f"vpm://{run_id}/{a['item_id']}" if run_id else f"vpm://{a.get('run_id','')}/{a['item_id']}"
-            dst = f"vpm://{run_id}/{b['item_id']}" if run_id else f"vpm://{b.get('run_id','')}/{b['item_id']}"
+            src = f"{namespace}://{run_id}/{a['item_id']}" if run_id else f"{namespace}://{a.get('run_id','')}/{a['item_id']}"
+            dst = f"{namespace}://{run_id}/{b['item_id']}" if run_id else f"{namespace}://{b.get('run_id','')}/{b['item_id']}"
             if src in nodes and dst in nodes:
                 edges.append(NexusEdge(src, dst, "temporal_next", 1.0))
     return edges
 
+
 def _mst_edges(ids: List[str], S: np.ndarray) -> List[NexusEdge]:
-    """
-    Minimum Spanning Tree over distance = 1 - S (Prim's algorithm).
-    Guarantees global connectivity across disparate chats.
-    """
     N = len(ids)
-    if N <= 1: return []
+    if N <= 1:
+        return []
     dist = 1.0 - S
     in_tree = np.zeros(N, dtype=bool)
     in_tree[0] = True
@@ -681,9 +820,10 @@ def _mst_edges(ids: List[str], S: np.ndarray) -> List[NexusEdge]:
     parent = np.full(N, -1, dtype=int)
     parent[0] = 0
     edges: List[NexusEdge] = []
-    for _ in range(N-1):
+    for _ in range(N - 1):
         j = np.argmin(np.where(in_tree, np.inf, best))
-        if math.isinf(best[j]): break
+        if math.isinf(best[j]):
+            break
         i = parent[j]
         if i >= 0:
             w = float(S[i, j])

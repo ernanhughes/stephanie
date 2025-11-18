@@ -74,7 +74,6 @@ pipeline:
      - name: gap
        description: "Understanding the Gap between two models using chat conversation_turns"
        cls: stephanie.agents.gap.GapAgent
-       enabled: false
+       enabled: true
        iterations: 1
 
-I

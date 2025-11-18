@@ -1,15 +1,13 @@
 # stephanie/components/nexus/graph/knowledge_index.py
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Dict, Optional
-import math
-import networkx as nx
 import json
-from dataclasses import asdict
+import math
+from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict, Optional
 
+import networkx as nx
 
 
 @dataclass

@@ -2,11 +2,13 @@
 from __future__ import annotations
 
 from typing import Any, Dict, List, Tuple
+
 from stephanie.agents.base_agent import BaseAgent
+from stephanie.memory.prompt_job_store import PromptJobStore
+from stephanie.prompts.prompt_inbox import PromptInbox
 from stephanie.scoring.scorable import Scorable
 from stephanie.utils.progress_mixin import ProgressMixin
-from stephanie.prompts.prompt_inbox import PromptInbox
-from stephanie.memory.prompt_job_store import PromptJobStore
+
 
 class NexusImproverResumeAgent(ProgressMixin, BaseAgent):
     """

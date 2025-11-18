@@ -32,6 +32,8 @@ from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 
 from stephanie.agents.base_agent import BaseAgent
+from stephanie.utils.similarity_utils import cosine
+from stephanie.utils.text_utils import lexical_overlap, sentences
 
 log = logging.getLogger(__name__)
 
@@ -39,32 +41,6 @@ log = logging.getLogger(__name__)
 # ----------------------------
 # Utilities
 # ----------------------------
-_SENT_SPLIT = re.compile(r"(?<=[.!?])\s+")
-_WORD = re.compile(r"\b\w+\b", re.UNICODE)
-
-def _sentences(text: str, max_sents: int = 80) -> List[str]:
-    if not text:
-        return []
-    sents = [s.strip() for s in _SENT_SPLIT.split(text) if len(s.strip()) > 2]
-    if max_sents and len(sents) > max_sents:
-        return sents[:max_sents]
-    return sents
-
-def _words(text: str) -> List[str]:
-    return _WORD.findall((text or "").lower())
-
-def _lexical_overlap(a: str, b: str) -> float:
-    A, B = set(_words(a)), set(_words(b))
-    if not A:
-        return 0.0
-    return len(A & B) / max(1, len(A))
-
-def _cosine(u: np.ndarray, v: np.ndarray) -> float:
-    if u is None or v is None:
-        return 0.0
-    num = float(np.dot(u, v))
-    den = (float(np.dot(u, u)) ** 0.5) * (float(np.dot(v, v)) ** 0.5) + 1e-8
-    return num / den
 
 
 @dataclass
@@ -86,7 +62,7 @@ class ConversationTrajectoryMapper(BaseAgent):
     Embedding + scorer hybrid mapper from conversation trajectories to paper sections.
     """
 
-    def __init__(self, cfg: Dict[str, Any], memory: Any, logger: logging.Logger):
+    def __init__(self, cfg, memory, container, logger):
         super().__init__(cfg, memory, container, logger)
         self.kfg = CTMConfig(
             min_causal_strength=cfg.get("min_causal_strength", 0.60),
@@ -137,7 +113,7 @@ class ConversationTrajectoryMapper(BaseAgent):
 
         # Pre-embed section if embeddings are enabled
         section_emb = None
-        section_sents = _sentences(section_text, self.kfg.max_section_sents)
+        section_sents = sentences(section_text, self.kfg.max_section_sents)
         section_sent_embs: List[np.ndarray] = []
 
         if self.kfg.use_embeddings:
@@ -212,7 +188,7 @@ class ConversationTrajectoryMapper(BaseAgent):
     ) -> Dict[str, Any]:
         msgs = trajectory.get("messages", []) or []
         traj_text = "\n".join(m.get("text", "") for m in msgs if m.get("text"))
-        traj_sents = _sentences(traj_text, self.kfg.max_traj_sents)
+        traj_sents = sentences(traj_text, self.kfg.max_traj_sents)
 
         # --- Relevance (embedding + lexical)
         section_relevance = self._section_relevance(
@@ -264,12 +240,12 @@ class ConversationTrajectoryMapper(BaseAgent):
                     continue
                 try:
                     e = self._embed(t[:2000])
-                    emb_sims.append(_cosine(e, section_emb))
+                    emb_sims.append(cosine(e, section_emb))
                 except Exception:
                     pass
 
         # Lexical overlap fallback
-        lex = _lexical_overlap("\n".join(traj_sents), section_text)
+        lex = lexical_overlap("\n".join(traj_sents), section_text)
 
         if emb_sims:
             return 0.75 * float(np.mean(emb_sims)) + 0.25 * lex
@@ -297,7 +273,7 @@ class ConversationTrajectoryMapper(BaseAgent):
         cue_score = min(1.0, cue_hits / max(1, len(patterns) / 2.0))
 
         # Content overlap
-        overlap = _lexical_overlap(trajectory_text, section_text)
+        overlap = lexical_overlap(trajectory_text, section_text)
 
         # Hybrid weighting:
         #   cues + overlap as base, HRM and MRQ (if present) as boosters
@@ -339,13 +315,13 @@ class ConversationTrajectoryMapper(BaseAgent):
                     for ss, se in zip(section_sents, section_sent_embs):
                         if se is None:
                             continue
-                        sim = _cosine(te, se)
+                        sim = cosine(te, se)
                         if sim > best:
                             best, best_ss = sim, ss
                 else:
                     # fallback to lexical for this sentence
                     for ss in section_sents:
-                        sim = _lexical_overlap(ts, ss)
+                        sim = lexical_overlap(ts, ss)
                         if sim > best:
                             best, best_ss = sim, ss
 
@@ -357,7 +333,7 @@ class ConversationTrajectoryMapper(BaseAgent):
                 best = 0.0
                 best_ss = ""
                 for ss in section_sents:
-                    sim = _lexical_overlap(ts, ss)
+                    sim = lexical_overlap(ts, ss)
                     if sim > best:
                         best, best_ss = sim, ss
                 if best > 0:
@@ -402,7 +378,7 @@ class ConversationTrajectoryMapper(BaseAgent):
         except Exception as e:
             self.logger.log("MRQScoreError", {"error": str(e)})
         traj_text = "\n".join(m.get("text", "") for m in trajectory.get("messages", []))
-        return _lexical_overlap(traj_text, section_text)
+        return lexical_overlap(traj_text, section_text)
 
     # ----------------------------
     # Embedding

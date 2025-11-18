@@ -134,6 +134,15 @@ services:
       logger: ${logger}
       container: ${container}
 
+  cache:
+    enabled: true
+    cls: stephanie.services.zmq_cache_service.ZmqCacheService
+    dependencies: []
+    args: 
+      cfg: ${cfg}
+      memory: ${memory}
+      logger: ${logger}
+
   zeromodel:
     enabled: true
     cls: stephanie.services.zeromodel_service.ZeroModelService
@@ -175,12 +184,3 @@ services:
       logger: ${logger}
       container: ${container}
 
-  # Optional: cycle watcher if you use it anywhere
-  cache:
-    enabled: false
-    cls: stephanie.services.cache_service.CacheService
-    dependencies: [state]
-    args: 
-      cfg: ${cfg}
-      memory: ${memory}
-      logger: ${logger}

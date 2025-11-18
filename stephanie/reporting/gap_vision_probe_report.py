@@ -31,7 +31,8 @@ import numpy as np
 import plotly.graph_objects as go
 import plotly.subplots as sp
 
-from stephanie.services.graph_layout import render_multi_layout_vpm
+from stephanie.components.nexus.graph.graph_layout import \
+    render_multi_layout_vpm
 from stephanie.services.graph_vision_scorer import VisionScorer
 
 # --------------------------- Helpers ---------------------------

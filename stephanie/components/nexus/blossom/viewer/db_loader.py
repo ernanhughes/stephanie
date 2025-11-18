@@ -1,10 +1,12 @@
 # stephanie/components/nexus/viewer/db_loader.py
 from __future__ import annotations
+
+import datetime as dt
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
-import datetime as dt
 
 import psycopg  # psycopg 3
+
 # If you prefer SQLAlchemy, swap this for your Session and .execute() calls.
 
 @dataclass

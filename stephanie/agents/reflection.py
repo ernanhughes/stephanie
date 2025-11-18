@@ -10,7 +10,7 @@ class ReflectionAgent(BaseAgent):
         super().__init__(cfg, memory, container, logger)
 
     async def run(self, context: dict) -> dict:
-        hypotheses = self.get_scorables(context)
+        hypotheses = context.get(self.input_key, [])
 
         reflections = []
         for hyp in hypotheses:

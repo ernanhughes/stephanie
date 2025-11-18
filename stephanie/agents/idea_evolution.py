@@ -117,7 +117,7 @@ class IdeaEvolutionAgent(BaseAgent):
         """
         Graft pairs of highly similar hypotheses into unified versions.
         """
-        hypotheses = self.get_scorables(context)
+        hypotheses = context.get(self.input_key, [])
         embeddings = [
             await self.memory.embedding.get_or_create(h.get("text")) for h in hypotheses
         ]

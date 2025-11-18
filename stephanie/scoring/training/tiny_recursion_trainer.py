@@ -190,7 +190,9 @@ class TinyTrainer(BaseTrainer):
                     norm = t.norm(dim=-1, keepdim=True).clamp_min(1e-6)
                     return t / norm
 
-                x = _safe_vec(x); y = _safe_vec(y); z = _safe_vec(z)
+                x = _safe_vec(x)
+                y = _safe_vec(y)
+                z = _safe_vec(z)
                 if not torch.isfinite(x).all() or not torch.isfinite(y).all() or not torch.isfinite(z).all():
                     dropped += 1
                     return
@@ -199,13 +201,18 @@ class TinyTrainer(BaseTrainer):
                 t = float(target)
                 t = (max(0.0, min(100.0, t)) / 100.0) if t > 1.0 else max(0.0, min(1.0, t))
 
-                xs.append(x); ys.append(y); zs.append(z)
-                y01.append(t); halt_targets.append(float(halt_t)); seq_lens.append(int(slen))
+                xs.append(x)
+                ys.append(y)
+                zs.append(z)
+                y01.append(t)
+                halt_targets.append(float(halt_t))
+                seq_lens.append(int(slen))
                 label_counts[int(round(t * 100))] += 1
                 kept += 1
             except Exception as e:
                 dropped += 1
-                if self.logger: self.logger.log("TinyRecursionSampleError", {"error": str(e)})
+                if self.logger:
+                    self.logger.log("TinyRecursionSampleError", {"error": str(e)})
 
         # Process all samples with schema detection
         for s in it:
@@ -229,10 +236,13 @@ class TinyTrainer(BaseTrainer):
             if all(k in s for k in ("output_a","output_b","value_a","value_b")):
                 a_out = (s.get("output_a") or "").strip()
                 b_out = (s.get("output_b") or "").strip()
-                a_val = s.get("value_a"); b_val = s.get("value_b")
+                a_val = s.get("value_a")
+                b_val = s.get("value_b")
                 if title:
-                    if a_out and a_val is not None: _push(title, a_out, a_val, z_text=title)
-                    if b_out and b_val is not None: _push(title, b_out, b_val, z_text=title)
+                    if a_out and a_val is not None:
+                        _push(title, a_out, a_val, z_text=title)
+                    if b_out and b_val is not None:
+                        _push(title, b_out, b_val, z_text=title)
                 else:
                     dropped += 1
                 continue
@@ -246,9 +256,11 @@ class TinyTrainer(BaseTrainer):
 
             dropped += 1
 
-            if use_tqdm: it.set_postfix(kept=kept, drop=dropped)
+            if use_tqdm:
+                it.set_postfix(kept=kept, drop=dropped)
 
-        if use_tqdm and hasattr(it, "close"): it.close()
+        if use_tqdm and hasattr(it, "close"):
+            it.close()
 
         # Log label distribution for analysis
         if self.logger and self.log_label_histogram:

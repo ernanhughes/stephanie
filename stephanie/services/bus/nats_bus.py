@@ -31,12 +31,8 @@ from typing import Any, Callable, Dict, List, Optional, Set, Union
 from nats import errors as nats_errors
 from nats.aio.client import Client as NATS
 from nats.errors import TimeoutError as NatsTimeoutError
-from nats.js.api import (
-    ConsumerConfig,
-    DeliverPolicy,
-    RetentionPolicy,
-    StreamConfig,
-)
+from nats.js.api import (ConsumerConfig, DeliverPolicy, RetentionPolicy,
+                         StreamConfig)
 
 from .bus_protocol import BusProtocol
 from .errors import BusRequestError
@@ -140,20 +136,40 @@ class NatsKnowledgeBus(BusProtocol):
 
     async def connect(self, force: bool = False) -> bool:
         """
-        Connects to NATS and ensures JetStream stream is present.
-        Returns True only after:
-          1) TCP connected
-          2) JetStream context acquired
-          3) Stream exists or is created with subjects
-          4) Health publish succeeds
-        On failure/cancellation, closes the temp connection and returns False.
+        Connects to NATS with intelligent backoff and cancellation handling.
+        Returns True only after full readiness (connection + stream + health check).
         """
+        # Quick check for existing valid connection
         if self._connected and self._nc and not self._nc.is_closed and not force:
             return True
 
         async with self._conn_lock:
+            # Double-check pattern after acquiring lock
             if self._connected and self._nc and not self._nc.is_closed and not force:
                 return True
+
+            # Initialize backoff state if needed
+            if not hasattr(self, "_backoff_state"):
+                self._backoff_state = {
+                    "attempts": 0,
+                    "last_attempt": 0.0,
+                    "base_delay": 0.1  # Start with 100ms
+                }
+
+            # Calculate appropriate backoff delay
+            current_time = time.time()
+            if self._backoff_state["attempts"] > 0:
+                delay = min(5.0, self._backoff_state["base_delay"] * (2 ** (self._backoff_state["attempts"] - 1)))
+                # Add jitter to prevent synchronized retries
+                delay = delay * (0.8 + 0.4 * random.random())
+                
+                # Only delay if it's been less than the delay period since last attempt
+                if current_time - self._backoff_state["last_attempt"] < delay:
+                    log.debug("Applying backoff delay of %.2f seconds before connection attempt", delay)
+                    await asyncio.sleep(delay)
+            
+            # Record attempt time
+            self._backoff_state["last_attempt"] = time.time()
 
             # If forcing, drain old connection
             if self._nc and not self._nc.is_closed and force:
@@ -168,13 +184,19 @@ class NatsKnowledgeBus(BusProtocol):
 
             async def _disc_cb():
                 log.debug("NATSDisconnected")
+                # Reset backoff on disconnection (we'll need to reconnect)
+                self._backoff_state["attempts"] = 0
 
             async def _reconn_cb():
                 log.debug("NATSReconnected")
+                # Reset backoff on successful reconnection
+                self._backoff_state["attempts"] = 0
                 await self._on_reconnected()
 
             async def _closed_cb():
                 log.debug("NATSClosed")
+                # Reset backoff when connection is properly closed
+                self._backoff_state["attempts"] = 0
 
             nc = None
             try:
@@ -183,9 +205,9 @@ class NatsKnowledgeBus(BusProtocol):
                     name=self.stream,
                     allow_reconnect=True,
                     max_reconnect_attempts=-1,
-                    reconnect_time_wait=0.5,   # quicker retries
-                    ping_interval=5,            # more frequent pings
-                    max_outstanding_pings=2,    # fail fast if peer unresponsive
+                    reconnect_time_wait=0.5,
+                    ping_interval=5,
+                    max_outstanding_pings=2,
                     error_cb=_err_cb,
                     disconnected_cb=_disc_cb,
                     reconnected_cb=_reconn_cb,
@@ -193,16 +215,23 @@ class NatsKnowledgeBus(BusProtocol):
                 )
                 js = nc.jetstream()
 
-                # Ensure stream exists; create if missing with "<stream>.>" subjects
+                # Ensure stream exists; create if missing
                 try:
                     await js.stream_info(self.stream)
-                except Exception:
+                except nats.js.errors.NotFoundError:
                     cfg = StreamConfig(
                         name=self.stream,
                         subjects=self._stream_subjects,
                         retention=RetentionPolicy.LIMITS,
                     )
                     await js.add_stream(cfg)
+                except Exception as e:
+                    log.error("Failed to verify/create stream: %r", e)
+                    with contextlib.suppress(Exception):
+                        await nc.close()
+                    # Increment backoff counter for stream issues
+                    self._backoff_state["attempts"] += 1
+                    return False
 
                 # Health publish to confirm JS perms
                 health_subject = f"{self.stream}.health"
@@ -212,38 +241,34 @@ class NatsKnowledgeBus(BusProtocol):
                     log.error("NATSHealthPublishFailed subject: %s, error: %r", health_subject, e)
                     with contextlib.suppress(Exception):
                         await nc.close()
+                    # Increment backoff counter for health check failures
+                    self._backoff_state["attempts"] += 1
                     return False
 
+                # Connection successful - reset backoff counter
+                self._backoff_state["attempts"] = 0
+                
                 # Commit only now
                 self._nc = nc
                 self._js = js
                 self._connected = True
-                log.debug("NATSReady servers: %s, stream: %s, subjects: %s",
-                          self.servers, self.stream, self._stream_subjects)
+                log.info("NATSConnected servers: %s, stream: %s", self.servers, self.stream)
 
                 # Start monitors (idempotent)
                 self._start_keepalive()
                 self._start_health_monitoring()
                 return True
 
-            except asyncio.CancelledError:
-                # expected during teardown/timeouts; clean up and QUIETLY fail
-                with contextlib.suppress(Exception):
-                    if nc and not nc.is_closed:
-                        await nc.close()
-                self._connected = False
-                self._nc = None
-                self._js = None
-                log.debug("NATSClientConnectCancelled -> returning False")
-                return False
-
             except Exception as e:
-                log.error("NATSClientConnectFailed error: %r", e)
+                log.warning("NATS connection attempt failed: %r", e)
+                # Increment backoff counter for all other exceptions
+                self._backoff_state["attempts"] += 1
+                
                 with contextlib.suppress(Exception):
                     if nc and not nc.is_closed:
                         await nc.close()
                 return False
-
+        
     async def _on_reconnected(self):
         # Refresh JS context and re-subscribe
         try:
@@ -909,3 +934,34 @@ def jsonl_dlq_writer_factory(path: str):
             f.write(json.dumps(obj, ensure_ascii=False) + "\n")
 
     return write
+
+def _backoff_gen(base=0.25, cap=5.0):
+    delay = base
+    while True:
+        # 20% jitter
+        yield min(cap, delay) * (0.8 + 0.4 * random.random())
+        delay = min(cap, delay * 2.0)
+
+async def _maybe_create_stream(js, name: str, subjects: List[str]):
+    try:
+        await js.stream_info(name)
+        return
+    except Exception:
+        cfg = StreamConfig(
+            name=name,
+            subjects=subjects,
+            retention=RetentionPolicy.LIMITS,
+        )
+        # If another process created it in between, this will raise; ignore.
+        with contextlib.suppress(Exception):
+            await js.add_stream(cfg)
+
+async def _safe_flush(nc, timeout=2.0):
+    try:
+        await nc.flush(timeout=timeout)
+    except (NatsTimeoutError, asyncio.TimeoutError):
+        pass  # not fatal; connect succeeded but server slow to flush
+
+async def _run_coro_fire_and_forget(coro):
+    # keep reconnection callbacks lightweight
+    asyncio.create_task(coro)

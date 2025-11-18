@@ -39,7 +39,7 @@ class DocumentSectionORM(Base):
             "section_text": self.section_text,
             "summary": self.summary,
             "source": self.source,
-            "domains": [d.to_dict() for d in self.domains] if self.domains else [],
+            "extra_data": self.extra_data,
         }
 
     def __repr__(self):

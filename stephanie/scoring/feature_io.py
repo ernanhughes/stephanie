@@ -1,6 +1,6 @@
 from __future__ import annotations
-from typing import Protocol, Dict, Any, List, Optional
-from dataclasses import dataclass
+
+from typing import Any, Dict, List, Optional, Protocol
 
 from stephanie.scoring.scorable import Scorable  # unified model
 

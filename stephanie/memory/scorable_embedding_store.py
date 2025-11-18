@@ -15,6 +15,7 @@ class ScorableEmbeddingStore(BaseSQLAlchemyStore):
     Store for embeddings linked to any Scorable
     (documents, plan_traces, prompts, responses, etc.).
     """
+
     orm_model = ScorableEmbeddingORM
     default_order_by = ScorableEmbeddingORM.created_at.asc()
 
@@ -33,19 +34,22 @@ class ScorableEmbeddingStore(BaseSQLAlchemyStore):
             - embedding_id (int)
             - embedding_type (str)
         """
+
         def op(s):
             obj = ScorableEmbeddingORM(**data, created_at=datetime.now())
-            
+
             s.add(obj)
             if self.logger:
                 self.logger.log("ScorableEmbeddingInserted", data)
             return obj.id
+
         return self._run(op)
 
     def insert_scorable(self, scorable: Scorable) -> int:
         """
         Insert a new embedding record for a Scorable object.
         """
+
         def op(s):
             embedding_id = self.embedding.get_id_for_text(scorable.text)
             data = {
@@ -55,17 +59,22 @@ class ScorableEmbeddingStore(BaseSQLAlchemyStore):
                 "embedding_type": self.embedding.name,
             }
             obj = ScorableEmbeddingORM(**data, created_at=datetime.now())
-            
+
             s.add(obj)
             if self.logger:
                 self.logger.log("ScorableEmbeddingInserted", data)
             return obj.id
+
         return self._run(op)
 
     def get_by_scorable(
-        self, scorable_id: str, scorable_type: str, embedding_type: str | None = None
+        self,
+        scorable_id: str,
+        scorable_type: str,
+        embedding_type: str | None = None,
     ) -> list[ScorableEmbeddingORM]:
         """Fetch all embeddings for a given scorable (optionally filtered by embedding type)."""
+
         def op(s):
             q = s.query(ScorableEmbeddingORM).filter_by(
                 scorable_id=str(scorable_id), scorable_type=scorable_type
@@ -73,12 +82,14 @@ class ScorableEmbeddingStore(BaseSQLAlchemyStore):
             if embedding_type:
                 q = q.filter_by(embedding_type=embedding_type)
             return q.all()
+
         return self._run(op)
 
     def get_embedding_id(
         self, scorable_id: str, scorable_type: str, embedding_type: str
     ) -> int | None:
         """Get a specific embedding_id for a scorable, if it exists."""
+
         def op(s):
             rec = (
                 s.query(ScorableEmbeddingORM)
@@ -90,15 +101,43 @@ class ScorableEmbeddingStore(BaseSQLAlchemyStore):
                 .first()
             )
             return rec.embedding_id if rec else None
+
         return self._run(op)
 
     def get_or_create(self, scorable: Scorable) -> int:
         """
         Return existing row or create a new one safely.
         Ensures uniqueness on (scorable_id, scorable_type, embedding_type).
+
+        IMPORTANT:
+        - Heavy embedding work is done OUTSIDE the SQLAlchemy transaction
+          to avoid idle-in-transaction timeouts when HNet / remote embedders
+          take a long time.
         """
+        # ---- 1) Fast path: does a link already exist? (short DB op via SQLA) ----
+        existing_id = self.get_embedding_id(
+            scorable_id=str(scorable.id),
+            scorable_type=scorable.target_type,
+            embedding_type=self.embedding.name,
+        )
+        if existing_id is not None:
+            return existing_id
+
+        # ---- 2) Ensure base embedding exists OUTSIDE of any SQLAlchemy session ----
+        # We only need the embedding_id here; BaseEmbeddingStore handles its own
+        # commits against self.conn and may do heavy HNet / MXBAI work.
+        embedding_id = self.embedding.get_id_for_text(scorable.text)
+        if embedding_id is None:
+            # This may be slow (HNet chunking + remote call): MUST be outside tx.
+            self.embedding.get_or_create(scorable.text)
+            embedding_id = self.embedding.get_id_for_text(scorable.text)
+            if embedding_id is None:
+                raise RuntimeError(
+                    f"Failed to create base embedding for scorable {scorable.id}"
+                )
+
+        # ---- 3) Insert link row in a short SQLAlchemy transaction ----
         def op(s):
-            
             existing = (
                 s.query(ScorableEmbeddingORM)
                 .filter_by(
@@ -111,25 +150,23 @@ class ScorableEmbeddingStore(BaseSQLAlchemyStore):
             if existing:
                 return existing.id
 
-            try:
-                # Generate embedding if needed
-                self.embedding.get_or_create(scorable.text)
-                embedding_id = self.embedding.get_id_for_text(scorable.text)
-                data = {
-                    "scorable_id": str(scorable.id),
-                    "scorable_type": scorable.target_type,
-                    "embedding_id": embedding_id,
-                    "embedding_type": self.embedding.name,
-                }
-                obj = ScorableEmbeddingORM(**data, created_at=datetime.now())
-                s.add(obj)
-                if self.logger:
-                    self.logger.log("ScorableEmbeddingInserted", data)
-                return obj.id
+            data = {
+                "scorable_id": str(scorable.id),
+                "scorable_type": scorable.target_type,
+                "embedding_id": embedding_id,
+                "embedding_type": self.embedding.name,
+            }
+            obj = ScorableEmbeddingORM(**data, created_at=datetime.now())
+            s.add(obj)
+            if self.logger:
+                self.logger.log("ScorableEmbeddingInserted", data)
+            return obj.id
 
-            except IntegrityError:
-                s.rollback()
-                # Another transaction inserted it first → fetch again
+        try:
+            return self._run(op)
+        except IntegrityError:
+            # Race: another process/thread inserted the row first.
+            def op_retry(s):
                 existing = (
                     s.query(ScorableEmbeddingORM)
                     .filter_by(
@@ -140,4 +177,4 @@ class ScorableEmbeddingStore(BaseSQLAlchemyStore):
                     .first()
                 )
                 return existing.id if existing else None
-        return self._run(op)
+            return self._run(op_retry)

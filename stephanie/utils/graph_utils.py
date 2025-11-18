@@ -5,6 +5,11 @@ import math
 from collections import defaultdict
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
+import networkx as nx
+
+from stephanie.components.nexus.app.types import NexusEdge, NexusNode
+from stephanie.utils.embed_utils import as_list_floats, cos_safe
+
 
 # --------- small utilities ---------
 def _percentiles(vals: Sequence[float], ps=(0.10, 0.25, 0.50, 0.75, 0.90)) -> Dict[str, float]:
@@ -431,3 +436,114 @@ def compute_run_metrics(
         "provenance": provenance,
     }
 
+def compute_positions(nodes: Dict[str, NexusNode], edges: List[NexusEdge]) -> Dict[str, Tuple[float,float]]:
+    G = nx.Graph()
+    G.add_nodes_from(nodes.keys())
+    G.add_edges_from([(e.src, e.dst) for e in edges])
+
+    # Spring layout with deterministic seed; k tuned for speed
+    pos = nx.spring_layout(G, k=None, iterations=100, seed=42, dim=2)  # k auto-scales by nx
+    return { nid: (float(x), float(y)) for nid, (x,y) in pos.items() }
+
+def to_networkx(nodes: Dict[str, Any], edges: List[Any]) -> nx.DiGraph:
+    G = nx.DiGraph()
+    for node_id, n in nodes.items():
+        # Accept either dataclass or mapping
+        data = n.__dict__ if hasattr(n, "__dict__") else dict(n)
+        G.add_node(node_id, **data)
+    for e in edges:
+        data = e.__dict__ if hasattr(e, "__dict__") else dict(e)
+        u = data.get("source") or data.get("src") or data.get("u")
+        v = data.get("target") or data.get("dst") or data.get("v")
+        if u is None or v is None:
+            continue
+        G.add_edge(u, v, **data)
+    return G
+
+def consensus_walk_order(
+    scorables: list[dict],
+    *,
+    goal_vec,
+    alpha: float = 0.7,
+    limit: int | None = None,
+) -> list[int]:
+    """
+    Greedy run ordering that 'thinks':
+      pick an item, update consensus (centroid of picked), then pick the next
+      that maximizes: alpha*sim(goal) + (1-alpha)*sim(consensus).
+
+    Safe for numpy arrays / mixed vector shapes. Falls back to metrics_vector if no embedding.
+    """
+    # --- collect vectors safely (no ndarray truthiness) ---
+    vecs: list[list[float]] = []
+    for s in scorables:
+        v = as_list_floats((s.get("embeddings") or {}).get("global"))
+        if not v:
+            mv = s.get("metrics_vector")
+            if isinstance(mv, dict):
+                v = as_list_floats(list(mv.values()))
+        vecs.append(v)
+
+    n = len(scorables)
+    if n == 0:
+        return []
+
+    tgt = as_list_floats(goal_vec)
+
+    # If absolutely no vectors, keep stable order up to limit
+    if not any(vecs):
+        want = limit or n
+        return list(range(min(want, n)))
+
+    # --- start at argmax sim to goal (ties stable) ---
+    sims_to_goal = [(cos_safe(v, tgt), i) for i, v in enumerate(vecs)]
+    start_idx = max(sims_to_goal, key=lambda t: (t[0], -t[1]))[1]
+
+    picked: list[int] = [start_idx]
+    picked_set = {start_idx}
+
+    # running centroid (len = dim of first non-empty picked vector)
+    def centroid(indices: list[int]) -> list[float]:
+        for i in indices:
+            if vecs[i]:
+                d = len(vecs[i])
+                break
+        else:
+            return []
+        acc = [0.0] * d
+        cnt = 0
+        for i in indices:
+            v = vecs[i]
+            if not v:
+                continue
+            cnt += 1
+            # tolerate length mismatch: add up to min(d, len(v))
+            m = min(d, len(v))
+            for k in range(m):
+                acc[k] += v[k]
+        if cnt == 0:
+            return []
+        return [x / cnt for x in acc]
+
+    c = centroid(picked)
+    want = limit or n
+
+    while len(picked) < want:
+        best_score = -1e9
+        best_j = None
+        for j in range(n):
+            if j in picked_set:
+                continue
+            v = vecs[j]
+            s_goal = cos_safe(v, tgt)
+            s_cons = cos_safe(v, c) if c else 0.0
+            score = alpha * s_goal + (1.0 - alpha) * s_cons
+            if score > best_score:
+                best_score, best_j = score, j
+        if best_j is None:
+            break
+        picked.append(best_j)
+        picked_set.add(best_j)
+        c = centroid(picked)
+
+    return picked

@@ -1,8 +1,8 @@
 from __future__ import annotations
-import logging
-from typing import Dict, Any
 
-from stephanie.scoring.feature_io import FeatureProvider
+import logging
+from typing import Any, Dict
+
 from stephanie.scoring.scorable import Scorable
 
 log = logging.getLogger(__name__)

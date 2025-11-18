@@ -15,16 +15,27 @@ import numpy as np
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.components.nexus.blossom.runner import BlossomRunnerAgent
-from stephanie.components.nexus.graph.knowledge_index import compute_knowledge_index
-from stephanie.services.scoring_service import ScoringService
+from stephanie.components.nexus.blossom.viewer.renderer import \
+    write_garden_frames
+from stephanie.components.nexus.graph.builder import GraphBuilder
+from stephanie.components.nexus.graph.graph import (GraphScore, NexusGraph,
+                                                    NexusGraphConfig,
+                                                    NexusViewManifest)
+from stephanie.components.nexus.graph.knowledge_index import \
+    compute_knowledge_index_from_files
 from stephanie.scoring.scorable import Scorable
+from stephanie.scoring.scorable_processor import ScorableProcessor
+from stephanie.services.bus.events.prompt_job import Priority
+from stephanie.services.bus.prompt_client import PromptClient
+from stephanie.services.bus.prompt_worker import PromptDispatcherWorker
+from stephanie.services.scoring_service import ScoringService
+from stephanie.utils.json_sanitize import dumps_safe
 from stephanie.utils.progress_mixin import ProgressMixin
-from stephanie.components.nexus.blossom.viewer.renderer import write_garden_frames
-from stephanie.components.nexus.graph.knowledge_index import compute_knowledge_index_from_files
 
 log = logging.getLogger(__name__)
 
 # --------------------------- CONFIG ---------------------------
+
 
 @dataclass(slots=True)
 class NexusPollinatorConfig:
@@ -32,7 +43,15 @@ class NexusPollinatorConfig:
     sharpen_iters: int = 1
     novelty_tau: float = 0.12
     promote_margin: float = 0.02
-    dims: List[str] = field(default_factory=lambda: ["alignment", "faithfulness", "coverage", "clarity", "coherence"])
+    dims: List[str] = field(
+        default_factory=lambda: [
+            "alignment",
+            "faithfulness",
+            "coverage",
+            "clarity",
+            "coherence",
+        ]
+    )
     scorers: List[str] = field(default_factory=lambda: ["sicql", "mrq", "hrm"])
     scorer_weights: Dict[str, float] = field(default_factory=dict)
     dimension_weights: Dict[str, float] = field(default_factory=dict)
@@ -40,11 +59,22 @@ class NexusPollinatorConfig:
     use_vpm_phi: bool = False
     persist_scores: bool = True
     blossom_cfg: Dict[str, Any] = field(default_factory=dict)
-    # new convenience mirrors 
-    offload_mode: str = "await"   # "await" | "fire_and_forget" | "disabled"
-    max_inflight: int = 64        # global inflight LLM jobs
+
+    offload_mode: str = "await"  # "await" | "fire_and_forget" | "disabled"
+    max_inflight: int = 64  # global inflight LLM jobs
     response_timeout_s: float = 90.0
     response_poll_ms: int = 250
+
+    attr_enrichment: Dict[str, Any] = field(default_factory=lambda: {
+        "enabled": True,
+        "min_columns": 120,          # treat as “already enriched” if >= this many columns
+        "baseline_topq": 0.9,        # enrich parents in top 10% after baseline
+        "cands_topk": 0,             # 0 = skip; else enrich top-K candidates by fused score
+        "winner_always": True,       # always enrich the chosen winner
+        "max_total": 200,            # safety budget per run
+        "max_inflight": 4,           # parallelism cap
+        "ttl_minutes": 1440          # if you add staleness checks later
+    })
 
     @staticmethod
     def from_cfg(cfg: Dict[str, Any]) -> NexusPollinatorConfig:
@@ -54,7 +84,18 @@ class NexusPollinatorConfig:
             sharpen_iters=int(cfg.get("sharpen_iters", 1)),
             novelty_tau=float(cfg.get("novelty_tau", 0.12)),
             promote_margin=float(cfg.get("promote_margin", 0.02)),
-            dims=list(cfg.get("dims", ["alignment", "faithfulness", "coverage", "clarity", "coherence"])),
+            dims=list(
+                cfg.get(
+                    "dims",
+                    [
+                        "alignment",
+                        "faithfulness",
+                        "coverage",
+                        "clarity",
+                        "coherence",
+                    ],
+                )
+            ),
             scorers=list(cfg.get("scorers", ["sicql", "mrq", "hrm"])),
             scorer_weights=dict(cfg.get("scorer_weights", {})),
             dimension_weights=dict(cfg.get("dimension_weights", {})),
@@ -62,14 +103,30 @@ class NexusPollinatorConfig:
             use_vpm_phi=bool(cfg.get("use_vpm_phi", False)),
             persist_scores=bool(cfg.get("persist_scores", True)),
             blossom_cfg=bc,
-            offload_mode=str(cfg.get("offload_mode", bc.get("offload_mode", "await"))),
-            max_inflight=int(cfg.get("max_inflight", bc.get("max_inflight", 64))),
-            response_timeout_s=float(cfg.get("response_timeout_s", bc.get("response_timeout_s", 90.0))),
-            response_poll_ms=int(cfg.get("response_poll_ms", bc.get("response_poll_ms", 250))),
+            offload_mode=str(
+                cfg.get("offload_mode", bc.get("offload_mode", "await"))
+            ),
+            max_inflight=int(
+                cfg.get("max_inflight", bc.get("max_inflight", 64))
+            ),
+            response_timeout_s=float(
+                cfg.get(
+                    "response_timeout_s", bc.get("response_timeout_s", 90.0)
+                )
+            ),
+            response_poll_ms=int(
+                cfg.get("response_poll_ms", bc.get("response_poll_ms", 250))
+            ),
+            attr_enrichment=dict(cfg.get("attr_enrichment", {})) or {
+                "enabled": True, "min_columns": 120, "baseline_topq": 0.9,
+                "cands_topk": 0, "winner_always": True, "max_total": 200,
+                "max_inflight": 4, "ttl_minutes": 1440
+            },
         )
 
 
 # --------------------------- AGENT ---------------------------
+
 
 class NexusPollinatorAgent(ProgressMixin, BaseAgent):
     """
@@ -86,19 +143,79 @@ class NexusPollinatorAgent(ProgressMixin, BaseAgent):
         self._init_progress(container, logger)
         self.cfg = NexusPollinatorConfig.from_cfg(cfg or {})
         self.scoring: ScoringService = container.get("scoring")
-        self.blossom = BlossomRunnerAgent(self.cfg.blossom_cfg, memory, container, logger)
+        self.blossom = BlossomRunnerAgent(
+            self.cfg.blossom_cfg, memory, container, logger
+        )
+        self.scorable_processor = ScorableProcessor(
+            cfg=cfg, memory=memory, container=container, logger=logger
+        )
+        self.graph_builder = GraphBuilder(
+            cfg=self.cfg, memory=self.memory, container=self.container, logger=self.logger
+        )
+        self._attr_budget = int(self.cfg.attr_enrichment.get("max_total", 200))
+        self._attr_inflight = asyncio.Semaphore(int(self.cfg.attr_enrichment.get("max_inflight", 4)))
+        self._enriched_ids: set[str] = set()  
 
     # --------------------------- PUBLIC ---------------------------
 
     async def run(self, context: Dict[str, Any]) -> Dict[str, Any]:
-        self.cfg.scorer_weights = self._normalize_weights(self.cfg.scorer_weights)
-        self.cfg.dimension_weights = self._normalize_weights(self.cfg.dimension_weights)
+        cache = self.container.get("cache")
+        if cache:
+            await self.memory.ensure_bus_connected()
+            cache.set_bus(self.memory.bus)     # critical line    
+            self.logger.log("CacheServiceInitialized", {"type": type(cache).__name__})
+
+        prompt_worker = PromptDispatcherWorker(
+            cfg=self.cfg,
+            memory=self.memory,
+            container=self.container,
+            logger=self.logger,
+        )
+        await prompt_worker.start()
+        self.cfg.scorer_weights = self._normalize_weights(
+            self.cfg.scorer_weights
+        )
+        self.cfg.dimension_weights = self._normalize_weights(
+            self.cfg.dimension_weights
+        )
 
         goal_text = (context.get("goal") or {}).get("goal_text", "") or ""
-        items: List[Scorable] = list(context.get("scorables", []) or [])
+        items: List[Scorable] = self._to_scorables(
+            context.get("scorables", [])
+        )
         if not items:
             context[self.output_key] = {"status": "no_items"}
             return context
+        parent_rows = await self._materialize_rows(items, context)
+
+        run_id = context.get("pipeline_run_id")
+        run_dir = self._run_dir(context)
+
+        # NEW: optional Nexus graph handle for this run
+        nexus_graph = self._get_nexus_graph(context)
+
+        # ---------- (A) BASELINE GRAPH (GraphBuilder) ----------
+        baseline_manifest = self._manifest_from_scorables(run_id, items)
+        baseline_path = run_dir / "baseline_graph.json"
+        g_report = self.graph_builder.build(
+            run_id,
+            baseline_manifest,
+            namespace="vpm:baseline",
+            knn_k=8,
+            sim_threshold=0.35,
+            add_temporal=True,
+            add_mst_backbone=True,
+            add_domain_edges=True,
+            add_entity_edges=True,
+            export_path=str(baseline_path),
+        )
+        context["nexus_graph_json"] = str(baseline_path)
+
+        old_baseline_path = run_dir / "old_graph_baseline.json"
+        self._write_graph(g_report, old_baseline_path)
+        context["nexus_graph_json_old"] = str(
+            old_baseline_path
+        )  # viewer needs this
 
         # collect per-episode telemetry
         context.setdefault("blossom_runs", [])
@@ -106,7 +223,9 @@ class NexusPollinatorAgent(ProgressMixin, BaseAgent):
         # sync runner defaults
         try:
             self.blossom.run_cfg.return_top_k = int(self.cfg.k_candidates)
-            self.blossom.run_cfg.sharpen_top_k = int(self.cfg.k_candidates if self.cfg.sharpen_iters > 0 else 0)
+            self.blossom.run_cfg.sharpen_top_k = int(
+                self.cfg.k_candidates if self.cfg.sharpen_iters > 0 else 0
+            )
         except Exception:
             pass
 
@@ -121,17 +240,51 @@ class NexusPollinatorAgent(ProgressMixin, BaseAgent):
 
         base_evals: Dict[str, float] = {}
         base_vectors: Dict[str, Dict[str, float]] = {}
+        all_vectors: Dict[str, Dict[str, float]] = {}  # NEW: global dim cache
+        final_cohort: List[Scorable] = []  # <- we'll fill with winners/parents
+        improved_qualities: Dict[str, float] = {}
+        improved_vectors: Dict[str, Dict[str, float]] = {}
 
-        for idx, s in enumerate(items):
-            parent_scorable = Scorable.from_dict(s)
-            eval_res = self._eval_state(parent_scorable, context, use_vpm_phi=use_vpm_phi)
+        for idx, s in enumerate(items, start=1):
+            parent_scorable = s
+            eval_res = self._eval_state(
+                parent_scorable, context, use_vpm_phi=use_vpm_phi
+            )
             sid = self._sid(parent_scorable, idx)
+            dims_vec = dict(eval_res.get("dims") or {})
             base_evals[sid] = float(eval_res["overall"])
-            base_vectors[sid] = dict(eval_res["dims"])
+            base_vectors[sid] = dims_vec
+            all_vectors[sid] = dims_vec  # NEW
             if self.cfg.persist_scores:
                 self._persist_dims(parent_scorable, eval_res, context)
 
         baseline_summary = self._cohort_summary(list(base_evals.values()))
+
+        # --- JIT enrichment for top-quantile parents (post-baseline) ---
+        try:
+            q = float(self.cfg.attr_enrichment.get("baseline_topq", 0.9))
+        except Exception as _e:
+            self._slog("AttrEnrichBaselineTopQError", {"error": str(_e)})
+
+        if nexus_graph is not None:
+            try:
+                nexus_graph.ingest_manifest(
+                    baseline_manifest,
+                    qualities=base_evals,
+                    metrics=all_vectors,
+                    phase="baseline",
+                )
+                if isinstance(g_report, dict) and g_report.get("graph_json"):
+                    nexus_graph.write_edges_from_graph_json(
+                        g_report["graph_json"],
+                        phase="baseline",
+                        channel="vpm:baseline",
+                    )
+            except Exception as e:
+                self._slog(
+                    "NexusBaselineSyncError",
+                    {"error": str(e)},
+                )
 
         # ---------------- 2) Blossom + local select --------
         self.pstage(task_run, stage="blossom")
@@ -141,21 +294,32 @@ class NexusPollinatorAgent(ProgressMixin, BaseAgent):
         run_dir = self._run_dir(context)
 
         for idx, s in enumerate(items, start=1):
-            parent_scorable = Scorable.from_dict(s)
+            parent_scorable = s
 
             # ---- emit garden event ----
-            pid = getattr(parent_scorable, "blossom_node_id", None) or self._sid(parent_scorable, idx)
-            self._emit_garden_event(run_dir, "episode_start",
-                parent_id=str(pid), 
+            pid = getattr(
+                parent_scorable, "blossom_node_id", None
+            ) or self._sid(parent_scorable, idx)
+            self._emit_garden_event(
+                run_dir,
+                "episode_start",
+                parent_id=str(pid),
                 parent_text_len=len(parent_scorable.text or ""),
-                parent_overall=base_evals[self._sid(parent_scorable, idx)])
+                parent_overall=base_evals[self._sid(parent_scorable, idx)],
+            )
 
             # ---- per-episode subtask ----
-            ep_task = self._task_episode_name(getattr(parent_scorable, "id", "unknown"))
-            est_total = max(1, self.cfg.k_candidates * max(1, self.cfg.sharpen_iters))
+            ep_task = self._task_episode_name(
+                getattr(parent_scorable, "id", "unknown")
+            )
+            est_total = max(
+                1, self.cfg.k_candidates * max(1, self.cfg.sharpen_iters)
+            )
             self.pstart(ep_task, total=est_total)
 
-            use_offload = bool(self.cfg.blossom_cfg.get("offload_prompts", False))
+            use_offload = bool(
+                self.cfg.blossom_cfg.get("offload_prompts", False)
+            )
             mode = self.cfg.offload_mode
 
             if use_offload and mode in ("await", "fire_and_forget"):
@@ -165,28 +329,32 @@ class NexusPollinatorAgent(ProgressMixin, BaseAgent):
                     {**context, "progress_task": ep_task},
                     k=self.cfg.k_candidates,
                     model=self.cfg.blossom_cfg.get("model", "gpt-4o-mini"),
-                    target_pool=self.cfg.blossom_cfg.get("target_pool", "provider"),
+                    target_pool=self.cfg.blossom_cfg.get(
+                        "target_pool", "provider"
+                    ),
                 )
 
                 if mode == "fire_and_forget":
                     # mark pending and move on; a collector will finalize later
-                    context.setdefault("pending_prompt_tickets", []).extend(tickets)
-                    decisions.append({
-                        "parent_id": getattr(parent_scorable, "id", None),
-                        "status": "pending_prompts",
-                        "k_requested": self.cfg.k_candidates
-                    })
+                    context.setdefault("pending_prompt_tickets", []).extend(
+                        tickets
+                    )
+                    decisions.append(
+                        {
+                            "parent_id": getattr(parent_scorable, "id", None),
+                            "status": "pending_prompts",
+                            "k_requested": self.cfg.k_candidates,
+                        }
+                    )
                     self.pstep(task_run, n=1)
                     self.pdone(ep_task)
                     continue
 
                 # mode == "await"  →  2) Wait concurrently (bounded globally)
-                # Use a global inflight window: schedule many parents before awaiting.
-                # Simple approach: gather immediately; faster approach: push this into a task pool.
                 texts = await self._await_offloaded_candidates(
                     tickets,
                     timeout_s=self.cfg.response_timeout_s,
-                    poll_ms=self.cfg.response_poll_ms
+                    poll_ms=self.cfg.response_poll_ms,
                 )
 
                 # 3) Convert results -> children Scorables
@@ -194,14 +362,19 @@ class NexusPollinatorAgent(ProgressMixin, BaseAgent):
                 for i, txt in enumerate(texts):
                     if not txt:
                         continue
-                    children.append(Scorable(
-                        id=f"bl_off:{getattr(parent_scorable,'id','x')}:{i}",
-                        text=str(txt),
-                        target_type=getattr(parent_scorable, "target_type", "document"),
-                    ))
+                    children.append(
+                        Scorable(
+                            id=f"bl_off:{getattr(parent_scorable, 'id', 'x')}:{i}",
+                            text=str(txt),
+                            target_type=getattr(
+                                parent_scorable, "target_type", "document"
+                            ),
+                        )
+                    )
                 blossom_meta = {
-                    "episode_id": f"offload:{getattr(parent_scorable,'id','x')}",
-                    "winners": [], "top_reward": 0.0,
+                    "episode_id": f"offload:{getattr(parent_scorable, 'id', 'x')}",
+                    "winners": [],
+                    "top_reward": 0.0,
                     "k_requested": self.cfg.k_candidates,
                     "k_resolved": len(children),
                 }
@@ -209,107 +382,186 @@ class NexusPollinatorAgent(ProgressMixin, BaseAgent):
             else:
                 # original synchronous path
                 children, blossom_meta = await self._blossom_and_refine(
-                    s, {**context, "progress_task": ep_task}, self.cfg.k_candidates
+                    s,
+                    {**context, "progress_task": ep_task},
+                    self.cfg.k_candidates,
                 )
 
-
-
-
-
             # best-effort progress reconciliation (if runner didn't emit live)
-            self._reconcile_episode_progress_from_events(ep_task, blossom_meta, est_total)
+            self._reconcile_episode_progress_from_events(
+                ep_task, blossom_meta, est_total
+            )
 
             # end subtask
             self.pdone(ep_task)
 
             # diversity + novelty
             diversity_raw = self._blossom_diversity(children)
-            filtered_children = self._novel_children(parent_scorable, children, tau=self.cfg.novelty_tau)
+            filtered_children = self._novel_children(
+                parent_scorable, children, tau=self.cfg.novelty_tau
+            )
             diversity_post = self._blossom_diversity(filtered_children)
 
             # evaluate filtered
-            cand_evals = await self._eval_many(filtered_children, context, use_vpm_phi)
+            cand_evals = await self._eval_many(
+                filtered_children, context, use_vpm_phi
+            )
+
+            # NEW: cache per-child dim vectors globally
+            for c, res in cand_evals:
+                cid = str(getattr(c, "id", "") or "")
+                if cid:
+                    all_vectors[cid] = dict(res.get("dims") or {})
+
+            # Optional: enrich top-K candidates by fused score (cheap guard)
+            try:
+                k_top = int(self.cfg.attr_enrichment.get("cands_topk", 0))
+                if k_top > 0:
+                    await self._enrich_candidates_topk(
+                        cand_evals, k_top, context
+                    )
+            except Exception as _e:
+                self._slog(
+                    "AttrEnrichCandsTopKError", {"error": str(_e)}
+                )
 
             # emit garden events for candidates
             for c, res in cand_evals:
-                pid = getattr(parent_scorable, "blossom_node_id", None) or self._sid(parent_scorable, idx)
-                nid = getattr(c, "blossom_node_id", None) or self._sid(c, idx)
-                self._emit_garden_event(run_dir, "add_node",
-                                        node_id=str(nid),
-                                        parent_id=str(pid),
-                                        overall=float(res.get("overall", 0.0)),
-                                        dims=res.get("dims", {}),
-                                        text_len=len(getattr(c, "text", "") or ""),
-                                        source="blossom"  # provenance
-                                        ),
-                self._emit_garden_event(run_dir, "add_edge",
-                                        source=str(pid),
-                                        target=str(nid),
-                                        edge_type="candidate")
+                pid = getattr(
+                    parent_scorable, "blossom_node_id", None
+                ) or self._sid(parent_scorable, idx)
+                nid = getattr(c, "blossom_node_id", None) or self._sid(
+                    c, idx
+                )
+                self._emit_garden_event(
+                    run_dir,
+                    "add_node",
+                    node_id=str(nid),
+                    parent_id=str(pid),
+                    overall=float(res.get("overall", 0.0)),
+                    dims=res.get("dims", {}),
+                    text_len=len(getattr(c, "text", "") or ""),
+                    source="blossom",  # provenance
+                )
+                self._emit_garden_event(
+                    run_dir,
+                    "add_edge",
+                    source=str(pid),
+                    target=str(nid),
+                    edge_type="candidate",
+                )
 
-
-            parent_overall = float(base_evals[self._sid(parent_scorable, idx)])
+            parent_overall = float(
+                base_evals[self._sid(parent_scorable, idx)]
+            )
 
             # compute merits then pick best
             parent_len = len(parent_scorable.text or "")
             best = None
             for c, res in cand_evals:
-                m = self._merit(base_vectors[str(getattr(parent_scorable, "id", None))], res,
-                                text_len=len(c.text or ""), base_len=parent_len)
+                m = self._merit(
+                    base_vectors[
+                        str(getattr(parent_scorable, "id", None))
+                    ],
+                    res,
+                    text_len=len(c.text or ""),
+                    base_len=parent_len,
+                )
                 if best is None or m > best[2]:
                     best = (c, res, m)
             if not best:
                 # no viable children → keep parent
-                winner, win_eval = parent_scorable, {"overall": parent_overall, "dims": {}}
+                winner, win_eval = (
+                    parent_scorable,
+                    {"overall": parent_overall, "dims": {}},
+                )
             else:
                 winner, win_eval = best[0], best[1]
-                if float(win_eval.get("overall", 0.0)) - parent_overall < self.cfg.promote_margin:
-                    winner, win_eval = parent_scorable, {"overall": parent_overall, "dims": {}}
+                if (
+                    float(win_eval.get("overall", 0.0)) - parent_overall
+                    < self.cfg.promote_margin
+                ):
+                    winner, win_eval = (
+                        parent_scorable,
+                        {"overall": parent_overall, "dims": {}},
+                    )
 
+            # Track improved cohort metrics for Nexus view
+            winner_sid = self._sid(winner, idx)
+            win_overall = float((win_eval or {}).get("overall", parent_overall))
+            improved_qualities[winner_sid] = win_overall
+            improved_vectors[winner_sid] = dict((win_eval or {}).get("dims") or {})
 
-            wid = getattr(winner, "blossom_node_id", None) or self._sid(winner, idx)
-            pid = getattr(parent_scorable, "blossom_node_id", None) or self._sid(parent_scorable, idx)
+            final_cohort.append(winner)  # <- collect improved cohort
 
-            winner_overall = float((win_eval or {}).get("overall", parent_overall))
+            wid = getattr(winner, "blossom_node_id", None) or self._sid(
+                winner, idx
+            )
+            pid = getattr(
+                parent_scorable, "blossom_node_id", None
+            ) or self._sid(parent_scorable, idx)
+
+            winner_overall = float(
+                (win_eval or {}).get("overall", parent_overall)
+            )
             lift = float(winner_overall - parent_overall)
             if winner and lift >= self.cfg.promote_margin:
-                self._emit_garden_event(run_dir, "promote",
+                self._emit_garden_event(
+                    run_dir,
+                    "promote",
                     parent_id=str(pid),
                     child_id=str(wid),
                     lift=float(lift),
-                    child_overall=float(winner_overall)
+                    child_overall=float(winner_overall),
                 )
                 # also mark node
-                self._emit_garden_event(run_dir, "node_update",
+                self._emit_garden_event(
+                    run_dir,
+                    "node_update",
                     node_id=str(wid),
                     status="promoted",
-                    overall=float(winner_overall))
-
+                    overall=float(winner_overall),
+                )
 
             # blossom linkage summary for the decision
-            decisions.append({
-                "parent_id": getattr(parent_scorable, "id", None),
-                "parent_overall": parent_overall,
-                "winner_id": getattr(winner, "id", None),
-                "winner_overall": winner_overall,
-                "lift": lift,
-                "k_generated": len(children),
-                "k_after_novelty": len(filtered_children),
-                "diversity_raw": float(diversity_raw),
-                "diversity_post": float(diversity_post),
-                "blossom_episode_id": blossom_meta.get("episode_id"),
-                "blossom_winner_leaf_ids": [w.get("leaf_id") for w in blossom_meta.get("winners", [])],
-                "blossom_winner_rewards": [float(w.get("reward", 0.0)) for w in blossom_meta.get("winners", [])],
-                "blossom_winner_paths": [w.get("path") for w in blossom_meta.get("winners", [])],
-                "blossom_top_reward": float(blossom_meta.get("top_reward", 0.0)),
-            })
+            decisions.append(
+                {
+                    "parent_id": getattr(parent_scorable, "id", None),
+                    "parent_overall": parent_overall,
+                    "winner_id": getattr(winner, "id", None),
+                    "winner_overall": winner_overall,
+                    "lift": lift,
+                    "k_generated": len(children),
+                    "k_after_novelty": len(filtered_children),
+                    "diversity_raw": float(diversity_raw),
+                    "diversity_post": float(diversity_post),
+                    "blossom_episode_id": blossom_meta.get("episode_id"),
+                    "blossom_winner_leaf_ids": [
+                        w.get("leaf_id")
+                        for w in blossom_meta.get("winners", [])
+                    ],
+                    "blossom_winner_rewards": [
+                        float(w.get("reward", 0.0))
+                        for w in blossom_meta.get("winners", [])
+                    ],
+                    "blossom_winner_paths": [
+                        w.get("path")
+                        for w in blossom_meta.get("winners", [])
+                    ],
+                    "blossom_top_reward": float(
+                        blossom_meta.get("top_reward", 0.0)
+                    ),
+                }
+            )
 
-            self._emit_garden_event(run_dir, "decision",
+            self._emit_garden_event(
+                run_dir,
+                "decision",
                 parent_id=str(pid),
                 winner_id=str(wid) if wid is not None else None,
                 lift=float(lift),
                 k_generated=len(children),
-                k_after_novelty=len(filtered_children)
+                k_after_novelty=len(filtered_children),
             )
 
             # persist episode meta
@@ -319,7 +571,6 @@ class NexusPollinatorAgent(ProgressMixin, BaseAgent):
             self._safe_link_and_promote(
                 parent_scorable, [c for c, _ in cand_evals], winner, lift
             )
-
 
             # training events
             self._safe_emit_training(
@@ -335,14 +586,76 @@ class NexusPollinatorAgent(ProgressMixin, BaseAgent):
         # ---------------- 3) Cohort verdict ----------------
         self.pstage(task_run, stage="finalize")
 
+        # NEW: winner-centric quality map for improved cohort
+        improved_evals: Dict[str, float] = {}
+        for d in decisions:
+            wid = d.get("winner_id")
+            if wid is None:
+                continue
+            improved_evals[str(wid)] = float(
+                d.get("winner_overall", d.get("parent_overall", 0.0))
+            )
+
+        # ---------- (C) IMPROVED GRAPH ----------
+        improved_manifest = self._manifest_from_scorables(run_id, final_cohort)
+        improved_path = run_dir / "graph_improved.json"
+        g2_report = self.graph_builder.build(
+            run_id,
+            improved_manifest,
+            namespace="vpm:improved",
+            knn_k=8,
+            sim_threshold=0.35,
+            add_temporal=True,
+            add_mst_backbone=True,
+            add_domain_edges=True,
+            add_entity_edges=True,
+            export_path=str(improved_path),
+        )
+        old_improved_path = run_dir / "old_graph_improved.json"
+        self._write_graph(g2_report, old_improved_path)
+        context["nexus_graph_json"] = str(
+            improved_path
+        )  # viewer now points at improved
+
+        # NEW: sync improved cohort into Nexus graph
+        if nexus_graph is not None:
+            try:
+                nexus_graph.ingest_manifest(
+                    improved_manifest,
+                    qualities=improved_evals,
+                    metrics=all_vectors,
+                    phase="improved",
+                )
+                if isinstance(g2_report, dict) and g2_report.get("graph_json"):
+                    nexus_graph.write_edges_from_graph_json(
+                        g2_report["graph_json"],
+                        phase="improved",
+                        channel="vpm:improved",
+                    )
+            except Exception as e:
+                self._slog(
+                    "NexusImprovedSyncError",
+                    {"error": str(e)},
+                )
+
         wins = sum(1 for d in decisions if d["lift"] > 0.0)
         win_rate = float(wins / max(1, len(decisions)))
         lifts = [float(d["lift"]) for d in decisions] or [0.0]
         cohort_lift = float(stats.mean(lifts))
-        topk = sorted(base_evals.values(), reverse=True)[: max(1, math.ceil(0.1 * len(base_evals)))]
-        promoted_overalls = [max(d["parent_overall"], d["winner_overall"]) for d in decisions]
-        topk_new = sorted(promoted_overalls, reverse=True)[: max(1, math.ceil(0.1 * len(promoted_overalls)))]
-        topk_lift = float((stats.mean(topk_new) - stats.mean(topk))) if topk and topk_new else 0.0
+        topk = sorted(base_evals.values(), reverse=True)[
+            : max(1, math.ceil(0.1 * len(base_evals)))
+        ]
+        promoted_overalls = [
+            max(d["parent_overall"], d["winner_overall"]) for d in decisions
+        ]
+        topk_new = sorted(promoted_overalls, reverse=True)[
+            : max(1, math.ceil(0.1 * len(promoted_overalls)))
+        ]
+        topk_lift = (
+            float((stats.mean(topk_new) - stats.mean(topk)))
+            if topk and topk_new
+            else 0.0
+        )
 
         report = {
             "status": "ok",
@@ -352,168 +665,240 @@ class NexusPollinatorAgent(ProgressMixin, BaseAgent):
             "win_rate": win_rate,
             "mean_lift": cohort_lift,
             "topk_lift": topk_lift,
-            "mean_blossom_diversity_raw": float(stats.mean([d["diversity_raw"] for d in decisions])) if decisions else 0.0,
-            "mean_blossom_diversity_post": float(stats.mean([d["diversity_post"] for d in decisions])) if decisions else 0.0,
+            "mean_blossom_diversity_raw": float(
+                stats.mean([d["diversity_raw"] for d in decisions])
+            )
+            if decisions
+            else 0.0,
+            "mean_blossom_diversity_post": float(
+                stats.mean([d["diversity_post"] for d in decisions])
+            )
+            if decisions
+            else 0.0,
             "blossom_success_rate": self._blossom_success_rate(decisions),
             "decisions": decisions,
         }
         try:
             run_dir = self._run_dir(context)
-            (run_dir / "nexus_improver_report.json").write_text(
-                json.dumps(report, ensure_ascii=False, indent=2),
-                encoding="utf-8"
+            report_path = run_dir / "nexus_improver_report.json"
+            report_path.write_text(
+                dumps_safe(report, ensure_ascii=False, indent=2),
+                encoding="utf-8",
             )
         except Exception as e:
             self._slog("WriteReportError", {"error": str(e)})
+            report_path = None
 
         self.pdone(task_run)
         context[self.output_key] = report
 
-        write_garden_frames(run_dir, baseline_graph_json=context.get("nexus_graph_json"))
+        # Garden frames (may or may not return a path; tolerate None)
+        frames_path = None
+        try:
+            frames_path = write_garden_frames(
+                run_dir, baseline_graph_json=context.get("nexus_graph_json")
+            )
+        except Exception as e:
+            self._slog("GardenFramesError", {"error": str(e)})
+            frames_path = None
 
-        run_dir = self._run_dir(context)
-        baseline_path = run_dir / "baseline_graph.json"      # write this once at start
-        improved_path = run_dir / "graph_improved.json"      # already written by renderer
-        report_path   = run_dir / "nexus_improver_report.json"
+        # Knowledge index from baseline + improved graphs
+        baseline_path = run_dir / "baseline_graph.json"
+        improved_path = run_dir / "graph_improved.json"
+        try:
+            idx = compute_knowledge_index_from_files(
+                baseline_path,
+                improved_path,
+                node_quality_attr="quality",
+                edge_quality_attr="weight",
+                extra_report=report_path,
+            )
+            (run_dir / "knowledge_index.json").write_text(
+                dumps_safe(idx, indent=2), encoding="utf-8"
+            )
+            self._slog("KnowledgeIndex", idx)
+        except Exception as e:
+            self._slog("KnowledgeIndexError", {"error": str(e)})
 
-        idx = compute_knowledge_index_from_files(
-            baseline_path,
-            improved_path,
-            node_quality_attr="quality",   # adjust if you store a different name
-            edge_quality_attr="weight",    # adjust if you store a different name
-            extra_report=report_path,
-        )
-        (run_dir / "knowledge_index.json").write_text(json.dumps(idx, indent=2), encoding="utf-8")
-        self._slog("KnowledgeIndex", idx)
+        # ---------------- Nexus view manifest (NEW) ----------------
+        try:
+            # Baseline GraphScore: treat "quality" as baseline mean, and expose median/p90 too
+            baseline_mean_dims = {
+                "quality": float(baseline_summary.get("mean", 0.0)),
+                "median": float(baseline_summary.get("median", 0.0)),
+                "p90": float(baseline_summary.get("p90", 0.0)),
+            }
+            baseline_score_obj = GraphScore(
+                node_count=len(baseline_manifest.get("items") or []),
+                edge_count=int(g_report.get("edges_written", 0)),
+                mean_dims=baseline_mean_dims,
+            )
+
+            # Improved GraphScore: use promoted_overalls + lift stats
+            improved_mean_quality = float(
+                stats.mean(promoted_overalls)
+            ) if promoted_overalls else baseline_mean_dims["quality"]
+
+            improved_mean_dims = {
+                "quality": improved_mean_quality,
+                "mean_lift": cohort_lift,
+                "win_rate": win_rate,
+                "topk_lift": topk_lift,
+            }
+            improved_score_obj = GraphScore(
+                node_count=len(improved_manifest.get("items") or []),
+                edge_count=int(g2_report.get("edges_written", 0)),
+                mean_dims=improved_mean_dims,
+            )
+
+            view = NexusViewManifest(
+                run_id=str(run_id),
+                goal_preview=goal_text[:120],
+                baseline_graph_path=str(baseline_path),
+                improved_graph_path=str(improved_path),
+                frames_path=str(frames_path) if frames_path else None,
+                report_path=str(report_path) if report_path else None,
+                baseline_score=baseline_score_obj.overall(),
+                improved_score=improved_score_obj.overall(),
+                extra={
+                    "baseline_mean_dims": baseline_score_obj.mean_dims,
+                    "improved_mean_dims": improved_score_obj.mean_dims,
+                    "knowledge_index_path": str(run_dir / "knowledge_index.json"),
+                },
+            )
+
+            view_path = run_dir / "nexus_view_manifest.json"
+            view.write_json(view_path)
+            context["nexus_view_manifest"] = str(view_path)
+            self._slog("NexusViewManifest", {"path": str(view_path)})
+        except Exception as e:
+            self._slog("NexusViewManifestError", {"error": str(e)})
 
         return context
 
-
-    # inside NexusImproverAsyncAgent
-    async def _offload_candidate_prompts(
-        self,
-        parent: Scorable,
-        context: Dict[str, Any],
-        *,
-        k: int,
-        model: str,
-        target_pool: str,
-    ) -> List[Dict[str, str]]:
-        """
-        Publish K prompt jobs for this parent and return a list of tickets:
-        [{job_id, return_topic, parent_id, k_index}, ...]
-        """
-        from stephanie.prompts.prompt_client import PromptClient
-
-        # Build K prompts (you likely already have a prompt template in Blossom)
-        prompts = []
-        for i in range(k):
-            prompts.append({
-                "messages": [
-                    {"role": "system", "content": "You are a careful refiner."},
-                    {"role": "user", "content": f"Refine this answer for goal:\n{(context.get('goal') or {}).get('goal_text','')}\n\n---\n{parent.text}\n"}
-                ],
-                # you can pour per-prompt params here
-            })
-
-        client = PromptClient(self.cfg.blossom_cfg, self.memory, self.container, self.logger)
-        tickets = await client.offload_many(
-            scorable_id=str(parent.id),
-            prompts=prompts,
-            model=model,
-            target_pool=target_pool,
-            priority="high",
-            group_key=f"nexus:{context.get('pipeline_run_id')}",
-            meta={"purpose": "nexus_blossom_refine", "parent_id": str(parent.id)},
-            response_format="text",
-        )
-        # normalize for context
-        return [{"job_id": jid, "return_topic": rt, "parent_id": str(parent.id), "k_index": str(i)} for i,(jid,rt) in enumerate(tickets)]
-
     # --------------------------- CORE HELPERS ---------------------------
 
-    def _eval_state(self, scorable: Scorable, context: Dict[str, Any], *, use_vpm_phi: bool) -> Dict[str, Any]:
+    def _eval_state(
+        self, scorable: Scorable, context: Dict[str, Any], *, use_vpm_phi: bool
+    ) -> Dict[str, Any]:
         """
-        Preferred path uses ScoringService.evaluate_state (if available).
-        Falls back to local fusion across configured scorers/dimensions.
+        Preferred path uses ScoringService.evaluate_state.
+
+        Note: any enhanced row for this scorable is available at
+              context["scorable_rows"].get(str(scorable.id)) if the
+              ScoringService wants to peek at it.
         """
-        svc = getattr(self, "scoring", None)
-        if svc and hasattr(svc, "evaluate_state") and callable(svc.evaluate_state):
-            try:
-                return svc.evaluate_state(
-                    scorable=scorable,
-                    context=context,
-                    scorers=self.cfg.scorers,
-                    dimensions=self.cfg.dims,
-                    scorer_weights=self.cfg.scorer_weights,
-                    dimension_weights=self.cfg.dimension_weights,
-                    include_llm_heuristic=self.cfg.use_llm_heuristic,
-                    include_vpm_phi=use_vpm_phi,
-                    fuse_mode="weighted_mean",
-                    clamp_01=True,
+        try:
+            return self.scoring.evaluate_state(
+                scorable=scorable,
+                context=context,
+                scorers=self.cfg.scorers,
+                dimensions=self.cfg.dims,
+                scorer_weights=self.cfg.scorer_weights,
+                dimension_weights=self.cfg.dimension_weights,
+                include_llm_heuristic=self.cfg.use_llm_heuristic,
+                include_vpm_phi=use_vpm_phi,
+                fuse_mode="weighted_mean",
+                clamp_01=True,
+            )
+        except Exception as e:
+            self._slog(
+                "EvaluateStateError",
+                {"id": getattr(scorable, "id", None), "error": str(e)},
+            )
+            # Graceful but simple fallback
+            return {
+                "overall": 0.0,
+                "dims": dict.fromkeys(self.cfg.dims or ["alignment"], 0.0),
+                "by_scorer": {},
+                "components": {},
+            }
+
+    async def _eval_many(
+        self, cand: List[Scorable], context, use_vpm_phi: bool
+    ):
+        # Ensure each candidate also has a row
+        if cand:
+            tasks = [
+                self.scorable_processor.process(c, context=context)
+                for c in cand
+            ]
+            processed = await asyncio.gather(*tasks)
+            rows_by_id = context.setdefault("scorable_rows", {})
+            for c, row in zip(cand, processed):
+                sid = str(getattr(c, "id", "") or "")
+                if sid:
+                    rows_by_id[sid] = row
+
+        tasks = [
+            asyncio.to_thread(
+                lambda c=c: (
+                    c,
+                    self._eval_state(c, context, use_vpm_phi=use_vpm_phi),
                 )
-            except Exception as e:
-                self._slog("EvaluateStateError", {"id": getattr(scorable, "id", None), "error": str(e)})
-
-        # Fallback if fused API isn't present or failed
-        return self._local_fuse_state(scorable, context)
-
-    async def _eval_many(self, cand: List[Scorable], context, use_vpm_phi: bool):
-        import asyncio
-        async def one(c): return c, self._eval_state(c, context, use_vpm_phi=use_vpm_phi)
-        # if evaluate_state is sync, wrap in to_thread
-        tasks = [asyncio.to_thread(lambda c=c: (c, self._eval_state(c, context, use_vpm_phi=use_vpm_phi))) for c in cand]
+            )
+            for c in cand
+        ]
         return await asyncio.gather(*tasks)
 
-    def _local_fuse_state(self, scorable: Scorable, context: Dict[str, Any]) -> Dict[str, Any]:
-        dims = list(self.cfg.dims) or ["alignment"]
-        sw = {k: float(v) for k, v in (self.cfg.scorer_weights or {}).items()}
-        dw = {d: float(v) for d, v in (self.cfg.dimension_weights or {}).items()}
 
-        per_dim_vals: Dict[str, List[Tuple[float, float]]] = {d: [] for d in dims}
-        by_scorer: Dict[str, Any] = {}
+    # inside NexusPollinatorAgent
 
-        for name in (self.cfg.scorers or []):
-            try:
-                bundle = self.scoring.score(
-                    scorer_name=name,
-                    scorable=scorable,
-                    context=context,
-                    dimensions=dims,
+    def _to_scorables(self, raw) -> List[Scorable]:
+        out = []
+        for x in raw or []:
+            if isinstance(x, Scorable):
+                out.append(x)
+            else:
+                out.append(Scorable.from_dict(x))
+        return out
+
+    def _manifest_from_scorables(
+        self, run_id: Any, scorables: List[Scorable]
+    ) -> Dict[str, Any]:
+        items = []
+        for s in scorables:
+            # minimal, graph-friendly record
+            items.append(
+                {
+                    "item_id": getattr(s, "id", None)
+                    or getattr(s, "scorable_id", None),
+                    "scorable_id": getattr(s, "id", None),
+                    "scorable_type": getattr(s, "target_type", "document"),
+                    "near_identity": {
+                        "title": None,
+                        "text": getattr(s, "text", None),
+                    },
+                    "domains": getattr(s, "domains", None),
+                    "entities": getattr(s, "entities", None),
+                    "chat_id": getattr(s, "chat_id", None),
+                    "turn_index": getattr(s, "turn_index", None),
+                    # Optional enrichments you already have available:
+                    # "metrics_values": getattr(s, "metrics_values", None),
+                    # "embeddings": {"global": getattr(s, "embed_global", None)},
+                }
+            )
+        return {"run_id": str(run_id), "items": items}
+
+    def _write_graph(self, report: Dict[str, Any], out_path: Path) -> None:
+        try:
+            gjson = report.get("graph_json")
+            if gjson:
+                out_path.write_text(
+                    dumps_safe(gjson, ensure_ascii=False, indent=2),
+                    encoding="utf-8",
                 )
-                agg = float(bundle.aggregate())
-                per = {d: float(bundle.results[d].score) if d in bundle.results else agg for d in dims}
-                by_scorer[name] = {"aggregate": agg, "per_dimension": per}
-                w = sw.get(name, 1.0)
-                for d in dims:
-                    per_dim_vals[d].append((per[d], w))
-            except Exception as e:
-                self._slog("LocalFuseScorerError", {"scorer": name, "error": str(e)})
-
-        fused_dim: Dict[str, float] = {}
-        for d in dims:
-            if not per_dim_vals[d]:
-                fused_dim[d] = 0.0
-                continue
-            num = sum(v * w for (v, w) in per_dim_vals[d])
-            den = sum(w for (_, w) in per_dim_vals[d]) or 1.0
-            fused_dim[d] = float(num / den) * float(dw.get(d, 1.0))
-
-        dw_total = sum(abs(dw.get(d, 1.0)) for d in dims) or float(len(dims))
-        overall = float(sum(fused_dim[d] for d in dims) / dw_total)
-
-        # clamp to [0,1]
-        overall = float(max(0.0, min(1.0, overall)))
-        for d in fused_dim:
-            fused_dim[d] = float(max(0.0, min(1.0, fused_dim[d])))
-
-        return {"overall": overall, "dims": fused_dim, "by_scorer": by_scorer, "components": {}}
+        except Exception as e:
+            self._slog(
+                "WriteGraphError", {"path": str(out_path), "error": str(e)}
+            )
 
     async def _blossom_and_refine(
         self, parent: Scorable, context: Dict[str, Any], k: int
     ) -> Tuple[List[Scorable], Dict[str, Any]]:
-        goal_text = (getattr(getattr(parent, "goal_ref", None) or {}, "text", None)
-                    or (context.get("goal") or {}).get("goal_text", ""))
+        goal_text = getattr(
+            getattr(parent, "goal_ref", None) or {}, "text", None
+        ) or (context.get("goal") or {}).get("goal_text", "")
         goal = self.memory.goals.get_or_create({"goal_text": goal_text})
 
         ep_task = context.get("progress_task")
@@ -537,7 +922,10 @@ class NexusPollinatorAgent(ProgressMixin, BaseAgent):
         try:
             out_ctx = await self.blossom.run(runner_ctx)
         except Exception as e:
-            self._slog("BlossomRunError", {"parent": getattr(parent, "id", None), "error": str(e)})
+            self._slog(
+                "BlossomRunError",
+                {"parent": getattr(parent, "id", None), "error": str(e)},
+            )
             return [], {}
 
         bres = (out_ctx or {}).get("blossom_result") or {}
@@ -561,9 +949,13 @@ class NexusPollinatorAgent(ProgressMixin, BaseAgent):
             # If we don't have a DB node for this text, create one so we get a real integer id
             if node_id is None:
                 try:
-                    if hasattr(self.memory, "blossoms") and hasattr(self.memory.blossoms, "create_node"):
+                    if hasattr(self.memory, "blossoms") and hasattr(
+                        self.memory.blossoms, "create_node"
+                    ):
                         node = self.memory.blossoms.create_node(
-                            blossom_id=int(episode_id) if str(episode_id).isdigit() else episode_id,
+                            blossom_id=int(episode_id)
+                            if str(episode_id).isdigit()
+                            else episode_id,
                             state_text=text,
                             # NB: If your schema expects "parent is a NODE id", you may need to resolve that separately.
                             # Using a scorable id here only if it's actually a node id in your system.
@@ -571,10 +963,17 @@ class NexusPollinatorAgent(ProgressMixin, BaseAgent):
                         )
                         node_id = int(node.id)
                 except Exception as e:
-                    self._slog("BlossomCreateNodeError", {"episode_id": episode_id, "error": str(e)})
+                    self._slog(
+                        "BlossomCreateNodeError",
+                        {"episode_id": episode_id, "error": str(e)},
+                    )
 
             # Build the child once, with a stable id (prefer the real node id)
-            scorable_id = str(node_id) if isinstance(node_id, int) else f"blossom:{episode_id}:{resolved_node_id or i}"
+            scorable_id = (
+                str(node_id)
+                if isinstance(node_id, int)
+                else f"blossom:{episode_id}:{resolved_node_id or i}"
+            )
             child = Scorable(
                 id=scorable_id,
                 text=str(text),
@@ -582,39 +981,58 @@ class NexusPollinatorAgent(ProgressMixin, BaseAgent):
             )
             # Persist the true DB node id (if any) for later linking/promote
             try:
-                setattr(child, "blossom_node_id", node_id if isinstance(node_id, int) else None)
+                setattr(
+                    child,
+                    "blossom_node_id",
+                    node_id if isinstance(node_id, int) else None,
+                )
             except Exception:
                 pass
 
             resolved_children.append(child)
             norm_path = self._normalize_winner_path(w.get("path"))
-            resolved_winners.append({
-                "leaf_id": w.get("leaf_id"),
-                "leaf_db_id": resolved_node_id,
-                "reward": float(w.get("reward", 0.0)),
-                "path": norm_path,
-                "sharpened_meta": (w.get("sharpened") or {}),
-                "text_len": len(text or ""),
-                "node_id": node_id if isinstance(node_id, int) else None,
-            })
+            resolved_winners.append(
+                {
+                    "leaf_id": w.get("leaf_id"),
+                    "leaf_db_id": resolved_node_id,
+                    "reward": float(w.get("reward", 0.0)),
+                    "path": norm_path,
+                    "sharpened_meta": (w.get("sharpened") or {}),
+                    "text_len": len(text or ""),
+                    "node_id": node_id if isinstance(node_id, int) else None,
+                }
+            )
             # Emit path edges (if any) and also store normalized paths in resolved_winners
             for rw in resolved_winners:
-                raw_path = next((w.get("path") for w in winners
-                                if str(w.get("leaf_id")) == str(rw.get("leaf_id"))), None)
+                raw_path = next(
+                    (
+                        w.get("path")
+                        for w in winners
+                        if str(w.get("leaf_id")) == str(rw.get("leaf_id"))
+                    ),
+                    None,
+                )
                 norm_path = self._normalize_winner_path(raw_path)
-                rw["path"] = norm_path  # keep the normalized version for the film/meta
+                rw["path"] = (
+                    norm_path  # keep the normalized version for the film/meta
+                )
 
                 # Only emit if we have a chain of at least 2 nodes
                 if len(norm_path) >= 2:
                     for u, v in zip(norm_path, norm_path[1:]):
                         try:
-                            self._emit_garden_event(run_dir, "add_edge",
-                                                    source=str(u), target=str(v),
-                                                    edge_type="path")
+                            self._emit_garden_event(
+                                run_dir,
+                                "add_edge",
+                                source=str(u),
+                                target=str(v),
+                                edge_type="path",
+                            )
                         except Exception as _e:
-                            self._slog("BlossomPathEdgeEmitError", {"u": u, "v": v, "error": str(_e)})
-
-
+                            self._slog(
+                                "BlossomPathEdgeEmitError",
+                                {"u": u, "v": v, "error": str(_e)},
+                            )
 
         blossom_meta = {
             "episode_id": episode_id,
@@ -626,16 +1044,25 @@ class NexusPollinatorAgent(ProgressMixin, BaseAgent):
             "top_reward": top_reward,
             "winners": resolved_winners,
             "training_batch_present": training_batch is not None,
-            "events_jsonl": (out_ctx or {}).get("events_jsonl") or str(ev_path),
+            "events_jsonl": (out_ctx or {}).get("events_jsonl")
+            or str(ev_path),
             "runner_cfg": {
-                "return_top_k": getattr(self.blossom.cfg, "return_top_k", None) if hasattr(self.blossom, "cfg") else None,
-                "sharpen_top_k": getattr(self.blossom.cfg, "sharpen_top_k", None) if hasattr(self.blossom, "cfg") else None,
+                "return_top_k": getattr(self.blossom.cfg, "return_top_k", None)
+                if hasattr(self.blossom, "cfg")
+                else None,
+                "sharpen_top_k": getattr(
+                    self.blossom.cfg, "sharpen_top_k", None
+                )
+                if hasattr(self.blossom, "cfg")
+                else None,
             },
         }
 
         return resolved_children, blossom_meta
 
-    def _winner_to_text(self, w: Dict[str, Any]) -> Tuple[Optional[str], Optional[int]]:
+    def _winner_to_text(
+        self, w: Dict[str, Any]
+    ) -> Tuple[Optional[str], Optional[int]]:
         """
         Best-effort recovery of winner text:
           1) prefer w["sharpened"]["sharpened"]
@@ -670,11 +1097,16 @@ class NexusPollinatorAgent(ProgressMixin, BaseAgent):
                     if text:
                         return str(text), int(nid)
             except Exception as e:
-                self._slog("BlossomFetchNodeError", {"leaf_candidate_id": nid, "error": str(e)})
+                self._slog(
+                    "BlossomFetchNodeError",
+                    {"leaf_candidate_id": nid, "error": str(e)},
+                )
 
         return None, None
 
-    def _novel_children(self, parent: Scorable, children: List[Scorable], tau: float) -> List[Scorable]:
+    def _novel_children(
+        self, parent: Scorable, children: List[Scorable], tau: float
+    ) -> List[Scorable]:
         """
         Keep children whose cosine distance from parent >= tau.
         If everything is filtered, keep the single best child (preserve progress).
@@ -682,12 +1114,16 @@ class NexusPollinatorAgent(ProgressMixin, BaseAgent):
         if not children:
             return []
         try:
-            pe = np.asarray(self.memory.embedding.get_or_create(parent.text), dtype=float)
+            pe = np.asarray(
+                self.memory.embedding.get_or_create(parent.text), dtype=float
+            )
             pn = float(np.linalg.norm(pe)) + 1e-9
             keep: List[Scorable] = []
             sims: List[Tuple[float, Scorable]] = []
             for c in children:
-                ce = np.asarray(self.memory.embedding.get_or_create(c.text), dtype=float)
+                ce = np.asarray(
+                    self.memory.embedding.get_or_create(c.text), dtype=float
+                )
                 cn = float(np.linalg.norm(ce)) + 1e-9
                 sim = float(np.dot(pe, ce) / (pn * cn))
                 sims.append((sim, c))
@@ -700,27 +1136,22 @@ class NexusPollinatorAgent(ProgressMixin, BaseAgent):
         except Exception:
             return children
 
-    def _select_winner(
+    def _persist_dims(
         self,
-        parent: Scorable,
-        parent_overall: float,
-        cand_evals: List[Tuple[Scorable, Dict[str, Any]]],
-        margin: float,
-    ) -> Tuple[Optional[Scorable], Optional[Dict[str, Any]]]:
-        if not cand_evals:
-            return None, None
-        best = max(cand_evals, key=lambda x: float(x[1].get("overall", 0.0)))
-        if (float(best[1]["overall"]) - parent_overall) >= margin:
-            return best[0], best[1]
-        return parent, {"overall": parent_overall, "dims": {}}
-
-    def _persist_dims(self, scorable: Scorable, eval_res: Dict[str, Any], context: Dict[str, Any]):
+        scorable: Scorable,
+        eval_res: Dict[str, Any],
+        context: Dict[str, Any],
+    ):
         try:
             self.scoring.save_hrm_score(
                 scorable_id=scorable.id,
                 scorable_type=scorable.target_type,
                 value=float(eval_res["overall"]),
-                **{k: context.get(k) for k in ("goal_id", "plan_trace_id", "pipeline_run_id") if k in context}
+                **{
+                    k: context.get(k)
+                    for k in ("goal_id", "plan_trace_id", "pipeline_run_id")
+                    if k in context
+                },
             )
             for d, v in (eval_res.get("dims") or {}).items():
                 self.scoring.save_score(
@@ -729,10 +1160,21 @@ class NexusPollinatorAgent(ProgressMixin, BaseAgent):
                     score_type=str(d),
                     score_value=float(v),
                     source="state_evaluator",
-                    **{k: context.get(k) for k in ("goal_id", "plan_trace_id", "pipeline_run_id") if k in context}
+                    **{
+                        k: context.get(k)
+                        for k in (
+                            "goal_id",
+                            "plan_trace_id",
+                            "pipeline_run_id",
+                        )
+                        if k in context
+                    },
                 )
         except Exception as e:
-            self._slog("PersistDimsError", {"id": getattr(scorable, "id", None), "error": str(e)})
+            self._slog(
+                "PersistDimsError",
+                {"id": getattr(scorable, "id", None), "error": str(e)},
+            )
 
     def _sid(self, s: Scorable, idx: Optional[int] = None) -> str:
         v = getattr(s, "id", None)
@@ -740,7 +1182,17 @@ class NexusPollinatorAgent(ProgressMixin, BaseAgent):
             return f"tmp-{idx if idx is not None else 'x'}"
         return str(v)
 
-    def _merit(self, parent_vec, child_res, *, text_len, base_len, advantage_w=0.25, novelty_w=0.15):
+    def _merit(
+        self,
+        parent_vec,
+        child_res,
+        *,
+        text_len,
+        base_len,
+        advantage_w=0.25,
+        novelty_w=0.15,
+        delta_bonus=0.0,
+    ):
         overall = float(child_res.get("overall", 0.0))
         dims = child_res.get("dims", {}) or {}
         clarity = float(dims.get("clarity", overall))
@@ -753,12 +1205,118 @@ class NexusPollinatorAgent(ProgressMixin, BaseAgent):
         # Optional advantage: if present in child_res
         advantage = float(child_res.get("advantage", 0.0))
 
-        merit = 0.55*overall + 0.2*clarity + 0.2*faithful \
-                + advantage_w*advantage + novelty_w*novelty \
-                - length_penalty
+        merit = (
+            0.55 * overall
+            + 0.2 * clarity
+            + 0.2 * faithful
+            + advantage_w * advantage
+            + novelty_w * novelty
+            - length_penalty
+            + delta_bonus
+        )
+        log.info(
+            f"Merit calc: overall={overall:.4f}, clarity={clarity:.4f}, faithful={faithful:.4f}, "
+            f"advantage={advantage:.4f}, novelty={novelty:.4f}, length_penalty={length_penalty:.4f}, "
+            f"delta_bonus={delta_bonus:.4f} => merit={merit:.44f}"
+        )
         return merit
 
-    def _safe_link_and_promote(self, parent: Scorable, candidates: List[Scorable], winner: Optional[Scorable], lift: float):
+    def _has_rich_attrs(self, scorable_id: str) -> bool:
+        """Check if scorable already has 'enough' metrics to skip enrichment."""
+        min_cols = int(self.cfg.attr_enrichment.get("min_columns", 120))
+        try:
+            # Prefer DAO if present
+            if hasattr(self.memory, "nexus") and hasattr(self.memory.nexus, "get_metrics"):
+                m = self.memory.nexus.get_metrics(scorable_id)
+                if m and isinstance(m.columns, (list, tuple)) and len(m.columns) >= min_cols:
+                    return True
+                # Some stores expose pre-materialized vector dict
+                if m and isinstance(getattr(m, "vector", None), dict) and len(m.vector) >= min_cols:
+                    return True
+        except Exception:
+            pass
+        # In-run cache
+        return scorable_id in self._enriched_ids
+
+    async def _maybe_enrich(self, scorable: Scorable, context: Dict[str, Any], *, when: str) -> bool:
+        """JIT enrichment with budget + parallelism guard. Returns True if run (or already enriched)."""
+        if not self.cfg.attr_enrichment.get("enabled", True):
+            return False
+
+        sid = str(getattr(scorable, "id", "") or "")
+        if not sid or self._has_rich_attrs(sid):
+            return False
+        if self._attr_budget <= 0:
+            return False
+
+        enhanced = scorable  # keep simple; your processor already accepts Scorable + context
+
+        try:
+            async with self._attr_inflight:
+                # Consume budget *before* work to avoid stampede on low budgets
+                self._attr_budget -= 1
+                # Run potentially heavy sync work off the main loop
+                row = await self.scorable_processor.process(
+                    enhanced,
+                    context=context,
+                )
+                self._enriched_ids.add(sid)
+                self._slog(
+                    "AttrEnrichOK",
+                    {
+                        "id": sid,
+                        "when": when,
+                        "columns": getattr(
+                            getattr(row, "metrics", None), "columns", None
+                        )
+                        or "unknown",
+                    },
+                )
+                return True
+        except Exception as e:
+            self._slog(
+                "AttrEnrichError",
+                {"id": sid, "when": when, "error": str(e)},
+            )
+            return False
+
+    async def _enrich_topq_parents(self, items: list[Scorable], base_evals: dict[str, float], q: float, context: dict):
+        """Enrich parents whose baseline overall is in top quantile q."""
+        if not items or q is None:
+            return
+        try:
+            vals = sorted(base_evals.values())
+            if not vals:
+                return
+            import math
+            qi = max(0, min(len(vals)-1, int(math.floor(q * (len(vals)-1)))))
+            thresh = vals[qi]
+        except Exception:
+            # fall back to mean if quantile math fails
+            thresh = float(sum(base_evals.values())/max(1, len(base_evals)))
+
+        tasks = []
+        for s in items:
+            sid = str(getattr(s, "id", "") or "")
+            if sid and base_evals.get(sid, 0.0) >= thresh:
+                tasks.append(self._maybe_enrich(s, context, when="baseline_topq"))
+        if tasks:
+            await asyncio.gather(*tasks)
+
+    async def _enrich_candidates_topk(self, cand_evals: list[tuple[Scorable, dict]], k: int, context: dict):
+        """Optionally enrich top-K candidates by fused overall."""
+        if k <= 0 or not cand_evals:
+            return
+        top = sorted(cand_evals, key=lambda t: float(t[1].get("overall", 0.0)), reverse=True)[:k]
+        await asyncio.gather(*[self._maybe_enrich(s, context, when="cands_topk") for s, _ in top])
+
+    def _safe_link_and_promote(
+        self,
+        parent: Scorable,
+        candidates: List[Scorable],
+        winner: Optional[Scorable],
+        lift: float,
+    ):
         def _to_int(x) -> Optional[int]:
             try:
                 if isinstance(x, int):
@@ -783,14 +1341,29 @@ class NexusPollinatorAgent(ProgressMixin, BaseAgent):
             if not isinstance(pid, int):
                 pid = _to_int(getattr(parent, "id", None))
 
-            if int_child_ids and pid is not None and hasattr(self.memory, "blossoms") and hasattr(self.memory.blossoms, "link_parent_children"):
-                self.memory.blossoms.link_parent_children(parent_id=pid, child_ids=int_child_ids)
+            if (
+                int_child_ids
+                and pid is not None
+                and hasattr(self.memory, "blossoms")
+                and hasattr(self.memory.blossoms, "link_parent_children")
+            ):
+                self.memory.blossoms.link_parent_children(
+                    parent_id=pid, child_ids=int_child_ids
+                )
         except Exception as e:
-            self._slog("BlossomLinkError", {"parent": getattr(parent, "id", None), "error": str(e)})
+            self._slog(
+                "BlossomLinkError",
+                {"parent": getattr(parent, "id", None), "error": str(e)},
+            )
 
         # promote only if winner maps to a real integer node id
         try:
-            if winner and lift >= self.cfg.promote_margin and hasattr(self.memory, "nexus") and hasattr(self.memory.nexus, "promote"):
+            if (
+                winner
+                and lift >= self.cfg.promote_margin
+                and hasattr(self.memory, "nexus")
+                and hasattr(self.memory.nexus, "promote")
+            ):
                 wid = getattr(winner, "blossom_node_id", None)
                 if not isinstance(wid, int):
                     wid = _to_int(getattr(winner, "id", None))
@@ -798,9 +1371,14 @@ class NexusPollinatorAgent(ProgressMixin, BaseAgent):
                 if not isinstance(pid, int):
                     pid = _to_int(getattr(parent, "id", None))
                 if isinstance(wid, int) and isinstance(pid, int):
-                    self.memory.nexus.promote(parent_id=pid, child_id=wid, reason="local_improvement")
+                    self.memory.nexus.promote(
+                        parent_id=pid, child_id=wid, reason="local_improvement"
+                    )
         except Exception as e:
-            self._slog("NexusPromoteError", {"parent": getattr(parent, "id", None), "error": str(e)})
+            self._slog(
+                "NexusPromoteError",
+                {"parent": getattr(parent, "id", None), "error": str(e)},
+            )
 
     def _safe_emit_training(
         self,
@@ -817,51 +1395,73 @@ class NexusPollinatorAgent(ProgressMixin, BaseAgent):
                 child_overall = float(res.get("overall", 0.0))
                 prefer_child = child_overall > parent_overall
                 pos, neg = (c, parent) if prefer_child else (parent, c)
-                w = max(0.1, min(1.0, abs(child_overall - parent_overall) + 0.2))
+                w = max(
+                    0.1, min(1.0, abs(child_overall - parent_overall) + 0.2)
+                )
 
                 # pairwise
-                self.memory.training_events.insert_pairwise({
-                    "model_key": "ranker.sicql.v1",
-                    "dimension": "alignment",
-                    "query_text": (context.get("goal") or {}).get("goal_text", ""),
-                    "pos_text": pos.text,
-                    "neg_text": neg.text,
-                    "weight": w,
-                    "trust": w * 0.6,
-                    "goal_id": (context.get("goal") or {}).get("id"),
-                    "pipeline_run_id": context.get("pipeline_run_id"),
-                    "agent_name": "NexusImproverAgent",
-                    "source": "nexus_improver",
-                    "meta": {"delta_overall": child_overall - parent_overall},
-                }, dedup=True)
-
-                # pointwise (both)
-                for s, v in ((c, child_overall), (parent, parent_overall)):
-                    self.memory.training_events.insert_pointwise({
-                        "model_key": "retriever.mrq.v1",
+                self.memory.training_events.insert_pairwise(
+                    {
+                        "model_key": "ranker.sicql.v1",
                         "dimension": "alignment",
-                        "query_text": (context.get("goal") or {}).get("goal_text", ""),
-                        "cand_text": s.text,
-                        "label": 1 if v >= parent_overall else 0,
-                        "weight": max(0.1, float(v)),
-                        "trust": 0.5,
+                        "query_text": (context.get("goal") or {}).get(
+                            "goal_text", ""
+                        ),
+                        "pos_text": pos.text,
+                        "neg_text": neg.text,
+                        "weight": w,
+                        "trust": w * 0.6,
                         "goal_id": (context.get("goal") or {}).get("id"),
                         "pipeline_run_id": context.get("pipeline_run_id"),
                         "agent_name": "NexusImproverAgent",
                         "source": "nexus_improver",
-                    }, dedup=True)
+                        "meta": {
+                            "delta_overall": child_overall - parent_overall
+                        },
+                    },
+                    dedup=True,
+                )
+
+                # pointwise (both)
+                for s, v in ((c, child_overall), (parent, parent_overall)):
+                    self.memory.training_events.insert_pointwise(
+                        {
+                            "model_key": "retriever.mrq.v1",
+                            "dimension": "alignment",
+                            "query_text": (context.get("goal") or {}).get(
+                                "goal_text", ""
+                            ),
+                            "cand_text": s.text,
+                            "label": 1 if v >= parent_overall else 0,
+                            "weight": max(0.1, float(v)),
+                            "trust": 0.5,
+                            "goal_id": (context.get("goal") or {}).get("id"),
+                            "pipeline_run_id": context.get("pipeline_run_id"),
+                            "agent_name": "NexusImproverAgent",
+                            "source": "nexus_improver",
+                        },
+                        dedup=True,
+                    )
             except Exception as e:
-                self._slog("TrainingEmitError", {"parent": parent.id, "child": getattr(c, 'id', None), "error": str(e)})
+                self._slog(
+                    "TrainingEmitError",
+                    {
+                        "parent": parent.id,
+                        "child": getattr(c, "id", None),
+                        "error": str(e),
+                    },
+                )
 
     def _emit_garden_event(self, run_dir: Path, kind: str, **data):
         rec = {"ts": int(time.time()), "kind": kind, **data}
         try:
-            with (run_dir / "garden_events.jsonl").open("a", encoding="utf-8") as f:
-                f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+            with (run_dir / "garden_events.jsonl").open(
+                "a", encoding="utf-8"
+            ) as f:
+                f.write(dumps_safe(rec, ensure_ascii=False) + "\n")
                 f.flush()
         except Exception:
             pass
-
 
     # --------------------------- METRICS / UTIL ---------------------------
 
@@ -869,7 +1469,12 @@ class NexusPollinatorAgent(ProgressMixin, BaseAgent):
         if len(children) < 2:
             return 0.0
         try:
-            embs = [np.asarray(self.memory.embedding.get_or_create(c.text), dtype=float) for c in children]
+            embs = [
+                np.asarray(
+                    self.memory.embedding.get_or_create(c.text), dtype=float
+                )
+                for c in children
+            ]
             embs = [e / (np.linalg.norm(e) + 1e-9) for e in embs]
             sims = []
             for i in range(len(embs)):
@@ -895,7 +1500,9 @@ class NexusPollinatorAgent(ProgressMixin, BaseAgent):
             "p90": float(p90),
         }
 
-    def _reconcile_episode_progress_from_events(self, ep_task: str, blossom_meta: Dict[str, Any], est_total: int) -> None:
+    def _reconcile_episode_progress_from_events(
+        self, ep_task: str, blossom_meta: Dict[str, Any], est_total: int
+    ) -> None:
         """
         If the runner didn't emit live progress, tail the JSONL and set a sane final count.
         """
@@ -950,6 +1557,7 @@ class NexusPollinatorAgent(ProgressMixin, BaseAgent):
         # String form: "1->2->3" or "1,2,3" or whitespace separated
         if isinstance(path_val, str):
             import re
+
             toks = re.split(r"\s*(?:->|,|\s)\s*", path_val.strip())
             return [t for t in toks if t]
 
@@ -957,7 +1565,7 @@ class NexusPollinatorAgent(ProgressMixin, BaseAgent):
 
     def _task_run_name(self, context: Dict[str, Any]) -> str:
         rid = context.get("pipeline_run_id") or int(time.time())
-        return f"nexus_improver:{rid}"
+        return f"nexus_pollinator:{rid}"
 
     def _task_episode_name(self, parent_id: Any) -> str:
         return f"blossom_episode:parent={parent_id}"
@@ -972,23 +1580,55 @@ class NexusPollinatorAgent(ProgressMixin, BaseAgent):
         d.mkdir(parents=True, exist_ok=True)
         return d
 
-
-    def _normalize_weights(self, w: Dict[str, float], default: float = 1.0) -> Dict[str, float]:
+    def _normalize_weights(
+        self, w: Dict[str, float], default: float = 1.0
+    ) -> Dict[str, float]:
         w2 = {k: float(v) for k, v in (w or {}).items()}
         if not w2:
             return {}
         s = sum(abs(v) for v in w2.values())
         return {k: (v / s if s else default) for k, v in w2.items()}
 
+    def _get_nexus_graph(self, context: Dict[str, Any]) -> Optional[NexusGraph]:
+        """
+        Best-effort: return a run-scoped NexusGraph wrapper if a Nexus store is
+        available on memory (memory.nexus or memory.nexus_store).
+        """
+        run_id = context.get("pipeline_run_id")
+        if not run_id:
+            return None
+
+        store = getattr(self.memory, "nexus", None) or getattr(
+            self.memory, "nexus_store", None
+        )
+        if store is None:
+            return None
+
+        try:
+            cfg = NexusGraphConfig(
+                run_id=str(run_id),
+                namespace="nexus_pollinator",
+            )
+            return NexusGraph(store=store, cfg=cfg, logger=self.logger)
+        except Exception as e:
+            self._slog("NexusGraphInitError", {"error": str(e)})
+            return None
+
     # ---- Async prompt helpers ---------------------------------
     async def _offload_candidate_prompts(
-        self, parent: Scorable, context: Dict[str, Any], *, k: int, model: str, target_pool: str
+        self,
+        parent: Scorable,
+        context: Dict[str, Any],
+        *,
+        k: int,
+        model: str,
+        target_pool: str,
     ) -> List[Dict[str, str]]:
         """
-        Enqueue K refinement prompts for `parent` using the async prompt tool.
+        Enqueue K refinement prompts for `parent` via async prompt tool.
         Returns tickets: [{job_id, return_topic, parent_id, k_index}, ...]
+        Falls back to [] on publish errors (caller will handle fallback).
         """
-        from stephanie.prompts.prompt_client import PromptClient
 
         goal_text = (context.get("goal") or {}).get("goal_text", "")
         prompts = []
@@ -996,26 +1636,41 @@ class NexusPollinatorAgent(ProgressMixin, BaseAgent):
             prompts.append({
                 "messages": [
                     {"role": "system", "content": "You are a careful refiner."},
-                    {"role": "user",
-                    "content": f"Refine this answer for the goal:\n{goal_text}\n\n---\n{parent.text}\n"}
+                    {"role": "user", "content":
+                        f"Refine this answer for the goal:\n{goal_text}\n\n---\n{parent.text}\n"}
                 ],
             })
 
         client = PromptClient(self.cfg.blossom_cfg, self.memory, self.container, self.logger)
-        tickets = await client.offload_many(
-            scorable_id=str(parent.id),
-            prompts=prompts,
-            model=model,
-            target_pool=target_pool,
-            priority="high",
-            group_key=f"nexus:{context.get('pipeline_run_id')}",
-            meta={"purpose": "nexus_blossom_refine", "parent_id": str(parent.id)},
-            response_format="text",
-        )
-        # normalize
-        return [{"job_id": jid, "return_topic": rt, "parent_id": str(parent.id), "k_index": str(i)}
-                for i, (jid, rt) in enumerate(tickets)]
 
+        # Coerce priority to enum (you were passing a string)
+        prio = Priority.high if hasattr(Priority, "high") else Priority.normal
+
+        try:
+            tickets_raw = await client.offload_many(
+                scorable_id=str(parent.id),
+                prompts=prompts,
+                model=model,
+                target_pool=target_pool,
+                priority=prio,
+                group_key=f"nexus:{context.get('pipeline_run_id')}",
+                meta={"purpose": "nexus_blossom_refine", "parent_id": str(parent.id)},
+                response_format="text",
+            )
+        except Exception as e:
+            self._slog("PromptOffloadError", {"parent": getattr(parent, "id", None), "error": str(e)})
+            return []
+
+        # Normalize & log
+        tickets = [
+            {"job_id": jid, "return_topic": rt, "parent_id": str(parent.id), "k_index": str(i)}
+            for i, (jid, rt) in enumerate(tickets_raw or [])
+            if jid and rt
+        ]
+        log.info("Prompt offload: requested=%d got=%d backend=%s",
+                k, len(tickets), getattr(self.memory.bus, "get_backend", lambda: "unknown")())
+
+        return tickets
 
     async def _await_offloaded_candidates(
         self,
@@ -1028,12 +1683,45 @@ class NexusPollinatorAgent(ProgressMixin, BaseAgent):
         Wait for text results for given tickets. Returns list[str] texts (may be shorter on timeout).
         Uses PromptClient if it exposes a wait API; otherwise does a simple poll loop as fallback.
         """
-        from stephanie.prompts.prompt_client import PromptClient
-        client = PromptClient(self.cfg.blossom_cfg, self.memory, self.container, self.logger)
+
+        client = PromptClient(
+            self.cfg.blossom_cfg, self.memory, self.container, self.logger
+        )
 
         # Fast-path: client has a vectorized wait
         return await client.wait_many(tickets, timeout_s=timeout_s)
 
+    async def _materialize_rows(
+        self,
+        items: List[Scorable],
+        context: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """
+        Run ScorableProcessor on all parents once up-front and stash the
+        enhanced 'rows' into context["scorable_rows"].
+
+        Returns: {scorable_id: row}
+        """
+        if not items:
+            return {}
+
+        # Run Scorpions / ScorableProcessor in parallel
+        tasks = [
+            self.scorable_processor.process(s, context=context)
+            for s in items
+        ]
+        processed = await asyncio.gather(*tasks)
+
+        rows_by_id: Dict[str, Any] = {}
+        for s, row in zip(items, processed):
+            sid = str(getattr(s, "id", "") or "")
+            if sid:
+                rows_by_id[sid] = row
+
+        # Make rows visible to downstream components
+        ctx_rows = context.setdefault("scorable_rows", {})
+        ctx_rows.update(rows_by_id)
+        return rows_by_id
 
     def _slog(self, event: str, payload: Dict[str, Any]):
         try:
@@ -1043,4 +1731,3 @@ class NexusPollinatorAgent(ProgressMixin, BaseAgent):
                 logging.getLogger(__name__).warning("%s: %s", event, payload)
         except Exception:
             pass
-

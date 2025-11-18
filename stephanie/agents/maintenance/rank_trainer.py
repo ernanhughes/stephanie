@@ -14,7 +14,7 @@ class ContrastiveRankerTrainerAgent(BaseAgent):
         self.model_type = "contrastive_ranker"
         self.min_pairs = cfg.get("min_pairs", 100)
         self.dimensions = cfg.get("dimensions", [])
-        self.trainer = ContrastiveRankerTrainer(cfg, memory=memory, logger=logger)
+        self.trainer = ContrastiveRankerTrainer(cfg, memory, container, logger)
         self.logger.log("AgentInitialized", {
             "agent": "ContrastiveRankerTrainerAgent",
             "dimensions": self.trainer.dimensions,

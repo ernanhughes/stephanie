@@ -1,7 +1,10 @@
 from __future__ import annotations
+
 import time
+
 from stephanie.data.events import PromptJob
-from stephanie.services.llm_service import LLMService  # expects .get(model).generate(text)
+from stephanie.services.llm_service import \
+    LLMService  # expects .get(model).generate(text)
 
 PROMPTS_EVAL = "prompts.eval"
 RESULTS_BASE = "results.prompt"

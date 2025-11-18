@@ -9,9 +9,12 @@ import psycopg2
 from pgvector.psycopg2 import register_vector
 from sqlalchemy.orm import sessionmaker
 
+from stephanie.constants import (BUS_STREAM, HEALTH_SUBJ, PROMPT_DLQ,
+                                 PROMPT_RESULT, PROMPT_SUBMIT)
 from stephanie.memory.belief_cartridge_store import BeliefCartridgeStore
 from stephanie.memory.blossom_store import BlossomStore
 from stephanie.memory.bus_event_store import BusEventStore
+from stephanie.memory.cache_store import CacheStore
 from stephanie.memory.calibration_event_store import CalibrationEventStore
 from stephanie.memory.cartridge_domain_store import CartridgeDomainStore
 from stephanie.memory.cartridge_store import CartridgeStore
@@ -44,6 +47,7 @@ from stephanie.memory.memcube_store import MemCubeStore
 from stephanie.memory.method_plan_store import MethodPlanStore
 from stephanie.memory.models_store import ModelsStore
 from stephanie.memory.mrq_store import MRQStore
+from stephanie.memory.nexus_store import NexusStore
 from stephanie.memory.pattern_store import PatternStatStore
 from stephanie.memory.pipeline_reference_store import PipelineReferenceStore
 from stephanie.memory.pipeline_run_store import PipelineRunStore
@@ -75,8 +79,10 @@ from stephanie.memory.vpm_store import VPMStore
 from stephanie.models.base import engine  # From your SQLAlchemy setup
 from stephanie.services.bus.hybrid_bus import HybridKnowledgeBus
 from stephanie.services.bus.knowledge_bus import KnowledgeBus
-
 from stephanie.utils.async_utils import retry
+from stephanie.utils.win_eventloop import ensure_selector_event_loop
+
+ensure_selector_event_loop()
 
 log = logging.getLogger(__name__)
 
@@ -106,6 +112,7 @@ class MemoryTool:
         # Idempotent connection guards
         self._bus_lock: asyncio.Lock = asyncio.Lock()
         self._bus_connected_evt: asyncio.Event = asyncio.Event()
+
 
         embedding_cfg = self.cfg.get("embeddings", {})
 
@@ -207,6 +214,8 @@ class MemoryTool:
         self.register_store(VPMStore(self.session_maker, logger))
         self.register_store(ScorableEntityStore(self.session_maker, logger))
         self.register_store(BlossomStore(self.session_maker, logger))
+        self.register_store(NexusStore(self.session_maker, logger))
+        self.register_store(CacheStore(self.session_maker, logger))
 
         if cfg.get("extra_stores"):
             for store_class in cfg.get("extra_stores", []):
@@ -240,10 +249,11 @@ class MemoryTool:
             # 2) Ensure stream FIRST (so wait_ready() health publish won’t 404)
             # Prefer a wide wildcard to avoid future subject drift.
             subjects = [
-                "stephanie.>",                              # catch-all
-                "stephanie.blossom.prompt.request",         # explicit (kept for clarity)
-                "stephanie.blossom.prompt.responses.available",
-                "stephanie.health",
+                f"{BUS_STREAM}.>",                              # catch-all
+                PROMPT_SUBMIT,         # explicit (kept for clarity)
+                PROMPT_RESULT,
+                PROMPT_DLQ,
+                HEALTH_SUBJ,
             ]
             try:
                 await retry(lambda: self.bus.ensure_stream("stephanie", subjects))

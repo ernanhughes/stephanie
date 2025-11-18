@@ -1,4 +1,6 @@
 # stephanie/components/ssp/reward/heads/naive_quarkish.py
+from __future__ import annotations
+
 import math
 from typing import Any, Dict, List, Optional, Tuple
 

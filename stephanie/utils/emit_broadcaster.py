@@ -1,37 +1,6 @@
 # stephanie/utils/emit_broadcaster.py
 from __future__ import annotations
 
-"""
-EmitBroadcaster
----------------
-A tiny, robust fan-out utility for ATS/agents/services to emit telemetry/events
-to multiple async/sync sinks without ever breaking the caller's control flow.
-
-Key features:
-- Accepts both async and sync sinks (callables of signature (event: str, payload: dict) -> Awaitable[None] | None)
-- Never raises to the caller; collects and exposes sink errors to an optional on_error hook
-- Optional per-sink filtering, name tagging, and ordering
-- Bounded concurrency for heavy sinks (e.g., network loggers)
-- Supports temporary sinks via context manager
-- Lightweight instrumentation callbacks (on_before / on_after)
-- Minimal dependencies; pure asyncio
-
-Typical usage:
-    emitter = EmitBroadcaster()
-    emitter.add_sink(console_sink, name="console")
-    emitter.add_sink(bus_sink, name="bus", max_concurrency=8)
-
-    await emitter("node", {"id": "...", "metric": 0.87})
-
-Sinks can be either:
-    async def sink(event: str, payload: dict) -> None: ...
-or:
-    def sink(event: str, payload: dict) -> None: ...
-
-You can also use an inline filter:
-    emitter.add_sink(bus_sink, name="bus", only={"node", "report"})
-"""
-
 import asyncio
 import inspect
 import logging

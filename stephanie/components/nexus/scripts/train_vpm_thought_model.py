@@ -1,4 +1,6 @@
-# scripts/train_vpm_thought_model.py
+# stephanie/components/nexus/scripts/train_vpm_thought_model.py
+from __future__ import annotations
+
 import argparse
 import json
 import random
@@ -15,7 +17,8 @@ from omegaconf import DictConfig, OmegaConf
 from torch.utils.data import DataLoader, IterableDataset
 from tqdm import tqdm
 
-from stephanie.services.graph_layout import render_multi_layout_vpm
+from stephanie.components.nexus.graph.graph_layout import \
+    render_multi_layout_vpm
 from stephanie.utils.visual_thought import VisualThoughtOp, VisualThoughtType
 from stephanie.vpm.state_machine import (Thought, ThoughtExecutor, VPMGoal,
                                          VPMState, compute_phi)
@@ -360,7 +363,7 @@ if __name__ == "__main__":
 # from pathlib import Path
 # import numpy as np, torch, networkx as nx
 # from omegaconf import OmegaConf
-# from stephanie.services.graph_layout import render_multi_layout_vpm
+# from stephanie.components.nexus.graph.graph_layout import render_multi_layout_vpm
 # from stephanie.vpm.state_machine import VPMGoal, VPMState, compute_phi, Thought, ThoughtExecutor
 # from stephanie.utils.visual_thought import VisualThoughtOp, VisualThoughtType
 # from train_vpm_thought_model import VPMThoughtModel, DEFAULT_CONFIG  # reuse defs

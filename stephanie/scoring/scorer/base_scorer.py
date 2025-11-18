@@ -156,8 +156,10 @@ class BaseScorer(ModelLocatorMixin, abc.ABC):
     def close(self):
         for p in self._plugins:
             if hasattr(p, "close"):
-                try: p.close()
-                except Exception: pass
+                try:
+                    p.close()
+                except Exception:
+                    pass
         # subclasses (e.g., HF) can extend to unload models
 
     def build_plugins(self) -> List[ScoringPlugin]:

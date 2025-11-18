@@ -5,11 +5,11 @@ from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.knowledge.automind_knowledge_collector import \
     AutoMindKnowledgeCollector
 from stephanie.constants import GOAL
-from stephanie.tools import WebSearchTool
 from stephanie.tools.arxiv_tool import search_arxiv
 from stephanie.tools.cos_sim_tool import get_top_k_similar
 from stephanie.tools.huggingface_tool import (recommend_similar_papers,
                                               search_huggingface_datasets)
+from stephanie.tools.web_search import WebSearchTool
 from stephanie.tools.wikipedia_tool import WikipediaTool
 
 

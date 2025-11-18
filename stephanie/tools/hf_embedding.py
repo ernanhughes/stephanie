@@ -1,11 +1,13 @@
 # stephanie/embeddings/huggingface_embedder.py
 from __future__ import annotations
 
+import logging
 import time
 
 import torch
 from sentence_transformers import SentenceTransformer
 
+log = logging.getLogger(__name__)
 
 class HuggingFaceEmbedder:
     _model_instance = None  # class-level singleton
@@ -25,7 +27,7 @@ class HuggingFaceEmbedder:
         start_time = time.time()
 
         if not text or not text.strip():
-            print("Empty text provided for embedding.")
+            log.warning("Empty text provided for embedding.")
             return [0.0] * self.dim
 
         chunks = self.chunker.chunk(text)
@@ -33,19 +35,18 @@ class HuggingFaceEmbedder:
             return [0.0] * self.dim
 
         # Log number of chunks
-        print(f"[HNet] Processing {len(chunks)} chunks...")
+        log.info(f"[HNet] Processing {len(chunks)} chunks...")
 
         # Monitor GPU memory before embedding
         if torch.cuda.is_available():
             mem_reserved = torch.cuda.memory_reserved() / 1e6
             mem_allocated = torch.cuda.memory_allocated() / 1e6
-            print(f"[GPU] Reserved: {mem_reserved:.1f}MB, Allocated: {mem_allocated:.1f}MB")
-
+            log.info(f"[GPU] Reserved: {mem_reserved:.1f}MB, Allocated: {mem_allocated:.1f}MB")
         # Embedding
         chunk_embeddings = self.embedder.batch_embed(chunks)
 
         end_time = time.time()
-        print(f"[HNet] Embedding took {end_time - start_time:.2f}s")
+        log.info(f"[HNet] Embedding took {end_time - start_time:.2f}s")
 
         return self.pooler.mean_pool(chunk_embeddings)
 
@@ -78,6 +79,7 @@ def get_embedding(text: str, cfg: dict) -> list[float]:
     model = load_model(model_name)
 
     if not text.strip():
+        log.warning("Empty text provided for embedding.")
         return []
 
     # Some E5 models expect prefixes
@@ -92,6 +94,8 @@ def batch_embed(texts: list[str], cfg: dict) -> list[list[float]]:
     model_name = cfg.get("hf_model_name", "intfloat/e5-large-v2")
     model = load_model(model_name)
 
-    texts = [f"passage: {t.strip()}" if "e5" in model_name.lower() else t for t in texts]
+    if not texts or all(not t.strip() for t in texts):
+        log.warning("Empty texts provided for batch embedding.")
+        return [[] for _ in texts]
     embeddings = model.encode(texts, convert_to_numpy=True, normalize_embeddings=True, device="cuda")
     return embeddings.tolist()

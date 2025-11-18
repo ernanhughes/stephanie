@@ -311,11 +311,15 @@ class KnowledgeTrainer(BaseTrainer):
         tot_loss, n_batches = 0.0, 0
 
         for G, A, B, AUXA, AUXB, source, weight in dl:
-            z_a = self.model.encoder(G, A); z_b = self.model.encoder(G, B)
-            z_a = self.model.aux_proj(z_a, AUXA); z_b = self.model.aux_proj(z_b, AUXB)
+            z_a = self.model.encoder(G, A)
+            z_b = self.model.encoder(G, B)
+            z_a = self.model.aux_proj(z_a, AUXA)
+            z_b = self.model.aux_proj(z_b, AUXB)
 
-            s_h_a = self.model.score_h(z_a); s_h_b = self.model.score_h(z_b)
-            s_a_a = self.model.score_a(z_a); s_a_b = self.model.score_a(z_b)
+            s_h_a = self.model.score_h(z_a)
+            s_h_b = self.model.score_h(z_b)
+            s_a_a = self.model.score_a(z_a)
+            s_a_b = self.model.score_a(z_b)
 
             # per-sample losses
             lh = dpo_lite_loss_per_sample(s_h_a, s_h_b, beta=self.beta, margin=self.margin)
@@ -348,7 +352,8 @@ class KnowledgeTrainer(BaseTrainer):
             )
             opt.step()
 
-            tot_loss += float(loss.item()); n_batches += 1
+            tot_loss += float(loss.item())
+            n_batches += 1
 
         return tot_loss / max(1, n_batches)
 

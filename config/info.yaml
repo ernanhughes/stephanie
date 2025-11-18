@@ -1,0 +1,67 @@
+defaults:
+  - _self_
+  - db: postgres
+  - bus: zmq   
+  - plan_monitor: disabled
+  - logging: json_logger
+  - services: all
+  - scorer: all  
+
+  - agents/nexus_scorable_loader
+  - agents/scorable_annotate
+  - agents/survey
+  - agents/search_orchestrator
+  - agents/document_profiler
+  - agents/document_profiler
+  - agents/nexus
+  - agents/nexus_improver
+  - agents/gap
+  - agents/nexus_vpm_refiner
+  - agents/nexus_vpm_logic_compare
+  - agents/arxiv_search
+  - agents/modular_memento
+  - agents/memento
+  - agents/generation
+  - agents/cbr_dspy
+  - agents/document_loader
+  - agents/document_reward_scorer
+  - agents/icl_reasoning
+  - agents/knowledge_loader
+  - agents/planner_reuse
+  - agents/planner_revise
+  - agents/knowledge_db_loader
+  - agents/pipeline_judge
+
+goal:
+  goal_text: "https://arxiv.org/pdf/2308.09687"
+  goal_type: "similar_papers"
+  focus_area: "graph learning"
+
+paths:
+  prompts: ${hydra:runtime.cwd}/prompts
+
+report:
+  generate_report: true
+  path: ${hydra:runtime.cwd}/reports
+
+pipeline:
+  name: chat training
+  tag: chat_training
+  description: "Uses chat history to train models. Different dynamics than traditional training."
+  stages:
+     - name: survey
+       cls: stephanie.agents.knowledge.survey.SurveyAgent
+       enabled: true
+       iterations: 1
+     - name: search_orchestrator
+       cls: stephanie.agents.knowledge.search_orchestrator.SearchOrchestratorAgent
+       enabled: true
+       iterations: 1
+     - name: document_loader
+       cls: stephanie.agents.knowledge.document_loader.DocumentLoaderAgent
+       enabled: true
+       iterations: 1
+     - name: document_profiler
+       cls: stephanie.agents.info.document_section_profiler.DocumentSectionProfilerAgent
+       enabled: true
+       iterations: 1

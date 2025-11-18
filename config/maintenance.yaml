@@ -28,7 +28,6 @@ defaults:
   - agents/document_reward_scorer
   - agents/document_svm_trainer
   - agents/document_svm_inference
-  - agents/scorable_embedding_backfill
   - agents/document_llm_inference
   - agents/knowledge_db_loader
   - agents/gild_trainer
@@ -127,12 +126,6 @@ pipeline:
      - name: knowledge_loader
        description: "Load knowledge from the scored papers into the system"
        cls: stephanie.agents.knowledge.knowledge_loader.KnowledgeLoaderAgent
-       enabled: false
-       iterations: 1
-
-     - name: scorable_embedding_backfill
-       description: "Backfill document embeddings for existing documents"
-       cls: stephanie.agents.maintenance.scorable_embedding_backfill.DocumentEmbeddingBackfillAgent
        enabled: false
        iterations: 1
 

@@ -210,9 +210,12 @@ class MRQTrainer(BaseTrainer):
         # collect labels from dataloader once
         ys = []
         for batch in dataloader:
-            if len(batch) == 3: _, y, _ = batch
-            elif len(batch) == 2: _, y = batch
-            else: continue
+            if len(batch) == 3:
+                _, y, _ = batch
+            elif len(batch) == 2:
+                _, y = batch
+            else:
+                continue
             ys.append(y.detach().cpu().view(-1))
         y_all = torch.cat(ys) if ys else torch.tensor([])
         p_pos = float((y_all > 0.5).float().mean()) if y_all.numel() > 0 else 0.5
@@ -289,8 +292,10 @@ class MRQTrainer(BaseTrainer):
         try:
             vals = []
             for s in samples:
-                if "value_a" in s: vals.append(float(s["value_a"]))
-                if "value_b" in s: vals.append(float(s["value_b"]))
+                if "value_a" in s:
+                    vals.append(float(s["value_a"]))
+                if "value_b" in s:
+                    vals.append(float(s["value_b"]))
             if vals:
                 min_value, max_value = float(np.min(vals)), float(np.max(vals))
             else:

@@ -8,6 +8,8 @@ import traceback
 from collections import Counter
 from typing import Any, Dict, List, Optional
 
+from stephanie.utils.similarity_utils import cosine
+
 
 def _nz(x, lo: float = 0.0, hi: float = 1.0) -> float:
     """
@@ -314,7 +316,7 @@ class VoiceProfileService:
             # VS1
             try:
                 emb = self.memory.embedding.get_or_create(text)
-                sim = self._cosine(emb, self._profile["centroid"])
+                sim = cosine(emb, self._profile["centroid"])
                 VS1 = (sim + 1.0) / 2.0
             except Exception:
                 VS1 = 0.5
@@ -373,13 +375,6 @@ class VoiceProfileService:
                 "key_phrases": [],
             }
         return self._profile["style_card"]
-
-    def _cosine(self, a: List[float], b: List[float]) -> float:
-        """Calculate cosine similarity between two vectors"""
-        dot = sum(x * y for x, y in zip(a, b))
-        na = math.sqrt(sum(x * x for x in a)) or 1e-8
-        nb = math.sqrt(sum(y * y for y in b)) or 1e-8
-        return dot / (na * nb)
 
     def _features(self, text: str) -> Dict[str, float]:
         """Calculate stylometric features for text"""

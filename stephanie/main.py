@@ -6,6 +6,8 @@ import json
 import logging
 import os
 
+from stephanie.services.bus.zmq_broker import ZmqBrokerGuard
+
 os.environ.setdefault("MPLBACKEND", "Agg")
 
 import hydra
@@ -31,6 +33,7 @@ def run(cfg: DictConfig):
         run_id = generate_run_id(cfg.goal.goal_text if "goal" in cfg else "batch")
         log_path = get_log_file_path(run_id, cfg)
         log = JSONLogger(log_path=log_path)
+        await ZmqBrokerGuard.ensure_started()  # detached=True by default
         memory = MemoryTool(cfg=cfg, logger=log)
 
         # Create supervisor
@@ -40,11 +43,12 @@ def run(cfg: DictConfig):
         if "input_file" in cfg and cfg.input_file:
             logger.info(f"📂 Batch mode: Loading from file: {cfg.input_file}")
             result = await supervisor.run_pipeline_config(
-                {"input_file": cfg.input_file}
-            )
+                    {"input_file": cfg.input_file}
+                )
             logger.info(
-                f"✅ Batch run completed for file: {cfg.input_file}: {str(result)[:100]}"
-            )
+                    f"✅ Batch run completed for file: {cfg.input_file}: {str(result)[:100]}"
+                )
+                
             return
 
         # ✅ Single goal mode
@@ -59,7 +63,6 @@ def run(cfg: DictConfig):
         }
 
         result = await supervisor.run_pipeline_config(context)
-
         if cfg.report.get("save_context_result", False):
             save_json_result(log_path, result)
 
@@ -110,7 +113,7 @@ def save_json_result(log_path: str, result: dict):
 if __name__ == "__main__":
     # Suppress HTTPX logs
     logging.getLogger().addFilter(lambda record: len(record.getMessage().strip()) > 10)
-    for name in ("numba", "httpcore", "httpcore.http11", "httpx", "LiteLLM", "transformers", "zeromodel", "hnswlib", "matplotlib", "urllib3", "asyncio","PIL", "pdfminer"):
+    for name in ("numba", "httpcore", "httpcore.http11", "httpx", "LiteLLM", "transformers", "zeromodel", "zeromodel.config", "hnswlib", "matplotlib", "urllib3", "asyncio","PIL", "pdfminer"):
         logging.getLogger(name).setLevel(logging.CRITICAL)
         logging.getLogger(name).propagate = False
     run()

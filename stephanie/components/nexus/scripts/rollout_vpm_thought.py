@@ -1,3 +1,6 @@
+# stephanie/components/nexus/scripts/rollout_vpm_thought.py
+from __future__ import annotations
+
 import argparse
 import json
 import random
@@ -11,7 +14,9 @@ import torch
 from omegaconf import OmegaConf
 from PIL import Image
 
-from scripts.train_vpm_thought_model import (  # Reuse model definition
+from stephanie.components.nexus.graph.graph_layout import \
+    render_multi_layout_vpm
+from stephanie.components.nexus.tools.train_vpm_thought_model import (  # Reuse model definition
     DEFAULT_CONFIG, VPMThoughtModel)
 from stephanie.components.nexus.utils.visual_thought import (VisualThoughtOp,
                                                              VisualThoughtType)
@@ -19,8 +24,6 @@ from stephanie.components.nexus.vpm.state_machine import (Thought,
                                                           ThoughtExecutor,
                                                           VPMGoal, VPMState,
                                                           compute_phi)
-from stephanie.services.graph_layout import render_multi_layout_vpm
-from stephanie.vpm.metrics import compute_vpm_metrics
 
 
 # --------------------------- Helpers ---------------------------

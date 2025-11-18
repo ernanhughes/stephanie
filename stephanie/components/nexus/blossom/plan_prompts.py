@@ -1,7 +1,7 @@
 # stephanie/components/nexus/blossom/plan_prompts.py
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Dict
 
 try:
     # Prefer Jinja if available (you already use it elsewhere)

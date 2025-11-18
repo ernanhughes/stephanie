@@ -24,8 +24,10 @@ class MRQModel:
         """
         ctx_t = torch.as_tensor(ctx, dtype=torch.float32, device=self.device)
         doc_t = torch.as_tensor(doc, dtype=torch.float32, device=self.device)
-        if ctx_t.dim() == 1: ctx_t = ctx_t.unsqueeze(0)
-        if doc_t.dim() == 1: doc_t = doc_t.unsqueeze(0)
+        if ctx_t.dim() == 1:
+            ctx_t = ctx_t.unsqueeze(0)
+        if doc_t.dim() == 1:
+            doc_t = doc_t.unsqueeze(0)
 
         z = self.encoder(ctx_t, doc_t)              # [B, D']
         logits = self.predictor(z).view(-1)         # [B]
@@ -46,11 +48,13 @@ class MRQModel:
 
     def load_weights(self, encoder_path: str, predictor_path: str):
         self.encoder.load_state_dict(torch.load(encoder_path, map_location=self.device))
-        self.predictor.load_state_dict(torch.load(predictor_path, map_location=self.device))
-        self.encoder.eval(); self.predictor.eval()
+        self.encoder.eval()
+        self.predictor.eval()
 
     def train(self):
-        self.encoder.train(); self.predictor.train()
+        self.encoder.train()
+        self.predictor.train()
 
     def eval(self):
-        self.encoder.eval(); self.predictor.eval()
+        self.encoder.eval()
+        self.predictor.eval()

@@ -4,7 +4,7 @@ from __future__ import annotations
 import asyncio
 import functools
 import random
-import time
+from stephanie.utils.time_utils import now_ms
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from contextlib import contextmanager
@@ -19,8 +19,8 @@ from stephanie.constants import (AGENT, API_BASE, API_KEY, BATCH_SIZE, CONTEXT,
                                  OUTPUT_KEY, PIPELINE, PIPELINE_RUN_ID,
                                  PROMPT_MATCH_RE, PROMPT_PATH, SAVE_CONTEXT,
                                  SAVE_PROMPT, SOURCE, STRATEGY)
-from stephanie.models import PromptORM
-from stephanie.prompts import PromptLoader
+from stephanie.models.prompt import PromptORM
+from stephanie.prompts.prompt_loader import PromptLoader
 from stephanie.services.scoring_service import ScoringService
 from stephanie.utils.llm_utils import remove_think_blocks
 
@@ -245,39 +245,6 @@ class BaseAgent(ABC):
             entry.update(metadata)
         context["prompt_history"][self.name].append(entry)
 
-    def get_scorables(self, context: dict) -> list[dict]:
-        try:
-            if self.source == "context":
-                scorable_dicts = context.get(self.input_key, [])
-                if not scorable_dicts:
-                    self.logger.log("NoScorablesInContext", {"agent": self.name})
-                return scorable_dicts
-
-            elif self.source == "database":
-                goal = context.get(GOAL)
-                scorables = self.get_scorables_from_db(goal.get("goal_text"))
-                if not scorables:
-                    self.logger.log(
-                        "NoScorablesInDatabase", {"agent": self.name, "goal": goal}
-                    )
-                return [h.to_dict() for h in scorables] if scorables else []
-
-            else:
-                self.logger.log(
-                    "InvalidSourceConfig", {"agent": self.name, "source": self.source}
-                )
-        except Exception as e:
-            print(f"❌ Exception: {type(e).__name__}: {e}")
-            self.logger.log(
-                "ScorableFetchError",
-                {"agent": self.name, "source": self.source, "error": str(e)},
-            )
-
-        return []
-
-    def get_scorables_from_db(self, goal_text: str):
-        return self.memory.hypotheses.get_latest(goal_text, self.batch_size)
-
     @staticmethod
     def extract_goal_text(goal):
         return goal.get("goal_text") if isinstance(goal, dict) else goal
@@ -501,17 +468,14 @@ class BaseAgent(ABC):
 
     @contextmanager
     def report_step(self, event: str, **fields):
-        t0 = _now_ms()
+        t0 = now_ms()
         self._emit(self, event + ".start", **fields)
         try:
             yield
-            self._emit(self, event + ".ok", duration_ms=_now_ms() - t0, **fields)
+            self._emit(self, event + ".ok", duration_ms=now_ms() - t0, **fields)
         except Exception as e:
-            self._emit(self, event + ".err", duration_ms=_now_ms() - t0, error=str(e), **fields)
+            self._emit(self, event + ".err", duration_ms=now_ms() - t0, error=str(e), **fields)
             raise
-
-def _now_ms() -> int:
-    return int(time.time() * 1000)
 
 def _safe_len(x) -> int:
     try:

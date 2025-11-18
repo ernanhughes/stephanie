@@ -1,8 +1,10 @@
 # stephanie/services/bus/prompt_result_listener.py
 
 from __future__ import annotations
+
 import asyncio
-from typing import Dict, Callable, List
+from typing import Dict, List
+
 from stephanie.services.bus_service import BusService
 
 RESULTS_BASE = "results.prompt"

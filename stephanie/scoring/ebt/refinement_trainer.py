@@ -218,7 +218,7 @@ class EBTRefinementTrainer(BaseAgent, EBTMixin):
         model.train()
         
         optimizer = optim.Adam(model.parameters(), lr=self.lr)
-        total_loss = 0.0
+
         
         for epoch in range(self.epochs):
             epoch_loss = 0.0
@@ -406,8 +406,8 @@ class EBTRefinementTrainer(BaseAgent, EBTMixin):
         """Update regression tuner using refined examples"""
         for ctx, doc_a, doc_b, labels in dataloader:
             for i in range(len(ctx)):
-                original = doc_a[i].cpu().numpy()
-                refined = doc_b[i].cpu().numpy()
+
+
                 llm_score = labels[i].cpu().item()
                 
                 # Update tuner with EBT-refined examples

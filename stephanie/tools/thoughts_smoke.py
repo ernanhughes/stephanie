@@ -1,8 +1,11 @@
 from __future__ import annotations
-import asyncio
+
 import argparse
+import asyncio
+
+from stephanie.components.thoughts.agents.thought_processor_agent import \
+    ThoughtProcessorAgent
 from stephanie.core.app_context import AppContext
-from stephanie.components.thoughts.agents.thought_processor_agent import ThoughtProcessorAgent
 
 RAW = [
     {"content": "We should verify the dataset split before training.", "kind": "verify", "tags": ["data"], "evidence": []},

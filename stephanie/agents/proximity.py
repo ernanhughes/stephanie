@@ -7,6 +7,7 @@ from stephanie.agents.base_agent import BaseAgent
 from stephanie.constants import DATABASE_MATCHES, GOAL, GOAL_TEXT
 from stephanie.scoring.scorable import ScorableFactory, ScorableType
 from stephanie.scoring.scorer.proximity_scorer import ProximityScorer
+from stephanie.utils.similarity_utils import cosine
 
 
 class ProximityAgent(BaseAgent):
@@ -28,7 +29,7 @@ class ProximityAgent(BaseAgent):
         self.metrics = cfg.get("metrics", {})
 
     async def run(self, context: dict) -> dict:
-        documents = self.get_scorables(context)
+        documents = context.get(self.input_key, [])
         proximity_results = []
 
         # --- score incoming hypotheses against goal
@@ -67,12 +68,6 @@ class ProximityAgent(BaseAgent):
     # ---------------------------
     # Internal helpers
     # ---------------------------
-
-    def _cosine(self, a, b) -> float:
-        """Cosine similarity between two vectors."""
-        a = np.array(list(a), dtype=float)
-        b = np.array(list(b), dtype=float)
-        return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))
 
     def _find_graft_candidates(self, proximity_results: list[dict]) -> list[tuple[str, str]]:
         """

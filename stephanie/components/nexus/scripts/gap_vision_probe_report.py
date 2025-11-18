@@ -1,3 +1,6 @@
+# stephanie/components/nexus/scripts/gap_vision_probe_report.py
+from __future__ import annotations
+
 import json
 from pathlib import Path
 from typing import Dict, List, Tuple
@@ -8,7 +11,8 @@ import plotly.graph_objects as go
 import plotly.subplots as sp
 from PIL import Image
 
-from stephanie.services.graph_layout import render_multi_layout_vpm
+from stephanie.components.nexus.graph.graph_layout import \
+    render_multi_layout_vpm
 from stephanie.services.graph_vision_scorer import VisionScorer
 
 # --------------------------- Config ---------------------------

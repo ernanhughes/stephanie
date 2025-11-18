@@ -46,7 +46,7 @@ risk:
 
   # Streams
   streams:
-    nats_url: nats://nats:4222
+    nats_url: nats://127.0.0.1:4222
     sub_topics: ["qa.scored", "trace.completed"]
     pub_badge_topic: sis.sentinel.badge
     pub_alerts_topic: alerts.risk

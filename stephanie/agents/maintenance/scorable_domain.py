@@ -50,7 +50,7 @@ class ScorableDomainAgent(BaseAgent):
         Enrich all scorables in context with multi-source domains.
         """
         try:
-            scorables = self.get_scorables(context)
+            scorables = context.get(self.input_key, [])
             enriched = []
 
             pipeline_id = context.get("pipeline_id", "unknown")

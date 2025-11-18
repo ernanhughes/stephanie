@@ -20,7 +20,8 @@ class GeneralReasonerAgent(RubricClassifierMixin, BaseAgent):
         if self.cfg.get("thinking_mode") == "generate_and_judge":
             hypotheses = self.generate_hypotheses(context)
         else:
-            hypotheses = self.get_scorables(context)
+            hypotheses = context.get(self.input_key, [])
+
 
         context["hypotheses"] = hypotheses
         context["scoring"] = []

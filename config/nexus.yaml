@@ -1,6 +1,7 @@
 defaults:
   - _self_
   - db: postgres
+  - bus: zmq   
   - plan_monitor: disabled
   - logging: json_logger
   - services: all
@@ -11,6 +12,8 @@ defaults:
   - agents/nexus
   - agents/nexus_improver
   - agents/gap
+  - agents/nexus_vpm_refiner
+  - agents/nexus_vpm_logic_compare
 
 embeddings:
   backend: hnet
@@ -70,16 +73,28 @@ pipeline:
      - name: scorable_annotate
        description: "Annotate the loaded conversation turns with scores"
        cls: stephanie.agents.maintenance.scorable_annotate.ScorableAnnotateAgent
-       enabled: false
+       enabled: true
        iterations: 1
 
 
      - name: nexus
-       description: "Generate a memory graph"
+       description: "Compare two scorables list runs"
        cls: stephanie.components.nexus.agents.compass.CompassAgent
-       enabled: true
+       enabled: false
        iterations: 1
-  
+
+     - name: nexus_vpm_refiner
+       description: "Refine the nexus using visual prompt model"
+       cls: stephanie.components.nexus.agents.vpm_refiner.VPMRefinerAgent
+       enabled: false
+       iterations: 1
+
+     - name: nexus_vpm_logic_compare
+       description: "Compare the nexus using visual prompt model with logic-based occlusion"
+       cls: stephanie.components.nexus.agents.vpm_logic_compare.VPMLogicCompareAgent
+       enabled: false
+       iterations: 1
+
      - name: nexus_improver
        description: "Improve the nexus using multi-dimensional scoring"
        cls: stephanie.components.nexus.agents.nexus_pollinator.NexusPollinatorAgent

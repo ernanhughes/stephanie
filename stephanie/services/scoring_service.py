@@ -36,8 +36,7 @@ from stephanie.data.score_bundle import ScoreBundle
 from stephanie.scoring.scorable import Scorable, ScorableFactory
 from stephanie.scoring.scorer.base_scorer import BaseScorer
 from stephanie.services.service_protocol import Service
-from stephanie.utils.score_utils import (clip01, median, safe_mean,
-                                         weighted_mean)
+from stephanie.services.zeromodel_service import ZeroModelService
 
 log = logging.getLogger(__name__)
 
@@ -198,10 +197,14 @@ class ScoringService(Service):
         cur = self.cfg
         for k in keys:
             try:
-                # OmegaConf supports attribute access, but dict.get works for both
-                cur = cur.get(k, None) if isinstance(cur, dict) else getattr(cur, k)
-            except Exception:
-                cur = None
+                if isinstance(cur, dict):
+                    cur = cur.get(k)
+                elif hasattr(cur, "get"):
+                    cur = cur.get(k)
+                else:
+                    cur = getattr(cur, k, None)
+            except (AttributeError, KeyError, TypeError):
+                return default
             if cur is None:
                 return default
         return cur
@@ -478,7 +481,7 @@ class ScoringService(Service):
                 source=source or scorer_name,
                 embedding_type=self.embedding_type,
                 evaluator=evaluator or scorer_name,
-                model_name=model_name or (self._cfg_get("model", "name", default="unknown")),
+                model_name=model_name or (self.cfg.get("model", {}).get("name", "unknown")),
                 agent_name=self.name,
             )
         except Exception as e: 
@@ -964,6 +967,125 @@ class ScoringService(Service):
             la = len(getattr(a, "text", str(a)))
             lb = len(getattr(b, "text", str(b)))
             return "a" if la >= lb else "b"
+
+
+    def evaluate_state(
+        self,
+        *,
+        scorable: "Scorable",
+        context: dict,
+        scorers: list[str],
+        dimensions: list[str],
+        scorer_weights: dict[str, float] | None = None,
+        dimension_weights: dict[str, float] | None = None,
+        include_llm_heuristic: bool = False,
+        include_vpm_phi: bool = False,
+        fuse_mode: str = "weighted_mean",
+        clamp_01: bool = True,
+    ) -> dict:
+        """
+        Fuse multiple scorer families into:
+        - overall (scalar in [0,1])
+        - dims (per-dimension fused scores)
+        - by_scorer (raw aggregates + per-dimension)
+        - components (optional llm_heuristic, vpm_phi)
+
+        Compatible with your agent’s call signature.
+        """
+        # Ensure requested scorers are initialized (lazy + tolerant)
+        try:
+            self.ensure_ready(list(scorers or []), auto_train=False, fail_on_missing=False)
+        except Exception as e:
+            self.logger and self.logger.log("StateEvalEnsureReadyError", {"error": str(e)})
+
+        sw = {k: float(v) for k, v in (scorer_weights or {}).items()}
+        dw = {d: float(v) for d, v in (dimension_weights or {}).items()}
+        dims = list(dimensions or []) or ["alignment"]
+
+        by_scorer = {}
+        per_dim_stack = {d: [] for d in dims}
+
+        # Score with each scorer
+        for name in (scorers or []):
+            try:
+                bundle = self.score(scorer_name=name, scorable=scorable, context=context, dimensions=dims)
+                agg = float(bundle.aggregate())
+                per = {d: float(bundle.results.get(d, None).score if d in bundle.results else agg) for d in dims}
+                by_scorer[name] = {"aggregate": agg, "per_dimension": per}
+                w_i = sw.get(name, 1.0)
+                for d in dims:
+                    per_dim_stack[d].append((per[d], w_i))
+            except Exception as e:
+                self.logger and self.logger.log("StateEvalScorerError", {"scorer": name, "error": str(e)})
+
+        # Fuse per-dimension
+        fused_dim: dict[str, float] = {}
+        for d in dims:
+            if not per_dim_stack[d]:
+                fused = 0.0
+            elif fuse_mode == "median":
+                fused = float(np.median([v for (v, _) in per_dim_stack[d]]))
+            else:
+                num = sum(v * w for (v, w) in per_dim_stack[d])
+                den = sum(w for (_, w) in per_dim_stack[d]) or 1.0
+                fused = float(num / den)
+            # apply dimension weight so it affects overall
+            fused_dim[d] = fused * float(dw.get(d, 1.0))
+
+        components = {}
+
+        # Optional: cheap LLM heuristic prior
+        if include_llm_heuristic:
+            try:
+                hsvc = getattr(self.container, "get", lambda *_: None)("llm_heuristic")
+                if hsvc and hasattr(hsvc, "score"):
+                    llm_h = float(hsvc.score(scorable=scorable, context=context, dimensions=dims))
+                else:
+                    txt = getattr(scorable, "text", "") or ""
+                    nw = len(txt.split())
+                    punct = sum(1 for c in txt if c in ".!?")
+                    llm_h = float(max(0.0, min(1.0, 0.4 + 0.2*(punct>0) + 0.2*(50<=nw<=400))))
+                for d in dims:
+                    fused_dim[d] = 0.9 * fused_dim[d] + 0.1 * llm_h
+                components["llm_heuristic"] = llm_h
+            except Exception as e:
+                self.logger and self.logger.log("StateEvalLLMHeuError", {"error": str(e)})
+
+        # Optional: VPM φ (if ZeroModel present)
+        if include_vpm_phi:
+            try:
+                zm: ZeroModelService = self.container.get("zero_model")
+                if zm:
+                    vpm_u8, _meta = zm.vpm_from_scorable(scorable, img_size=128)
+                    phi = float(zm.score_vpm_image(vpm_u8))  # expected [0,1]
+                    if "clarity" in fused_dim:
+                        fused_dim["clarity"] = 0.9 * fused_dim["clarity"] + 0.1 * phi
+                    if "coverage" in fused_dim:
+                        fused_dim["coverage"] = 0.9 * fused_dim["coverage"] + 0.1 * phi
+                    components["vpm_phi"] = phi
+            except Exception as e:
+                self.logger and self.logger.log("StateEvalVPMError", {"error": str(e)})
+
+        # Overall = dim-weighted mean (by absolute weights)
+        dw_total = sum(abs(dw.get(d, 1.0)) for d in dims) or float(len(dims))
+        overall = float(sum(fused_dim[d] for d in dims) / dw_total)
+
+        if clamp_01:
+            overall = float(max(0.0, min(1.0, overall)))
+            for d in list(fused_dim):
+                fused_dim[d] = float(max(0.0, min(1.0, fused_dim[d])))
+
+        return {
+            "overall": overall,
+            "dims": fused_dim,
+            "by_scorer": by_scorer,
+            "components": components,
+        }
+
+    async def evaluate_state_async(self, *args, **kwargs) -> dict:
+        import asyncio
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, lambda: self.evaluate_state(*args, **kwargs))
 
     # ------------------------------------------------------------------ #
     # StateEvaluator (fused single-scalar + per-dimension)

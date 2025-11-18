@@ -10,7 +10,7 @@ class ReviewAgent(BaseAgent):
         super().__init__(cfg, memory, container, logger)
 
     async def run(self, context: dict) -> dict:
-        hypotheses = self.get_scorables(context)
+        hypotheses = context.get(self.input_key, [])
         reviews = []
 
         for hyp in hypotheses:

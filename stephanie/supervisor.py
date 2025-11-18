@@ -15,7 +15,8 @@ from stephanie.constants import (GOAL, NAME, PIPELINE, PIPELINE_RUN_ID,
 from stephanie.core.logging.json_logger import JSONLogger
 from stephanie.engine.context_manager import ContextManager
 from stephanie.memory.memory_tool import MemoryTool
-from stephanie.reporting import ReportFormatter
+from stephanie.reporting.formatter import ReportFormatter
+from stephanie.scoring.scorable_processor import ScorableProcessor
 from stephanie.services.plan_trace_service import PlanTraceService
 from stephanie.services.registry_loader import load_services_profile
 from stephanie.services.rules_service import RulesService
@@ -42,7 +43,7 @@ class Supervisor:
         self.logger.log("SupervisorInit", {"cfg": cfg})
 
         # DI container
-        self.container = ServiceContainer(cfg=cfg, logger=self.logger)
+        self.container = ServiceContainer(cfg=cfg, memory=self.memory, logger=self.logger)
 
         # Load + register services from selected profile
         profile_path = self._resolve_services_profile_path(cfg)
@@ -54,6 +55,14 @@ class Supervisor:
             profile_path=profile_path,
             supervisor=self,  # enables ${supervisor:...} in YAML
         )
+        self.scorable_processor = ScorableProcessor(
+            cfg.get("scorable_processor", {}),
+            memory,
+            self.container,
+            self.logger,
+        )
+
+
 
         print(f"Parsing pipeline stages from config: {cfg.pipeline}")
         self.pipeline_stages = self._parse_pipeline_stages(cfg.pipeline.stages)
@@ -171,6 +180,8 @@ class Supervisor:
         plan_trace_monitor: PlanTraceService = self.container.get("plan_trace")
         plan_trace_monitor.start_pipeline(self.context(), run_id)
 
+        # Make THIS process a scorable worker
+        await self.scorable_processor.register_bus_handlers()
 
         # Adjust pipeline if needed
         await self.maybe_adjust_pipeline(self.context())
@@ -605,7 +616,7 @@ class Supervisor:
         return context
 
     def analyze_pipeline_deltas(self, goal_id: int):
-        from stephanie.analysis.reflection_delta import compare_pipeline_runs
+        from stephanie.utils.pipeline_utils import compare_pipeline_runs
 
         deltas = compare_pipeline_runs(self.memory, goal_id)
         for delta in deltas:

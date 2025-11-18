@@ -97,10 +97,9 @@ import networkx as nx
 import numpy as np
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 from omegaconf import DictConfig, OmegaConf
 
-from stephanie.services.graph_layout import \
+from stephanie.components.nexus.graph.graph_layout import \
     render_multi_layout_vpm  # your hardened renderer
 
 # --------------------------- Config defaults ---------------------------
@@ -449,83 +448,3 @@ def _gen_barbell(seed: int) -> Tuple[nx.Graph, Dict[str, float]]:
     labels = _label_pack(G, [left, right], layouts=["forceatlas2","spectral"], img_size=256)
     return G, labels
 
-# # stephanie/services/scoring_manager.py
-# from stephanie.services.graph_vision_scorer import VisionScorer
-
-# class ScoringManager:
-#     def __init__(self, config):
-#         # ...
-#         self.vision_scorer = VisionScorer(
-#             config=config.get("vision_scorer", None),
-#             model_path="models/graph_vision_scorer.pt",  # optional (after training)
-#         )
-
-#     def score_plan_trace(self, plan_trace):
-#         scores = {}  # your existing composite
-#         try:
-#             v = self.vision_scorer.score_graph(plan_trace.graph, cache_key=plan_trace.id)
-#             scores.update(v)
-#             # Optional: disagreement flag for Daimon
-#             gnn_sym = scores.get("gnn_symmetry", 0.5)
-#             if abs(gnn_sym - v["vision_symmetry"]) > 0.4:
-#                 self.memcube.log_flag(
-#                     trace_id=plan_trace.id,
-#                     flag="HIGH_GNN_VISION_DISAGREEMENT",
-#                     meta={"gnn_sym": gnn_sym, "vision_sym": v["vision_symmetry"]},
-#                 )
-#         except Exception as e:
-#             _logger.warning(f"VisionScorer failed: {e}")
-#         return scores
-
-
-# Optional: tiny trainer script
-# -----------------------------
-
-# ```python
-# # scripts/train_vision_scorer.py
-# import hydra
-# from omegaconf import DictConfig
-# from stephanie.services.graph_vision_scorer import VisionScorer
-
-# @hydra.main(version_base=None, config_path="../configs", config_name="vision_scorer")
-# def train(cfg: DictConfig):
-#     path = VisionScorer.train_on_probes(cfg)
-#     print(f"✅ Saved: {path}")
-
-# if __name__ == "__main__":
-#     train()
-# ```
-
-# ### `configs/vision_scorer.yaml`
-
-# ```yaml
-# defaults:
-#   - graph_layout@_global_: graph_layout
-
-# model:
-#   backbone: tiny_cnn
-#   head_hidden_dim: 64
-#   layouts: ["forceatlas2", "spectral"]
-#   dropout: 0.0
-
-# input:
-#   img_size: 256
-#   per_channel_mean: [0.0, 0.0, 0.0]
-#   per_channel_std: [1.0, 1.0, 1.0]
-
-# training:
-#   probe_types: ["sbm", "ring_of_cliques", "barbell"]
-#   n_samples_per_probe: 300
-#   batch_size: 32
-#   lr: 1e-3
-#   epochs: 8
-#   device: cpu
-#   save_path: ${paths.models_dir}/graph_vision_scorer.pt
-#   img_size: 256
-#   seed: 7
-
-# inference:
-#   cache_dir: ${paths.cache_dir}/vision_scorer
-#   device: cpu
-#   timeout_s: 2.0
-# ```

@@ -1,3 +1,4 @@
+# stephanie/components/ssp/training/rewards.py
 """
 Self-Play Rewards Calculation
 
@@ -7,6 +8,7 @@ SSP self-play dynamics as described in the paper:
 - Solver reward: accuracy on verified questions (cooperative)
 - Proposer reward: 1 - solver accuracy (adversarial)
 """
+from __future__ import annotations
 
 from typing import Dict, List
 

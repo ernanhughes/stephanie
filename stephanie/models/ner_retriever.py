@@ -2,7 +2,7 @@
 """
 NER Retriever Module
 
-This module implements a Named Entity Recognition (NER) based retrieval system for legal case documents.
+This module implements a Named Entity Recognition (NER) based retrieval system for case documents.
 It combines transformer-based entity detection, embedding generation, and approximate nearest neighbor
 search to enable efficient entity retrieval from casebooks.
 

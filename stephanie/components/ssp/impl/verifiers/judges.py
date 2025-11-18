@@ -1,4 +1,6 @@
 # stephanie/components/ssp/impl/verifiers/judges.py
+from __future__ import annotations
+
 from ast import Dict
 
 

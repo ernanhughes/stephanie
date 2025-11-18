@@ -96,13 +96,17 @@ class SICQLTrainer(BaseTrainer):
             g = torch.tensor(self.memory.embedding.get_or_create(title), dtype=torch.float32, device=self.device)
             d = torch.tensor(self.memory.embedding.get_or_create(out),   dtype=torch.float32, device=self.device)
             y = torch.tensor(float(val), dtype=torch.float32, device=self.device)
-            ctxs.append(g); docs.append(d); ys.append(y); kept += 1
+            ctxs.append(g)
+            docs.append(d)
+            ys.append(y)
+            kept += 1
 
         for s in self.progress(samples, desc="Packing SICQL triples"):
             try:
                 title = (s.get("title") or "").strip()
                 if not title:
-                    skipped += 1; continue
+                    skipped += 1
+                    continue
 
                 if "output" in s and "score" in s:
                     out = (s.get("output") or "").strip()
@@ -120,7 +124,8 @@ class SICQLTrainer(BaseTrainer):
 
                     # skip if both missing
                     if not a_out and not b_out:
-                        skipped += 1; continue
+                        skipped += 1
+                        continue
 
                     # push A and/or B if present
                     if a_out and a_val is not None:
@@ -399,7 +404,8 @@ class SICQLTrainer(BaseTrainer):
 
         # Training loop
         losses = []
-        best = float("inf"); wait = 0
+        best = float("inf")
+        wait = 0
 
         epoch_iter = self.progress(range(1, self.epochs + 1), desc=f"SICQL[{dim}] epochs", leave=False)
         for epoch in epoch_iter:
@@ -600,7 +606,7 @@ class SICQLTrainer(BaseTrainer):
         }
 
         # Build schedulers
-        schedulers = {
+        self.scheduler = {
             "encoder": ReduceLROnPlateau(
                 optimizers["encoder"], mode="min", factor=0.5, patience=2
             ),

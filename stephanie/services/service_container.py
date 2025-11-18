@@ -47,8 +47,9 @@ class ServiceContainer:
         db_service = container.get('database')  # Initializes config first, then database
     """
 
-    def __init__(self, cfg: Dict[str, Any], logger=None):
+    def __init__(self, cfg: Dict[str, Any], memory, logger=None):
         self.cfg = cfg
+        self.memory = memory
         self.logger = logger or logging.getLogger("services")
         self._factories: Dict[str, Callable[[], Service]] = {}
         self._services: Dict[str, Service] = {}
@@ -57,7 +58,7 @@ class ServiceContainer:
         ] = {}  # Service dependency mapping
         self._initialized: set = set()  # Track initialized services
         self._order: List[str] = []
-        self._bus = None
+        self._bus = memory.bus
         self._init_args: Dict[str, Dict[str, Any]] = {}
 
     async def initialize(self):

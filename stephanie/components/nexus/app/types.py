@@ -2,7 +2,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Literal, Optional
+from enum import Enum
+from typing import Any, Dict, List, Literal, Optional
 
 import numpy as np
 
@@ -14,6 +15,41 @@ EdgeType = Literal[
     "policy_shift",
     "anomaly_escape",
 ]
+
+@dataclass
+class GraphPrompt:
+    prompt_id: str
+    graph_id: str              # which NexusGraph / run
+    node_ids: List[str]        # nodes included in this subgraph
+    edge_ids: List[str]
+    embedding: np.ndarray      # subgraph embedding
+    label: Dict[str, Any]      # task-specific outcome (score, decision, tag)
+    meta: Dict[str, Any]       # dimension, run_id, etc.
+
+class NexusNodeType(str, Enum):
+    SCORABLE = "scorable"
+    ACTION = "action"
+
+class ActionKind(str, Enum):
+    SCORE = "score"
+    GENERATE = "generate"
+    VOTE = "vote"
+    RED_FLAG = "red_flag"
+    TOOL_CALL = "tool_call"
+    PLAN_STEP = "plan_step"     # generic ExecutionStep
+    MDAP_STEP = "mdap_step"     # if you want to tag MDAP micro-steps
+    OTHER = "other"
+
+@dataclass
+class ActionNodeMeta:
+    kind: ActionKind
+    name: str
+    agent: Optional[str] = None        # e.g. "MakerExecutionAgent", "NexusPollinator"
+    protocol: Optional[str] = None     # e.g. "MDAPProtocol", "CoTProtocol"
+    step_index: Optional[int] = None   # for PlanTrace
+    trace_id: Optional[str] = None     # PlanTrace / run id
+    params: Dict[str, Any] = field(default_factory=dict)
+
 
 @dataclass
 class NexusNode:

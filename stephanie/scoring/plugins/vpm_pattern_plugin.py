@@ -84,7 +84,8 @@ class VPMPatternPlugin:
                     if "bias" in data:
                         self.b = float(data["bias"])
         except Exception as e:
-            if self.logger: self.logger.log("VPMPattern.head.load.error", {"error": str(e)})
+            if self.logger:
+                self.logger.log("VPMPattern.head.load.error", {"error": str(e)})
 
     def _load_axis_lazy(self):
         if self.axis is not None:
@@ -95,7 +96,8 @@ class VPMPatternPlugin:
                 if a is not None:
                     self.axis = _to_vec(a)
         except Exception as e:
-            if self.logger: self.logger.log("VPMPattern.axis.load.error", {"error": str(e)})
+            if self.logger:
+                self.logger.log("VPMPattern.axis.load.error", {"error": str(e)})
 
     def _pattern_score(self, x: np.ndarray) -> float:
         self._load_head_lazy()

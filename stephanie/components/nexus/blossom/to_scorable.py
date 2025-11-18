@@ -1,14 +1,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from stephanie.agents.base_agent import BaseAgent
 # These ORMs/stores were defined earlier in our Blossom schema work
-from stephanie.models.blossom import BlossomNodeORM, BlossomORM
-from stephanie.models.blossom_output import (BlossomOutputFeaturesORM,
-                                             BlossomOutputORM)
+from stephanie.models.blossom import BlossomNodeORM
+from stephanie.models.blossom_output import BlossomOutputORM
 from stephanie.scoring.scorable import ScorableType
 
 # ------------------------------- CONFIG ----------------------------------

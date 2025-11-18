@@ -2,31 +2,31 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
-import os
 import math
+import os
 import time
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
-import hashlib
 
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import scipy.stats as spstats  # optional, but nice if available
-from stephanie.scoring.scorable import Scorable
-from stephanie.utils import metrics
 from zeromodel.pipeline.executor import PipelineExecutor
 from zeromodel.tools.gif_logger import GifLogger
 from zeromodel.tools.spatial_optimizer import SpatialOptimizer
 
+from stephanie.scoring.scorable import Scorable
 from stephanie.services.event_service import EventService
 from stephanie.services.service_protocol import Service
 from stephanie.utils.json_sanitize import dumps_safe
+from stephanie.utils.vpm_utils import ensure_chw_u8
 
 if matplotlib.get_backend().lower() != "agg":
     matplotlib.use("Agg")
@@ -2375,16 +2375,24 @@ class ZeroModelService(Service):
             "col_intensities": col_int.tolist(),
         }
 
-
     async def vpm_from_scorable(
         self,
-        scorable: Scorable, 
-        metrics_values: List[float],
+        scorable: Scorable,
+        metrics_values: list[float],
         metrics_columns: list[str] | None = None,
     ) -> tuple[np.ndarray, dict]:
-        chw = await self._to_vpm_array(metrics_values=metrics_values, metrics_columns=metrics_columns)
-        meta = scorable.to_dict()
-        return chw, meta
+        raw = await self._to_vpm_array(metrics_values=metrics_values, metrics_columns=metrics_columns)
+        # raw may be HW, HWC float, etc. Normalize here:
+        chw_u8 = ensure_chw_u8(raw, force_three=True)
+        return chw_u8, scorable.to_dict()
+
+    def _to_vpm_chw_uint8(
+        self,
+        metrics_values: dict[str, float] | list[float],
+        metrics_columns: list[str] | None = None,
+    ) -> np.ndarray:
+        arr = asyncio.get_event_loop().run_until_complete(self._to_vpm_array(metrics_values, metrics_columns))
+        return ensure_chw_u8(arr, force_three=True)
 
     def vpm_rollout(
         self,
@@ -2544,13 +2552,8 @@ class ZeroModelService(Service):
         # ---- run the ZeroModel pipeline ----
         assert self._pipeline is not None, "ZeroModelService not initialized"
         vpm_out, _ = self._pipeline.run(X, {"enable_gif": False})
-        # vpm_out is HxWxC uint8 or float; convert to float32 [0,1]
-        arr = np.asarray(vpm_out, dtype=np.float32)
-        if arr.max() > 1.0:
-            arr = arr / 255.0
-        arr = np.nan_to_num(arr, nan=0.0, posinf=0.0, neginf=0.0)
-        return arr  # HxWxC float32
-
+        return np.asarray(vpm_out)  # return raw; next methods will standardize
+ 
     def _to_vpm_chw_uint8(
         self,
         metrics_values: dict[str, float] | list[float],

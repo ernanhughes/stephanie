@@ -14,10 +14,9 @@ import numpy as np
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.components.nexus.blossom.runner import BlossomRunnerAgent
-from stephanie.services.scoring_service import ScoringService
 from stephanie.scoring.scorable import Scorable
+from stephanie.services.scoring_service import ScoringService
 from stephanie.utils.progress_mixin import ProgressMixin
-
 
 # --------------------------- CONFIG ---------------------------
 

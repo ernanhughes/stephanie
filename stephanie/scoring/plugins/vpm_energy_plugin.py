@@ -6,6 +6,8 @@ from typing import Any, Dict, Optional
 
 import numpy as np
 
+from stephanie.utils.similarity_utils import cosine
+
 from .registry import register
 
 
@@ -25,10 +27,6 @@ def _to_vec(x) -> np.ndarray:
     x = x - x.mean()
     n = float(np.linalg.norm(x)) + 1e-8
     return (x / n).astype(np.float32)
-
-def _cosine(a: np.ndarray, b: np.ndarray) -> float:
-    a = _to_vec(a); b = _to_vec(b)
-    return float(np.clip(np.dot(a, b), -1.0, 1.0))
 
 @register("vpm_energy")
 class VPMEnergyPlugin:
@@ -79,7 +77,8 @@ class VPMEnergyPlugin:
                     self._proto = _to_vec(p)
                     return self._proto
         except Exception as e:
-            if self.logger: self.logger.log("VPMEnergy.get_proto.error", {"error": str(e)})
+            if self.logger:
+                self.logger.log("VPMEnergy.get_proto.error", {"error": str(e)})
         return None
 
     def _ema_update_proto(self, x: np.ndarray):
@@ -95,7 +94,8 @@ class VPMEnergyPlugin:
             if self.vpms and hasattr(self.vpms, "set_core_prototype"):
                 self.vpms.set_core_prototype(self._proto.tolist())
         except Exception as e:
-            if self.logger: self.logger.log("VPMEnergy.ema.error", {"error": str(e)})
+            if self.logger:
+                self.logger.log("VPMEnergy.ema.error", {"error": str(e)})
 
     def post_process(self, *, tap_output: Dict[str, Any]) -> Dict[str, float]:
         attrs = tap_output.get("attributes") or {}
@@ -105,7 +105,7 @@ class VPMEnergyPlugin:
 
         x = _to_vec(emb)
         proto = self._get_proto() or x  # self-compat if no proto yet
-        cos = _cosine(x, proto)
+        cos = cosine(x, proto)
         energy = (1.0 - cos) * 0.5               # [0,1]
         compat = 1.0 - energy
         threat = 1.0 / (1.0 + math.exp(-(self.gain * energy + self.bias)))  # σ

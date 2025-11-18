@@ -6,6 +6,8 @@ from typing import Any, List
 
 from tqdm import tqdm
 
+from stephanie.utils.similarity_utils import cosine
+
 
 class SoTV01DatasetBuilder:
     """
@@ -85,7 +87,7 @@ class SoTV01DatasetBuilder:
             if not turn.user_message or not turn.user_message.text:
                 continue
             turn_embedding = self.embedding_service.get_or_create(turn.user_message.text)
-            similarity = self._cosine_similarity(query_embedding, turn_embedding)
+            similarity = cosine(query_embedding, turn_embedding)
             similarities.append((similarity, turn))
 
         similarities.sort(key=lambda x: x[0], reverse=True)
@@ -104,16 +106,6 @@ class SoTV01DatasetBuilder:
                 if turn.id != turn_id_to_exclude:
                     all_turns.append(turn)
         return all_turns
-
-    @staticmethod
-    def _cosine_similarity(vec_a, vec_b):
-        import numpy as np
-        vec_a = np.array(vec_a)
-        vec_b = np.array(vec_b)
-        dot_product = np.dot(vec_a, vec_b)
-        norm_a = np.linalg.norm(vec_a)
-        norm_b = np.linalg.norm(vec_b)
-        return dot_product / (norm_a * norm_b) if norm_a > 0 and norm_b > 0 else 0.0
 
     @staticmethod
     def _get_predicted_move(turn) -> str:

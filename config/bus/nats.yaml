@@ -1,8 +1,8 @@
 enabled: true
 backend: nats            # "nats" | "inproc"
-servers: "nats://localhost:4222"
+servers: "nats://127.0.0.1:4222"
 stream: stephanie
-required: false          # if true (or strict true), fail instead of fallback
-strict: false            # legacy alias for required
-connect_timeout_s: 2.5   # fail fast if NATS isn’t up
+required: true         # if true (or strict true), fail instead of fallback
+strict: true            # legacy alias for required
+connect_timeout_s: 10   # fail fast if NATS isn’t up
 fallback: none           # "inproc" | "none"

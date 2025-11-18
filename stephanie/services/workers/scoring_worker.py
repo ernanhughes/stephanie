@@ -1,5 +1,7 @@
 from __future__ import annotations
+
 import time
+
 from stephanie.services.bus.events.scoring_job import ScoringJob
 
 PROMPT = "scoring.eval"
