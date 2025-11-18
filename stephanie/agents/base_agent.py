@@ -4,7 +4,7 @@ from __future__ import annotations
 import asyncio
 import functools
 import random
-import time
+from stephanie.utils.time_utils import now_ms
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from contextlib import contextmanager
@@ -468,17 +468,14 @@ class BaseAgent(ABC):
 
     @contextmanager
     def report_step(self, event: str, **fields):
-        t0 = _now_ms()
+        t0 = now_ms()
         self._emit(self, event + ".start", **fields)
         try:
             yield
-            self._emit(self, event + ".ok", duration_ms=_now_ms() - t0, **fields)
+            self._emit(self, event + ".ok", duration_ms=now_ms() - t0, **fields)
         except Exception as e:
-            self._emit(self, event + ".err", duration_ms=_now_ms() - t0, error=str(e), **fields)
+            self._emit(self, event + ".err", duration_ms=now_ms() - t0, error=str(e), **fields)
             raise
-
-def _now_ms() -> int:
-    return int(time.time() * 1000)
 
 def _safe_len(x) -> int:
     try:

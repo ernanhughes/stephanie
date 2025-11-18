@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 import time
 from typing import Any, Callable, Dict, List, Optional
+from stephanie.utils.time_utils import now_ms
 
 # 🔑 Embedding search target enum (adjust import if your path differs)
 from stephanie.scoring.scorable import \
@@ -13,9 +14,6 @@ from stephanie.services.service_protocol import Service
 EmbedFn = Callable[[List[str]], List[List[float]]]
 log = logging.getLogger(__name__)
 
-
-def _now_ms() -> int:
-    return int(time.time() * 1000)
 
 
 class ChatCorpusService(Service):
@@ -40,7 +38,7 @@ class ChatCorpusService(Service):
     # --- lifecycle ---------------------------------------------------------
     def initialize(self, **kwargs) -> None:
         self._ok = True
-        log.debug("ChatCorpusServiceInit", {"ts": _now_ms()})
+        log.debug("ChatCorpusServiceInit ts:  " + str(now_ms()))
 
     def shutdown(self) -> None:
         self._ok = False
