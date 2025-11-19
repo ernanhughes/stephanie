@@ -11,7 +11,7 @@ nexus_vpm_refiner:
 
   # VPM settings
   img_size: 256
-  max_steps: 10
+  max_steps: 100
   phi_threshold: 0.90
   dims: ["clarity", "coverage"]   # only used if your refiner reads goal dims
 

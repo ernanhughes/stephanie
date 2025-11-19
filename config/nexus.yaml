@@ -86,7 +86,7 @@ pipeline:
      - name: nexus_vpm_refiner
        description: "Refine the nexus using visual prompt model"
        cls: stephanie.components.nexus.agents.vpm_refiner.VPMRefinerAgent
-       enabled: false
+       enabled: true
        iterations: 1
 
      - name: nexus_vpm_logic_compare
