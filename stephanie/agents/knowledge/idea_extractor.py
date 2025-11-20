@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.analysis.scorable_classifier import ScorableClassifier
+from stephanie.tools.scorable_classifier import ScorableClassifier
 from stephanie.builders.belief_cartridge_builder import BeliefCartridgeBuilder
 from stephanie.scoring.scorable import ScorableFactory
 from stephanie.scoring.scorer.mrq_scorer import \

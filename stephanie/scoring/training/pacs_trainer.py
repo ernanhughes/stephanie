@@ -14,7 +14,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from stephanie.analysis.scorable_classifier import ScorableClassifier
+from stephanie.tools.scorable_classifier import ScorableClassifier
 from stephanie.models.belief_cartridge import BeliefCartridgeORM
 from stephanie.models.model_version import ModelVersionORM
 from stephanie.models.training_stats import TrainingStatsORM

@@ -9,7 +9,7 @@ from typing import Any, Dict, List
 
 from stephanie.agents.knowledge.chat_knowledge_builder import \
     ChatKnowledgeBuilder
-from stephanie.analysis.scorable_classifier import ScorableClassifier
+from stephanie.tools.scorable_classifier import ScorableClassifier
 from stephanie.data.knowledge_unit import KnowledgeUnit
 
 log = logging.getLogger(__name__)

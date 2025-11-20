@@ -28,7 +28,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import joblib
 import numpy as np
 
-from stephanie.analysis.scorable_classifier import ScorableClassifier
+from stephanie.tools.scorable_classifier import ScorableClassifier
 from stephanie.memcube.memcube_client import MemCubeClient
 
 log = logging.getLogger(__name__)

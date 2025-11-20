@@ -5,7 +5,7 @@ import traceback
 from typing import List, Optional, Tuple
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.analysis.scorable_classifier import ScorableClassifier
+from stephanie.tools.scorable_classifier import ScorableClassifier
 from stephanie.scoring.scorable import Scorable
 
 

@@ -59,5 +59,7 @@ class ScorableRow:
     content_hash16: str = ""
     created_utc: float = 0.0
 
+    visicalc_report: Dict[str, Any] = field(default_factory=dict)
+    
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)

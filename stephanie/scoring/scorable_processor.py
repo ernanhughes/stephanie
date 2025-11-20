@@ -12,7 +12,7 @@ from typing import Any, Dict, List, Optional, Union
 import numpy as np
 import torch
 
-from stephanie.analysis.scorable_classifier import ScorableClassifier
+from stephanie.tools.scorable_classifier import ScorableClassifier
 from stephanie.constants import SCORABLE_PROCESS, SCORABLE_SUBMIT
 from stephanie.core.manifest import Manifest, ManifestManager
 from stephanie.models.ner_retriever import EntityDetector
@@ -114,6 +114,7 @@ class ScorableProcessor:
         # VPM + text feature flags
         self.include_text_features = bool(self.cfg.get("include_text_features", True))
         self.persist_vpm_png = bool(self.cfg.get("persist_vpm_png", True))
+        self.enable_visicalc = bool(self.cfg.get("enable_visicalc", False))
         self.save_vpm_channels = bool(self.cfg.get("save_vpm_channels", False))
         self.vpm_out_root = Path(self.cfg.get("vpm_out_root", "runs/vpm"))
 
@@ -325,6 +326,7 @@ class ScorableProcessor:
             processor_version="2.0",
             content_hash16=self._hash_text(text),
             created_utc=time.time(),
+            visicalc_report=acc.get("visicalc_report") or {}
         )
         return row
 
@@ -657,6 +659,26 @@ class ScorableProcessor:
                 bool(self.zm),
                 bool(acc.get("vision_signals")),
             )
+
+        if self.enable_visicalc and acc.get("vision_signals"):
+            t0 = time.perf_counter()
+            log.debug("[SP:visicalc] generating VPM PNG id=%s", scorable.id)
+            try:
+                vpm_png_bytes = await self.zm.visicalc(
+                    acc["vision_signals"],
+                    meta=acc.get("vision_signals_meta") or {},
+                    persist_png=self.persist_vpm_png,
+                    out_root=self.vpm_out_root,
+                    save_channels=self.save_vpm_channels,
+                    scorable_id=str(scorable.id),
+                )
+                log.debug(
+                    "[SP:visicalc] ok png_bytes=%d in %s",
+                    len(vpm_png_bytes) if vpm_png_bytes else 0,
+                    self._t(t0),
+                )
+            except Exception as e:
+                log.warning("[SP:visicalc] failed: %s", e)
 
         # 7) Row build (typed → dict)
         t0 = time.perf_counter()

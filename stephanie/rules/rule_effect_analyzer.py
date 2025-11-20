@@ -14,7 +14,7 @@ from stephanie.models import (EvaluationORM, EvaluationRuleLinkORM,
 
 class RuleEffectAnalyzer:
     def __init__(self, session_or_maker, logger=None):
-        self.session = session
+        self.session = session_or_maker
         self.logger = logger
 
     def _compute_stats(self, values):

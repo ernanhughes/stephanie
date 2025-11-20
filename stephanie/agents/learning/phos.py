@@ -17,7 +17,7 @@ from tqdm import tqdm
 from stephanie.agents.agentic_tree_search import \
     SolutionNode  # assuming you have this
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.analysis.vpm_differential_analyzer import \
+from stephanie.zeromodel.vpm_differential_analyzer import \
     VPMDifferentialAnalyzer
 from stephanie.constants import PIPELINE_RUN_ID
 from stephanie.scoring.scorable import Scorable, ScorableFactory, ScorableType

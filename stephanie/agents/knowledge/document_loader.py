@@ -53,7 +53,7 @@ import requests
 from tqdm import tqdm
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.analysis.scorable_classifier import ScorableClassifier
+from stephanie.tools.scorable_classifier import ScorableClassifier
 from stephanie.constants import GOAL
 from stephanie.scoring.scorable import Scorable, ScorableType
 from stephanie.tools.arxiv_tool import fetch_arxiv_metadata

@@ -7,7 +7,7 @@ import numpy as np
 from sqlalchemy.orm import joinedload
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.analysis.scorable_classifier import ScorableClassifier
+from stephanie.tools.scorable_classifier import ScorableClassifier
 from stephanie.models.cartridge_domain import CartridgeDomainORM
 from stephanie.models.cartridge_triple import CartridgeTripleORM
 from stephanie.models.theorem import TheoremORM

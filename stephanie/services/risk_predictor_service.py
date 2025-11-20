@@ -7,7 +7,7 @@ import time
 from dataclasses import dataclass
 from typing import Any, Dict, Optional, Tuple
 
-from stephanie.analysis.scorable_classifier import ScorableClassifier
+from stephanie.tools.scorable_classifier import ScorableClassifier
 from stephanie.components.risk.features.entity_domain_features import \
     risk_from_features
 from stephanie.memory.memcube_store import MemCubeStore

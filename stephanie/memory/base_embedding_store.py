@@ -586,7 +586,7 @@ class BaseEmbeddingStore(BaseSQLAlchemyStore):
 
     def _get_current_domain(self, query: str) -> str:
         if not hasattr(self, "_domain_classifier"):
-            from stephanie.analysis.scorable_classifier import \
+            from stephanie.tools.scorable_classifier import \
                 ScorableClassifier
             self._domain_classifier = ScorableClassifier(
                 memory=self.memory,

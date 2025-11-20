@@ -4,7 +4,7 @@ from __future__ import annotations
 from tqdm import tqdm
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.analysis.scorable_classifier import ScorableClassifier
+from stephanie.tools.scorable_classifier import ScorableClassifier
 from stephanie.memory.builders.cartridge_builder import CartridgeBuilder
 from stephanie.memory.builders.theorem_extractor import TheoremExtractor
 from stephanie.memory.builders.triplet_extractor import TripletExtractor

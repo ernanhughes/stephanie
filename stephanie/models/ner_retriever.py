@@ -1072,7 +1072,7 @@ class NERRetrieverEmbedder:
         """Determine domain from query using classifier with fallbacks"""
         if not hasattr(self, "_domain_classifier"):
             try:
-                from stephanie.analysis.scorable_classifier import \
+                from stephanie.tools.scorable_classifier import \
                     ScorableClassifier
 
                 self._domain_classifier = ScorableClassifier(

@@ -18,6 +18,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import scipy.stats as spstats  # optional, but nice if available
+from stephanie.zeromodel.visicalc_report import VisiCalcReport, extract_visicalc_stats
 from zeromodel.pipeline.executor import PipelineExecutor
 from zeromodel.tools.gif_logger import GifLogger
 from zeromodel.tools.spatial_optimizer import SpatialOptimizer
@@ -629,126 +630,6 @@ class ZeroModelService(Service):
             "meta_path": meta_path,
             "summary_path": summary_path,
         }
-
-    def run_scorables_vpm_demo(
-        self,
-        scorables: list,
-        *,
-        run_id: str,
-        out_dir: Optional[str] = None,
-        steps_per_item: int = 3,
-        dims_for_score: list[str] = (
-            "clarity",
-            "coherence",
-            "complexity",
-            "alignment",
-            "coverage",
-        ),
-    ) -> dict:
-        """
-        For each Scorable:
-        - Scorable → VPM (uint8)
-        - Per-step 'visual thought' (zoom heuristic)
-        - score_vpm_image() each step on gray composite for a compact scalar vector
-        - Append to ZeroModel timeline (columns = dims_for_score)
-        - Emit per-item frames + GIF + metrics.json
-        Returns a manifest with paths.
-        """
-        out_dir = out_dir or self._out_dir
-        Path(out_dir).mkdir(parents=True, exist_ok=True)
-        item_root = Path(out_dir) / f"nexus_{run_id}"
-        item_root.mkdir(parents=True, exist_ok=True)
-
-        self.timeline_open(
-            run_id, metrics=list(dims_for_score), out_dir=str(item_root)
-        )
-
-        manifest = {"run_id": run_id, "items": []}
-
-        for idx, s in enumerate(scorables):
-            item_id = f"{idx:03d}"
-            idir = item_root / item_id
-            idir.mkdir(parents=True, exist_ok=True)
-
-            vpm_u8, meta = self._scorable_to_vpm(s, str(idir))
-            frames = [np.transpose(vpm_u8, (1, 2, 0))]  # HWC for GIF writer
-            metrics_rows = []
-
-            # step 0 score
-            comp = vpm_u8.mean(axis=0)  # simple composite for score_vpm_image
-            step0 = self.score_vpm_image(comp, dims=list(dims_for_score))
-            self.timeline_append_row(
-                run_id,
-                metrics_columns=list(dims_for_score),
-                metrics_values=[step0["scores"][d] for d in dims_for_score],
-            )
-            metrics_rows.append({"step": 0, **step0})
-
-            cur = vpm_u8.copy()
-            for step in range(1, steps_per_item + 1):
-                thought = self._next_thought(step, cur)
-                if thought["op"] == "zoom":
-                    cur = self._apply_zoom(
-                        cur, thought["center"], thought["scale"]
-                    )
-                comp = cur.mean(axis=0)
-                sc = self.score_vpm_image(comp, dims=list(dims_for_score))
-                self.timeline_append_row(
-                    run_id,
-                    metrics_columns=list(dims_for_score),
-                    metrics_values=[sc["scores"][d] for d in dims_for_score],
-                )
-                frames.append(np.transpose(cur, (1, 2, 0)))
-                metrics_rows.append({"step": step, "thought": thought, **sc})
-
-            # save frames + gif + metrics
-            import imageio.v2 as iio
-
-            gif_path = idir / "filmstrip.gif"
-            iio.mimsave(gif_path, frames, fps=1, loop=0)
-
-            with open(idir / "metrics.json", "w", encoding="utf-8") as f:
-                f.write(
-                    dumps_safe(
-                        {
-                            "scorable_id": getattr(s, "id", ""),
-                            "target_type": getattr(s, "target_type", "custom"),
-                            "adapter_meta": meta,
-                            "dims": list(dims_for_score),
-                            "rollout": metrics_rows,
-                            "gif": str(gif_path.as_posix()),
-                            "frames": [
-                                str((idir / f"frame_{i:02d}.png").as_posix())
-                                for i in range(len(frames))
-                            ],
-                        },
-                        indent=2,
-                    )
-                )
-
-            # also write numbered PNG frames for blog selection
-            for fi, arr in enumerate(frames):
-                Image.fromarray(arr).save(idir / f"frame_{fi:02d}.png")
-
-            manifest["items"].append(
-                {
-                    "item_id": item_id,
-                    "gif": str(gif_path.as_posix()),
-                    "metrics_json": str((idir / "metrics.json").as_posix()),
-                }
-            )
-
-        # finalize the global timeline to produce your ZeroModel GIF + static summary
-        loop = asyncio.get_event_loop()
-        finalize = loop.run_until_complete(
-            self.timeline_finalize(
-                run_id, out_path=str(item_root), datestamp=True
-            )
-        )
-        manifest["timeline"] = finalize
-        with open(item_root / "manifest.json", "w", encoding="utf-8") as f:
-            f.write(dumps_safe(manifest, indent=2))
-        return manifest
 
     def build_intensity_report(
         self,
@@ -1701,7 +1582,6 @@ class ZeroModelService(Service):
         - synthesize Text-VPM from scorable.text (3 channels)
         """
         import numpy as np
-        from PIL import Image
 
         Path(out_dir).mkdir(parents=True, exist_ok=True)
         meta = {
@@ -1773,7 +1653,6 @@ class ZeroModelService(Service):
         """
         vpm: [C,H,W] uint8; returns same shape uint8 after zoom into (center, scale).
         """
-        from PIL import Image
 
         C, H, W = vpm.shape
         cx, cy = center
@@ -2556,6 +2435,34 @@ class ZeroModelService(Service):
         if x.ndim == 3 and x.shape[0] in (1, 3):
             return np.transpose(x, (1, 2, 0))
         return x
+
+    async def visicalc(
+        self,
+        metrics_values: list[float],
+        metrics_columns: list[str],
+        frontier_metric: str,
+        row_region_splits: int = 4,
+        *,
+        normalize: str = "passthrough",
+    ) -> Optional[VisiCalcReport]:
+        pipeline_cfg = [
+            {"stage": "normalize", "params": {}},
+            {"stage": "feature_engineering", "params": {}},
+            {"stage": "organization", "params": {"strategy": "spatial"}},
+            {
+                "stage": "explainability/visicalc.VisiCalcStage",
+                "params": {
+                    "frontier_metric": frontier_metric,
+                    "row_region_splits": row_region_splits,
+                },
+            },
+        ]
+        pipeline = PipelineExecutor(pipeline_cfg)
+        row = [float(x) if np.isfinite(x) else 0.0 for x in metrics_values]
+        X = np.asarray(row, dtype=np.float32)[None, :]  # shape (1, D)
+        vpm_out, meta = pipeline.run(X, {"enable_gif": True})
+        report = extract_visicalc_stats(meta[0], frontier_metric)
+        return report
 
     async def _to_vpm_array(
         self,
