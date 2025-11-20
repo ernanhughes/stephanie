@@ -12,7 +12,7 @@ from stephanie.memory.nexus_store import NexusStore
 from stephanie.models.nexus import (NexusEdgeORM, NexusMetricsORM,
                                     NexusScorableORM)
 from stephanie.data.scorable_row import ScorableRow
-
+import json
 log = logging.getLogger(__name__)
 
 
@@ -387,8 +387,11 @@ class NexusGraph:
     ) -> None:
         if not graph_json:
             return
+        val = graph_json
+        if isinstance(val, str):
+            val = json.loads(Path(val).read_text())
 
-        edges_in = graph_json.get("edges") or []
+        edges_in = val.get("edges") or []
         if not edges_in:
             return
 

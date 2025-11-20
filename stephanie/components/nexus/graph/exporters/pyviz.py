@@ -85,20 +85,33 @@ def export_pyvis_for_graph(
 def _get(obj: Any, *keys: str, default: Any = None) -> Any:
     """
     Safely try multiple attribute or dict keys in order; never raises.
-    Example: _get(node, "quality", "score", default=None)
+
+    Also supports Cytoscape-style dicts like:
+        {"data": {"source": "...", "target": "...", ...}}
     """
     if obj is None:
         return default
+
     for k in keys:
+        v = None
         try:
             if isinstance(obj, dict):
-                v = obj.get(k, None)
+                # direct key first
+                if k in obj and obj[k] is not None:
+                    v = obj[k]
+                else:
+                    # nested "data" dict (Cytoscape-style)
+                    data = obj.get("data")
+                    if isinstance(data, dict) and k in data and data[k] is not None:
+                        v = data[k]
             else:
-                v = getattr(obj, k, None)  # attr-safe (no AttributeError)
+                v = getattr(obj, k, None)
         except Exception:
             v = None
+
         if v is not None:
             return v
+
     return default
 
 
@@ -360,11 +373,39 @@ def export_pyvis_html_rich(
 # =============================================================================
 
 def export_pyvis_html(
-    nodes: Dict[str, NexusNode],
+    nodes: Any,           # accept dict OR list for backwards-compat
     edges: List[NexusEdge],
     output_path: str,
     title: str,
 ) -> str:
+    """
+    Simple PyVis exporter (force layout).
+
+    `nodes` may be:
+      - dict[id -> node_obj]  (preferred, NexusGraph-style)
+      - list[{"data": {...}, "position": {...}}] (legacy Cytoscape-style)
+    """
+    # ---- normalize nodes to {id -> obj} ----
+    if isinstance(nodes, list):
+        node_map: Dict[str, Any] = {}
+        for entry in nodes:
+            # Handle Cytoscape element style: {"data": {...}, "position": {...}}
+            if isinstance(entry, dict):
+                data = entry.get("data", entry)
+                nid = data.get("id") or data.get("nid") or data.get("node_id")
+                if not nid:
+                    continue
+                # keep original object so downstream helpers (_get, etc.) still work
+                node_map[str(nid)] = data
+            else:
+                # Fallback: treat as NexusNode-like object
+                nid = getattr(entry, "id", None)
+                if not nid:
+                    continue
+                node_map[str(nid)] = entry
+        nodes = node_map
+
+    # From here on we can safely assume a dict
     out = Path(output_path)
     out.parent.mkdir(parents=True, exist_ok=True)
 
@@ -412,14 +453,28 @@ def export_pyvis_html(
         )
 
     # Edges
-    for e in edges:
+    for e in edges or []:
         etype = _edge_type(e)
         w = _edge_weight(e)
-        src, dst = str(_get(e, "src", "source", default="")), str(_get(e, "dst", "target", default=""))
+
+        src = _get(e, "src", "source", default=None)
+        dst = _get(e, "dst", "target", default=None)
+
+        # Skip malformed edges
+        if not src or not dst:
+            continue
+
+        src_s, dst_s = str(src), str(dst)
+
+        # Skip edges that refer to non-existent nodes
+        if src_s not in nodes or dst_s not in nodes:
+            continue
+
         color, width = _edge_rgba_and_width(etype, w)
+
         net.add_edge(
-            src,
-            dst,
+            src_s,
+            dst_s,
             title=f"{etype} ({w:.3f})",
             color=color,
             width=width,

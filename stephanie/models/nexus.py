@@ -96,7 +96,7 @@ class NexusMetricsORM(Base):
         }
 
 
-# --- Edge -------------------------------------------------------------------
+# --- Edge ----------------------------------------------------- OK--------------
 
 class NexusEdgeORM(Base):
     __tablename__ = "nexus_edge"
@@ -104,7 +104,7 @@ class NexusEdgeORM(Base):
     # Logical run space. Use "live" for continuous edges, or actual run_id for batch artifacts.
     run_id = Column(String, primary_key=True)
 
-    src = Column(String, primary_key=True)
+    src = Column(String, primary_key=True) 
     dst = Column(String, primary_key=True)
     type = Column(String, primary_key=True)  # "knn_global" | "temporal_next" | "shared_domain" | ...
 
@@ -132,7 +132,7 @@ class NexusEdgeORM(Base):
 # --- Pulse ------------------------------------------------------------------
 
 class NexusPulseORM(Base):
-    __tablename__ = "nexus_pulse"
+    __tablename__ = " You sure she doesn't need to take a the dog yeah she might need to take a **** she might have taken **** because she's expecting to go out Yeah she she she stores up her **** for a walks right well I gotta grace he's in the bathtub Put her out the back she she needs All right I'll put her at the back yeah OK So I've been spelling there is unreal"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     ts = Column(DateTime, default=datetime.utcnow, index=True)

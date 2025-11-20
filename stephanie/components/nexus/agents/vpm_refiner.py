@@ -348,15 +348,15 @@ class VPMRefinerAgent(BaseAgent):
         )
 
         # Initialize and augment maps
-        state.meta["maps"] = self._initialize_maps(state.X)
+        state.meta["maps"] = self._initialize_maps(state.X, adapter_meta)
         self._log_state("initial", state.phi, state.utility)
 
         return state, initial_rgb
 
-    def _initialize_maps(self, X: np.ndarray) -> Dict[str, np.ndarray]:
+    def _initialize_maps(self, X: np.ndarray, adapter_meta: Dict[str, Any]) -> Dict[str, np.ndarray]:
         """Initialize and augment maps for VPM refinement."""
         try:
-            maps = self.map_provider.build(X).maps
+            maps = self.map_provider.build(X, adapter_meta).maps
             log.debug("MapProvider generated maps: %s", sorted(maps.keys()))
         except Exception as e:
             log.warning("MapProvider failed: %s, using fallback maps", e)
