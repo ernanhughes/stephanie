@@ -2381,17 +2381,25 @@ class ZeroModelService(Service):
         metrics_values: list[float],
         metrics_columns: list[str] | None = None,
     ) -> tuple[np.ndarray, dict]:
-        raw = await self._to_vpm_array(metrics_values=metrics_values, metrics_columns=metrics_columns)
+        raw = await self._to_vpm_array(
+            metrics_values=metrics_values, metrics_columns=metrics_columns
+        )
         # raw may be HW, HWC float, etc. Normalize here:
         chw_u8 = ensure_chw_u8(raw, force_three=True)
-        return chw_u8, scorable.to_dict()
+        return chw_u8, {
+            **scorable.to_dict(),
+            "metrics_columns": metrics_columns or [],
+            "metrics_values": metrics_values,
+        }
 
     def _to_vpm_chw_uint8(
         self,
         metrics_values: dict[str, float] | list[float],
         metrics_columns: list[str] | None = None,
     ) -> np.ndarray:
-        arr = asyncio.get_event_loop().run_until_complete(self._to_vpm_array(metrics_values, metrics_columns))
+        arr = asyncio.get_event_loop().run_until_complete(
+            self._to_vpm_array(metrics_values, metrics_columns)
+        )
         return ensure_chw_u8(arr, force_three=True)
 
     def vpm_rollout(
@@ -2399,7 +2407,13 @@ class ZeroModelService(Service):
         vpm_u8: Optional[np.ndarray] = None,
         *,
         steps: int = 0,
-        dims: List[str] = ("clarity", "coherence", "complexity", "alignment", "coverage"),
+        dims: List[str] = (
+            "clarity",
+            "coherence",
+            "complexity",
+            "alignment",
+            "coverage",
+        ),
         strategy: str = "none",
         metrics_columns: Optional[List[str]] = None,
         metrics_values: Optional[List[float]] = None,
@@ -2416,15 +2430,19 @@ class ZeroModelService(Service):
         step_summaries[i]: { "scores": {dim: float}, "overall": float, "meta": {...}, "step": i, "thought": {...} }
         """
         # 0) Ensure we have a CHW uint8 VPM
-        vpm = self._ensure_vpm(vpm_u8, metrics_columns, metrics_values, img_size)
+        vpm = self._ensure_vpm(
+            vpm_u8, metrics_columns, metrics_values, img_size
+        )
 
         frames: List[np.ndarray] = []
         summaries: List[Dict[str, Any]] = []
 
         # step 0: composite + score
         comp = vpm.mean(axis=0)  # gray composite
-        s0 = self.score_vpm_image(comp, dims=list(dims))  # your existing scorer
-        frames.append(self._chw_to_hwc(vpm))              # HWC
+        s0 = self.score_vpm_image(
+            comp, dims=list(dims)
+        )  # your existing scorer
+        frames.append(self._chw_to_hwc(vpm))  # HWC
         summaries.append({**s0, "step": 0, "thought": {"op": "none"}})
 
         if steps <= 0 or strategy == "none":
@@ -2438,7 +2456,9 @@ class ZeroModelService(Service):
                 # your existing helpers
                 thought = self._next_thought(i, cur)
                 if thought.get("op") == "zoom":
-                    cur = self._apply_zoom(cur, thought["center"], thought["scale"])
+                    cur = self._apply_zoom(
+                        cur, thought["center"], thought["scale"]
+                    )
 
             comp_i = cur.mean(axis=0)
             si = self.score_vpm_image(comp_i, dims=list(dims))
@@ -2468,16 +2488,26 @@ class ZeroModelService(Service):
         if metrics_columns and metrics_values:
             # Prefer your real compositor if you have it:
             if hasattr(self, "vpm_from_metrics"):
-                v, _meta = self.vpm_from_metrics(metrics_columns, metrics_values, img_size=img_size)
+                v, _meta = self.vpm_from_metrics(
+                    metrics_columns, metrics_values, img_size=img_size
+                )
                 return v.astype(np.uint8, copy=False)
 
             # Fallback: stable, deterministic tiling from metrics (CHW)
-            return self._fallback_vpm_from_metrics(metrics_columns, metrics_values, img_size)
+            return self._fallback_vpm_from_metrics(
+                metrics_columns, metrics_values, img_size
+            )
 
-        raise ValueError("vpm_rollout: provide either vpm_u8 or metrics_(columns, values)")
+        raise ValueError(
+            "vpm_rollout: provide either vpm_u8 or metrics_(columns, values)"
+        )
 
     def _fallback_vpm_from_metrics(
-        self, cols: List[str], vals: List[float], img_size: int, channels: int = 3
+        self,
+        cols: List[str],
+        vals: List[float],
+        img_size: int,
+        channels: int = 3,
     ) -> np.ndarray:
         """
         Deterministic, collision-tolerant compositor:
@@ -2492,8 +2522,10 @@ class ZeroModelService(Service):
         # normalize to 0..1 robustly
         v = np.nan_to_num(v, nan=0.0, posinf=0.0, neginf=0.0)
         lo, hi = np.percentile(v, 5), np.percentile(v, 95)
-        if not np.isfinite(lo): lo = 0.0
-        if not np.isfinite(hi) or hi <= lo: hi = lo + 1e-6
+        if not np.isfinite(lo):
+            lo = 0.0
+        if not np.isfinite(hi) or hi <= lo:
+            hi = lo + 1e-6
         v = (v - lo) / (hi - lo)
         n = v.size
 
@@ -2506,7 +2538,9 @@ class ZeroModelService(Service):
         # stable placement by hashing the column name
         order = sorted(
             range(n),
-            key=lambda i: hashlib.blake2s(cols[i].encode("utf-8"), digest_size=8).hexdigest(),
+            key=lambda i: hashlib.blake2s(
+                cols[i].encode("utf-8"), digest_size=8
+            ).hexdigest(),
         )
         for rank, idx in enumerate(order):
             r, c = divmod(rank, g)
@@ -2553,7 +2587,140 @@ class ZeroModelService(Service):
         assert self._pipeline is not None, "ZeroModelService not initialized"
         vpm_out, _ = self._pipeline.run(X, {"enable_gif": False})
         return np.asarray(vpm_out)  # return raw; next methods will standardize
- 
+
+    def vpm_for_dimension(
+        self,
+        metric_name: str,
+        *,
+        metrics_columns: list[str],
+        metrics_values: list[float] | None = None,
+        value: float | None = None,
+        mode: str = "onehot",  # "onehot" or "base_hint"
+        normalize: str = "passthrough",  # forwarded to _to_vpm_array: "passthrough" | "percent_0_100" | "robust01"
+    ) -> tuple[np.ndarray, dict]:
+        """
+        Build a VPM that highlights a single metric dimension.
+
+        Args:
+        metric_name: name to match against metrics_columns (case-insensitive; also tries canonical-key match like "hrm.reasoning.score"→"reasoning").
+        metrics_columns: the column names (order matters; must be same order used for other VPM calls).
+        metrics_values: optional values for that same order; if provided and 'value' is None, the selected column's value is used.
+        value: explicit amplitude for the selected dimension (0..1 recommended). If None, defaults to metrics_values[idx] or 1.0.
+        mode:
+            - "onehot": zero everywhere except the target column.
+            - "base_hint": keep a faint (0.05) background from metrics_values (if provided) to preserve spatial context, then set the target column to `value`.
+        normalize: row scaling forwarded into `_to_vpm_array`.
+
+        Returns:
+        (chw_u8, meta)
+            - chw_u8: uint8 [3,H,W]
+            - meta: { "adapter": "dimension_highlight", "metric", "metric_index", "mode", "value", "normalize" }
+        """
+        if not metrics_columns:
+            raise ValueError("vpm_for_dimension: metrics_columns is required")
+
+        idx = self._resolve_metric_index(metric_name, metrics_columns)
+        if idx is None:
+            raise KeyError(
+                f"vpm_for_dimension: metric '{metric_name}' not found in provided columns"
+            )
+
+        D = len(metrics_columns)
+
+        # Determine amplitude
+        if value is None:
+            if metrics_values and 0 <= idx < len(metrics_values):
+                try:
+                    value = float(metrics_values[idx])
+                    if not np.isfinite(value):
+                        value = 0.0
+                except Exception:
+                    value = 0.0
+            else:
+                value = 1.0
+        # clamp
+        value = float(np.clip(value, -1e9, 1e9))
+
+        # Build the row according to mode
+        row = np.zeros((D,), dtype=np.float32)
+        if mode == "onehot":
+            row[idx] = value
+        elif mode == "base_hint":
+            if metrics_values and len(metrics_values) == D:
+                base = np.asarray(metrics_values, dtype=np.float32)
+                base = np.nan_to_num(base, nan=0.0, posinf=0.0, neginf=0.0)
+                row = 0.05 * base  # faint context
+            row[idx] = value
+        else:
+            raise ValueError(
+                "vpm_for_dimension: mode must be 'onehot' or 'base_hint'"
+            )
+
+        # Run ZeroModel pipeline → VPM (HWC float) → CHW uint8
+        arr = asyncio.get_event_loop().run_until_complete(
+            self._to_vpm_array(
+                metrics_values=row.tolist(),
+                metrics_columns=metrics_columns,
+                normalize=normalize,
+            )
+        )
+        chw_u8 = ensure_chw_u8(arr, force_three=True)
+
+        meta = {
+            "adapter": "dimension_highlight",
+            "metric": metric_name,
+            "metric_index": int(idx),
+            "mode": mode,
+            "value": float(value),
+            "normalize": normalize,
+        }
+        return chw_u8, meta
+
+    @staticmethod
+    def _resolve_metric_index(
+        metric_name: str, columns: list[str]
+    ) -> int | None:
+        """
+        Resolve a metric name to an index:
+        1) exact (case-insensitive)
+        2) canonical-key match (e.g., 'hrm.reasoning.score' → 'reasoning')
+        3) substring fallback ('.reasoning' in name)
+        """
+        if not metric_name or not columns:
+            return None
+
+        target = metric_name.strip().lower()
+        cols_low = [str(c).lower() for c in columns]
+
+        # 1) exact
+        try:
+            return cols_low.index(target)
+        except ValueError:
+            pass
+
+        # 2) canonical
+        def _canon(s: str) -> str:
+            parts = s.split(".", 2)
+            return parts[1] if len(parts) >= 2 else s
+
+        target_can = _canon(target)
+        cand = [i for i, c in enumerate(cols_low) if _canon(c) == target_can]
+        if cand:
+            return cand[0]
+
+        # 3) substring (prefer suffix token match like ".reasoning")
+        token = "." + target_can
+        for i, c in enumerate(cols_low):
+            if token in c:
+                return i
+
+        # last resort: contains raw target
+        for i, c in enumerate(cols_low):
+            if target in c:
+                return i
+
+        return None
+
     def _to_vpm_chw_uint8(
         self,
         metrics_values: dict[str, float] | list[float],

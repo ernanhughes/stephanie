@@ -1,6 +1,7 @@
 # stephanie/components/nexus/graph/builder.py
 from __future__ import annotations
 
+from dataclasses import asdict
 import logging
 import math
 from collections import Counter, defaultdict
@@ -15,6 +16,7 @@ from stephanie.memory.nexus_store import NexusStore
 from stephanie.scoring.scorable_processor import ScorableProcessor
 from stephanie.data.scorable_row import ScorableRow
 from stephanie.utils.json_sanitize import dumps_safe
+from omegaconf import DictConfig, OmegaConf
 
 log = logging.getLogger(__name__)
 
@@ -37,8 +39,9 @@ class GraphBuilder:
         self.cfg = cfg
         self.memory = memory
         self.store: NexusStore = memory.nexus
+        self.container = container
         self.logger = logger
-        self.scorable_processor = ScorableProcessor(cfg, memory, logger)
+        self.scorable_processor = ScorableProcessor(cfg.scoring or {}, memory, container, logger)
 
 
 

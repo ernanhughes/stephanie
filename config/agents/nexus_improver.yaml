@@ -36,3 +36,10 @@ nexus_improver:
       api_key: null
     target_pool: provider
     run_root: runs
+
+  scoring:
+    scorers: ["sicql", "mrq", "hrm", "tiny"]
+    dimensions: ["coverage", "reasoning", "knowledge", "clarity", "faithfulness"]
+    attach_scores: true          # call ScoringService.score()
+    persist_scores: false        # or true if you want ScoreORM rows
+    require_metrics_for_vpm: true    

@@ -59,6 +59,7 @@ class NexusPollinatorConfig:
     use_vpm_phi: bool = False
     persist_scores: bool = True
     blossom_cfg: Dict[str, Any] = field(default_factory=dict)
+    scoring: Dict[str, Any] = field(default_factory=dict)
 
     offload_mode: str = "await"  # "await" | "fire_and_forget" | "disabled"
     max_inflight: int = 64  # global inflight LLM jobs
@@ -79,6 +80,7 @@ class NexusPollinatorConfig:
     @staticmethod
     def from_cfg(cfg: Dict[str, Any]) -> NexusPollinatorConfig:
         bc = dict(cfg.get("blossom", {}))
+        scoring = dict(cfg.get("scoring", {}))
         return NexusPollinatorConfig(
             k_candidates=int(cfg.get("k_candidates", 2)),
             sharpen_iters=int(cfg.get("sharpen_iters", 1)),
@@ -103,6 +105,7 @@ class NexusPollinatorConfig:
             use_vpm_phi=bool(cfg.get("use_vpm_phi", False)),
             persist_scores=bool(cfg.get("persist_scores", True)),
             blossom_cfg=bc,
+            scoring=scoring,
             offload_mode=str(
                 cfg.get("offload_mode", bc.get("offload_mode", "await"))
             ),
@@ -275,8 +278,11 @@ class NexusPollinatorAgent(ProgressMixin, BaseAgent):
                     phase="baseline",
                 )
                 if isinstance(g_report, dict) and g_report.get("graph_json"):
+                    val = g_report["graph_json"]
+                    if isinstance(val, str):
+                        val = json.loads(Path(val).read_text())
                     nexus_graph.write_edges_from_graph_json(
-                        g_report["graph_json"],
+                        val,
                         phase="baseline",
                         channel="vpm:baseline",
                     )
@@ -1609,7 +1615,7 @@ class NexusPollinatorAgent(ProgressMixin, BaseAgent):
                 run_id=str(run_id),
                 namespace="nexus_pollinator",
             )
-            return NexusGraph(store=store, cfg=cfg, logger=self.logger)
+            return NexusGraph(cfg=cfg, memory=self.memory, container=self.container, logger=self.logger, run_id=str(run_id))
         except Exception as e:
             self._slog("NexusGraphInitError", {"error": str(e)})
             return None

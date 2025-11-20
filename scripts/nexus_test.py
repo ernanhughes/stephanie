@@ -85,7 +85,7 @@ def setup_nexus_tables(conn: PGConnection) -> None:
             domains     JSONB NULL,
             entities    JSONB NULL,
             meta        JSONB NULL
-        );
+        ) TABLESPACE fast_postgres;
         """
     )
 
@@ -98,7 +98,7 @@ def setup_nexus_tables(conn: PGConnection) -> None:
             columns     JSONB NOT NULL,
             values      JSONB NOT NULL,
             vector      JSONB NULL
-        );
+        ) TABLESPACE fast_postgres;
         """
     )
 
@@ -114,7 +114,7 @@ def setup_nexus_tables(conn: PGConnection) -> None:
             channels  JSONB NULL,
             created_ts TIMESTAMPTZ DEFAULT NOW(),
             PRIMARY KEY (run_id, src, dst, type)
-        );
+        ) TABLESPACE fast_postgres ;
         """
     )
 
@@ -154,6 +154,7 @@ def run_bulk_graph_construction(conn: PGConnection) -> Tuple[float, float]:
     node_lines: List[str] = []
     metrics_lines: List[str] = []
     edge_lines: List[str] = []
+    seen_edges = set()  # (src, dst, etype) to enforce uniqueness
 
     domains_pool = ["code", "math", "nlp", "vision", "planning"]
     types_pool = ["document", "turn", "summary"]
@@ -204,10 +205,20 @@ def run_bulk_graph_construction(conn: PGConnection) -> Tuple[float, float]:
         )
 
     # Edges: random links within the node set
-    for _ in range(NUM_EDGES):
+    while len(edge_lines) < NUM_EDGES:
         src = random.choice(NODE_IDS)
         dst = random.choice(NODE_IDS)
+
+        # Optional: skip self-loops, they don't tell us much in this benchmark
+        if dst == src:
+            continue
+
         etype = random.choice(edge_types)
+        key = (src, dst, etype)
+        if key in seen_edges:
+            continue
+
+        seen_edges.add(key)
         weight = random.uniform(0.0, 1.0)
         channels = {"source": "bench", "etype": etype}
 
@@ -224,7 +235,6 @@ def run_bulk_graph_construction(conn: PGConnection) -> Tuple[float, float]:
             )
             + "\n"
         )
-
     # --- 2. COPY into Postgres --------------------------------------------
 
     start = time.perf_counter()
@@ -309,6 +319,22 @@ def run_pulse_traversal_test(conn: PGConnection) -> Tuple[float, float]:
 
     return duration, qps
 
+def teardown_nexus_tables(conn: PGConnection) -> None:
+    """
+    Drop the benchmark tables so the database is clean after the run.
+    Safe to call even if they don't exist.
+    """
+    cur = conn.cursor()
+    print("Cleaning up Nexus tables (DROP)...")
+
+    cur.execute("DROP TABLE IF EXISTS nexus_edge CASCADE;")
+    cur.execute("DROP TABLE IF EXISTS nexus_metrics CASCADE;")
+    cur.execute("DROP TABLE IF EXISTS nexus_scorable CASCADE;")
+
+    conn.commit()
+    cur.close()
+    print("Cleanup complete.\n")
+
 
 # --------------------------------------------------------------------------- #
 # Main                                                                        #
@@ -331,6 +357,11 @@ def main() -> None:
         print(f"Bulk load: {load_dur:.2f}s, {load_rps:,.0f} rows/s")
         print(f"Pulse:     {pulse_dur:.2f}s, {pulse_qps:,.0f} pulses/s")
     finally:
+        # Best-effort cleanup; we don't want teardown failures to hide benchmark results
+        try:
+            teardown_nexus_tables(conn)
+        except Exception as e:
+            print(f"Cleanup failed: {e!r}")
         conn.close()
         print("\nConnection closed.")
 

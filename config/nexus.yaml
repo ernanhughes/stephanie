@@ -76,11 +76,10 @@ pipeline:
        enabled: true
        iterations: 1
 
-
      - name: nexus
        description: "Compare two scorables list runs"
        cls: stephanie.components.nexus.agents.compass.CompassAgent
-       enabled: false
+       enabled: true
        iterations: 1
 
      - name: nexus_vpm_refiner
@@ -92,13 +91,13 @@ pipeline:
      - name: nexus_vpm_logic_compare
        description: "Compare the nexus using visual prompt model with logic-based occlusion"
        cls: stephanie.components.nexus.agents.vpm_logic_compare.VPMLogicCompareAgent
-       enabled: false
+       enabled: true
        iterations: 1
 
      - name: nexus_improver
        description: "Improve the nexus using multi-dimensional scoring"
        cls: stephanie.components.nexus.agents.nexus_pollinator.NexusPollinatorAgent
-       enabled: false
+       enabled: true
        iterations: 1
 
      - name: nexus_improver

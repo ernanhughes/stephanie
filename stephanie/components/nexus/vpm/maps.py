@@ -96,15 +96,17 @@ class MapProvider:
     def get_maps(self, *, X: np.ndarray, H: int, W: int) -> MapSet:
         raise NotImplementedError
     
-    def _get(self, name: str, H: int, W: int) -> Optional[np.ndarray]:
+    def _get(self, name: str, H: int, W: int, adapter_meta: Dict[str, Any]) -> Optional[np.ndarray]:
         try:
-            arr = self.zm.vpm_for_dimension(name, H=H, W=W)
+            metrics_columns = adapter_meta.get("metrics_columns", {})
+            metrics_values = adapter_meta.get("metrics_values", {})
+            arr = self.zm.vpm_for_dimension(name, metrics_columns=metrics_columns, metrics_values=metrics_values)
             arr = arr[0] if arr.ndim == 3 else arr
             return normalize_vpm(arr).astype(np.float32)
         except Exception:
             return None
 
-    def build(self, X: np.ndarray) -> MapSet:
+    def build(self, X: np.ndarray, adapter_meta: Dict[str, Any]) -> MapSet:
         H,W = X.shape[-2], X.shape[-1]
         node = normalize_vpm(X[0] if X.ndim==3 else X)
         gx = np.abs(np.diff(node, axis=1, prepend=node[:, :1]))
@@ -115,13 +117,13 @@ class MapProvider:
         
 
         m = {
-            "quality": self._get("quality", H, W) or node,
-            "novelty": self._get("novelty", H, W) or novelty,
-            "uncertainty": self._get("uncertainty", H, W) or (1.0 - node),
+            "quality": self._get("quality", H, W, adapter_meta) or node,
+            "novelty": self._get("novelty", H, W, adapter_meta) or novelty,
+            "uncertainty": self._get("uncertainty", H, W, adapter_meta) or (1.0 - node),
             "importance": normalize_vpm(importance)
         }
         for extra in ("risk","coverage","bridge"):
-            arr = self._get(extra, H, W)
+            arr = self._get(extra, H, W, adapter_meta)
             if arr is not None: m[extra] = arr
         return MapSet.from_dict(m)
 

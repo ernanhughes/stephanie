@@ -384,8 +384,9 @@ def main():
     p.add_argument("--out", default="blossom_film.html", help="Output HTML filename (inside --run)")
     args = p.parse_args()
 
-    run_dir = Path(args.run)
+    run_dir = Path(f"runs/run-{args.run}")
     events_path = run_dir / "garden_events.jsonl"
+    print(f"Loading events from: {events_path}")
     if not events_path.exists():
         raise SystemExit(f"Missing events file: {events_path}")
 
