@@ -1,0 +1,48 @@
+# config/agents/visicalc.yaml
+
+visicalc:
+  # --- BaseAgent wiring ---
+  _target_: stephanie.agents.maintenance.visicalc.VisiCalcAgent
+  name: visicalc
+  enabled: true
+
+  # Where to read / write in the pipeline context
+  input_key: "scorables"
+  output_key: "scorable_features"
+
+  # We don’t need to persist prompts/contexts for a maintenance pass
+  save_prompt: false
+  save_context: false
+
+  # --- General behavior knobs ---
+  progress: true
+  filter_role: false          # set true to restrict by role
+  scorable_role: "assistant"  # only used if filter_role: true
+
+  batch_size: 64
+  attach_scores: false        # VisiCalc only needs metrics_values already present
+  scoring_dims: null
+
+  max_concurrency: 8
+  progress_log_every: 25
+  progress_leave: true
+  progress_position: 0
+
+  # --- VisiCalc-specific settings ---
+  visicalc:
+    enabled: true
+
+    # Optional: restrict to specific metrics (exact matches to metrics_columns)
+    # e.g. ["HRM.clarity.score", "sicql.clarity.score", "HRM.aggregate"]
+    metric_keys: null
+
+    # Which metric to treat as frontier (if null, uses first metric in matrix)
+    frontier_metric: "sicql.clarity.score"
+
+    # How many coarse row bands to compute region stats for
+    row_region_splits: 4
+
+    # Output directory + optional custom filenames
+    out_dir: "debug/visicalc"
+    # json_file: "debug/visicalc/visicalc_report.json"
+    # csv_file:  "debug/visicalc/visicalc_report.csv"

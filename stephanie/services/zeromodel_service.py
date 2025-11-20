@@ -18,7 +18,10 @@ import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import scipy.stats as spstats  # optional, but nice if available
-from stephanie.zeromodel.visicalc_report import VisiCalcReport, extract_visicalc_stats
+from stephanie.zeromodel.visicalc_report import (
+    VisiCalcReport,
+    extract_visicalc_stats,
+)
 from zeromodel.pipeline.executor import PipelineExecutor
 from zeromodel.tools.gif_logger import GifLogger
 from zeromodel.tools.spatial_optimizer import SpatialOptimizer
@@ -2445,14 +2448,25 @@ class ZeroModelService(Service):
         *,
         normalize: str = "passthrough",
     ) -> Optional[VisiCalcReport]:
+        # notice visicalc is stage 3
+        visicalc_stage = 3
         pipeline_cfg = [
-            {"stage": "normalize", "params": {}},
-            {"stage": "feature_engineering", "params": {}},
-            {"stage": "organization", "params": {"strategy": "spatial"}},
+            {
+                "stage": "normalize/normalize.NormalizeStage",
+                "params": {"metric_names": metrics_columns},
+            },
+            {
+                "stage": "amplifier/feature_engineer.FeatureEngineerStage",
+                "params": {"nonlinearity_hint": None},
+            },
+            {
+                "stage": "organizer/organize.Organize",
+                "params": {"sql_query": ""},  # identity sort
+            },
             {
                 "stage": "explainability/visicalc.VisiCalcStage",
                 "params": {
-                    "frontier_metric": frontier_metric,
+                    "frontier_metric_index": metrics_columns.index(frontier_metric),
                     "row_region_splits": row_region_splits,
                 },
             },
@@ -2461,7 +2475,8 @@ class ZeroModelService(Service):
         row = [float(x) if np.isfinite(x) else 0.0 for x in metrics_values]
         X = np.asarray(row, dtype=np.float32)[None, :]  # shape (1, D)
         vpm_out, meta = pipeline.run(X, {"enable_gif": True})
-        report = extract_visicalc_stats(meta[0], frontier_metric)
+        log.info(f"VisiCalc meta: {dumps_safe(meta, indent=2)}")
+        report = extract_visicalc_stats(meta, visicalc_stage)
         return report
 
     async def _to_vpm_array(

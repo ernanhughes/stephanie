@@ -2793,8 +2793,8 @@ CREATE TABLE public.nexus_embedding (
 
 CREATE TABLE public.nexus_metrics (
     scorable_id character varying NOT NULL,
-    columns jsonb NOT NULL,
-    "values" jsonb NOT NULL,
+    columns jsonb DEFAULT '[]'::jsonb NOT NULL,
+    "values" jsonb DEFAULT '[]'::jsonb NOT NULL,
     vector jsonb
 );
 
@@ -2837,7 +2837,7 @@ ALTER SEQUENCE public.nexus_pulse_id_seq OWNED BY public.nexus_pulse.id;
 
 CREATE TABLE public.nexus_scorable (
     id character varying NOT NULL,
-    created_ts timestamp with time zone DEFAULT now(),
+    created_ts timestamp without time zone DEFAULT now(),
     chat_id character varying,
     turn_index integer,
     target_type character varying,
@@ -7078,6 +7078,30 @@ CREATE INDEX ix_nexus_pulse_scorable_id ON public.nexus_pulse USING btree (scora
 CREATE INDEX ix_nexus_pulse_ts ON public.nexus_pulse USING btree (ts);
 
 --
+-- Name: ix_nexus_scorable_chat_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_nexus_scorable_chat_id ON public.nexus_scorable USING btree (chat_id);
+
+--
+-- Name: ix_nexus_scorable_created_ts; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_nexus_scorable_created_ts ON public.nexus_scorable USING btree (created_ts);
+
+--
+-- Name: ix_nexus_scorable_target_type; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_nexus_scorable_target_type ON public.nexus_scorable USING btree (target_type);
+
+--
+-- Name: ix_nexus_scorable_turn_index; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_nexus_scorable_turn_index ON public.nexus_scorable USING btree (turn_index);
+
+--
 -- Name: ix_psq_topic_status; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -7674,6 +7698,13 @@ ALTER TABLE ONLY public.hypotheses
 
 ALTER TABLE ONLY public.prompts
     ADD CONSTRAINT fk_goal_prompt FOREIGN KEY (goal_id) REFERENCES public.goals(id);
+
+--
+-- Name: nexus_metrics fk_nexus_metrics_scorable; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.nexus_metrics
+    ADD CONSTRAINT fk_nexus_metrics_scorable FOREIGN KEY (scorable_id) REFERENCES public.nexus_scorable(id) ON DELETE CASCADE;
 
 --
 -- Name: context_states fk_pipeline_run; Type: FK CONSTRAINT; Schema: public; Owner: -

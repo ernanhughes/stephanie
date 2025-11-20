@@ -4,10 +4,10 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from dataclasses import asdict, dataclass, field
 from hashlib import sha256
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
+from stephanie.zeromodel.visicalc_report import compute_visicalc_report, format_visicalc_report, validate_visicalc_report
 
 import numpy as np
 import torch
@@ -16,12 +16,19 @@ from stephanie.tools.scorable_classifier import ScorableClassifier
 from stephanie.constants import SCORABLE_PROCESS, SCORABLE_SUBMIT
 from stephanie.core.manifest import Manifest, ManifestManager
 from stephanie.models.ner_retriever import EntityDetector
-from stephanie.scoring.adapters.db_providers import (DomainDBProvider,
-                                                     EntityDBProvider)
-from stephanie.scoring.adapters.db_writers import (DomainDBWriter,
-                                                   EntityDBWriter)
-from stephanie.scoring.feature_io import (FeatureProvider, FeatureWriter,
-                                          ScoringService)
+from stephanie.scoring.adapters.db_providers import (
+    DomainDBProvider,
+    EntityDBProvider,
+)
+from stephanie.scoring.adapters.db_writers import (
+    DomainDBWriter,
+    EntityDBWriter,
+)
+from stephanie.scoring.feature_io import (
+    FeatureProvider,
+    FeatureWriter,
+    ScoringService,
+)
 from stephanie.scoring.scorable import Scorable, ScorableFactory
 from stephanie.data.scorable_row import ScorableRow
 from stephanie.services.zeromodel_service import ZeroModelService
@@ -29,8 +36,6 @@ from stephanie.services.zmq_cache_service import ZmqCacheService
 from stephanie.utils.json_sanitize import dumps_safe
 
 log = logging.getLogger(__name__)
-
-
 
 
 class ScorableProcessor:
@@ -88,7 +93,9 @@ class ScorableProcessor:
                 "domain_seed_config_path", "config/domain/seeds.yaml"
             ),
         )
-        self.persist_domains: bool = bool(self.cfg.get("persist_domains", False))
+        self.persist_domains: bool = bool(
+            self.cfg.get("persist_domains", False)
+        )
 
         try:
             self.entity_extractor = EntityDetector(
@@ -101,7 +108,7 @@ class ScorableProcessor:
             )
             log.debug("NER detector loaded.")
         except Exception as e:
-            self.entity_extractor = None   # <- keep same name
+            self.entity_extractor = None  # <- keep same name
             log.error(f"Failed to initialize EntityDetector: {e}")
 
         # Core services
@@ -112,17 +119,22 @@ class ScorableProcessor:
         self.embed = self.memory.embedding
 
         # VPM + text feature flags
-        self.include_text_features = bool(self.cfg.get("include_text_features", True))
+        self.include_text_features = bool(
+            self.cfg.get("include_text_features", True)
+        )
         self.persist_vpm_png = bool(self.cfg.get("persist_vpm_png", True))
-        self.enable_visicalc = bool(self.cfg.get("enable_visicalc", False))
         self.save_vpm_channels = bool(self.cfg.get("save_vpm_channels", False))
         self.vpm_out_root = Path(self.cfg.get("vpm_out_root", "runs/vpm"))
 
         # Manifest control
-        self.enable_manifest: bool = bool(self.cfg.get("enable_manifest", True))
+        self.enable_manifest: bool = bool(
+            self.cfg.get("enable_manifest", True)
+        )
 
         # Bus/offload configuration (ZeroMQ or any BusProtocol-compatible adapter)
-        self.offload_mode: str = self.cfg.get("offload_mode", "rpc")  # "inline" | "rpc" | "async"
+        self.offload_mode: str = self.cfg.get(
+            "offload_mode", "rpc"
+        )  # "inline" | "rpc" | "async"
         self.bus_subject_sync: str = self.cfg.get(
             "bus_subject_sync", SCORABLE_PROCESS
         )
@@ -133,7 +145,6 @@ class ScorableProcessor:
 
         # Cache stats (actual caching is handled at bus level via ZmqCacheService middleware)
         self.cache_service: Optional[ZmqCacheService] = container.get("cache")
-
 
         self.manifest_mgr: Optional[ManifestManager] = None
         self.manifest: Optional[Manifest] = None
@@ -149,7 +160,10 @@ class ScorableProcessor:
             self.scorers,
             self.dimensions,
             self.persist,
-            (self.cfg.get("device") or ("cuda" if torch.cuda.is_available() else "cpu")),
+            (
+                self.cfg.get("device")
+                or ("cuda" if torch.cuda.is_available() else "cpu")
+            ),
             self.offload_mode,
             self.enable_manifest,
         )
@@ -166,7 +180,9 @@ class ScorableProcessor:
     ) -> None:
         """Initialize a run folder + manifest.json and a features.jsonl file."""
         if not self.enable_manifest:
-            log.debug("[SP:manifest] start_manifest called but enable_manifest=False; skipping.")
+            log.debug(
+                "[SP:manifest] start_manifest called but enable_manifest=False; skipping."
+            )
             return
 
         self.manifest_mgr = ManifestManager(base_root=base_root)
@@ -176,25 +192,36 @@ class ScorableProcessor:
             models=models or {},
         )
         # JSONL for per-row features
-        features_path = self.manifest_mgr.features_jsonl_path(run_id, name="features.jsonl")
+        features_path = self.manifest_mgr.features_jsonl_path(
+            run_id, name="features.jsonl"
+        )
         features_path.parent.mkdir(parents=True, exist_ok=True)
         if not features_path.exists():
             features_path.write_text("", encoding="utf-8")
         self._manifest_features_path = features_path
-        log.debug("[SP:manifest] started → %s", self.manifest_mgr.manifest_path(run_id))
-        log.debug("[SP:manifest] features.jsonl → %s", self._manifest_features_path)
+        log.debug(
+            "[SP:manifest] started → %s",
+            self.manifest_mgr.manifest_path(run_id),
+        )
+        log.debug(
+            "[SP:manifest] features.jsonl → %s", self._manifest_features_path
+        )
 
     async def write_to_manifest(self, features_row: Dict[str, Any]) -> None:
         """Append one JSON object per line to features.jsonl."""
         if not (self.enable_manifest and self._manifest_features_path):
             return
         async with self._manifest_lock:
-            with open(self._manifest_features_path, "a", encoding="utf-8") as f:
+            with open(
+                self._manifest_features_path, "a", encoding="utf-8"
+            ) as f:
                 f.write(dumps_safe(features_row) + "\n")
 
     def finish_manifest(self, *, result: Dict[str, Any] | None = None) -> None:
         if not self.enable_manifest:
-            log.debug("[SP:manifest] finish requested but enable_manifest=False")
+            log.debug(
+                "[SP:manifest] finish requested but enable_manifest=False"
+            )
             return
         if not (self.manifest and self.manifest_mgr):
             log.debug("[SP:manifest] finish requested but no active manifest")
@@ -285,7 +312,9 @@ class ScorableProcessor:
 
         # metrics
         metrics_vector = dict(acc.get("metrics_vector") or {})
-        metrics_columns = list(acc.get("metrics_columns") or metrics_vector.keys())
+        metrics_columns = list(
+            acc.get("metrics_columns") or metrics_vector.keys()
+        )
         metrics_values = [float(metrics_vector[k]) for k in metrics_columns]
 
         row = ScorableRow(
@@ -326,10 +355,9 @@ class ScorableProcessor:
             processor_version="2.0",
             content_hash16=self._hash_text(text),
             created_utc=time.time(),
-            visicalc_report=acc.get("visicalc_report") or {}
+            visicalc_report=acc.get("visicalc_report") or {},
         )
         return row
-
 
     async def register_bus_handlers(self) -> None:
         """
@@ -346,19 +374,33 @@ class ScorableProcessor:
 
         async def _rpc_handler(message: Dict[str, Any]) -> Dict[str, Any]:
             # Support bus adapters that wrap message in {"data": ...}
-            payload = message.get("data") if isinstance(message, dict) and "data" in message else message
-            scorable = self._unpack_scorable(payload if isinstance(payload, dict) else {})
+            payload = (
+                message.get("data")
+                if isinstance(message, dict) and "data" in message
+                else message
+            )
+            scorable = self._unpack_scorable(
+                payload if isinstance(payload, dict) else {}
+            )
             context = (payload or {}).get("context") or {}
             t0 = time.perf_counter()
             row = await self._process_inline(scorable, context, t0)
             return {"ok": True, "row": row}
 
         async def _submit_handler(message: Dict[str, Any]) -> None:
-            payload = message.get("data") if isinstance(message, dict) and "data" in message else message
-            scorable = self._unpack_scorable(payload if isinstance(payload, dict) else {})
+            payload = (
+                message.get("data")
+                if isinstance(message, dict) and "data" in message
+                else message
+            )
+            scorable = self._unpack_scorable(
+                payload if isinstance(payload, dict) else {}
+            )
             context = (payload or {}).get("context") or {}
             try:
-                await self._process_inline(scorable, context, time.perf_counter())
+                await self._process_inline(
+                    scorable, context, time.perf_counter()
+                )
             except Exception as e:
                 log.warning("Scorable submit failed: %s", e)
 
@@ -378,10 +420,15 @@ class ScorableProcessor:
         elif hasattr(self.bus, "consume"):
             await self.bus.consume(subject_async, _submit_handler)
         else:
-            log.debug("Bus does not support subscribe/consume; async submit disabled")
+            log.debug(
+                "Bus does not support subscribe/consume; async submit disabled"
+            )
 
-        log.info("[ScorableProcessor] RPC handler on '%s' and submit handler on '%s' registered (inline delegate)",
-                 subject_rpc, subject_async)
+        log.info(
+            "[ScorableProcessor] RPC handler on '%s' and submit handler on '%s' registered (inline delegate)",
+            subject_rpc,
+            subject_async,
+        )
 
     def _build_minimal_row(self, scorable: Scorable) -> ScorableRow:
         """
@@ -390,7 +437,11 @@ class ScorableProcessor:
         """
         text = scorable.text or ""
         meta = scorable.meta or {}
-        title = meta.get("title") or text[:80] or f"{scorable.target_type}:{scorable.id}"
+        title = (
+            meta.get("title")
+            or text[:80]
+            or f"{scorable.target_type}:{scorable.id}"
+        )
 
         return ScorableRow(
             scorable_id=str(scorable.id)
@@ -429,7 +480,9 @@ class ScorableProcessor:
     # ---------- Core ----------
 
     async def process(
-        self, input_data: Union[Scorable, Dict[str, Any]], context: Dict[str, Any]
+        self,
+        input_data: Union[Scorable, Dict[str, Any]],
+        context: Dict[str, Any],
     ) -> Dict[str, Any]:
         """
         Main entrypoint.
@@ -490,7 +543,11 @@ class ScorableProcessor:
             log.debug("[SP:embed] computing global id=%s", scorable.id)
             t1 = time.perf_counter()
             emb = self.memory.embedding.get_or_create(text)
-            log.info("[SP:embed] computed global id=%s in %s", scorable.id, self._t(t1 - t0))
+            log.info(
+                "[SP:embed] computed global id=%s in %s",
+                scorable.id,
+                self._t(t1 - t0),
+            )
             floats = self._ensure_float_list(emb)
             if floats is not None:
                 acc.setdefault("embeddings", {})
@@ -516,7 +573,9 @@ class ScorableProcessor:
 
             inferred = self.domain_classifier.classify(text)
             for name, score in inferred:
-                acc.setdefault("domains", []).append({"name": name, "score": score})
+                acc.setdefault("domains", []).append(
+                    {"name": name, "score": score}
+                )
             log.debug(
                 "[SP:domain] inferred %d in %s",
                 len(acc.get("domains") or []),
@@ -526,14 +585,18 @@ class ScorableProcessor:
             log.debug("[SP:domain] hydrated %d", len(acc.get("domains") or []))
 
         # 4) NER
-        need_ner = not acc.get("ner") and bool(self.cfg.get("enable_ner_model", True))
+        need_ner = not acc.get("ner") and bool(
+            self.cfg.get("enable_ner_model", True)
+        )
         if need_ner and self.entity_extractor:
             t0 = time.perf_counter()
             log.debug("[SP:ner] detecting entities id=%s", scorable.id)
             try:
                 ner = self.entity_extractor.detect_entities(text)
                 acc["ner"] = ner or []
-                log.debug("[SP:ner] found %d in %s", len(acc["ner"]), self._t(t0))
+                log.debug(
+                    "[SP:ner] found %d in %s", len(acc["ner"]), self._t(t0)
+                )
             except Exception as e:
                 log.warning("[SP:ner] failed: %s", e)
         else:
@@ -616,7 +679,9 @@ class ScorableProcessor:
 
         # 6) Vision/VPM  → ALWAYS from metrics
         require_metrics = bool(self.cfg.get("require_metrics_for_vpm", True))
-        have_metrics = bool(acc.get("metrics_columns") and acc.get("metrics_values"))
+        have_metrics = bool(
+            acc.get("metrics_columns") and acc.get("metrics_values")
+        )
 
         if self.zm and not acc.get("vision_signals"):
             if not have_metrics:
@@ -660,26 +725,6 @@ class ScorableProcessor:
                 bool(acc.get("vision_signals")),
             )
 
-        if self.enable_visicalc and acc.get("vision_signals"):
-            t0 = time.perf_counter()
-            log.debug("[SP:visicalc] generating VPM PNG id=%s", scorable.id)
-            try:
-                vpm_png_bytes = await self.zm.visicalc(
-                    acc["vision_signals"],
-                    meta=acc.get("vision_signals_meta") or {},
-                    persist_png=self.persist_vpm_png,
-                    out_root=self.vpm_out_root,
-                    save_channels=self.save_vpm_channels,
-                    scorable_id=str(scorable.id),
-                )
-                log.debug(
-                    "[SP:visicalc] ok png_bytes=%d in %s",
-                    len(vpm_png_bytes) if vpm_png_bytes else 0,
-                    self._t(t0),
-                )
-            except Exception as e:
-                log.warning("[SP:visicalc] failed: %s", e)
-
         # 7) Row build (typed → dict)
         t0 = time.perf_counter()
         row_obj = self._build_features_row(scorable, acc)
@@ -711,7 +756,7 @@ class ScorableProcessor:
                 log.warning("[SP:manifest] write failed: %s", e)
 
         # 10) Cache + return
-       
+
         log.info(
             "[SP:process:inline] done id=%s in %s ",
             scorable.id,
@@ -720,9 +765,10 @@ class ScorableProcessor:
 
         return row
 
-
     async def process_many(
-        self, inputs: List[Union[Scorable, Dict[str, Any]]], context: Dict[str, Any]
+        self,
+        inputs: List[Union[Scorable, Dict[str, Any]]],
+        context: Dict[str, Any],
     ) -> List[Dict[str, Any]]:
         t_all = time.perf_counter()
         n = len(inputs)
@@ -731,7 +777,6 @@ class ScorableProcessor:
             n,
             context.get("pipeline_run_id"),
         )
-
 
         # Process items (each may go inline or via bus, depending on mode)
         out: List[Dict[str, Any]] = []
@@ -751,7 +796,7 @@ class ScorableProcessor:
         return out
 
     def _t(self, t0: float) -> str:
-        return f"{(time.perf_counter() - t0)*1000:.1f}ms"
+        return f"{(time.perf_counter() - t0) * 1000:.1f}ms"
 
     def _shape_dtype(self, x: Any) -> str:
         try:
@@ -791,13 +836,19 @@ class ScorableProcessor:
         if not self.bus:
             # No bus at all → just do inline
             return await self._process_inline(
-                input_data if isinstance(input_data, Scorable) else ScorableFactory.from_dict(input_data),
+                input_data
+                if isinstance(input_data, Scorable)
+                else ScorableFactory.from_dict(input_data),
                 context,
                 t_all,
             )
 
         # Normalize to Scorable
-        scorable = input_data if isinstance(input_data, Scorable) else ScorableFactory.from_dict(input_data)
+        scorable = (
+            input_data
+            if isinstance(input_data, Scorable)
+            else ScorableFactory.from_dict(input_data)
+        )
 
         job_id = self._generate_cache_key(scorable)
         scorable_dict = {
@@ -936,7 +987,9 @@ class ScorableProcessor:
         It wires this processor instance into the bus for both sync + async subjects.
         """
         if not self.bus:
-            log.warning("[ScorableProcessor] no bus configured; skipping handler registration")
+            log.warning(
+                "[ScorableProcessor] no bus configured; skipping handler registration"
+            )
             return
 
         # HybridKnowledgeBus.subscribe() auto-calls _ensure_connected_for_use(),
