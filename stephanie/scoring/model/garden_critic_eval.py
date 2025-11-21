@@ -7,16 +7,15 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
+import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
-from torch.utils.data import Dataset, DataLoader, Subset
-from torchvision.models import resnet18
-from sklearn.metrics import roc_auc_score, accuracy_score, brier_score_loss
-import matplotlib.pyplot as plt
 from matplotlib.ticker import MaxNLocator
+from sklearn.metrics import accuracy_score, brier_score_loss, roc_auc_score
+from torch.utils.data import DataLoader, Dataset, Subset
+from torchvision.models import resnet18
 
 # ----------------------------
 #  Dataset

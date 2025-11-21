@@ -1,12 +1,12 @@
 #stephanie/components/vibe/artifact_snapshot.py
 from __future__ import annotations
 
-from dataclasses import dataclass, field, asdict
-from enum import Enum
-from typing import Any, Dict, Optional, Iterable, List, Union
 import datetime as _dt
 import json
 import logging
+from dataclasses import asdict, dataclass, field
+from enum import Enum
+from typing import Any, Dict, Iterable, List, Optional, Union
 
 log = logging.getLogger(__name__)
 

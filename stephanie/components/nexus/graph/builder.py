@@ -1,22 +1,22 @@
 # stephanie/components/nexus/graph/builder.py
 from __future__ import annotations
 
-from dataclasses import asdict
 import logging
 import math
 from collections import Counter, defaultdict
+from dataclasses import asdict
 from typing import (Any, DefaultDict, Dict, Iterable, List, Optional, Set,
                     Tuple, Union)
 
 import numpy as np
+from omegaconf import DictConfig, OmegaConf
 
 from stephanie.components.nexus.app.manifest import ManifestItem
 from stephanie.components.nexus.app.types import NexusEdge, NexusNode
+from stephanie.data.scorable_row import ScorableRow
 from stephanie.memory.nexus_store import NexusStore
 from stephanie.scoring.scorable_processor import ScorableProcessor
-from stephanie.data.scorable_row import ScorableRow
 from stephanie.utils.json_sanitize import dumps_safe
-from omegaconf import DictConfig, OmegaConf
 
 log = logging.getLogger(__name__)
 

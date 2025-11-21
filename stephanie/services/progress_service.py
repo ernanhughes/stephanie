@@ -71,8 +71,19 @@ class ProgressService(Service):
             self._tasks[task] = ProgressTask(name=task, total=max(1, int(total)), meta=meta or {})
         self._emit(task, substage="start", done=0, force=True)
 
-    def set(self, task: str, done: int, *, total: Optional[int] = None,
-            substage: Optional[str] = None, extra: Optional[Dict[str, Any]] = None) -> None:
+    def set(
+        self,
+        task: str,
+        done: int,
+        *,
+        total: Optional[int] = None,
+        substage: Optional[str] = None,
+        stage: Optional[str] = None,
+        extra: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        # Allow callers to pass either `stage=` or `substage=`; prefer explicit substage if both present.
+        if stage is not None and substage is None:
+            substage = stage
         with self._lock:
             t = self._tasks.get(task)
             if not t:

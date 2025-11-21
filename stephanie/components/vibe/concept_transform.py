@@ -2,10 +2,7 @@
 from __future__ import annotations
 
 from stephanie.components.vibe.concept_transform import (
-    text_paraphrase,
-    trace_reorder_steps,
-    graph_permute_isomorphic,
-)
+    graph_permute_isomorphic, text_paraphrase, trace_reorder_steps)
 from stephanie.components.vibe.vibe import VibeFeatureTask
 
 task = VibeFeatureTask(

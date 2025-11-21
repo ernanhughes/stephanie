@@ -5,8 +5,8 @@ visual_introspection:
   save_context: false
   skip_if_completed: false
   model:
-    # name: ollama/qwen3
-    name: ollama/qwen3:0.6b
+    name: ollama/qwen3
+    # name: ollama/qwen3:0.6b
     api_base: http://localhost:11434
     api_key: null
   input_keys: ["goal", "hypotheses"]

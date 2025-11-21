@@ -782,6 +782,90 @@ class VisiCalc:
             frontier_high=frontier_high,
             meta=meta or {},
         )
+    
+    @classmethod
+    def from_matrix(
+        cls,
+        *,
+        episode_id: str,
+        scores: Union[np.ndarray, Sequence[Sequence[float]]],
+        metric_names: Sequence[str],
+        item_ids: Sequence[str],
+        frontier_metric: Optional[str] = None,
+        row_region_splits: int = 3,
+        frontier_low: float = 0.25,
+        frontier_high: float = 0.75,
+        meta: Optional[Dict[str, Any]] = None,
+    ) -> "VisiCalc":
+        """
+        Build a VisiCalc instance directly from a score matrix.
+
+        Args:
+            episode_id:
+                Logical id for this episode (e.g. "visicalc:targeted").
+            scores:
+                2D array-like of shape (N_items, N_metrics).
+            metric_names:
+                Length-N_metrics sequence of metric names (column order).
+            item_ids:
+                Length-N_items sequence of ids for each row (e.g. scorable_ids).
+            frontier_metric:
+                Which metric to treat as the 'frontier' dimension.
+                If None or not found, falls back to the first metric.
+            row_region_splits:
+                How many contiguous row regions to divide items into.
+            frontier_low / frontier_high:
+                Frontier band in normalized [0, 1] space.
+            meta:
+                Optional extra metadata to carry along.
+
+        Returns:
+            VisiCalc instance with .report, .features, .feature_names populated.
+        """
+        X = np.asarray(scores, dtype=np.float32)
+        if X.ndim != 2:
+            raise ValueError(f"VisiCalc.from_matrix: scores must be 2D, got shape {X.shape}")
+
+        n_items, n_metrics = X.shape
+        metric_names_list = list(metric_names)
+        item_ids_list = [str(i) for i in item_ids]
+
+        if len(metric_names_list) != n_metrics:
+            raise ValueError(
+                f"VisiCalc.from_matrix: metric_names length {len(metric_names_list)} "
+                f"!= scores.shape[1] {n_metrics}"
+            )
+
+        if len(item_ids_list) != n_items:
+            raise ValueError(
+                f"VisiCalc.from_matrix: item_ids length {len(item_ids_list)} "
+                f"!= scores.shape[0] {n_items}"
+            )
+
+        # Resolve frontier metric
+        fm = frontier_metric
+        if not fm or fm not in metric_names_list:
+            if fm is not None:
+                log.warning(
+                    "VisiCalc.from_matrix: requested frontier_metric=%r not in metric_names=%r; "
+                    "falling back to first metric",
+                    fm,
+                    metric_names_list,
+                )
+            fm = metric_names_list[0]
+
+        return cls(
+            episode_id=episode_id,
+            scores=X,
+            metric_names=metric_names_list,
+            item_ids=item_ids_list,
+            frontier_metric=fm,
+            row_region_splits=row_region_splits,
+            frontier_low=float(frontier_low),
+            frontier_high=float(frontier_high),
+            meta=meta or {},
+        )
+
 
     def quality(self, low_weight: float = 0.5, high_weight: float = 0.5) -> float:
         """Scalar quality score for this episode."""

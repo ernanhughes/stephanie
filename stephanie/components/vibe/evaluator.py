@@ -1,7 +1,8 @@
 # stephanie/components/vibe/evaluator.py
 from __future__ import annotations
 
-from stephanie.components.vibe.vibe import VibeCandidate, VibeFeatureTask, VibeScore
+from stephanie.components.vibe.vibe import (VibeCandidate, VibeFeatureTask,
+                                            VibeScore)
 
 
 class VibeEvaluator:

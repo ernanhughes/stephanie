@@ -11,10 +11,10 @@ import numpy as np
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.scoring.scorable_processor import ScorableProcessor
 from stephanie.utils.json_sanitize import dumps_safe
-from dataclasses import asdict  # <- you can actually drop this now if unused
 import logging
 from pathlib import Path
 from typing import List, Optional
+from stephanie.scoring.metric_mapping import MetricMapper
 
 import numpy as np
 
@@ -176,6 +176,8 @@ class VisiCalcAgent(BaseAgent):
             "frontier_metric",
             "HRM.aggregate",
         )
+        self.visicalc_frontier_low: float = float(vis_cfg.get("frontier_low", 0.25))
+        self.visicalc_frontier_high: float = float(vis_cfg.get("frontier_high", 0.75))
 
         # How many row regions (coarse bands) to split into
         self.visicalc_row_region_splits: int = int(
@@ -200,6 +202,8 @@ class VisiCalcAgent(BaseAgent):
             container,
             logger,
         )
+        self.metric_mapper = MetricMapper(vis_cfg.get("metric_mapping") or {})
+
 
     async def run(self, context: dict) -> dict:
         """
@@ -239,7 +243,7 @@ class VisiCalcAgent(BaseAgent):
         def _rows_for_cohort(scorables: List[dict]) -> List[dict]:
             out = []
             for s in scorables:
-                sid = str(s.get("scorable_id"))
+                sid = str(s.id)
                 row = id_to_row.get(sid)
                 if row is not None:
                     out.append(row)
@@ -373,39 +377,35 @@ class VisiCalcAgent(BaseAgent):
         if not rows:
             raise ValueError("VisiCalc: no rows to analyze")
 
-        # 1) Establish canonical metric_names
-        first = rows[0]
-        metrics_columns = list(first.get("metrics_columns") or [])
-
-        if not metrics_columns:
-            raise ValueError(
-                "VisiCalc: first row has no 'metrics_columns'; "
-                "cannot build metric matrix"
-            )
+        # 1) Matrix + metric names via MetricMapper / visicalc_metric_keys
+        vpm, metric_names, item_ids = self._build_vpm_and_metric_names(rows)
 
         # 2) Choose frontier metric
         frontier_metric = self.visicalc_frontier_metric
-        if frontier_metric and frontier_metric not in metrics_columns:
+        if frontier_metric and frontier_metric not in metric_names:
             log.warning(
                 "VisiCalc: requested frontier_metric=%r not in metric_names; "
                 "falling back to first metric=%r",
                 frontier_metric,
-                metrics_columns[0],
+                metric_names[0],
             )
             frontier_metric = None
 
         if not frontier_metric:
-            frontier_metric = metrics_columns[0]
+            frontier_metric = metric_names[0]
 
-        # 3) Let VisiCalc.from_rows handle matrix + item_ids
-        vc = VisiCalc.from_rows(
-            episode_id=cohort_label,
-            rows=rows,
+        # 3) Build VisiCalc episode + report
+        episode_id = f"{self.name}:{cohort_label}"
+
+        vc = VisiCalc.from_matrix(
+            episode_id=episode_id,
+            scores=vpm,
+            metric_names=metric_names,
+            item_ids=item_ids,
             frontier_metric=frontier_metric,
             row_region_splits=self.visicalc_row_region_splits,
-            frontier_low=0.25,   # or make configurable later
-            frontier_high=0.75,
-            meta={"cohort": cohort_label},
+            frontier_low=self.visicalc_frontier_low,
+            frontier_high=self.visicalc_frontier_high,
         )
 
         log.info(
@@ -418,7 +418,7 @@ class VisiCalcAgent(BaseAgent):
             vc.scores.shape[0],
         )
 
-        return vc, metrics_columns
+        return vc, metric_names
  
     def compare_vpms_with_topleft(
         self,
@@ -472,3 +472,94 @@ class VisiCalcAgent(BaseAgent):
             "meta_base": meta_base,
             "meta_tgt": meta_tgt,
         }
+
+    def _build_vpm_and_metric_names(
+        self,
+        rows: List[dict],
+    ) -> tuple[np.ndarray, List[str], List[str]]:
+        """
+        Turn canonical feature rows into:
+          - vpm: (N, D) float32 matrix
+          - metric_names: List[str] for the D columns
+          - item_ids: List[str] of scorable_ids for each row
+
+        This is where MetricMapper + visicalc_metric_keys are applied.
+        """
+        if not rows:
+            raise ValueError("VisiCalcAgent: no rows provided to _build_vpm_and_metric_names")
+
+        first = rows[0]
+        all_cols = list(first.get("metrics_columns") or [])
+        if not all_cols:
+            raise ValueError(
+                "VisiCalcAgent: first row has no 'metrics_columns'; "
+                "cannot build metric matrix"
+            )
+
+        # 1) Decide which metric columns we actually want, *and in what order*.
+        # Priority:
+        #   a) explicit visicalc_metric_keys from config
+        #   b) MetricMapper-driven selection
+        #   c) fall back to all_cols as-is
+        if self.visicalc_metric_keys:
+            metric_names = [
+                m for m in self.visicalc_metric_keys
+                if m in all_cols
+            ]
+            if not metric_names:
+                log.warning(
+                    "VisiCalcAgent: visicalc.metric_keys=%r but none found in row metrics=%r; "
+                    "falling back to all columns",
+                    self.visicalc_metric_keys,
+                    all_cols,
+                )
+                metric_names = all_cols
+        else:
+            # Let MetricMapper decide; if it returns empty, fall back to all_cols
+            metric_names = self.metric_mapper.select_columns(all_cols)
+            if not metric_names:
+                metric_names = all_cols
+
+        num_metrics = len(metric_names)
+
+        # 2) Build matrix (N, D) aligned to metric_names
+        matrix_rows: List[List[float]] = []
+        item_ids: List[str] = []
+        skipped = 0
+
+        for idx, row in enumerate(rows):
+            cols = row.get("metrics_columns") or all_cols
+            vals = row.get("metrics_values")
+
+            if vals is None:
+                skipped += 1
+                log.debug(
+                    "VisiCalcAgent: row %d (scorable_id=%r) has no 'metrics_values'; skipping",
+                    idx,
+                    row.get("scorable_id"),
+                )
+                continue
+
+            # Map whatever the row has → canonical metric_names order
+            mapping = {k: float(v) for k, v in zip(cols, vals)}
+            vec = [mapping.get(name, 0.0) for name in metric_names]
+
+            matrix_rows.append(vec)
+            item_ids.append(str(row.get("scorable_id") or f"row-{idx}"))
+
+        if not matrix_rows:
+            raise ValueError(
+                f"VisiCalcAgent: all rows were skipped (no metrics_values); "
+                f"input_size={len(rows)}"
+            )
+
+        vpm = np.asarray(matrix_rows, dtype=np.float32)
+
+        log.info(
+            "VisiCalcAgent: built VPM matrix shape=%s with %d metrics (skipped=%d rows)",
+            vpm.shape,
+            num_metrics,
+            skipped,
+        )
+
+        return vpm, metric_names, item_ids

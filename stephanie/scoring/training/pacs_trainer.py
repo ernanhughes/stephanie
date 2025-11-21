@@ -14,13 +14,13 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from stephanie.tools.scorable_classifier import ScorableClassifier
 from stephanie.models.belief_cartridge import BeliefCartridgeORM
 from stephanie.models.model_version import ModelVersionORM
 from stephanie.models.training_stats import TrainingStatsORM
 from stephanie.scoring.scorable import ScorableType
 from stephanie.scoring.scorer.sicql_scorer import SICQLScorer
 from stephanie.scoring.training.base_trainer import BaseTrainer
+from stephanie.tools.scorable_classifier import ScorableClassifier
 
 # ==============================
 # Core RLVR data structures

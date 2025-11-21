@@ -1,0 +1,32 @@
+# config/agents/gsm8k_log_loader.yaml
+
+loader:
+  _target_: stephanie.agents.loader.LoaderAgent
+  name: loader
+  enabled: true
+
+  input_key: "unused"          # we ignore context input
+  output_key: "scorables"      # matches what VisiCalcAgent expects
+
+  save_prompt: false
+  save_context: false
+
+  # Where your JSONL logs live (you can add multiple dirs)
+  log_dirs:
+    - "runs/visual_introspection/8893"  
+    - "runs/visual_introspection/8892"  
+    - "runs/visual_introspection/8891"  
+    - "runs/visual_introspection/8890"  
+    - "runs/visual_introspection/8889"  
+    - "runs/visual_introspection/8888"  
+    - "runs/visual_introspection/8887"  
+    - "runs/visual_introspection/8886"  
+    - "runs/visual_introspection/8885"  
+    - "runs/visual_introspection/8884"  
+    - "runs/visual_introspection/8883"  
+  log_glob: "*.jsonl"
+
+  shuffle: true
+  max_records: 0               # 0 → use all records
+  max_good: 50
+  max_bad: 50

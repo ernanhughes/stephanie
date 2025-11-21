@@ -1,10 +1,9 @@
 # stephanie/agents/mixins/ethics_scoring_mixin.py
 from __future__ import annotations
 
-from stephanie.analysis.paper_score_evaluator import PaperScoreEvaluator
-
 from textwrap import wrap
 
+from stephanie.analysis.paper_score_evaluator import PaperScoreEvaluator
 from stephanie.data.score_bundle import ScoreBundle
 from stephanie.scoring.scorable import Scorable, ScorableFactory, ScorableType
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -10,7 +11,6 @@ from datasets import load_dataset
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.scoring.scorable import Scorable
 
-import logging
 log = logging.getLogger(__name__)
 
 class VisualIntrospectionAgent(BaseAgent):
@@ -65,7 +65,7 @@ class VisualIntrospectionAgent(BaseAgent):
         )
 
         # Dataset knobs
-        self.num_examples: int = int(cfg.get("num_examples", 30))
+        self.num_examples: int = int(cfg.get("num_examples", 400))
         self.split: str = cfg.get("split", "train")
         self.store_raw: bool = bool(cfg.get("store_raw", True))
         self.shuffle: bool = bool(cfg.get("shuffle", True))

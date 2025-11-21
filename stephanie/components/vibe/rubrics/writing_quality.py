@@ -1,17 +1,11 @@
 from __future__ import annotations
 
-from typing import List, Dict, Any
-
 import logging
+from typing import Any, Dict, List
 
-from stephanie.memcube.rubric import (
-    RubricMemCube,
-    RubricScope,
-    RubricCriterion,
-    CriterionType,
-    CriterionScope,
-    AntiHackingCriterion,
-)
+from stephanie.memcube.rubric import (AntiHackingCriterion, CriterionScope,
+                                      CriterionType, RubricCriterion,
+                                      RubricMemCube, RubricScope)
 
 log = logging.getLogger(__name__)
 

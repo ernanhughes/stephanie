@@ -11,33 +11,27 @@ from typing import Any, Dict, List, Optional, Union
 import numpy as np
 import torch
 
-from stephanie.tools.scorable_classifier import ScorableClassifier
 from stephanie.constants import SCORABLE_PROCESS, SCORABLE_SUBMIT
 from stephanie.core.manifest import Manifest, ManifestManager
-from stephanie.models.ner_retriever import EntityDetector
-from stephanie.scoring.adapters.db_providers import (
-    DomainDBProvider,
-    EntityDBProvider,
-)
-from stephanie.scoring.adapters.db_writers import (
-    DomainDBWriter,
-    EntityDBWriter,
-)
-from stephanie.scoring.feature_io import (
-    FeatureProvider,
-    FeatureWriter,
-    ScoringService,
-)
-from stephanie.scoring.scorable import Scorable, ScorableFactory
 from stephanie.data.scorable_row import ScorableRow
+from stephanie.models.ner_retriever import EntityDetector
+from stephanie.scoring.adapters.db_providers import (DomainDBProvider,
+                                                     EntityDBProvider)
+from stephanie.scoring.adapters.db_writers import (DomainDBWriter,
+                                                   EntityDBWriter)
+from stephanie.scoring.feature_io import (FeatureProvider, FeatureWriter,
+                                          ScoringService)
+from stephanie.scoring.scorable import Scorable, ScorableFactory
 from stephanie.services.zeromodel_service import ZeroModelService
 from stephanie.services.zmq_cache_service import ZmqCacheService
+from stephanie.tools.scorable_classifier import ScorableClassifier
 from stephanie.utils.json_sanitize import dumps_safe
+from stephanie.utils.progress_mixin import ProgressMixin
 
 log = logging.getLogger(__name__)
 
 
-class ScorableProcessor:
+class ScorableProcessor(ProgressMixin):
     """
     Canonical mediator:
       - Accepts Scorable or dict
@@ -150,7 +144,7 @@ class ScorableProcessor:
         self._manifest_features_path: Optional[Path] = None
         self._manifest_lock = asyncio.Lock()
         self._current_manifest_path: Optional[Path] = None
-
+        self._init_progress(self.container, self.logger)
         log.info(
             "[ScorableProcessor:init] providers=%d writers=%d scorers=%s dims=%s "
             "persist_scores=%s device=%s offload_mode=%s enable_manifest=%s",
@@ -358,77 +352,6 @@ class ScorableProcessor:
         )
         return row
 
-    async def register_bus_handlers(self) -> None:
-        """
-        Expose handlers on the bus that forward to `_process_inline(...)`.
-        - RPC handler (bus_subject_sync) returns a fully processed row.
-        - Async submit handler (bus_subject_async) processes fire-and-forget.
-        """
-        if not self.bus:
-            log.debug("register_bus_handlers: no bus configured; skipping")
-            return
-
-        subject_rpc = self.bus_subject_sync
-        subject_async = self.bus_subject_async
-
-        async def _rpc_handler(message: Dict[str, Any]) -> Dict[str, Any]:
-            # Support bus adapters that wrap message in {"data": ...}
-            payload = (
-                message.get("data")
-                if isinstance(message, dict) and "data" in message
-                else message
-            )
-            scorable = self._unpack_scorable(
-                payload if isinstance(payload, dict) else {}
-            )
-            context = (payload or {}).get("context") or {}
-            t0 = time.perf_counter()
-            row = await self._process_inline(scorable, context, t0)
-            return {"ok": True, "row": row}
-
-        async def _submit_handler(message: Dict[str, Any]) -> None:
-            payload = (
-                message.get("data")
-                if isinstance(message, dict) and "data" in message
-                else message
-            )
-            scorable = self._unpack_scorable(
-                payload if isinstance(payload, dict) else {}
-            )
-            context = (payload or {}).get("context") or {}
-            try:
-                await self._process_inline(
-                    scorable, context, time.perf_counter()
-                )
-            except Exception as e:
-                log.warning("Scorable submit failed: %s", e)
-
-        # Attach RPC
-        if hasattr(self.bus, "expose_rpc"):
-            await self.bus.expose_rpc(subject_rpc, _rpc_handler)
-        elif hasattr(self.bus, "handle"):
-            await self.bus.handle(subject_rpc, _rpc_handler)
-        elif hasattr(self.bus, "subscribe_rpc"):
-            await self.bus.subscribe_rpc(subject_rpc, _rpc_handler)
-        else:
-            raise RuntimeError("Bus does not support RPC handler registration")
-
-        # Attach async submit if supported
-        if hasattr(self.bus, "subscribe"):
-            await self.bus.subscribe(subject_async, _submit_handler)
-        elif hasattr(self.bus, "consume"):
-            await self.bus.consume(subject_async, _submit_handler)
-        else:
-            log.debug(
-                "Bus does not support subscribe/consume; async submit disabled"
-            )
-
-        log.info(
-            "[ScorableProcessor] RPC handler on '%s' and submit handler on '%s' registered (inline delegate)",
-            subject_rpc,
-            subject_async,
-        )
-
     def _build_minimal_row(self, scorable: Scorable) -> ScorableRow:
         """
         Minimal row used for async offload mode: no metrics/embeddings yet,
@@ -516,6 +439,9 @@ class ScorableProcessor:
             len(text),
             context.get("pipeline_run_id"),
         )
+        
+        task = f"SPItem:{scorable.id}"
+        self.pstart(task=task, total=5, meta={"id": scorable.id})
 
         acc: Dict[str, Any] = {}
 
@@ -535,6 +461,8 @@ class ScorableProcessor:
             except Exception as e:
                 log.warning("[SP:hydrate] %s failed: %s", name, e)
 
+        self.pstep(task, 1, stage="hydrate")
+        
         # 2) Embeddings
         gl = (acc.get("embeddings") or {}).get("global")
         if not (isinstance(gl, list) and gl) and text:
@@ -558,6 +486,8 @@ class ScorableProcessor:
                 )
             else:
                 log.debug("[SP:embed] skipped/none")
+
+        self.pstep(task, 1, stage="embed")
 
         # 3) Domains
         need_domains = not acc.get("domains") or len(acc["domains"]) < int(
@@ -583,6 +513,8 @@ class ScorableProcessor:
         else:
             log.debug("[SP:domain] hydrated %d", len(acc.get("domains") or []))
 
+        self.pstep(task, 1, stage="domains")
+
         # 4) NER
         need_ner = not acc.get("ner") and bool(
             self.cfg.get("enable_ner_model", True)
@@ -605,6 +537,8 @@ class ScorableProcessor:
                 bool(self.cfg.get("enable_ner_model", True)),
                 bool(self.entity_extractor),
             )
+
+        self.pstep(task, 1, stage="ner")
 
         # 5) Scores  → build canonical metrics vector
         metrics_columns: List[str] = []
@@ -724,6 +658,8 @@ class ScorableProcessor:
                 bool(acc.get("vision_signals")),
             )
 
+        self.pstep(task, 1, stage="scores+vpm")
+
         # 7) Row build (typed → dict)
         t0 = time.perf_counter()
         row_obj = self._build_features_row(scorable, acc)
@@ -756,6 +692,8 @@ class ScorableProcessor:
 
         # 10) Cache + return
 
+        self.pdone(task)
+
         log.info(
             "[SP:process:inline] done id=%s in %s ",
             scorable.id,
@@ -776,21 +714,46 @@ class ScorableProcessor:
             n,
             context.get("pipeline_run_id"),
         )
+        
+        # ---------------------------
+        # Progress task for the batch
+        # ---------------------------
+        task_name = f"ScorableProcess:{context.get('pipeline_run_id', 'na')}"
+        # (safe even if called multiple times; ProgressMixin guards null service)
+        self.pstart(
+            task=task_name,
+            total=n,
+            meta={
+                "offload_mode": self.offload_mode,
+                "attach_scores": bool(self.cfg.get("attach_scores", True)),
+                "scorers": list(self.scorers),
+                "dimensions": list(self.dimensions),
+            },
+        )
 
         # Process items (each may go inline or via bus, depending on mode)
         out: List[Dict[str, Any]] = []
-        for i, sc in enumerate(inputs):
-            t0i = time.perf_counter()
-            row = await self.process(sc, context)
+        tick_every = max(1, n // 5)
+        try: 
+            for i, sc in enumerate(inputs):
+                t0i = time.perf_counter()
+                row = await self.process(sc, context)
 
-            out.append(row)
-            log.debug(
-                "[SP:many:item] %d/%d done in %s",
-                i + 1,
-                n,
-                self._t(t0i),
-            )
+                out.append(row)
+                if (i % tick_every) == 0 or i == n:
+                        # absolute progress update
+                        self.ptick(task=task_name, done=i, total=n)
+                log.debug(
+                    "[SP:many:item] %d/%d done in %s",
+                    i + 1,
+                    n,
+                    self._t(t0i),
+                )
 
+        finally:
+            # ensure we always close the progress task even on error
+            self.pdone(task=task_name)
+        
         log.debug("[SP:many] done batch_size=%d in %s", n, self._t(t_all))
         return out
 

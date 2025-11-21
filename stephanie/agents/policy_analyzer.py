@@ -1,16 +1,16 @@
 # stephanie/agents/policy_analyzer.py
 from __future__ import annotations
 
+import json
 import os
 from datetime import datetime
-
-from stephanie.agents.base_agent import BaseAgent
-import json
 from typing import Any, Dict, List
 
 import matplotlib
 import numpy as np
 import pandas as pd
+
+from stephanie.agents.base_agent import BaseAgent
 
 if matplotlib.get_backend().lower() != "agg":
     matplotlib.use("Agg")

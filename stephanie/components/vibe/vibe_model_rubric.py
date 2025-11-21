@@ -1,8 +1,9 @@
 # stephanie/components/vibe/vibe_model_rubric.py
 from __future__ import annotations
 
-from stephanie.components.vibe.vibe import VibeCandidate
 from typing import Dict
+
+from stephanie.components.vibe.vibe import VibeCandidate
 
 
 class LegacyVibeModelRubric:

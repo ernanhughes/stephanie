@@ -15,6 +15,7 @@ defaults:
   - agents/gap
   - agents/nexus_vpm_refiner
   - agents/nexus_vpm_logic_compare
+  - agents/loader
 
 embeddings:
   backend: hnet
@@ -68,13 +69,19 @@ pipeline:
      - name: visual_introspection
        description: "Perform visual introspection on the goal and hypotheses"
        cls: stephanie.agents.visual_introspection.VisualIntrospectionAgent
+       enabled: false
+       iterations: 1
+
+     - name: loader
+       description: "Load scorables from previous visual introspection runs"
+       cls: stephanie.agents.loader.LoaderAgent
        enabled: true
        iterations: 1
 
      - name: visicalc
        description: "Run VisiCalc cohort analysis on the loaded conversation turns"
        cls: stephanie.agents.maintenance.visicalc.VisiCalcAgent
-       enabled: false
+       enabled: true
        iterations: 1
 
      - name: nexus

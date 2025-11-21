@@ -5,9 +5,9 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
+from zeromodel.pipeline.organizer.top_left import TopLeft
 
 from stephanie.zeromodel.visicalc import VisiCalcEpisode, episode_features
-from zeromodel.pipeline.organizer.top_left import TopLeft
 
 # If you’ve moved VisiCalcReport into Stephanie core, you can also
 # import the report-level gauge from there. For now, assume a pure

@@ -6,9 +6,9 @@ import os
 from datetime import datetime
 
 from stephanie.agents.base_agent import BaseAgent
+from stephanie.constants import PIPELINE_RUN_ID
 from stephanie.rules.rule_analytics import RuleAnalytics
 from stephanie.rules.rule_effect_analyzer import RuleEffectAnalyzer
-from stephanie.constants import PIPELINE_RUN_ID
 from stephanie.scoring.scorable import ScorableFactory, ScorableType
 
 

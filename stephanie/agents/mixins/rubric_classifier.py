@@ -4,12 +4,13 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 
-from stephanie.constants import GOAL
-from stephanie.models import PatternStatORM
 import numpy as np
 import pandas as pd
 from sklearn.cluster import AgglomerativeClustering
 from sklearn.metrics.pairwise import cosine_similarity
+
+from stephanie.constants import GOAL
+from stephanie.models import PatternStatORM
 
 
 class RubricClusterer:

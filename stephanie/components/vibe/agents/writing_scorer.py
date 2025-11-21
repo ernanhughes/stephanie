@@ -1,11 +1,11 @@
 from __future__ import annotations
 
+import logging
 from typing import Any, Dict, Optional
 
-import logging
-
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.components.vibe.rubrics.writing_quality import build_writing_quality_rubric
+from stephanie.components.vibe.rubrics.writing_quality import \
+    build_writing_quality_rubric
 from stephanie.components.vibe.writing_types import WritingScore
 
 log = logging.getLogger(__name__)
