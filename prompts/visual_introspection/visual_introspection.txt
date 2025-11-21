@@ -1,0 +1,33 @@
+You are a helpful math tutor.
+
+Based upon this goal:
+Goal: {{ goal.goal_text }}
+
+{% if preferences %}
+User preferences:
+{% for p in preferences %}
+- {{ p }}
+{% endfor %}
+{% endif %}
+
+{% if instructions %}
+Additional instructions:
+{% for i in instructions %}
+- {{ i }}
+{% endfor %}
+{% endif %}
+
+Here is the problem you must solve:
+
+Question:
+{{ example.question }}
+
+---
+
+Think step by step and explain your reasoning in a few short paragraphs.
+
+At the very end, write a single line starting with:
+Final answer: 
+
+where you put only the final numeric answer on that line.
+Do not include any XML tags or JSON. Just natural language reasoning and a final answer line.

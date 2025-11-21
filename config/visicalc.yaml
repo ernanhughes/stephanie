@@ -7,6 +7,7 @@ defaults:
   - services: all
   - scorer: all  
 
+  - agents/visual_introspection
   - agents/nexus_scorable_loader
   - agents/visicalc
   - agents/nexus
@@ -64,16 +65,16 @@ pipeline:
   tag: chat_training
   description: "Uses chat history to train models. Different dynamics than traditional training."
   stages:
-     - name: nexus_scorable_loader
-       description: "🔓 Loads a large amount of conversation turns for AB testing nexus"
-       cls: stephanie.agents.scorable_loader.ScorableLoaderAgent
+     - name: visual_introspection
+       description: "Perform visual introspection on the goal and hypotheses"
+       cls: stephanie.agents.visual_introspection.VisualIntrospectionAgent
        enabled: true
-       iterations: 1    
+       iterations: 1
 
      - name: visicalc
        description: "Run VisiCalc cohort analysis on the loaded conversation turns"
        cls: stephanie.agents.maintenance.visicalc.VisiCalcAgent
-       enabled: true
+       enabled: false
        iterations: 1
 
      - name: nexus
