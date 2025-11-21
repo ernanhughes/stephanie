@@ -7,8 +7,8 @@ visicalc:
   enabled: true
 
   # Where to read / write in the pipeline context
-  input_key: "scorables"
-  output_key: "scorable_features"
+  input_key: "scorables"           # context key with input scorables
+  output_key: "scorable_features"  # where canonical rows are written
 
   # We don’t need to persist prompts/contexts for a maintenance pass
   save_prompt: false
@@ -16,17 +16,26 @@ visicalc:
 
   # --- General behavior knobs ---
   progress: true
-  filter_role: false          # set true to restrict by role
-  scorable_role: "assistant"  # only used if filter_role: true
+  filter_role: false               # set true to restrict by role
+  scorable_role: "assistant"       # only used if filter_role: true
 
   batch_size: 64
-  attach_scores: false        # VisiCalc only needs metrics_values already present
-  scoring_dims: null
+  attach_scores: false             # VisiCalc only needs metrics_values already present
+  scoring_dims: null               # optional: limit which dimensions to score
 
   max_concurrency: 8
   progress_log_every: 25
   progress_leave: true
   progress_position: 0
+
+  # --- ScorableProcessor config (passed through as-is) ---
+  processor:
+    # offload_mode: "inline" | "rpc" | "async"
+    offload_mode: "inline"
+    # you can add more processor-specific options here as needed, e.g.:
+    # require_metrics_for_vpm: true
+    # attach_scores: false
+    # dimensions: null
 
   # --- VisiCalc-specific settings ---
   visicalc:
@@ -37,12 +46,22 @@ visicalc:
     metric_keys: null
 
     # Which metric to treat as frontier (if null, uses first metric in matrix)
-    frontier_metric: "sicql.clarity.score"
+    frontier_metric: "HRM.aggregate"
 
     # How many coarse row bands to compute region stats for
     row_region_splits: 4
 
-    # Output directory + optional custom filenames
-    out_dir: "debug/visicalc"
-    # json_file: "debug/visicalc/visicalc_report.json"
-    # csv_file:  "debug/visicalc/visicalc_report.csv"
+    # Output directory (per run_id) + optional custom filenames
+    out_dir: "runs/visicalc"
+    json_file: "visicalc_report.json"
+    csv_file: "visicalc_report.csv"
+
+    # --- A/B TopLeft visual comparison (only used when both cohorts present) ---
+    ab_topleft:
+      enabled: true
+      metric_mode: "luminance"   # passed to zeromodel.pipeline.organizer.top_left.TopLeft
+      iterations: 5
+      push_corner: "tl"          # 'tl'|'tr'|'bl'|'br'
+      monotone_push: true
+      stretch: true
+      clip_percent: 0.01         # in [0, 0.5)

@@ -4,37 +4,29 @@ from __future__ import annotations
 from dataclasses import asdict
 import logging
 from pathlib import Path
-from typing import List, Optional, Dict, Any, Union
+from typing import List, Optional
 
 import numpy as np
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.scoring.scorable_processor import ScorableProcessor
-from stephanie.zeromodel.visicalc_report import (
-    compute_visicalc_report,
-    format_visicalc_report,
-    validate_visicalc_report,
-    save_visicalc_report_json,
-    save_visicalc_report_csv,
+from stephanie.utils.json_sanitize import dumps_safe
+from dataclasses import asdict  # <- you can actually drop this now if unused
+import logging
+from pathlib import Path
+from typing import List, Optional
+
+import numpy as np
+
+from stephanie.agents.base_agent import BaseAgent
+from stephanie.scoring.scorable_processor import ScorableProcessor
+from stephanie.utils.json_sanitize import dumps_safe
+from stephanie.zeromodel.visicalc import (
+    VisiCalc,
+    graph_quality_from_report,
 )
 
 log = logging.getLogger(__name__)
-
-
-def _get_role(obj: Any) -> Optional[str]:
-    """Best-effort role access for Scorable | dict."""
-    if obj is None:
-        return None
-    # Scorable-like
-    if hasattr(obj, "role"):
-        return getattr(obj, "role", None)
-    # dict-like
-    if isinstance(obj, dict):
-        meta = obj.get("meta") or {}
-        if isinstance(meta, dict) and "role" in meta:
-            return meta.get("role")
-        return obj.get("role")
-    return None
 
 
 class VisiCalcAgent(BaseAgent):
@@ -43,19 +35,111 @@ class VisiCalcAgent(BaseAgent):
 
       1. Uses ScorableProcessor to build canonical feature rows
       2. Builds an (N, D) metrics matrix from those rows
-      3. Runs VisiCalc cohort analytics (compute_visicalc_report)
+      3. Runs VisiCalc cohort analytics (VisiCalc.from_rows)
       4. Logs + saves JSON/CSV reports for offline analysis
+      5. Optionally compares baseline vs targeted cohorts + TopLeft diff
 
-    Inputs:
-      context[self.input_key] = List[Scorable | dict]
+    ----------
+    Inputs
+    ----------
+    Context keys expected:
 
-    Outputs:
-      context[self.output_key]         = List[dict] (canonical feature rows)
-      context["visicalc_report"]       = dataclass-as-dict
-      context["visicalc_metric_keys"]  = List[str]
-      context["visicalc_report_text"]  = pretty-printed summary
-      context["visicalc_json_file"]    = path to JSON report
-      context["visicalc_csv_file"]     = path to CSV report
+      - context[self.input_key]              = List[Scorable | dict]
+          Base cohort of scorables to process.
+
+      - context["scorables_targeted"]        = Optional[List[dict]]
+      - context["scorables_baseline"]        = Optional[List[dict]]
+          Optional A/B cohorts. If both are present and non-empty:
+            * targeted  → "improved" / experimental cohort
+            * baseline  → comparison cohort
+
+    ----------
+    Outputs
+    ----------
+    Core outputs:
+
+      - context[self.output_key]             = List[dict]
+          Canonical feature rows from ScorableProcessor.
+
+      - context["visicalc_report"]           = dict (single-cohort case)
+      - context["visicalc_report_text"]      = pretty JSON string
+      - context["visicalc_metric_keys"]      = List[str]
+
+      - context["visicalc_targeted_report"]  = dict (A/B case)
+      - context["visicalc_baseline_report"]  = dict
+      - context["visicalc_targeted_text"]    = pretty JSON string
+      - context["visicalc_baseline_text"]    = pretty JSON string
+      - context["visicalc_target_quality"]   = float
+      - context["visicalc_baseline_quality"] = float
+      - context["visicalc_ab_diff"]          = dict (VisiCalc.diff result)
+      - context["visicalc_ab_topleft"]       = dict (TopLeft comparison)
+
+      - Optional:
+        - context["visicalc_features"]       = List[float]   # single-cohort episode features
+        - context["visicalc_feature_names"]  = List[str]
+
+    ----------
+    Config schema (Hydra-style)
+    ----------
+    Top-level agent config:
+
+      visicalc_agent:
+        _target_: stephanie.agents.maintenance.visicalc.VisiCalcAgent
+
+        # BaseAgent wiring
+        input_key: scorables            # where to read scorables from context
+        output_key: scorable_features   # where to write canonical rows
+
+        # Progress / role filtering
+        progress: true                  # enable/disable progress logging
+        filter_role: false              # if true, restrict scorables by role
+        scorable_role: assistant        # role to keep when filter_role=true
+
+        # Scoring / batching
+        batch_size: 64                  # ScorableProcessor batch size
+        attach_scores: false            # whether ScorableProcessor attaches scores
+        scoring_dims: null              # optional: limit scoring to these dimensions
+
+        # Concurrency & progress bar behavior
+        max_concurrency: 8
+        progress_log_every: 25
+        progress_leave: true
+        progress_position: 0
+
+        # ScorableProcessor config (passed through unmodified)
+        processor:
+          offload_mode: inline          # or "rpc"/"async" etc.
+          # ... other ScorableProcessor options ...
+
+        # VisiCalc-specific options
+        visicalc:
+          enabled: true                 # turn VisiCalc on/off
+
+          # Optional: restrict to these metric keys (subset of metrics_columns)
+          # If null, use whatever metrics_columns ScorableProcessor emits.
+          metric_keys: null             # e.g. ["HRM.aggregate", "sicql.clarity.score"]
+
+          # Metric to treat as the "frontier" dimension
+          # If not present in metrics_columns, falls back to the first metric.
+          frontier_metric: "HRM.aggregate"
+
+          # How many row bands to split the episode into
+          row_region_splits: 4
+
+          # Output locations (per run_id)
+          out_dir: "runs/visicalc"      # final path is out_dir / run_id
+
+          # These are relative to out_dir / run_id unless absolute paths are given
+          json_file: "visicalc_report.json"
+          csv_file: "visicalc_report.csv"
+
+    Notes:
+      - `processor` is forwarded directly into `ScorableProcessor`; it controls
+        how scorables are annotated, scored, and offloaded to the bus.
+      - `visicalc.metric_keys` is not required; by default the agent uses whatever
+        `metrics_columns` the first row exposes.
+      - `frontier_metric` should usually be a high-level quality channel like
+        "HRM.aggregate" or "sicql.overall.score".
     """
 
     def __init__(self, cfg, memory, container, logger):
@@ -86,10 +170,11 @@ class VisiCalcAgent(BaseAgent):
         # If None, we’ll auto-infer numeric columns from the first row
         self.visicalc_metric_keys: Optional[List[str]] = vis_cfg.get("metric_keys")
 
-        # Which metric to treat as the "frontier" (can be None → first column)
+        # Which metric to treat as the "frontier" (can be None → first column)             "sicql.clarity.score",
+
         self.visicalc_frontier_metric: Optional[str] = vis_cfg.get(
             "frontier_metric",
-            "sicql.clarity.score",
+            "HRM.aggregate",
         )
 
         # How many row regions (coarse bands) to split into
@@ -98,230 +183,292 @@ class VisiCalcAgent(BaseAgent):
         )
 
         # Output directory + file names
-        self.out_dir: Path = Path(vis_cfg.get("out_dir", "debug/visicalc"))
+        self.out_dir: Path = Path(vis_cfg.get("out_dir", "runs/visicalc")) / self.run_id
         self.out_dir.mkdir(parents=True, exist_ok=True)
 
         # These can be overridden via config if needed
         self.visicalc_json_file: Path = Path(
             vis_cfg.get("json_file", self.out_dir / "visicalc_report.json")
-        )
+        ) 
         self.visicalc_csv_file: Path = Path(
             vis_cfg.get("csv_file", self.out_dir / "visicalc_report.csv")
         )
 
         self.scorable_processor: ScorableProcessor = ScorableProcessor(
-            self.cfg.get("processor", {}),
+            self.cfg.get("processor", {"offload_mode": "inline"}),
             memory,
             container,
             logger,
         )
 
-    # ---------- Public entry point ----------
-
     async def run(self, context: dict) -> dict:
         """
-        Expects context[self.input_key] = List[Scorable | dict].
+        Expects:
+          - context['scorables']            = List[dict|Scorable] (union)
+          - optional: context['scorables_targeted'], ['scorables_baseline']
+
         Produces:
-          - context[self.output_key] = List[dict] (canonical features rows)
-          - VisiCalc cohort report in JSON/CSV + context fields.
+          - context['scorable_features']         = List[dict] (canonical rows)
+          - context['visicalc_*'] entries with cohort reports and deltas
         """
-        scorables = list(context.get(self.input_key) or [])
+        scorables_all = list(context.get(self.input_key) or [])
 
-        if self.filter_role:
-            before = len(scorables)
-            scorables = [
-                s for s in scorables if _get_role(s) == self.scorable_role
-            ]
-            log.info(
-                "VisiCalcAgent: filtered scorables by role=%r: %d → %d",
-                self.scorable_role,
-                before,
-                len(scorables),
-            )
 
-        if not scorables:
-            log.warning("VisiCalcAgent: no scorables to process after filtering")
-            context[self.output_key] = []
-            return context
-
-        # 1) Canonical feature rows via ScorableProcessor
+        # 1) Canonical rows for all scorables (we'll slice into cohorts by id)
         rows = await self.scorable_processor.process_many(
-            scorables,
+            scorables_all,
             context=context,
         )
         context[self.output_key] = rows
 
-        # 2) Cohort-level VisiCalc analytics
-        if self.visicalc_enabled and rows:
-            try:
-                report, used_metric_keys = self._compute_visicalc_for_rows(rows)
+        if not self.visicalc_enabled or not rows:
+            log.warning("VisiCalcAgent: skipping VisiCalc analysis")
+            return context
 
-                # Persist / expose for downstream tools
-                context["visicalc_report"] = asdict(report)
+        # Build id → row map once
+        id_to_row = {
+            r.get("scorable_id"): r
+            for r in rows
+            if r.get("scorable_id") is not None
+        }
+
+        scorables_targeted = list(context.get("scorables_targeted") or [])
+        scorables_baseline = list(context.get("scorables_baseline") or [])
+
+        # Helper to slice rows by a cohort of scorables
+        def _rows_for_cohort(scorables: List[dict]) -> List[dict]:
+            out = []
+            for s in scorables:
+                sid = str(s.get("scorable_id"))
+                row = id_to_row.get(sid)
+                if row is not None:
+                    out.append(row)
+            return out
+
+        try:
+            # ----------------------
+            # Case A: A/B cohorts
+            # ----------------------
+            # ----------------------
+            # Case A: A/B cohorts
+            # ----------------------
+            vpm_tgt = None
+            vpm_base = None
+            if scorables_targeted and scorables_baseline:
+                rows_tgt = _rows_for_cohort(scorables_targeted)
+                rows_base = _rows_for_cohort(scorables_baseline)
+
+                if rows_tgt:
+                    vc_tgt, metric_keys_tgt = self._compute_visicalc_for_rows(
+                        rows_tgt,
+                        cohort_label="targeted",
+                    )
+                    context["visicalc_targeted_report"] = vc_tgt.report.to_dict()
+                    context["visicalc_targeted_metric_keys"] = metric_keys_tgt
+
+                    pretty_tgt = vc_tgt.pretty()
+                    context["visicalc_targeted_text"] = pretty_tgt
+                    log.info("VisiCalc TARGETED cohort:\n%s", pretty_tgt)
+
+                    # Save reports
+                    vc_tgt.report.save_json(self.out_dir / "visicalc_targeted.json")
+                    vc_tgt.report.save_csv(self.out_dir / "visicalc_targeted.csv")
+
+                    # Scalar quality
+                    target_q = graph_quality_from_report(vc_tgt.report)
+                    log.info("VisiCalc TARGETED quality=%.4f", target_q)
+                    context["visicalc_target_quality"] = target_q
+
+                    vpm_tgt = vc_tgt.scores  # for TopLeft later
+
+                if rows_base:
+                    vc_base, metric_keys_base = self._compute_visicalc_for_rows(
+                        rows_base,
+                        cohort_label="baseline",
+                    )
+                    context["visicalc_baseline_report"] = vc_base.report.to_dict()
+                    context["visicalc_baseline_metric_keys"] = metric_keys_base
+
+                    pretty_base = vc_base.pretty()
+                    context["visicalc_baseline_text"] = pretty_base
+                    log.info("VisiCalc BASELINE cohort:\n%s", pretty_base)
+
+                    vc_base.report.save_json(self.out_dir / "visicalc_baseline.json")
+                    vc_base.report.save_csv(self.out_dir / "visicalc_baseline.csv")
+
+                    base_q = graph_quality_from_report(vc_base.report)
+                    log.info("VisiCalc BASELINE quality=%.4f", base_q)
+                    context["visicalc_baseline_quality"] = base_q
+
+                    vpm_base = vc_base.scores
+
+                # If we got both, compute delta (using VisiCalc.diff)
+                if rows_tgt and rows_base and vpm_tgt is not None and vpm_base is not None:
+                    diff = vc_tgt.diff(vc_base)
+                    context["visicalc_ab_diff"] = diff
+                    log.info(dumps_safe(diff, indent=2))
+
+                    topleft_res = self.compare_vpms_with_topleft(
+                        vpm_base,
+                        vpm_tgt,
+                    )
+                    log.info(
+                        "VisiCalc A/B TopLeft diff: gain=%.4f loss=%.4f improvement_ratio=%.4f",
+                        topleft_res["gain"],
+                        topleft_res["loss"],
+                        topleft_res["improvement_ratio"],
+                    )
+                    context["visicalc_ab_topleft"] = topleft_res
+
+                    log.info(
+                        "VisiCalc A/B delta: frontier_metric=%r "
+                        "global_mean_delta=%.4f frontier_frac_delta=%.4f",
+                        diff["frontier_metric"],
+                        diff["global_delta"]["mean"],
+                        diff["global_delta"]["frontier_frac"],
+                    )
+
+            # ----------------------
+            # Case B: single cohort (no A/B)
+            # ----------------------
+            else:
+                vc, used_metric_keys = self._compute_visicalc_for_rows(
+                    rows,
+                    cohort_label="cohort",
+                )
+                context["visicalc_report"] = vc.report.to_dict()
                 context["visicalc_metric_keys"] = used_metric_keys
 
-                pretty = format_visicalc_report(report)
+                pretty = vc.pretty()
                 context["visicalc_report_text"] = pretty
-
-                # Validate invariants
-                validate_visicalc_report(report)
-
-                # Save to disk for offline analysis
-                save_visicalc_report_json(report, self.visicalc_json_file)
-                save_visicalc_report_csv(report, self.visicalc_csv_file)
-
-                context["visicalc_json_file"] = str(self.visicalc_json_file)
-                context["visicalc_csv_file"] = str(self.visicalc_csv_file)
-
                 log.info("VisiCalc cohort summary:\n%s", pretty)
-                log.info(
-                    "VisiCalcAgent: saved JSON=%s, CSV=%s",
-                    self.visicalc_json_file,
-                    self.visicalc_csv_file,
-                )
 
-            except Exception:
-                log.exception("VisiCalc cohort analysis failed")
+                vc.report.save_json(self.out_dir / "visicalc_report.json")
+                vc.report.save_csv(self.out_dir / "visicalc_report.csv")
+
+                # Optional: expose features in context if you want downstream use
+                context["visicalc_features"] = vc.features.tolist()
+                context["visicalc_feature_names"] = vc.feature_names
+
+        except Exception:
+            log.exception("VisiCalc cohort analysis failed")
 
         return context
 
-    # ---------- Internal helpers ----------
-
     def _compute_visicalc_for_rows(
         self,
-        rows: List[Dict[str, Any]],
+        rows: List[dict],
+        cohort_label: str,
     ):
         """
-        Build an (N, D) matrix from canonical feature rows and run VisiCalc.
+        Build a VisiCalc instance from canonical feature rows.
 
         Expected row schema (from ScorableProcessor):
           - 'metrics_columns': List[str]
           - 'metrics_values':  List[float]
 
         Returns:
-            (VisiCalcReport, used_metric_keys)
+            (VisiCalc, used_metric_keys)
         """
         if not rows:
             raise ValueError("VisiCalc: no rows to analyze")
 
-        # -------------------------
         # 1) Establish canonical metric_names
-        # -------------------------
         first = rows[0]
-        metric_names: List[str] = list(first.get("metrics_columns") or [])
+        metrics_columns = list(first.get("metrics_columns") or [])
 
-        if not metric_names:
+        if not metrics_columns:
             raise ValueError(
                 "VisiCalc: first row has no 'metrics_columns'; "
                 "cannot build metric matrix"
             )
 
-        num_metrics = len(metric_names)
-        log.debug(
-            "VisiCalc: using %d metrics from metrics_columns[0], example=%r",
-            num_metrics,
-            metric_names[:8],
-        )
-
-        # Optional override: restrict to subset of metric_keys if provided
-        if self.visicalc_metric_keys:
-            # keep only those that exist in metric_names, preserve order
-            filtered = [k for k in self.visicalc_metric_keys if k in metric_names]
-            if filtered:
-                metric_names = filtered
-                num_metrics = len(metric_names)
-                log.info(
-                    "VisiCalc: restricted to %d metrics via config.metric_keys; "
-                    "example=%r",
-                    num_metrics,
-                    metric_names[:8],
-                )
-            else:
-                log.warning(
-                    "VisiCalc: visicalc.metric_keys configured but none found "
-                    "in metrics_columns; using all %d metrics instead",
-                    len(first.get("metrics_columns") or []),
-                )
-
-        # -------------------------
-        # 2) Build matrix X (N, D) from metrics_values
-        # -------------------------
-        matrix_rows: List[List[float]] = []
-        skipped = 0
-
-        for idx, row in enumerate(rows):
-            cols = row.get("metrics_columns") or metric_names
-            vals = row.get("metrics_values")
-
-            if vals is None:
-                skipped += 1
-                log.debug(
-                    "VisiCalc: row %d (scorable_id=%r) has no 'metrics_values'; skipping",
-                    idx,
-                    row.get("scorable_id"),
-                )
-                continue
-
-            # Align by column name
-            mapping = {k: float(v) for k, v in zip(cols, vals)}
-            vec = [
-                float(mapping.get(name, 0.0))
-                for name in metric_names
-            ]
-            matrix_rows.append(vec)
-
-        if not matrix_rows:
-            raise ValueError(
-                "VisiCalc: all rows were missing metrics_values; "
-                "cannot build matrix"
-            )
-
-        X = np.asarray(matrix_rows, dtype=np.float32)
-        if X.ndim != 2:
-            raise ValueError(
-                f"VisiCalc: expected 2D matrix (rows x metrics), got {X.shape!r}"
-            )
-
-        log.info(
-            "VisiCalc: built matrix with shape=%s from %d rows (skipped=%d)",
-            X.shape,
-            len(matrix_rows),
-            skipped,
-        )
-
-        # -------------------------
-        # 3) Choose frontier metric
-        # -------------------------
+        # 2) Choose frontier metric
         frontier_metric = self.visicalc_frontier_metric
-
-        if frontier_metric and frontier_metric not in metric_names:
+        if frontier_metric and frontier_metric not in metrics_columns:
             log.warning(
                 "VisiCalc: requested frontier_metric=%r not in metric_names; "
                 "falling back to first metric=%r",
                 frontier_metric,
-                metric_names[0],
+                metrics_columns[0],
             )
-            frontier_metric = metric_names[0]
-        elif not frontier_metric:
-            frontier_metric = metric_names[0]
+            frontier_metric = None
 
-        # -------------------------
-        # 4) Run pure VisiCalc over this cohort
-        # -------------------------
-        report = compute_visicalc_report(
-            vpm=X,
-            metric_names=metric_names,
+        if not frontier_metric:
+            frontier_metric = metrics_columns[0]
+
+        # 3) Let VisiCalc.from_rows handle matrix + item_ids
+        vc = VisiCalc.from_rows(
+            episode_id=cohort_label,
+            rows=rows,
             frontier_metric=frontier_metric,
             row_region_splits=self.visicalc_row_region_splits,
+            frontier_low=0.25,   # or make configurable later
+            frontier_high=0.75,
+            meta={"cohort": cohort_label},
         )
 
         log.info(
-            "VisiCalc: report frontier_metric=%r on matrix shape=%s "
+            "VisiCalc: built episode=%r frontier_metric=%r matrix_shape=%s "
             "(metrics=%d, rows=%d)",
-            report.frontier_metric,
-            X.shape,
-            len(metric_names),
-            X.shape[0],
+            cohort_label,
+            vc.frontier_metric,
+            vc.scores.shape,
+            len(vc.metric_names),
+            vc.scores.shape[0],
         )
 
-        return report, metric_names
+        return vc, metrics_columns
+ 
+    def compare_vpms_with_topleft(
+        self,
+        vpm_base: np.ndarray,
+        vpm_tgt: np.ndarray,
+        *,
+        metric_mode: str = "luminance",
+        iterations: int = 5,
+        push_corner: str = "tl",
+    ) -> dict:
+        """
+        Run TopLeft on baseline and targeted VPMs with identical config,
+        then compute a simple visual-diff metric.
+        """
+        from zeromodel.pipeline.organizer.top_left import TopLeft
+        stage = TopLeft(
+            metric_mode=metric_mode,
+            iterations=iterations,
+            push_corner=push_corner,
+            monotone_push=True,
+            stretch=True,
+        )
+
+        # 1) Canonicalize both VPMs
+        tl_base, meta_base = stage.process(vpm_base)
+        tl_tgt, meta_tgt = stage.process(vpm_tgt)
+
+        # 2) Ensure same shape / type
+        tl_base = tl_base.astype(np.float32)
+        tl_tgt = tl_tgt.astype(np.float32)
+        assert tl_base.shape == tl_tgt.shape, "Base/Target shapes must match after TopLeft"
+
+        # 3) Visual difference: positive = target > base
+        diff = tl_tgt - tl_base
+
+        # 4) Aggregate into simple scores
+        gain = float(np.sum(np.clip(diff, 0.0, None)))           # total positive mass
+        loss = float(np.sum(np.clip(-diff, 0.0, None)))          # total negative mass
+        total = gain + loss + 1e-8
+
+        # fraction of mass that's an improvement (0.0–1.0)
+        improvement_ratio = gain / total
+
+        return {
+            "topleft_base": tl_base,
+            "topleft_tgt": tl_tgt,
+            "diff": diff,
+            "gain": gain,
+            "loss": loss,
+            "improvement_ratio": improvement_ratio,
+            "meta_base": meta_base,
+            "meta_tgt": meta_tgt,
+        }

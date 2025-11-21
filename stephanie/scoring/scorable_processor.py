@@ -7,7 +7,6 @@ import time
 from hashlib import sha256
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
-from stephanie.zeromodel.visicalc_report import compute_visicalc_report, format_visicalc_report, validate_visicalc_report
 
 import numpy as np
 import torch

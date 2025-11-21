@@ -249,6 +249,7 @@ class Supervisor:
             try:
                 cls = hydra.utils.get_class(stage.cls)
                 stage_dict = OmegaConf.to_container(stage.stage_dict, resolve=True)
+                stage_dict[PIPELINE_RUN_ID] = context.get(PIPELINE_RUN_ID)
                 final_output_key = stage_dict.get("output_key", final_output_key)
                 rules: RulesService = self.container.get("rules")
                 rules.apply_to_agent(stage_dict, context)
