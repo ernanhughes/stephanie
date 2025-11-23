@@ -1,0 +1,121 @@
+defaults:
+  - _self_
+  - db: postgres
+  - bus: disabled   
+  - plan_monitor: disabled
+  - logging: json_logger
+  - services: all
+  - scorer: all  
+
+  - agents/visual_introspection
+  - agents/nexus_scorable_loader
+  - agents/visicalc
+  - agents/nexus
+  - agents/nexus_improver
+  - agents/gap
+  - agents/nexus_vpm_refiner
+  - agents/nexus_vpm_logic_compare
+  - agents/loader
+
+embeddings:
+  backend: hnet
+
+goal:
+  source: "driver"              # or "from_turn" if you want the turn to override
+  goal_text: >
+    Construct a goal-conditioned Nexus from chat turns, perform blossom search
+    (Tree/Graph-of-Thoughts) to propose candidate trajectories, render a
+    synchronized A/B filmstrip (baseline | targeted | delta), compute global
+    sensemaking metrics (community detection + summaries), and pick the winner
+    by SICQL/EBT/HRM signals. Export artifacts + deltas for GAP analysis.
+  goal_type: "tactical"
+  goal_category: "nexus_ab_compare"
+  focus_area: "visual_graph_memory"
+  strategy:
+    - "graph_search"
+    - "stepwise_decomposition"
+    - "global_sensemaking"
+  difficulty: "medium-high"
+  expected_formats:
+    - "symbolic_prompt_plan"
+    - "stepwise_reasoning_trace"
+    - "annotated_score_vector"
+    - "ab_filmstrip_gif"
+    - "graph_compare_json"
+    - "community_summaries_md"
+  success_criteria:
+    min_goal_alignment_improvement: 0.05        # targ.mean - base.mean
+    min_community_lift_p90: 0.05                # p90(goal_alignment in top communities)
+    prefer_lower_spatial_edge_len: true         # shorter edges indicate tighter coherence
+  scorer_signals:
+    - "SICQL"
+    - "EBT"
+    - "HRM"
+  calibration:
+    color_scale: "global_both_runs"             # stable intensity across A/B
+    winsorize_pct: 1.0                          # clip extremes for readability
+paths:
+  prompts: ${hydra:runtime.cwd}/prompts
+
+report:
+  generate_report: true
+  path: ${hydra:runtime.cwd}/reports
+
+pipeline:
+  name: chat training
+  tag: chat_training
+  description: "Uses chat history to train models. Different dynamics than traditional training."
+  stages:
+     - name: visual_introspection
+       description: "Perform visual introspection on the goal and hypotheses"
+       cls: stephanie.agents.visual_introspection.VisualIntrospectionAgent
+       enabled: true
+       iterations: 20
+
+     - name: loader
+       description: "Load scorables from previous visual introspection runs"
+       cls: stephanie.agents.loader.LoaderAgent
+       enabled: false
+       iterations: 1
+
+     - name: visicalc
+       description: "Run VisiCalc cohort analysis on the loaded conversation turns"
+       cls: stephanie.agents.maintenance.visicalc.VisiCalcAgent
+       enabled: false
+       iterations: 1
+
+     - name: nexus
+       description: "Compare two scorables list runs"
+       cls: stephanie.components.nexus.agents.compass.CompassAgent
+       enabled: false
+       iterations: 1
+
+     - name: nexus_vpm_refiner
+       description: "Refine the nexus using visual prompt model"
+       cls: stephanie.components.nexus.agents.vpm_refiner.VPMRefinerAgent
+       enabled: false
+       iterations: 1
+
+     - name: nexus_vpm_logic_compare
+       description: "Compare the nexus using visual prompt model with logic-based occlusion"
+       cls: stephanie.components.nexus.agents.vpm_logic_compare.VPMLogicCompareAgent
+       enabled: false
+       iterations: 1
+
+     - name: nexus_improver
+       description: "Improve the nexus using multi-dimensional scoring"
+       cls: stephanie.components.nexus.agents.nexus_pollinator.NexusPollinatorAgent
+       enabled: false
+       iterations: 1
+
+     - name: nexus_improver
+       description: "Improve the nexus using multi-dimensional scoring"
+       cls: stephanie.components.nexus.agents.nexus_improver.NexusImproverAgent
+       enabled: false
+       iterations: 1
+
+     - name: gap
+       description: "Understanding the Gap between two models using chat conversation_turns"
+       cls: stephanie.components.gap.gap.GapAgent
+       enabled: false
+       iterations: 1

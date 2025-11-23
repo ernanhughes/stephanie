@@ -1,5 +1,4 @@
-# stephanie/analysis/visicalc.py
-
+# stephanie/scoring/metrics/visicalc.py
 """
 Unified cognitive analytics engine for measuring thought evolution.
 

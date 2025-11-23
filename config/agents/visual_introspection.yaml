@@ -5,8 +5,10 @@ visual_introspection:
   save_context: false
   skip_if_completed: false
   model:
-    name: ollama/qwen3
+    name: ollama/t1c/deepseek-math-7b-rl:latest
+    # name: ollama/qwen3
     # name: ollama/qwen3:0.6b
+    # name: ollama/t1c/deepseek-math-7b-rl
     api_base: http://localhost:11434
     api_key: null
   input_keys: ["goal", "hypotheses"]
@@ -14,3 +16,14 @@ visual_introspection:
   output_key: visual_introspection
   prompt_mode: file
   prompt_file: visual_introspection.txt
+
+  strategy: "gsm8k_solve"
+  num_examples: 200  # Increased from 32
+  split: "train"
+  store_raw: true
+  out_dir: "runs/visual_introspection"
+  shuffle: true
+  model_name: "deepseek-math:7b"
+  params:
+    temperature: 0.3
+    max_tokens: 1024

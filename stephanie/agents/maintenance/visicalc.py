@@ -18,7 +18,7 @@ from stephanie.scoring.metrics.metric_importance import (
 from stephanie.scoring.metrics.metric_mapping import MetricMapper
 from stephanie.scoring.metrics.scorable_processor import ScorableProcessor
 from stephanie.utils.json_sanitize import dumps_safe
-from stephanie.zeromodel.visicalc import VisiCalc, graph_quality_from_report
+from stephanie.scoring.metrics.visicalc import VisiCalc, graph_quality_from_report
 
 log = logging.getLogger(__name__)
 
