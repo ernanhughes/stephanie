@@ -21,8 +21,8 @@ from stephanie.components.nexus.graph.builder import (build_edges_enhanced,
 from stephanie.components.nexus.graph.exporters.pyviz import (
     export_graph_json, export_pyvis_html, export_pyvis_html_rich)
 from stephanie.constants import PIPELINE_RUN_ID
+from stephanie.scoring.metrics.scorable_processor import ScorableProcessor
 from stephanie.scoring.scorable import Scorable, ScorableType
-from stephanie.scoring.scorable_processor import ScorableProcessor
 from stephanie.services.scoring_service import ScoringService
 from stephanie.services.workers.nexus_workers import NexusVPMWorkerInline
 from stephanie.services.zeromodel_service import ZeroModelService

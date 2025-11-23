@@ -1,30 +1,22 @@
 # stephanie/agents/maintenance/visicalc.py
 from __future__ import annotations
 
-from dataclasses import asdict
+import json
 import logging
+import math
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
+import matplotlib.pyplot as plt
 import numpy as np
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.scoring.scorable_processor import ScorableProcessor
+from stephanie.scoring.metrics.metric_importance import (
+    compute_metric_importance, save_metric_importance_json)
+from stephanie.scoring.metrics.metric_mapping import MetricMapper
+from stephanie.scoring.metrics.scorable_processor import ScorableProcessor
 from stephanie.utils.json_sanitize import dumps_safe
-import logging
-from pathlib import Path
-from typing import List, Optional
-from stephanie.scoring.metric_mapping import MetricMapper
-
-import numpy as np
-
-from stephanie.agents.base_agent import BaseAgent
-from stephanie.scoring.scorable_processor import ScorableProcessor
-from stephanie.utils.json_sanitize import dumps_safe
-from stephanie.zeromodel.visicalc import (
-    VisiCalc,
-    graph_quality_from_report,
-)
+from stephanie.zeromodel.visicalc import VisiCalc, graph_quality_from_report
 
 log = logging.getLogger(__name__)
 
@@ -164,7 +156,7 @@ class VisiCalcAgent(BaseAgent):
         # -----------------------------
         # VisiCalc cohort analysis knobs
         # -----------------------------
-        vis_cfg = cfg.get("visicalc", {}) or {}
+        vis_cfg = cfg.get("visicalc", {}) or cfg
         self.visicalc_enabled: bool = bool(vis_cfg.get("enabled", True))
 
         # If None, we’ll auto-infer numeric columns from the first row
@@ -202,23 +194,91 @@ class VisiCalcAgent(BaseAgent):
             container,
             logger,
         )
-        self.metric_mapper = MetricMapper(vis_cfg.get("metric_mapping") or {})
+        self.metric_mapper = MetricMapper.from_config(vis_cfg)
+        self.vpm_png_cfg: Dict[str, Any] = vis_cfg.get("vpm_png", {}) or {}
+        self.vpm_png_enabled: bool = bool(self.vpm_png_cfg.get("enabled", True))
+        self.vpm_png_mode: str = str(self.vpm_png_cfg.get("mode", "L"))
+        self.vpm_png_per_metric: bool = bool(
+            self.vpm_png_cfg.get("per_metric_normalize", True)
+        )
+        self.vpm_png_target_name: str = str(
+            self.vpm_png_cfg.get("target_file", "visicalc_targeted_vpm.png")
+        )
+        self.vpm_png_baseline_name: str = str(
+            self.vpm_png_cfg.get("baseline_file", "visicalc_baseline_vpm.png")
+        )
+        self.visicalc_top_k_metrics = vis_cfg.get("top_k_metrics", 150)  # e.g. 50
+        self.visicalc_min_effect = float(vis_cfg.get("min_effect", 0.1))  # e.g. 0.25
 
+        # --- Importance-based metric subset (online + offline) ---
+        imp_cfg = vis_cfg.get("importance_filter") or {}
+
+        # 1) Per-run *save* location for metric_importance.json
+        #    (used by VisiCalc runs, and later by OfflineImportanceReducer)
+        self.importance_save_path: Path = self.out_dir / "metric_importance.json"
+
+        # 2) Where to *load* important metric names from for filtering
+        self.importance_enabled: bool = bool(imp_cfg.get("enabled", False))
+
+        # If config specifies a path, we use that (e.g. "config/core_metrics.json").
+        # Otherwise, we default to this run's metric_importance.json.
+        importance_path_cfg = imp_cfg.get("path")
+        if importance_path_cfg:
+            self.importance_load_path: Optional[Path] = Path(str(importance_path_cfg))
+        else:
+            self.importance_load_path: Optional[Path] = self.importance_save_path
+
+        # 0 / None → no limit, use all metrics from the file that are present
+        self.importance_top_k: Optional[int] = imp_cfg.get("top_k")
+        if self.importance_top_k is not None:
+            try:
+                self.importance_top_k = int(self.importance_top_k)
+                if self.importance_top_k <= 0:
+                    self.importance_top_k = None
+            except Exception:
+                self.importance_top_k = None
+
+        # cache for loaded names
+        self._important_metric_names: Optional[List[str]] = None
 
     async def run(self, context: dict) -> dict:
         """
         Expects:
-          - context['scorables']            = List[dict|Scorable] (union)
-          - optional: context['scorables_targeted'], ['scorables_baseline']
+          - context[self.input_key]              = List[dict|Scorable]
+          - optional: context['scorables_targeted'], context['scorables_baseline']
 
         Produces:
-          - context['scorable_features']         = List[dict] (canonical rows)
-          - context['visicalc_*'] entries with cohort reports and deltas
+          - context[self.output_key]                   = List[dict] (canonical rows)
+          - context['visicalc_*'] entries with cohort reports, qualities and deltas
+          - optional: context['metric_importance'], context['visicalc_metric_importance']
         """
+        # ------------------------------------------------------------------
+        # 0) Load scorables and apply optional role filter
+        # ------------------------------------------------------------------
         scorables_all = list(context.get(self.input_key) or [])
 
+        if self.filter_role:
+            filtered = []
+            for s in scorables_all:
+                role = None
+                if isinstance(s, dict):
+                    role = s.get("role")
+                else:
+                    role = getattr(s, "role", None)
+                if role == self.scorable_role:
+                    filtered.append(s)
 
-        # 1) Canonical rows for all scorables (we'll slice into cohorts by id)
+            log.info(
+                "VisiCalcAgent: filter_role=True scorable_role=%r → kept %d/%d scorables",
+                self.scorable_role,
+                len(filtered),
+                len(scorables_all),
+            )
+            scorables_all = filtered
+
+        # ------------------------------------------------------------------
+        # 1) Canonical feature rows for *all* scorables
+        # ------------------------------------------------------------------
         rows = await self.scorable_processor.process_many(
             scorables_all,
             context=context,
@@ -226,42 +286,55 @@ class VisiCalcAgent(BaseAgent):
         context[self.output_key] = rows
 
         if not self.visicalc_enabled or not rows:
-            log.warning("VisiCalcAgent: skipping VisiCalc analysis")
+            log.warning(
+                "VisiCalcAgent: skipping VisiCalc analysis (enabled=%s, rows=%d)",
+                self.visicalc_enabled,
+                len(rows),
+            )
             return context
 
-        # Build id → row map once
+        # Build id → row map once (all scorables)
         id_to_row = {
-            r.get("scorable_id"): r
+            str(r.get("scorable_id")): r
             for r in rows
             if r.get("scorable_id") is not None
         }
 
-        scorables_targeted = list(context.get("scorables_targeted") or [])
-        scorables_baseline = list(context.get("scorables_baseline") or [])
-
         # Helper to slice rows by a cohort of scorables
-        def _rows_for_cohort(scorables: List[dict]) -> List[dict]:
-            out = []
+        def _rows_for_cohort(scorables: List[Any]) -> List[dict]:
+            out: List[dict] = []
             for s in scorables:
-                sid = str(s.id)
-                row = id_to_row.get(sid)
+                # Robustly get an id from either dict or Scorable
+                if isinstance(s, dict):
+                    sid = s.get("scorable_id") or s.get("id")
+                else:
+                    sid = getattr(s, "scorable_id", None) or getattr(s, "id", None)
+
+                if sid is None:
+                    continue
+
+                row = id_to_row.get(str(sid))
                 if row is not None:
                     out.append(row)
             return out
 
+        scorables_targeted = list(context.get("scorables_targeted") or [])
+        scorables_baseline = list(context.get("scorables_baseline") or [])
+
         try:
-            # ----------------------
-            # Case A: A/B cohorts
-            # ----------------------
-            # ----------------------
-            # Case A: A/B cohorts
-            # ----------------------
+            # ------------------------------------------------------------------
+            # Case A: A/B cohorts present → targeted vs baseline comparison
+            # ------------------------------------------------------------------
+            vc_tgt = None
+            vc_base = None
             vpm_tgt = None
             vpm_base = None
+
             if scorables_targeted and scorables_baseline:
                 rows_tgt = _rows_for_cohort(scorables_targeted)
                 rows_base = _rows_for_cohort(scorables_baseline)
 
+                # ---- Targeted cohort ----
                 if rows_tgt:
                     vc_tgt, metric_keys_tgt = self._compute_visicalc_for_rows(
                         rows_tgt,
@@ -278,13 +351,14 @@ class VisiCalcAgent(BaseAgent):
                     vc_tgt.report.save_json(self.out_dir / "visicalc_targeted.json")
                     vc_tgt.report.save_csv(self.out_dir / "visicalc_targeted.csv")
 
-                    # Scalar quality
+                    # Scalar quality for summary dashboards
                     target_q = graph_quality_from_report(vc_tgt.report)
                     log.info("VisiCalc TARGETED quality=%.4f", target_q)
                     context["visicalc_target_quality"] = target_q
 
-                    vpm_tgt = vc_tgt.scores  # for TopLeft later
+                    vpm_tgt = vc_tgt.scores
 
+                # ---- Baseline cohort ----
                 if rows_base:
                     vc_base, metric_keys_base = self._compute_visicalc_for_rows(
                         rows_base,
@@ -306,12 +380,19 @@ class VisiCalcAgent(BaseAgent):
 
                     vpm_base = vc_base.scores
 
-                # If we got both, compute delta (using VisiCalc.diff)
-                if rows_tgt and rows_base and vpm_tgt is not None and vpm_base is not None:
+                # ---- A/B comparison, visuals + importance ----
+                if (
+                    rows_tgt
+                    and rows_base
+                    and vpm_tgt is not None
+                    and vpm_base is not None
+                ):
+                    # 1) VisiCalc's own diff (frontier deltas)
                     diff = vc_tgt.diff(vc_base)
                     context["visicalc_ab_diff"] = diff
                     log.info(dumps_safe(diff, indent=2))
 
+                    # 2) TopLeft visual diff metrics (matrix-level gain/loss)
                     topleft_res = self.compare_vpms_with_topleft(
                         vpm_base,
                         vpm_tgt,
@@ -332,9 +413,90 @@ class VisiCalcAgent(BaseAgent):
                         diff["global_delta"]["frontier_frac"],
                     )
 
-            # ----------------------
-            # Case B: single cohort (no A/B)
-            # ----------------------
+                    # 3) VPM PNGs (full matrices)
+                    if self.vpm_png_enabled:
+                        try:
+                            if vc_tgt is not None:
+                                tgt_png = self.out_dir / self.vpm_png_target_name
+                                vc_tgt.save_vpm_png(
+                                    tgt_png,
+                                    per_metric_normalize=self.vpm_png_per_metric,
+                                    mode=self.vpm_png_mode,
+                                )
+
+                            if vc_base is not None:
+                                base_png = self.out_dir / self.vpm_png_baseline_name
+                                vc_base.save_vpm_png(
+                                    base_png,
+                                    per_metric_normalize=self.vpm_png_per_metric,
+                                    mode=self.vpm_png_mode,
+                                )
+
+                            log.info(
+                                "VisiCalcAgent: saved VPM PNGs → target=%s baseline=%s",
+                                tgt_png,
+                                base_png,
+                            )
+                        except Exception as e:
+                            log.warning(
+                                "VisiCalcAgent: failed to save VPM PNGs: %s",
+                                e,
+                                exc_info=True,
+                            )
+
+                    # 4) Top-left reordered VPM heatmaps (visual proof)
+                    try:
+                        self._render_ab_topleft_heatmaps(
+                            vpm_target=vpm_tgt,
+                            vpm_baseline=vpm_base,
+                            out_dir=self.out_dir,
+                        )
+                    except Exception:
+                        log.exception("VisiCalc: failed to render TopLeft VPM images")
+
+                    # 5) GAP-style metric importance (writes metric_importance.json)
+                    if vc_tgt.scores.shape[1] == vc_base.scores.shape[1]:
+                        importance = self._compute_and_save_metric_importance(
+                            vc_tgt,
+                            vc_base,
+                        )
+                        if importance is not None:
+                            context["metric_importance"] = [
+                                m.to_dict() for m in importance
+                            ]
+                    else:
+                        log.warning(
+                            "VisiCalcAgent: cannot compute metric importance: "
+                            "target.D=%d != baseline.D=%d",
+                            vc_tgt.scores.shape[1],
+                            vc_base.scores.shape[1],
+                        )
+
+                    # 6) Detailed separability stats (Cohen's d, entropy, etc.)
+                    try:
+                        metric_importance_report = self._compute_metric_separability(
+                            vpm_base=vc_base.scores,
+                            vpm_tgt=vc_tgt.scores,
+                            metric_names=list(vc_tgt.metric_names),
+                        )
+                        context["visicalc_metric_importance"] = metric_importance_report
+
+                        report_path = self.out_dir / "visicalc_metric_importance.json"
+                        with report_path.open("w", encoding="utf-8") as f:
+                            f.write(dumps_safe(metric_importance_report, indent=2))
+
+                        log.info(
+                            "VisiCalc: wrote metric separability report → %s",
+                            report_path,
+                        )
+                    except Exception:
+                        log.exception(
+                            "VisiCalcAgent: _compute_metric_separability failed"
+                        )
+
+            # ------------------------------------------------------------------
+            # Case B: single cohort only (no A/B comparison)
+            # ------------------------------------------------------------------
             else:
                 vc, used_metric_keys = self._compute_visicalc_for_rows(
                     rows,
@@ -350,7 +512,7 @@ class VisiCalcAgent(BaseAgent):
                 vc.report.save_json(self.out_dir / "visicalc_report.json")
                 vc.report.save_csv(self.out_dir / "visicalc_report.csv")
 
-                # Optional: expose features in context if you want downstream use
+                # Optional: expose episode features for downstream analysis
                 context["visicalc_features"] = vc.features.tolist()
                 context["visicalc_feature_names"] = vc.feature_names
 
@@ -380,7 +542,10 @@ class VisiCalcAgent(BaseAgent):
         # 1) Matrix + metric names via MetricMapper / visicalc_metric_keys
         vpm, metric_names, item_ids = self._build_vpm_and_metric_names(rows)
 
-        # 2) Choose frontier metric
+        # 2) Optionally filter by importance
+        vpm, metric_names = self._maybe_filter_by_importance(vpm, metric_names)
+
+        # 3) Choose frontier metric
         frontier_metric = self.visicalc_frontier_metric
         if frontier_metric and frontier_metric not in metric_names:
             log.warning(
@@ -406,6 +571,7 @@ class VisiCalcAgent(BaseAgent):
             row_region_splits=self.visicalc_row_region_splits,
             frontier_low=self.visicalc_frontier_low,
             frontier_high=self.visicalc_frontier_high,
+            meta={"cohort": cohort_label},
         )
 
         log.info(
@@ -478,88 +644,740 @@ class VisiCalcAgent(BaseAgent):
         rows: List[dict],
     ) -> tuple[np.ndarray, List[str], List[str]]:
         """
-        Turn canonical feature rows into:
-          - vpm: (N, D) float32 matrix
-          - metric_names: List[str] for the D columns
-          - item_ids: List[str] of scorable_ids for each row
+        Build the score matrix (VPM) + metric names + item_ids from canonical rows.
 
-        This is where MetricMapper + visicalc_metric_keys are applied.
+        Expected row schema (from ScorableProcessor):
+          - 'metrics_columns': List[str]
+          - 'metrics_values':  List[float]
+          - 'scorable_id':     str
         """
         if not rows:
-            raise ValueError("VisiCalcAgent: no rows provided to _build_vpm_and_metric_names")
+            raise ValueError("VisiCalcAgent._build_vpm_and_metric_names: no rows")
 
-        first = rows[0]
-        all_cols = list(first.get("metrics_columns") or [])
-        if not all_cols:
-            raise ValueError(
-                "VisiCalcAgent: first row has no 'metrics_columns'; "
-                "cannot build metric matrix"
+        # 0) Collect the union of metric columns across all rows
+        all_cols: List[str] = []
+        for r in rows:
+            cols = r.get("metrics_columns") or []
+            for c in cols:
+                if c not in all_cols:
+                    all_cols.append(c)
+
+        log.debug(
+            "VisiCalcAgent._build_vpm_and_metric_names: discovered %d raw metrics: %s",
+            len(all_cols),
+            all_cols[:30],
+        )
+
+        # 1) Let MetricMapper do include/exclude and basic ordering
+        base_metric_names = self.metric_mapper.select_columns(all_cols)
+        if not base_metric_names:
+            log.warning(
+                "VisiCalcAgent: MetricMapper returned no columns; "
+                "falling back to all_cols"
             )
+            base_metric_names = all_cols
 
-        # 1) Decide which metric columns we actually want, *and in what order*.
-        # Priority:
-        #   a) explicit visicalc_metric_keys from config
-        #   b) MetricMapper-driven selection
-        #   c) fall back to all_cols as-is
+        log.debug(
+            "VisiCalcAgent._build_vpm_and_metric_names: after MetricMapper → %d metrics: %s",
+            len(base_metric_names),
+            base_metric_names[:30],
+        )
+
+        # 2) Apply visicalc_metric_keys as *ordering hints*, not a hard subset
         if self.visicalc_metric_keys:
-            metric_names = [
-                m for m in self.visicalc_metric_keys
-                if m in all_cols
-            ]
-            if not metric_names:
-                log.warning(
-                    "VisiCalcAgent: visicalc.metric_keys=%r but none found in row metrics=%r; "
-                    "falling back to all columns",
-                    self.visicalc_metric_keys,
-                    all_cols,
-                )
-                metric_names = all_cols
+            preferred = [m for m in self.visicalc_metric_keys if m in base_metric_names]
+            rest = [m for m in base_metric_names if m not in preferred]
+            metric_names = preferred + rest
+            log.debug(
+                "VisiCalcAgent._build_vpm_and_metric_names: visicalc_metric_keys=%r "
+                "→ preferred=%r, total=%d",
+                self.visicalc_metric_keys,
+                preferred,
+                len(metric_names),
+            )
         else:
-            # Let MetricMapper decide; if it returns empty, fall back to all_cols
-            metric_names = self.metric_mapper.select_columns(all_cols)
-            if not metric_names:
-                metric_names = all_cols
+            metric_names = base_metric_names
 
-        num_metrics = len(metric_names)
-
-        # 2) Build matrix (N, D) aligned to metric_names
+        # 3) Build the matrix rows
         matrix_rows: List[List[float]] = []
         item_ids: List[str] = []
         skipped = 0
 
-        for idx, row in enumerate(rows):
-            cols = row.get("metrics_columns") or all_cols
-            vals = row.get("metrics_values")
-
-            if vals is None:
+        for r in rows:
+            cols = r.get("metrics_columns") or []
+            vals = r.get("metrics_values") or []
+            if not cols or not vals:
                 skipped += 1
-                log.debug(
-                    "VisiCalcAgent: row %d (scorable_id=%r) has no 'metrics_values'; skipping",
-                    idx,
-                    row.get("scorable_id"),
-                )
                 continue
 
-            # Map whatever the row has → canonical metric_names order
-            mapping = {k: float(v) for k, v in zip(cols, vals)}
-            vec = [mapping.get(name, 0.0) for name in metric_names]
-
+            mapping = dict(zip(cols, vals))
+            vec = [float(mapping.get(name, 0.0)) for name in metric_names]
             matrix_rows.append(vec)
-            item_ids.append(str(row.get("scorable_id") or f"row-{idx}"))
+            item_ids.append(str(r.get("scorable_id", "unknown")))
 
         if not matrix_rows:
-            raise ValueError(
-                f"VisiCalcAgent: all rows were skipped (no metrics_values); "
-                f"input_size={len(rows)}"
-            )
+            raise ValueError("VisiCalcAgent: no rows with metrics_values after mapping")
 
         vpm = np.asarray(matrix_rows, dtype=np.float32)
 
         log.info(
             "VisiCalcAgent: built VPM matrix shape=%s with %d metrics (skipped=%d rows)",
             vpm.shape,
-            num_metrics,
+            len(metric_names),
             skipped,
         )
 
         return vpm, metric_names, item_ids
+
+
+    # ------------------------------------------------------------------
+    #  Top-left image helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _normalize01(arr: np.ndarray) -> np.ndarray:
+        """
+        Safe [0, 1] normalization for visualization.
+        Flat columns become 0.5 so they still show up neutrally.
+        """
+        arr = np.asarray(arr, dtype=np.float32)
+        if arr.size == 0:
+            return arr
+
+        mn = float(arr.min())
+        mx = float(arr.max())
+        if mx <= mn:
+            return np.full_like(arr, 0.5, dtype=np.float32)
+        return (arr - mn) / (mx - mn)
+
+    @staticmethod
+    def _top_left_order_pair(
+        tgt: np.ndarray,
+        base: np.ndarray,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """
+        Compute a *shared* row/col ordering that pushes the *difference*
+        (targeted - baseline) into the top-left.
+
+        Returns:
+            (row_order, col_order) as index arrays.
+        """
+        tgt = np.asarray(tgt, dtype=np.float32)
+        base = np.asarray(base, dtype=np.float32)
+        if tgt.shape != base.shape:
+            raise ValueError(
+                f"_top_left_order_pair: shape mismatch tgt={tgt.shape}, base={base.shape}"
+            )
+
+        diff = tgt - base  # positive = where targeted beats baseline
+
+        # Aggregate per-row / per-column "advantage"
+        row_scores = diff.sum(axis=1)  # [N]
+        col_scores = diff.sum(axis=0)  # [D]
+
+        # Larger advantage → earlier (closer to top-left)
+        row_order = np.argsort(-row_scores)
+        col_order = np.argsort(-col_scores)
+
+        return row_order, col_order
+
+    def _save_vpm_heatmap(
+        self,
+        matrix: np.ndarray,
+        out_path: Path,
+        title: str,
+        *,
+        vmin: float = 0.0,
+        vmax: float = 1.0,
+        cmap: str = "magma",
+    ) -> None:
+        """
+        Generic utility: save a VPM-like matrix as a heatmap PNG.
+        """
+        m = self._normalize01(matrix)
+
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+
+        fig, ax = plt.subplots(figsize=(8, 6))
+        im = ax.imshow(m, aspect="auto", cmap=cmap, vmin=vmin, vmax=vmax)
+        ax.set_title(title)
+        ax.set_xlabel("metric index")
+        ax.set_ylabel("item index")
+        fig.colorbar(im, ax=ax, fraction=0.035, pad=0.04)
+        fig.tight_layout()
+        fig.savefig(out_path.as_posix(), dpi=160)
+        plt.close(fig)
+
+        log.info("VisiCalc: wrote VPM heatmap → %s", out_path)
+
+    def _save_topleft_pair(
+        self,
+        vpm_tgt: np.ndarray,
+        vpm_base: np.ndarray,
+        run_dir: Path,
+        *,
+        prefix: str = "visicalc",
+    ) -> None:
+        """
+        Given *normalized* VPM matrices for targeted and baseline cohorts,
+        produce three images:
+
+          - {prefix}_targeted_topleft.png
+          - {prefix}_baseline_topleft.png
+          - {prefix}_delta_topleft.png
+
+        All three use the *same* row/column ordering derived from
+        (targeted - baseline), so the top-left is literally:
+           'where targeted wins hardest over baseline'.
+        """
+        if vpm_tgt.size == 0 or vpm_base.size == 0:
+            log.warning("VisiCalc: _save_topleft_pair called with empty matrices; skipping")
+            return
+
+        # 0) Normalize each matrix for fair visual comparison
+        tgt_norm = self._normalize01(vpm_tgt)
+        base_norm = self._normalize01(vpm_base)
+
+        if tgt_norm.shape != base_norm.shape:
+            raise ValueError(
+                f"_save_topleft_pair: shape mismatch tgt={tgt_norm.shape}, base={base_norm.shape}"
+            )
+
+        # 1) Shared top-left ordering based on (tgt - base)
+        row_order, col_order = self._top_left_order_pair(tgt_norm, base_norm)
+
+        tgt_tl = tgt_norm[row_order][:, col_order]
+        base_tl = base_norm[row_order][:, col_order]
+        diff_tl = tgt_tl - base_tl  # [-1, 1] ish after normalization
+
+        # 2) Optional numeric summary: how much mass is in the top-left patch?
+        h, w = tgt_tl.shape
+        top_rows = max(1, int(0.25 * h))
+        left_cols = max(1, int(0.25 * w))
+
+        tgt_mass = float(tgt_tl[:top_rows, :left_cols].sum())
+        base_mass = float(base_tl[:top_rows, :left_cols].sum())
+        log.info(
+            "VisiCalc TopLeft mass: targeted=%.4f baseline=%.4f delta=%.4f (rows=%d, cols=%d)",
+            tgt_mass,
+            base_mass,
+            tgt_mass - base_mass,
+            top_rows,
+            left_cols,
+        )
+
+        # 3) Save images
+        tgt_path = run_dir / f"{prefix}_targeted_topleft.png"
+        base_path = run_dir / f"{prefix}_baseline_topleft.png"
+        delta_path = run_dir / f"{prefix}_delta_topleft.png"
+
+        self._save_vpm_heatmap(
+            tgt_tl,
+            tgt_path,
+            title="Targeted (TopLeft-ordered)",
+            vmin=0.0,
+            vmax=1.0,
+            cmap="magma",
+        )
+        self._save_vpm_heatmap(
+            base_tl,
+            base_path,
+            title="Baseline (TopLeft-ordered)",
+            vmin=0.0,
+            vmax=1.0,
+            cmap="magma",
+        )
+
+        # Δ image with diverging colormap
+        # Note: we re-normalize to [-1, 1]-ish by clipping.
+        diff_clip = np.clip(diff_tl, -1.0, 1.0)
+        self._save_vpm_heatmap(
+            diff_clip,
+            delta_path,
+            title="Targeted − Baseline (TopLeft-ordered)",
+            vmin=-1.0,
+            vmax=1.0,
+            cmap="seismic",
+        )
+
+
+    def _render_ab_topleft_heatmaps(
+        self,
+        vpm_target: np.ndarray,
+        vpm_baseline: np.ndarray,
+        out_dir: Path,
+        *,
+        clip_percent: float = 0.01,
+        corner_frac: float = 0.35,
+    ) -> dict:
+        """
+        Save three heatmaps in `out_dir`:
+
+          - visicalc_baseline_topleft.png
+          - visicalc_targeted_topleft.png
+          - visicalc_delta_topleft.png
+
+        using a shared TopLeft ordering and shared intensity scaling.
+
+        Returns a small dict with scalar stats (gain/loss/etc.).
+        """
+        out_dir = Path(out_dir)
+        out_dir.mkdir(parents=True, exist_ok=True)
+
+        T = np.asarray(vpm_target, dtype=np.float32)
+        B = np.asarray(vpm_baseline, dtype=np.float32)
+
+        # 1) Align shapes (rows) — we already have same cols
+        n_rows = min(T.shape[0], B.shape[0])
+        T = T[:n_rows]
+        B = B[:n_rows]
+
+        n_rows, n_cols = T.shape
+
+        # 2) Shared scaling across BOTH matrices (this is the big fix)
+        stacked = np.concatenate([T.reshape(-1), B.reshape(-1)])
+        if stacked.size == 0:
+            log.warning("VisiCalc TopLeft: empty matrices, skipping render")
+            return {"status": "empty"}
+
+        # Robust global min/max with optional percentile clipping
+        lo, hi = np.quantile(stacked, [clip_percent, 1.0 - clip_percent])
+        if not math.isfinite(lo) or not math.isfinite(hi) or hi <= lo:
+            lo = float(stacked.min())
+            hi = float(stacked.max())
+        scale = max(hi - lo, 1e-8)
+
+        Tn = np.clip((T - lo) / scale, 0.0, 1.0)
+        Bn = np.clip((B - lo) / scale, 0.0, 1.0)
+
+        # 3) TopLeft ordering based on **combined** energy
+        row_score = Tn.sum(axis=1) + Bn.sum(axis=1)
+        col_score = Tn.sum(axis=0) + Bn.sum(axis=0)
+
+        row_order = np.argsort(row_score)[::-1]   # high → top
+        col_order = np.argsort(col_score)[::-1]   # high → left
+
+        T_sorted = Tn[row_order][:, col_order]
+        B_sorted = Bn[row_order][:, col_order]
+
+        # 4) Define "TopLeft" window for gain/loss stats
+        tl_rows = max(1, int(n_rows * corner_frac))
+        tl_cols = max(1, int(n_cols * corner_frac))
+
+        T_tl = T_sorted[:tl_rows, :tl_cols]
+        B_tl = B_sorted[:tl_rows, :tl_cols]
+
+        delta_tl = T_tl - B_tl
+        gain = float(np.maximum(delta_tl, 0.0).sum())
+        loss = float(np.maximum(-delta_tl, 0.0).sum())
+        total = gain + loss + 1e-8
+        improvement_ratio = gain / total
+
+        # 5) Full delta matrix (IMPORTANT: keep sign, no extra [0,1] renorm)
+        delta = T_sorted - B_sorted
+        max_abs = float(np.max(np.abs(delta))) or 1e-6
+        delta_vis = np.clip(delta, -max_abs, max_abs)
+
+        # 6) Baseline / Target heatmaps (shared [0,1] scale)
+        plt.figure(figsize=(10, 6))
+        plt.imshow(B_sorted, cmap="magma", aspect="auto", vmin=0.0, vmax=1.0)
+        plt.colorbar()
+        plt.title("Baseline (TopLeft-ordered)")
+        plt.xlabel("metric index")
+        plt.ylabel("item index")
+        baseline_png = out_dir / "visicalc_baseline_topleft.png"
+        plt.tight_layout()
+        plt.savefig(baseline_png, dpi=160)
+        plt.close()
+
+        plt.figure(figsize=(10, 6))
+        plt.imshow(T_sorted, cmap="magma", aspect="auto", vmin=0.0, vmax=1.0)
+        plt.colorbar()
+        plt.title("Targeted (TopLeft-ordered)")
+        plt.xlabel("metric index")
+        plt.ylabel("item index")
+        targeted_png = out_dir / "visicalc_targeted_topleft.png"
+        plt.tight_layout()
+        plt.savefig(targeted_png, dpi=160)
+        plt.close()
+
+        # 7) Delta heatmap with symmetric color range (no more all-red slab)
+        plt.figure(figsize=(10, 6))
+        plt.imshow(
+            delta_vis,
+            cmap="seismic",
+            aspect="auto",
+            vmin=-max_abs,
+            vmax=+max_abs,
+        )
+        plt.colorbar()
+        plt.title("Targeted − Baseline (TopLeft-ordered)")
+        plt.xlabel("metric index")
+        plt.ylabel("item index")
+        delta_png = out_dir / "visicalc_delta_topleft.png"
+        plt.tight_layout()
+        plt.savefig(delta_png, dpi=160)
+        plt.close()
+
+        log.info(
+            "VisiCalc A/B TopLeft: gain=%.4f loss=%.4f improvement_ratio=%.4f "
+            "(top-left window %d×%d, lo=%.4g hi=%.4g)",
+            gain,
+            loss,
+            improvement_ratio,
+            tl_rows,
+            tl_cols,
+            lo,
+            hi,
+        )
+
+        return {
+            "status": "ok",
+            "rows": int(n_rows),
+            "cols": int(n_cols),
+            "clip_percent": float(clip_percent),
+            "corner_frac": float(corner_frac),
+            "gain": gain,
+            "loss": loss,
+            "improvement_ratio": improvement_ratio,
+            "top_left_rows": tl_rows,
+            "top_left_cols": tl_cols,
+            "scale_lo": float(lo),
+            "scale_hi": float(hi),
+            "paths": {
+                "baseline_topleft_png": str(baseline_png),
+                "targeted_topleft_png": str(targeted_png),
+                "delta_topleft_png": str(delta_png),
+            },
+        }
+
+    def _compute_metric_separability(
+        self,
+        vpm_base: np.ndarray,
+        vpm_tgt: np.ndarray,
+        metric_names: List[str],
+    ) -> Dict[str, Any]:
+        """
+        Computes separability metrics (Cohen's d, mean diff) for each metric column
+        between the targeted and baseline VPMs.
+        """
+        if vpm_base.shape != vpm_tgt.shape:
+             # This should have been caught upstream, but is a safe check
+            log.warning("VisiCalc: Cannot compute separability due to shape mismatch.")
+            return {}
+
+        n_rows_base, n_metrics = vpm_base.shape
+        n_rows_tgt, _ = vpm_tgt.shape
+
+        import math
+
+        import numpy as np
+        from scipy.stats import differential_entropy
+
+        results = {}
+
+        eps_var = 1e-8  # variance threshold to treat as "flat"
+
+        for i, metric_name in enumerate(metric_names):
+            base_col = np.asarray(vpm_base[:, i], dtype=np.float32)
+            tgt_col = np.asarray(vpm_tgt[:, i], dtype=np.float32)
+
+            # 1. Basic Stats
+            mean_base = float(base_col.mean())
+            mean_tgt = float(tgt_col.mean())
+            std_base = float(base_col.std())
+            std_tgt = float(tgt_col.std())
+
+            # 2. Mean Difference (Targeted - Baseline)
+            delta_mean = mean_tgt - mean_base
+
+            # 3. Cohen's d (Effect Size)
+            if n_rows_base + n_rows_tgt - 2 > 0:
+                s_pooled = math.sqrt(
+                    (
+                        ((n_rows_base - 1) * std_base**2)
+                        + ((n_rows_tgt - 1) * std_tgt**2)
+                    )
+                    / (n_rows_base + n_rows_tgt - 2)
+                )
+            else:
+                s_pooled = 1e-8
+
+            cohens_d = delta_mean / s_pooled if s_pooled != 0 else 0.0
+
+            # 4. Robust differential entropy (skip flat / near-flat columns)
+            var_base = float(base_col.var())
+            var_tgt = float(tgt_col.var())
+
+            if var_base < eps_var:
+                entropy_base = float("nan")
+            else:
+                with np.errstate(divide="ignore", invalid="ignore"):
+                    try:
+                        entropy_base = float(differential_entropy(base_col))
+                    except Exception:
+                        entropy_base = float("nan")
+
+            if var_tgt < eps_var:
+                entropy_tgt = float("nan")
+            else:
+                with np.errstate(divide="ignore", invalid="ignore"):
+                    try:
+                        entropy_tgt = float(differential_entropy(tgt_col))
+                    except Exception:
+                        entropy_tgt = float("nan")
+
+            # 5. Compile results for the metric
+            results[metric_name] = {
+                "mean_base": mean_base,
+                "mean_tgt": mean_tgt,
+                "delta_mean": delta_mean,
+                "cohens_d": cohens_d,
+                "std_base": std_base,
+                "std_tgt": std_tgt,
+                "entropy_base": entropy_base,
+                "entropy_tgt": entropy_tgt,
+                "delta_entropy": (
+                    entropy_tgt - entropy_base
+                    if not (math.isnan(entropy_tgt) or math.isnan(entropy_base))
+                    else float("nan")
+                ),
+            }
+
+        # Structure the output for easy consumption/saving
+        metric_rankings = sorted(
+            results.items(),
+            key=lambda item: abs(item[1]["cohens_d"]),
+            reverse=True,
+        )
+
+        return {
+            "n_base": n_rows_base,
+            "n_tgt": n_rows_tgt,
+            "metrics_by_cohens_d": [
+                {"metric": name, "stats": stats} for name, stats in metric_rankings
+            ],
+            "metrics_all": results,
+        }
+    
+    # ------------------------------------------------------------------
+    # Importance-based metric subset
+    # ------------------------------------------------------------------
+    def _load_important_metric_names(self) -> List[str]:
+        """
+        Load ordered metric names from the importance file.
+
+        We assume the JSON is either:
+          - a list of entries (string or dict with 'metric'/'name'/...)
+          - OR a dict with one of:
+                - 'metrics': [...]
+                - 'metric_importance': [...]
+        The *list order* is treated as importance ranking.
+        """
+        if self._important_metric_names is not None:
+            return self._important_metric_names
+
+        if not self.importance_enabled:
+            self._important_metric_names = []
+            return self._important_metric_names
+
+        path = getattr(self, "importance_load_path", None)
+        if not path:
+            self._important_metric_names = []
+            return self._important_metric_names
+
+        path = Path(path)
+
+        if not path.exists():
+            self.logger.log(
+                "VisiCalcImportanceFileMissing",
+                {"path": str(path)},
+            )
+            self._important_metric_names = []
+            return self._important_metric_names
+
+        try:
+            with path.open("r", encoding="utf-8") as f:
+                data = json.load(f)
+        except Exception as e:
+            self.logger.log(
+                "VisiCalcImportanceFileLoadError",
+                {"path": str(path), "error": str(e)},
+            )
+            self._important_metric_names = []
+            return self._important_metric_names
+
+        # Normalize to a list (same as you already have)
+        if isinstance(data, dict):
+            if isinstance(data.get("metrics"), list):
+                entries = data["metrics"]
+            elif isinstance(data.get("metric_importance"), list):
+                entries = data["metric_importance"]
+            else:
+                entries = list(data.values())
+        elif isinstance(data, list):
+            entries = data
+        else:
+            entries = []
+
+        names: List[str] = []
+        for entry in entries:
+            if isinstance(entry, str):
+                names.append(entry)
+                continue
+            if isinstance(entry, dict):
+                name = (
+                    entry.get("metric")
+                    or entry.get("name")
+                    or entry.get("metric_name")
+                    or entry.get("key")
+                )
+                if name:
+                    names.append(str(name))
+
+        # Deduplicate while preserving order
+        seen = set()
+        ordered_unique: List[str] = []
+        for n in names:
+            if n in seen:
+                continue
+            seen.add(n)
+            ordered_unique.append(n)
+
+        # Apply top_k limit if configured
+        if self.importance_top_k is not None:
+            ordered_unique = ordered_unique[: self.importance_top_k]
+
+        self._important_metric_names = ordered_unique
+
+        self.logger.log(
+            "VisiCalcImportanceLoaded",
+            {
+                "path": str(path),
+                "enabled": self.importance_enabled,
+                "top_k": self.importance_top_k,
+                "num_loaded": len(ordered_unique),
+                "examples": ordered_unique[:10],
+            },
+        )
+        return self._important_metric_names
+
+    def _maybe_filter_by_importance(
+        self,
+        vpm: np.ndarray,
+        metric_names: List[str],
+    ) -> tuple[np.ndarray, List[str]]:
+        """
+        Restrict VPM columns to the important metrics if importance_filter is enabled.
+
+        - Keeps the column *order* consistent with the importance file.
+        - Only retains metrics that exist in metric_names.
+        - If the intersection is tiny (< 3), we fall back to the full set.
+        """
+        if not self.importance_enabled:
+            return vpm, metric_names
+
+        important = self._load_important_metric_names()
+        if not important:
+            # nothing to filter by
+            return vpm, metric_names
+
+        name_to_idx = {name: i for i, name in enumerate(metric_names)}
+        selected_indices: List[int] = []
+        selected_names: List[str] = []
+
+        for name in important:
+            idx = name_to_idx.get(name)
+            if idx is None:
+                continue
+            selected_indices.append(idx)
+            selected_names.append(name)
+
+        if not selected_indices:
+            self.logger.log(
+                "VisiCalcImportanceNoOverlap",
+                {
+                    "num_metrics": len(metric_names),
+                    "num_important": len(important),
+                },
+            )
+            return vpm, metric_names
+
+        # If we end up with something extremely small, it's safer to keep full matrix
+        if len(selected_indices) < 3:
+            self.logger.log(
+                "VisiCalcImportanceTooFew",
+                {
+                    "num_selected": len(selected_indices),
+                    "num_metrics": len(metric_names),
+                },
+            )
+            return vpm, metric_names
+
+        vpm_reduced = vpm[:, selected_indices]
+
+        self.logger.log(
+            "VisiCalcImportanceApplied",
+            {
+                "num_original_metrics": len(metric_names),
+                "num_selected_metrics": len(selected_names),
+                "selected_example": selected_names[:10],
+            },
+        )
+
+        return vpm_reduced, selected_names
+
+    # ------------------------------------------------------------------
+    # Metric importance: compute once per A/B run and persist to JSON
+    # ------------------------------------------------------------------
+    def _compute_and_save_metric_importance(
+        self,
+        vc_tgt,
+        vc_base,
+    ) -> Optional[list]:
+        """
+        GAP-style metric importance:
+          - uses *current* VPM matrices (vc_tgt.scores / vc_base.scores)
+          - writes a single JSON file at self.importance_path
+          - returns the importance list (or None on failure)
+        """
+        if vc_tgt.scores.shape[1] != vc_base.scores.shape[1]:
+            log.warning(
+                "VisiCalcAgent: cannot compute metric importance: target.D=%d != baseline.D=%d",
+                vc_tgt.scores.shape[1],
+                vc_base.scores.shape[1],
+            )
+            return None
+
+        X_t = vc_tgt.scores
+        X_b = vc_base.scores
+        metric_names = list(vc_tgt.metric_names)
+
+        try:
+            importance = compute_metric_importance(
+                X_target=X_t,
+                X_baseline=X_b,
+                metric_names=metric_names,
+                top_k=self.visicalc_top_k_metrics or None,
+                min_effect=self.visicalc_min_effect or 0.0,
+            )
+
+            # Single canonical importance file
+            save_metric_importance_json(importance, self.importance_save_path)
+
+            top_show = importance[:10]
+            log.info(
+                "VisiCalc metric importance (top %d): %s",
+                len(top_show),
+                ", ".join(
+                    f"{m.name}[d={m.cohen_d:+.3f}, auc={m.auc:.3f}]"
+                    for m in top_show
+                ),
+            )
+
+            # Optional: stash in context if the caller wants it
+            return importance
+
+        except Exception as e:
+            log.exception("VisiCalcAgent: metric importance computation failed: %s", e)
+            return None

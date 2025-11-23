@@ -19,8 +19,8 @@ from stephanie.components.nexus.vpm.state_machine import (Thought,
                                                           ThoughtExecutor,
                                                           VPMGoal, VPMState,
                                                           compute_phi)
+from stephanie.scoring.metrics.scorable_processor import ScorableProcessor
 from stephanie.scoring.scorable import Scorable
-from stephanie.scoring.scorable_processor import ScorableProcessor
 from stephanie.services.zeromodel_service import ZeroModelService
 from stephanie.utils.vpm_utils import (detect_vpm_layout, ensure_chw_u8,
                                        vpm_quick_dump)

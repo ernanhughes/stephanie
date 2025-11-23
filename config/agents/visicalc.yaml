@@ -13,36 +13,7 @@ visicalc:
   # We don’t need to persist prompts/contexts for a maintenance pass
   save_prompt: false
   save_context: false
-
-  # Preferred metrics in order (optional override)
-  metric_keys:
-    - "HRM.aggregate"
-    - "sicql.overall"
-    - "tiny.overall"
-
-  frontier_metric: "HRM.aggregate"
-  row_region_splits: 4
-  frontier_low: 0.25
-  frontier_high: 0.75
-
-  metric_mapping:
-    include:
-      - "HRM.*"
-      - "sicql.*"
-      - "tiny.*"
-    exclude:
-      - "*.raw"
-      - "*.debug"
-    rename:
-      "HRM.aggregate": "hrm"
-      "sicql.overall": "sicql"
-      "tiny.overall": "tiny"
-
-  # Output directory (per run_id) + optional custom filenames
-  out_dir: "runs/visicalc"
-  json_file: "visicalc_report.json"
-  csv_file: "visicalc_report.csv"
-
+ 
   # --- A/B TopLeft visual comparison (only used when both cohorts present) ---
   ab_topleft:
     enabled: true
@@ -81,27 +52,44 @@ visicalc:
   visicalc:
     enabled: true
 
-    # Optional: restrict to specific metrics (exact matches to metrics_columns)
-    # e.g. ["HRM.clarity.score", "sicql.clarity.score", "HRM.aggregate"]
-    metric_keys: null
-
-    # Which metric to treat as frontier (if null, uses first metric in matrix)
+    # Preferred metrics in order (optional override)
+    metric_keys: 
+      - "HRM.coverage.score"
+      - "sicql.coverage.score"
+      - "tiny.coverage.score"
+      
     frontier_metric: "HRM.aggregate"
-
-    # How many coarse row bands to compute region stats for
     row_region_splits: 4
+    frontier_low: 0.25
+    frontier_high: 0.75
 
     # Output directory (per run_id) + optional custom filenames
     out_dir: "runs/visicalc"
     json_file: "visicalc_report.json"
     csv_file: "visicalc_report.csv"
 
-    # --- A/B TopLeft visual comparison (only used when both cohorts present) ---
-    ab_topleft:
+    metric_mapping:
+      include:
+        - "HRM.*"
+        - "sicql.*"
+        - "tiny.*"
+      exclude:
+        - "*.raw"
+        - "*.debug"
+
+    vpm_png:
       enabled: true
-      metric_mode: "luminance"   # passed to zeromodel.pipeline.organizer.top_left.TopLeft
-      iterations: 5
-      push_corner: "tl"          # 'tl'|'tr'|'bl'|'br'
-      monotone_push: true
-      stretch: true
-      clip_percent: 0.01         # in [0, 0.5)
+      mode: "L"                  # "L" or "RGB"
+      per_metric_normalize: true # use column-wise min–max
+      target_file: "visicalc_targeted_vpm.png"
+      baseline_file: "visicalc_baseline_vpm.png"
+
+    top_k_metrics: 50         # or null for "all"
+    min_effect: 0.25          # |Cohen's d| threshold
+
+    importance_filter:
+      enabled: true
+      path: "config/core_metrics.json"
+      top_k: 150
+      min_effect: 0.1
+      

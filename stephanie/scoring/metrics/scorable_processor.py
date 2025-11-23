@@ -1,4 +1,4 @@
-# stephanie/scoring/scorable_processor.py
+# stephanie/scoring/metrics/scorable_processor.py
 from __future__ import annotations
 
 import asyncio
@@ -19,8 +19,10 @@ from stephanie.scoring.adapters.db_providers import (DomainDBProvider,
                                                      EntityDBProvider)
 from stephanie.scoring.adapters.db_writers import (DomainDBWriter,
                                                    EntityDBWriter)
-from stephanie.scoring.feature_io import (FeatureProvider, FeatureWriter,
-                                          ScoringService)
+from stephanie.scoring.metrics.feature_io import (FeatureProvider,
+                                                  FeatureWriter,
+                                                  ScoringService)
+from stephanie.scoring.metrics.metric_observer import MetricObserver
 from stephanie.scoring.scorable import Scorable, ScorableFactory
 from stephanie.services.zeromodel_service import ZeroModelService
 from stephanie.services.zmq_cache_service import ZmqCacheService
@@ -159,6 +161,13 @@ class ScorableProcessor(ProgressMixin):
             ),
             self.offload_mode,
             self.enable_manifest,
+        )
+
+        # Initialize metric observer
+        metric_observer_cfg = self.cfg.get("metric_observer", {})
+        self.metric_observer = MetricObserver(
+            enabled=bool(metric_observer_cfg.get("enabled", True)),
+            snapshot_path=metric_observer_cfg.get("snapshot_path", "runs/metrics/metric_universe.json")
         )
 
     # ---------- Manifest ----------
@@ -439,9 +448,14 @@ class ScorableProcessor(ProgressMixin):
             len(text),
             context.get("pipeline_run_id"),
         )
-        
-        task = f"SPItem:{scorable.id}"
-        self.pstart(task=task, total=5, meta={"id": scorable.id})
+
+        enable_item_progress: bool = bool(
+            self.cfg.get("enable_item_progress", False)
+        )
+        item_task: Optional[str] = None
+        if enable_item_progress:
+            item_task = f"SPItem:{scorable.id}"
+            self.pstart(task=item_task, total=5, meta={"id": scorable.id})
 
         acc: Dict[str, Any] = {}
 
@@ -461,20 +475,22 @@ class ScorableProcessor(ProgressMixin):
             except Exception as e:
                 log.warning("[SP:hydrate] %s failed: %s", name, e)
 
-        self.pstep(task, 1, stage="hydrate")
-        
+        if item_task:
+            self.pstep(item_task, 1, stage="hydrate")
+
         # 2) Embeddings
         gl = (acc.get("embeddings") or {}).get("global")
         if not (isinstance(gl, list) and gl) and text:
             t0 = time.perf_counter()
             log.debug("[SP:embed] computing global id=%s", scorable.id)
-            t1 = time.perf_counter()
+
             emb = self.memory.embedding.get_or_create(text)
-            log.info(
+            log.debug(
                 "[SP:embed] computed global id=%s in %s",
                 scorable.id,
-                self._t(t1 - t0),
+                self._t(t0),
             )
+
             floats = self._ensure_float_list(emb)
             if floats is not None:
                 acc.setdefault("embeddings", {})
@@ -487,7 +503,8 @@ class ScorableProcessor(ProgressMixin):
             else:
                 log.debug("[SP:embed] skipped/none")
 
-        self.pstep(task, 1, stage="embed")
+        if item_task:
+            self.pstep(item_task, 1, stage="embed")
 
         # 3) Domains
         need_domains = not acc.get("domains") or len(acc["domains"]) < int(
@@ -513,7 +530,8 @@ class ScorableProcessor(ProgressMixin):
         else:
             log.debug("[SP:domain] hydrated %d", len(acc.get("domains") or []))
 
-        self.pstep(task, 1, stage="domains")
+        if item_task:
+            self.pstep(item_task, 1, stage="domains")
 
         # 4) NER
         need_ner = not acc.get("ner") and bool(
@@ -538,7 +556,8 @@ class ScorableProcessor(ProgressMixin):
                 bool(self.entity_extractor),
             )
 
-        self.pstep(task, 1, stage="ner")
+        if item_task:
+            self.pstep(item_task, 1, stage="ner")
 
         # 5) Scores  → build canonical metrics vector
         metrics_columns: List[str] = []
@@ -598,6 +617,22 @@ class ScorableProcessor(ProgressMixin):
             acc["metrics_columns"] = metrics_columns
             acc["metrics_values"] = metrics_values
 
+            # Observe metrics for research analysis
+            # This is the ONLY place where metrics are observed
+            run_id = context.get("run_id", "unknown_run")
+            cohort = context.get("cohort", "default")
+            is_correct = scorable.meta.get("is_correct", None) if hasattr(scorable, "meta") else None
+
+            # Convert to dictionary for observer
+            metric_dict = dict(zip(metrics_columns, metrics_values))
+
+            # Record with observer
+            self.metric_observer.observe(
+                metrics=metric_dict,
+                run_id=run_id,
+                cohort=cohort,
+                is_correct=is_correct
+            )
             log.debug(
                 "[SP:score] done total_keys=%d in %s",
                 len(vector),
@@ -658,7 +693,8 @@ class ScorableProcessor(ProgressMixin):
                 bool(acc.get("vision_signals")),
             )
 
-        self.pstep(task, 1, stage="scores+vpm")
+        if item_task:
+            self.pstep(item_task, 1, stage="scores+vpm")
 
         # 7) Row build (typed → dict)
         t0 = time.perf_counter()
@@ -671,6 +707,9 @@ class ScorableProcessor(ProgressMixin):
             len(row.get("ner") or []),
             self._t(t0),
         )
+
+        if item_task:
+            self.pstep(item_task, 1, stage="scores+vpm")
 
         # 8) Persist deltas
         for writer in self.writers:
@@ -691,10 +730,10 @@ class ScorableProcessor(ProgressMixin):
                 log.warning("[SP:manifest] write failed: %s", e)
 
         # 10) Cache + return
+        if item_task:
+            self.pdone(item_task)
 
-        self.pdone(task)
-
-        log.info(
+        log.debug(
             "[SP:process:inline] done id=%s in %s ",
             scorable.id,
             self._t(t_all),
@@ -733,19 +772,29 @@ class ScorableProcessor(ProgressMixin):
 
         # Process items (each may go inline or via bus, depending on mode)
         out: List[Dict[str, Any]] = []
-        tick_every = max(1, n // 5)
-        try: 
+        tick_every = max(1, n // 5)  # still ~5 ticks per batch
+
+        try:
             for i, sc in enumerate(inputs):
                 t0i = time.perf_counter()
                 row = await self.process(sc, context)
-
                 out.append(row)
-                if (i % tick_every) == 0 or i == n:
-                        # absolute progress update
-                        self.ptick(task=task_name, done=i, total=n)
+
+                done = i + 1  # 1-based for human-readable progress
+
+                # absolute progress update every tick_every items, and always on the last item
+                if (done % tick_every) == 0 or done == n:
+                    self.ptick(
+                        task=task_name,
+                        done=done,
+                        total=n,
+                        # optional: stage label for UI, e.g. "batch"
+                        # stage="batch",
+                    )
+
                 log.debug(
                     "[SP:many:item] %d/%d done in %s",
-                    i + 1,
+                    done,
                     n,
                     self._t(t0i),
                 )

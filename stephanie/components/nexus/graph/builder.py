@@ -15,7 +15,7 @@ from stephanie.components.nexus.app.manifest import ManifestItem
 from stephanie.components.nexus.app.types import NexusEdge, NexusNode
 from stephanie.data.scorable_row import ScorableRow
 from stephanie.memory.nexus_store import NexusStore
-from stephanie.scoring.scorable_processor import ScorableProcessor
+from stephanie.scoring.metrics.scorable_processor import ScorableProcessor
 from stephanie.utils.json_sanitize import dumps_safe
 
 log = logging.getLogger(__name__)

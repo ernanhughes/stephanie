@@ -26,7 +26,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
+import matplotlib.pyplot as plt
 import numpy as np
+from PIL import Image
 
 from stephanie.utils.json_sanitize import dumps_safe
 
@@ -367,6 +369,45 @@ def normalize_scores(scores: np.ndarray, eps: float = 1e-8) -> np.ndarray:
         else:
             out[:, j] = (col - cmin) / (cmax - cmin)
     return out
+
+def scores_to_vpm_uint8(
+    scores: np.ndarray,
+    *,
+    per_metric_normalize: bool = True,
+    eps: float = 1e-8,
+) -> np.ndarray:
+    """
+    Convert a 2D scores matrix into a [0,255] uint8 image.
+
+    - per_metric_normalize=True:
+        normalize each metric column to [0,1] (like normalize_scores)
+    - per_metric_normalize=False:
+        global min–max across the whole matrix.
+    """
+    arr = np.asarray(scores, dtype=np.float64)
+    if arr.ndim != 2:
+        raise ValueError(f"scores_to_vpm_uint8: expected 2D, got shape {arr.shape}")
+
+    if per_metric_normalize:
+        arr = normalize_scores(arr, eps=eps)
+    else:
+        cmin = float(np.nanmin(arr))
+        cmax = float(np.nanmax(arr))
+        if not np.isfinite(cmin) or not np.isfinite(cmax):
+            arr = np.nan_to_num(arr, nan=0.0, posinf=1.0, neginf=0.0)
+            cmin = float(arr.min())
+            cmax = float(arr.max())
+        if cmax - cmin < eps:
+            arr = np.zeros_like(arr) + 0.5
+        else:
+            arr = (arr - cmin) / (cmax - cmin)
+
+    # Clean up NaNs/Infs and clip to [0,1]
+    arr = np.nan_to_num(arr, nan=0.0, posinf=1.0, neginf=0.0)
+    arr = np.clip(arr, 0.0, 1.0)
+
+    img = (arr * 255.0).round().astype(np.uint8)  # shape: (N_rows, N_metrics)
+    return img
 
 
 def compute_frontier_mask(
@@ -902,6 +943,56 @@ class VisiCalc:
     def save_report(self, path: Union[Path, str]) -> Path:
         """Save just the report to JSON."""
         return self.report.save_json(path)
+
+    def to_vpm_array(
+        self,
+        *,
+        per_metric_normalize: bool = True,
+    ) -> np.ndarray:
+        """
+        Return a uint8 VPM array (N_items × N_metrics) suitable for saving
+        as a PNG or feeding into ZeroModel/Tiny vision models.
+        """
+        return scores_to_vpm_uint8(
+            self.scores,
+            per_metric_normalize=per_metric_normalize,
+        )
+
+    def save_vpm_png(
+        self,
+        path: Union[Path, str],
+        *,
+        per_metric_normalize: bool = True,
+        mode: str = "L",
+    ) -> Path:
+        """
+        Save the episode's scores as a VPM PNG.
+
+        - mode="L": grayscale (items = vertical axis, metrics = horizontal).
+        - mode="RGB": replicate grayscale into 3 channels.
+        """
+        img_arr = self.to_vpm_array(per_metric_normalize=per_metric_normalize)
+        p = Path(path)
+        p.parent.mkdir(parents=True, exist_ok=True)
+
+        if mode.upper() == "L":
+            img = Image.fromarray(img_arr, mode="L")
+        else:
+            if img_arr.ndim == 2:
+                rgb = np.stack([img_arr] * 3, axis=-1)
+            else:
+                rgb = img_arr
+            img = Image.fromarray(rgb, mode="RGB")
+
+        img.save(p)
+        log.info(
+            "VisiCalc: saved VPM PNG → %s (shape=%s, mode=%s, per_metric_normalize=%s)",
+            p,
+            img_arr.shape,
+            mode,
+            per_metric_normalize,
+        )
+        return p
 
     def to_dict(self) -> Dict[str, Any]:
         """Full serializable snapshot of this VisiCalc state."""
