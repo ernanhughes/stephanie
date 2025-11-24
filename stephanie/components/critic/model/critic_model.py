@@ -289,7 +289,7 @@ def main_cli():
     p.add_argument("--explain", type=str, default="", help="Explain a single JSON row instead of batch scoring")
     args = p.parse_args()
 
-    model = TinyModel.load(args.model, args.meta)
+    model = CriticModel.load(args.model, args.meta)
 
     if args.explain:
         row = json.loads(Path(args.explain).read_text(encoding="utf-8"))

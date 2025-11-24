@@ -1,4 +1,4 @@
-# stephanie/agents/visual_introspection.py
+# stephanie/components/critic/agents/critic_data.py
 from __future__ import annotations
 
 import json
@@ -16,7 +16,7 @@ from stephanie.scoring.scorable import Scorable
 
 log = logging.getLogger(__name__)
 
-class VisualIntrospectionAgent(BaseAgent):
+class CriticDataAgent(BaseAgent):
     """
     GSM8K → DeepSeek → Scorables + JSONL log.
 
@@ -41,17 +41,17 @@ class VisualIntrospectionAgent(BaseAgent):
     
     Configure in Hydra:
     
-      visual_introspection:
-        _target_: stephanie.agents.visual_introspection.VisualIntrospectionAgent
-        name: visual_introspection
+      critic_data:
+        _target_: stephanie.agents.critic_data.VisualIntrospectionAgent
+        name: critic_data
         enabled: true
         input_key: "scorables"          # VisiCalcAgent expects this later
-        output_key: "visual_introspection"
+        output_key: "critic_data"
         strategy: "gsm8k_solve"
         num_examples: 200               # Recommended for Tiny Critic training
         split: "train"
         store_raw: true
-        out_dir: "runs/visual_introspection"
+        out_dir: "runs/critic_data"
         shuffle: true
         model_name: "deepseek-math:7b"  # Optimized for this model
         params:
@@ -72,7 +72,6 @@ class VisualIntrospectionAgent(BaseAgent):
         self.shuffle: bool = bool(cfg.get("shuffle", True))
 
         # Model configuration
-        self.model_name: str = cfg.get("model_name", "deepseek-math:7b")
         self.params: Dict[str, Any] = cfg.get("params", {
             "temperature": 0.3,
             "max_tokens": 1024,
@@ -80,7 +79,7 @@ class VisualIntrospectionAgent(BaseAgent):
         })
 
         # Output logging
-        out_root = Path(cfg.get("out_dir", "runs/visual_introspection"))
+        out_root = Path(cfg.get("out_dir", "runs/critic_data"))
         # Each run_id is unique, so we naturally get a per-run directory
         self.out_dir: Path = out_root / self.run_id
         self.out_dir.mkdir(parents=True, exist_ok=True)
@@ -534,7 +533,7 @@ IMPORTANT: Do not use any XML tags. Just follow the format above."""
             high_quality_pct = self.quality_metrics["high_quality_reasoning"] / self.quality_metrics["total_examples"] * 100 if self.quality_metrics["total_examples"] else 0
             
             summary = {
-                "title": getattr(self, "name", "visual_introspection"),
+                "title": getattr(self, "name", "critic_data"),
                 "strategy": self.strategy,
                 "model_name": self.model_name,
                 "num_examples": len(all_scorables),
@@ -575,7 +574,7 @@ IMPORTANT: Do not use any XML tags. Just follow the format above."""
             self.logger.log(
                 "AgentRanSuccessfully",
                 {
-                    "agent": getattr(self, "name", "visual_introspection"),
+                    "agent": getattr(self, "name", "critic_data"),
                     "input_key": self.input_key,
                     "output_key": self.output_key,
                     "prompt_snippet": jsonl_records[0]["prompt"][:200]
@@ -609,7 +608,7 @@ IMPORTANT: Do not use any XML tags. Just follow the format above."""
             self.logger.log(
                 "AgentFailed",
                 {
-                    "agent": getattr(self, "name", "visual_introspection"),
+                    "agent": getattr(self, "name", "critic_data"),
                     "error": err_msg,
                     "input_key": self.input_key,
                     "output_key": self.output_key,

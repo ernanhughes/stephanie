@@ -1,0 +1,11 @@
+critic_dataset:
+  _target_: stephanie.components.critic.agents.critic_dataset_builder_agent.CriticDatasetBuilderAgent
+  name: critic_dataset
+  enabled: true
+
+  input_key: "unused"
+  output_key: "unused"
+
+  visicalc_root: "runs/visicalc"
+  output_path: "data/critic.npz"
+  meta_path: "data/critic_metadata.json"

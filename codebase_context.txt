@@ -1,0 +1,4328 @@
+# Project Context: critic
+# Path: C:\Users\ernan\Project\stephanie\stephanie\components\critic
+# Generated for AI Review
+
+
+==================================================
+FILE: agents\critic_data.py
+==================================================
+
+# stephanie/components/critic/agents/critic_data.py
+from __future__ import annotations
+
+import json
+import logging
+import re
+import asyncio
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+from datetime import datetime
+
+from datasets import load_dataset
+
+from stephanie.agents.base_agent import BaseAgent
+from stephanie.scoring.scorable import Scorable
+
+log = logging.getLogger(__name__)
+
+class CriticDataAgent(BaseAgent):
+    """
+    GSM8K → DeepSeek → Scorables + JSONL log.
+
+    This agent is optimized for DeepSeek's output format, with:
+    - Flexible section header parsing for natural language outputs
+    - Multi-pattern final answer extraction
+    - Quality metrics for reasoning traces
+    - Robust fallback mechanisms when parsing fails
+    
+    Key features:
+    - Loads a subset of GSM8K from Hugging Face
+    - Shuffles and selects N examples per run
+    - Builds a prompt specifically designed for DeepSeek
+    - Calls DeepSeek via self.call_llm
+    - Robustly parses DeepSeek's natural language output
+    - Builds Scorable objects with correctness + quality metrics
+    - Splits into:
+        * context["scorables_targeted"] = correct solutions
+        * context["scorables_baseline"] = incorrect solutions
+        * context["scorables"] = union of both (for VisiCalcAgent input)
+    - Writes a JSONL log file for this run with comprehensive quality metrics
+    
+    Configure in Hydra:
+    
+      critic_data:
+        _target_: stephanie.agents.critic_data.VisualIntrospectionAgent
+        name: critic_data
+        enabled: true
+        input_key: "scorables"          # VisiCalcAgent expects this later
+        output_key: "critic_data"
+        strategy: "gsm8k_solve"
+        num_examples: 200               # Recommended for Tiny Critic training
+        split: "train"
+        store_raw: true
+        out_dir: "runs/critic_data"
+        shuffle: true
+        model_name: "deepseek-math:7b"  # Optimized for this model
+        params:
+          temperature: 0.3
+          max_tokens: 1024
+    """
+
+    def __init__(self, cfg: Dict[str, Any], memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
+
+        # Strategy label for logging / telemetry
+        self.strategy: str = cfg.get("strategy", "gsm8k_solve")
+
+        # Dataset knobs
+        self.num_examples: int = int(cfg.get("num_examples", 200))  # Increased for Tiny Critic
+        self.split: str = cfg.get("split", "train")
+        self.store_raw: bool = bool(cfg.get("store_raw", True))
+        self.shuffle: bool = bool(cfg.get("shuffle", True))
+
+        # Model configuration
+        self.params: Dict[str, Any] = cfg.get("params", {
+            "temperature": 0.3,
+            "max_tokens": 1024,
+            "top_p": 0.95
+        })
+
+        # Output logging
+        out_root = Path(cfg.get("out_dir", "runs/critic_data"))
+        # Each run_id is unique, so we naturally get a per-run directory
+        self.out_dir: Path = out_root / self.run_id
+        self.out_dir.mkdir(parents=True, exist_ok=True)
+
+        # JSONL file for this run (one record per GSM8K example)
+        self.jsonl_path: Path = Path(
+            cfg.get("jsonl_file", self.out_dir / "gsm8k_deepseek_samples.jsonl")
+        )
+
+        # Visualization directory for feature analysis
+        self.vis_dir: Path = self.out_dir / "visualizations"
+        self.vis_dir.mkdir(parents=True, exist_ok=True)
+
+        # Quality tracking
+        self.quality_metrics = {
+            "total_examples": 0,
+            "successful_parsing": 0,
+            "failed_parsing": 0,
+            "correct_answers": 0,
+            "incorrect_answers": 0,
+            "reasoning_found": 0,
+            "final_answer_found": 0,
+            "high_quality_reasoning": 0
+        }
+
+        log.info(f"🎯 VisualIntrospectionAgent initialized:")
+        log.info(f"   Strategy: {self.strategy}")
+        log.info(f"   Model: {self.model_name}")
+        log.info(f"   Examples: {self.num_examples}")
+        log.info(f"   Split: {self.split}")
+        log.info(f"   Output: {self.out_dir}")
+        log.info(f"   Params: temperature={self.params.get('temperature', 0.3)}, max_tokens={self.params.get('max_tokens', 1024)}")
+
+    # ------------------------------------------------------------------ #
+    # Enhanced prompt template for DeepSeek
+    # ------------------------------------------------------------------ #
+    def _get_deepseek_prompt(self, question: str) -> str:
+        """Generate the prompt optimized for DeepSeek's output style"""
+        return f"""You are a math reasoning expert. Solve this problem step by step and format your answer EXACTLY as shown below.
+
+PROBLEM:
+{question}
+
+YOUR RESPONSE MUST FOLLOW THIS EXACT FORMAT:
+
+Step-by-step reasoning:
+1. [First step with calculations]
+2. [Second step with calculations] 
+3. [Third step with calculations]
+...
+
+Final numeric answer: [ONLY THE NUMBER]
+
+IMPORTANT: Do not use any XML tags. Just follow the format above."""
+
+    # ------------------------------------------------------------------ #
+    # Robust DeepSeek output parser with multiple fallbacks
+    # ------------------------------------------------------------------ #
+    def _parse_deepseek_output(self, raw_text: str) -> Dict[str, Any]:
+        """Parse DeepSeek's natural language output with multiple fallback strategies"""
+        log.info(f"🔍 Parsing DeepSeek output (length: {len(raw_text)} chars)")
+        
+        # Strategy 1: Look for the exact format we requested
+        reasoning_match = re.search(
+            r"(?:Step[-\s]*by[-\s]*step\s*reasoning|Reasoning\s*steps|Solution\s*steps)[:\s]*(.*?)(?=Final\s*(?:numeric\s*)?answer:|$)", 
+            raw_text, 
+            re.DOTALL | re.IGNORECASE
+        )
+        reasoning = reasoning_match.group(1).strip() if reasoning_match else ""
+        
+        # Strategy 2: If that fails, look for numbered steps anywhere in the text
+        if not reasoning:
+            steps_match = re.search(r"(?:Step[-\s]*by[-\s]*step|Reasoning|Solution)(?:[:\s]*\n+)?(.*?)(?=\n\s*Final\s*(?:numeric\s*)?answer|$)", 
+                                   raw_text, re.DOTALL | re.IGNORECASE)
+            if steps_match:
+                reasoning = steps_match.group(1).strip()
+        
+        # Strategy 3: If still no reasoning, take everything before "Final answer"
+        if not reasoning:
+            final_match = re.search(r"(.*?)(?:\n\s*Final\s*(?:numeric\s*)?answer)", raw_text, re.DOTALL | re.IGNORECASE)
+            if final_match:
+                reasoning = final_match.group(1).strip()
+        
+        # Strategy 4: As a last resort, take the first paragraph as reasoning
+        if not reasoning:
+            paragraphs = [p.strip() for p in raw_text.split('\n\n') if p.strip()]
+            if paragraphs:
+                reasoning = paragraphs[0]
+        
+        # Extract final answer with multiple patterns
+        final_answer = ""
+        patterns = [
+            r"Final\s*(?:numeric\s*)?answer\s*[:\-]?\s*([^\n]+)",
+            r"Answer\s*[:\-]?\s*([^\n]+)",
+            r"The\s*answer\s*is\s*([^\n]+)",
+            r"=+\s*([^\n]+)\s*=+",
+            r"boxed\{([^\}]+)\}"
+        ]
+        
+        for pattern in patterns:
+            m = re.search(pattern, raw_text, re.IGNORECASE)
+            if m:
+                final_answer = m.group(1).strip()
+                break
+        
+        # Count steps in reasoning (handle various numbering styles)
+        step_count = len(re.findall(r"^\s*(?:\d+\.|\([a-z]\)|•)\s+", reasoning, re.MULTILINE)) if reasoning else 0
+        
+        # Check for verification (key for reasoning quality)
+        verification_present = bool(re.search(r"\b(verify|check|confirm|validate|double-check)\b", reasoning, re.IGNORECASE))
+        
+        log.info(f"📊 DeepSeek parsing - Reasoning: {len(reasoning)} chars, Steps: {step_count}, Final: '{final_answer}', Verification: {verification_present}")
+        
+        return {
+            "reasoning": reasoning,
+            "final_answer": final_answer,
+            "step_count": step_count,
+            "verification_present": verification_present,
+            "raw": raw_text,
+        }
+
+    # ------------------------------------------------------------------ #
+    # Safe generation with retries and timeouts
+    # ------------------------------------------------------------------ #
+    async def _generate_with_retry(self, prompt: str, max_retries: int = 3, context: dict={}) -> str:
+        """Generate with retries, timeouts, and fallbacks"""
+        for attempt in range(max_retries):
+            try:
+                # Add timeout to prevent hanging
+                raw_text = await asyncio.wait_for(
+                    self._call_llm_with_params(prompt, context=context),
+                    timeout=300.0
+                )
+                return raw_text
+            except asyncio.TimeoutError:
+                log.warning(f"⚠️  Generation timed out (attempt {attempt+1}/{max_retries})")
+            except Exception as e:
+                log.warning(f"⚠️  Generation failed (attempt {attempt+1}/{max_retries}): {str(e)}")
+            
+            if attempt < max_retries - 1:
+                await asyncio.sleep(1.0 * (attempt + 1))  # Exponential backoff
+        
+        # Final fallback: minimal generation
+        log.error("❌ All generation attempts failed, using minimal fallback")
+        return "Step-by-step reasoning:\n1. Error in generation\n\nFinal numeric answer: 0"
+
+    async def _call_llm_with_params(self, prompt: str, context: dict) -> str:
+        """Call LLM with configured parameters"""
+        return await self.async_call_llm(
+            prompt,
+            params=self.params,
+            context=context
+        )
+
+    # ------------------------------------------------------------------ #
+    # Feature visualization generation
+    # ------------------------------------------------------------------ #
+    def _generate_feature_visualizations(self, all_scorables: List[Scorable]):
+        """Generate visualizations of feature distributions by reasoning quality with robust KDE handling"""
+        import matplotlib.pyplot as plt
+        import seaborn as sns
+        import numpy as np
+        from scipy import stats
+        
+        log.info("📊 Creating feature visualizations for Tiny Critic training...")
+        
+        # Extract features from scorables
+        features = {
+            "stability": [],
+            "middle_dip": [],
+            "std_dev": [],
+            "sparsity": [],
+            "entropy": [],
+            "trend": [],
+            "mid_bad_ratio": [],
+            "frontier_util": []
+        }
+        labels = []
+        
+        for scorable in all_scorables:
+            meta = scorable.meta
+            # These features will be populated by VisiCalc, but we can use quality metrics as proxy
+            features["stability"].append(meta.get("reasoning_length", 0))
+            features["middle_dip"].append(meta.get("step_count", 0))
+            features["std_dev"].append(1 if meta.get("verification_present", False) else 0)
+            features["sparsity"].append(meta.get("reasoning_quality", 0))
+            features["entropy"].append(1 if meta.get("is_correct", False) else 0)
+            features["trend"].append(meta.get("step_count", 0) / max(1, len(meta.get("reasoning", "").split("."))))
+            features["mid_bad_ratio"].append(1 if meta.get("verification_present", False) else 0)
+            features["frontier_util"].append(meta.get("reasoning_quality", 0))
+            labels.append(meta.get("is_correct", False))
+        
+        # Convert to numpy arrays
+        X = np.array([features[k] for k in features]).T
+        y = np.array(labels)
+        
+        # Create distribution plots
+        plt.figure(figsize=(15, 12))
+        
+        # 1. Distribution plots for each feature - with robust KDE handling
+        feature_names = list(features.keys())
+        for i, name in enumerate(feature_names):
+            plt.subplot(3, 3, i+1)
+            
+            # Check if feature has enough variation for KDE
+            good_data = X[:, i][~np.isnan(X[:, i])]
+            has_variation = len(np.unique(good_data)) > 1 and np.var(good_data) > 1e-10
+            
+            # Only enable KDE if there's sufficient variation
+            kde_enabled = has_variation and len(good_data) > 30
+            
+            # Create plot with appropriate KDE setting
+            sns.histplot(
+                data={name: X[y == 1, i], 'Bad Reasoning': X[y == 0, i]}, 
+                kde=kde_enabled,
+                bins=15,
+                alpha=0.6
+            )
+            
+            # Add warning if KDE was disabled
+            if not kde_enabled and has_variation:
+                plt.text(0.05, 0.95, "KDE disabled (small dataset)", 
+                        transform=plt.gca().transAxes, 
+                        fontsize=8,
+                        color='red')
+            elif not has_variation:
+                plt.text(0.05, 0.95, "No variation in data", 
+                        transform=plt.gca().transAxes, 
+                        fontsize=8,
+                        color='red')
+                
+            plt.title(f'Distribution: {name}')
+            plt.xlabel('Value')
+            plt.ylabel('Count')
+        
+        # 2. Box plots to show differences between classes
+        plt.subplot(3, 3, 8)
+        all_values = []
+        all_features = []
+        all_classes = []
+        
+        for i, name in enumerate(feature_names):
+            all_values.extend(X[y == 1, i])
+            all_features.extend([name] * len(X[y == 1, i]))
+            all_classes.extend(['Good Reasoning'] * len(X[y == 1, i]))
+            
+            all_values.extend(X[y == 0, i])
+            all_features.extend([name] * len(X[y == 0, i]))
+            all_classes.extend(['Bad Reasoning'] * len(X[y == 0, i]))
+        
+        sns.boxplot(x=all_features, y=all_values, hue=all_classes)
+        plt.xticks(rotation=45, ha='right')
+        plt.title('Feature Distributions by Reasoning Quality')
+        plt.tight_layout()
+        
+        # 3. Feature importance potential analysis
+        plt.subplot(3, 3, 9)
+        mean_diffs = []
+        for i, name in enumerate(feature_names):
+            good_mean = np.mean(X[y == 1, i]) if sum(y == 1) > 0 else 0
+            bad_mean = np.mean(X[y == 0, i]) if sum(y == 0) > 0 else 0
+            mean_diffs.append((name, abs(good_mean - bad_mean)))
+        
+        mean_diffs.sort(key=lambda x: x[1], reverse=True)
+        names, diffs = zip(*mean_diffs)
+        
+        sns.barplot(x=list(names), y=list(diffs))
+        plt.xticks(rotation=45, ha='right')
+        plt.title('Feature Discriminative Power')
+        plt.ylabel('Mean Difference')
+        
+        plt.tight_layout()
+        plt.savefig(self.vis_dir / 'feature_analysis.png', dpi=300, bbox_inches='tight')
+        plt.close()
+        
+        # Log feature importance potential
+        log.info("🔍 Feature importance potential (based on mean differences):")
+        for name, diff in mean_diffs:
+            log.info(f"   - {name}: {diff:.4f}")
+        
+        # Save feature importance to file
+        with open(self.vis_dir / 'feature_importance.txt', 'w') as f:
+            f.write("Feature Importance Analysis\n")
+            f.write("========================\n\n")
+            for name, diff in mean_diffs:
+                f.write(f"{name}: {diff:.4f}\n")
+
+    # ------------------------------------------------------------------ #
+    # Main entry point
+    # ------------------------------------------------------------------ #
+    async def run(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        log.info("🚀 Starting VisualIntrospectionAgent data generation...")
+        start_time = datetime.now()
+        
+        try:
+            # -----------------------------------------------------------------
+            # 1) Load dataset and pick a random subset
+            # -----------------------------------------------------------------
+            log.info(f"📚 Loading GSM8K dataset (split: {self.split})")
+            ds = load_dataset("gsm8k", "main", split=self.split)
+            num_total = len(ds)
+            
+            if num_total == 0:
+                raise ValueError(f"GSM8K split '{self.split}' is empty")
+
+            log.info(f"📊 Dataset loaded: {num_total} total examples")
+
+            # Shuffle to avoid re-using the same examples every run.
+            # Use run_id to derive a unique but deterministic seed for this run.
+            if self.shuffle:
+                # hash(run_id) is stable per run; mask to 32 bits for HF
+                seed = int(hash(self.run_id) & 0xFFFFFFFF)
+                ds = ds.shuffle(seed=seed)
+                log.info(f"🔀 Dataset shuffled with seed: {seed}")
+
+            n = min(self.num_examples, num_total)
+            log.info(f"🎯 Selected {n} examples from {num_total} total")
+            ds = ds.select(range(n))
+
+            # -----------------------------------------------------------------
+            # 2) Iterate over examples, call LLM, parse, build scorables
+            # -----------------------------------------------------------------
+            all_scorables: List[Scorable] = []
+            good_scorables: List[Scorable] = []
+            bad_scorables: List[Scorable] = []
+            jsonl_records: List[Dict[str, Any]] = []
+
+            log.info(f"🤖 Generating reasoning with {self.model_name} (temperature={self.params.get('temperature', 0.3)})")
+            log.info(f"📝 Processing {n} examples...")
+
+            for i, row in enumerate(ds):
+                problem_id = row.get("id") or f"gsm8k-{self.split}-{i}"
+                question: str = row["question"]
+                gold_answer: str = row.get("answer", "")
+
+                log.info(f"🔍 Processing example {i+1}/{n}: {problem_id}")
+                log.info(f"   Question: {question[:100]}...")
+
+                # Build prompt specifically for DeepSeek
+                prompt = self._get_deepseek_prompt(question)
+                log.info(f"✅ Prompt built (length: {len(prompt)} chars)")
+
+                # Call DeepSeek with retry mechanism
+                log.info("🤖 Calling LLM for generation...")
+                raw_text = await self._generate_with_retry(prompt, context=context)
+                log.info(f"✅ LLM response received (length: {len(raw_text)} chars)")
+
+                # Parse DeepSeek's output with robust parser
+                log.info("🔍 Parsing DeepSeek output...")
+                parsed = self._parse_deepseek_output(raw_text)
+                log.info(f"✅ Parsing complete: reasoning length={len(parsed['reasoning'])}, steps={parsed['step_count']}, final_answer='{parsed['final_answer']}'")
+                
+                # Update parsing quality metrics
+                self.quality_metrics["total_examples"] += 1
+                if parsed["reasoning"]:
+                    self.quality_metrics["reasoning_found"] += 1
+                if parsed["final_answer"]:
+                    self.quality_metrics["final_answer_found"] += 1
+                if parsed["reasoning"] and parsed["step_count"] >= 3 and parsed["verification_present"]:
+                    self.quality_metrics["high_quality_reasoning"] += 1
+                    
+                if parsed["reasoning"] and parsed["final_answer"]:
+                    self.quality_metrics["successful_parsing"] += 1
+                else:
+                    self.quality_metrics["failed_parsing"] += 1
+                    log.warning(f"⚠️  Incomplete parsing for {problem_id}: reasoning={bool(parsed['reasoning'])}, final_answer={bool(parsed['final_answer'])}")
+
+                # Build a Scorable with correctness and quality metrics
+                scorable = build_scorable_for_example(
+                    problem_id=problem_id,
+                    question=question,
+                    gold_answer=gold_answer,
+                    raw_text=raw_text,
+                    parsed=parsed,
+                    source_label=self.model_name,
+                )
+
+                all_scorables.append(scorable)
+                if scorable.meta.get("is_correct"):
+                    log.info(f"✅ Correct: {problem_id} (answer: {scorable.meta.get('pred_answer_canonical', 'N/A')})")
+                    good_scorables.append(scorable)
+                    self.quality_metrics["correct_answers"] += 1
+                else:
+                    log.info(f"❌ Incorrect: {problem_id} (pred: {scorable.meta.get('pred_answer_canonical', 'N/A')}, gold: {scorable.meta.get('gold_answer_canonical', 'N/A')})")
+                    bad_scorables.append(scorable)
+                    self.quality_metrics["incorrect_answers"] += 1
+
+                # Prepare JSONL record for this example
+                rec: Dict[str, Any] = {
+                    "task": "gsm8k",
+                    "split": self.split,
+                    "problem_id": problem_id,
+                    "model_name": self.model_name,
+                    "strategy": self.strategy,
+                    "question": question,
+                    "gold_answer": gold_answer,
+                    "prompt": prompt,
+                    "raw_response": raw_text if self.store_raw else None,
+                    "parsed": parsed,
+                    "scorable": {
+                        "text": scorable.text,
+                        "external_id": scorable.id,
+                        "meta": scorable.meta,
+                    },
+                }
+                jsonl_records.append(rec)
+
+                # Log progress for large batches
+                if (i + 1) % 50 == 0:
+                    log.info(f"📦 Processed {i + 1}/{n} examples")
+                    current_correct = len(good_scorables)
+                    log.info(f"📊 Current accuracy: {current_correct}/{i+1} ({current_correct/(i+1)*100:.1f}%)")
+
+            # -----------------------------------------------------------------
+            # 3) Write JSONL log file for this run
+            # -----------------------------------------------------------------
+            log.info(f"💾 Writing {len(jsonl_records)} GSM8K {self.model_name} samples to {self.jsonl_path}")
+            try:
+                with self.jsonl_path.open("w", encoding="utf-8") as f:
+                    for rec in jsonl_records:
+                        json.dump(rec, f, ensure_ascii=False)
+                        f.write("\n")
+                log.info(f"✅ JSONL file saved successfully: {self.jsonl_path}")
+                
+                # Log file size
+                file_size = self.jsonl_path.stat().st_size
+                file_size_mb = file_size / (1024 * 1024)
+                log.info(f"📁 File size: {file_size_mb:.2f} MB")
+                
+            except Exception as e:
+                log.error(f"❌ Failed to write JSONL file: {e}")
+                raise
+
+            # -----------------------------------------------------------------
+            # 4) Generate feature visualizations for Tiny Critic
+            # -----------------------------------------------------------------
+            log.info("📊 Generating feature visualizations for Tiny Critic training...")
+            self._generate_feature_visualizations(all_scorables)
+            log.info(f"✅ Feature visualizations saved to {self.vis_dir}")
+
+            # -----------------------------------------------------------------
+            # 5) Populate context for downstream agents (VisiCalcAgent)
+            # -----------------------------------------------------------------
+            # These scorables will be processed by ScorableProcessor, then VisiCalc.
+            context["scorables"] = all_scorables
+            context["scorables_targeted"] = good_scorables
+            context["scorables_baseline"] = bad_scorables
+
+            # Also fill the agent's own output_key with a summary
+            correct_pct = len(good_scorables) / len(all_scorables) * 100 if all_scorables else 0
+            high_quality_pct = self.quality_metrics["high_quality_reasoning"] / self.quality_metrics["total_examples"] * 100 if self.quality_metrics["total_examples"] else 0
+            
+            summary = {
+                "title": getattr(self, "name", "critic_data"),
+                "strategy": self.strategy,
+                "model_name": self.model_name,
+                "num_examples": len(all_scorables),
+                "num_correct": len(good_scorables),
+                "num_incorrect": len(bad_scorables),
+                "accuracy": correct_pct,
+                "high_quality_reasoning": high_quality_pct,
+                "jsonl_path": str(self.jsonl_path),
+                "vis_dir": str(self.vis_dir),
+                "quality_metrics": self.quality_metrics,
+                # A tiny peek at the first parsed record for debugging
+                "first_example": jsonl_records[0] if jsonl_records else None,
+            }
+            context[self.output_key] = summary
+
+            # -----------------------------------------------------------------
+            # 6) Log comprehensive success metrics
+            # -----------------------------------------------------------------
+            duration = (datetime.now() - start_time).total_seconds()
+            log.info("🎉 VisualIntrospectionAgent completed successfully!")
+            log.info("📊 COMPREHENSIVE QUALITY REPORT:")
+            log.info(f"   ⏱️  Duration: {duration:.2f}s")
+            log.info(f"   📈 Final Accuracy: {correct_pct:.1f}% ({len(good_scorables)}/{len(all_scorables)})")
+            log.info(f"   🔍 Parsing Success: {self.quality_metrics['successful_parsing']}/{self.quality_metrics['total_examples']} ({self.quality_metrics['successful_parsing']/self.quality_metrics['total_examples']*100:.1f}%)")
+            log.info(f"   💭 Reasoning Found: {self.quality_metrics['reasoning_found']}/{self.quality_metrics['total_examples']} ({self.quality_metrics['reasoning_found']/self.quality_metrics['total_examples']*100:.1f}%)")
+            log.info(f"   🎯 Final Answer Found: {self.quality_metrics['final_answer_found']}/{self.quality_metrics['total_examples']} ({self.quality_metrics['final_answer_found']/self.quality_metrics['total_examples']*100:.1f}%)")
+            log.info(f"   🌟 High-Quality Reasoning: {self.quality_metrics['high_quality_reasoning']}/{self.quality_metrics['total_examples']} ({high_quality_pct:.1f}%)")
+            log.info(f"   📊 Reasoning Quality Metrics:")
+            log.info(f"      - Avg. steps: {sum(s.meta.get('step_count', 0) for s in all_scorables) / len(all_scorables):.1f}")
+            log.info(f"      - Verification rate: {sum(1 for s in all_scorables if s.meta.get('verification_present')) / len(all_scorables):.1%}")
+            
+            # Log to agent logger
+            first_answer = (
+                jsonl_records[0]["parsed"]["final_answer"]
+                if jsonl_records and jsonl_records[0].get("parsed")
+                else ""
+            )
+            self.logger.log(
+                "AgentRanSuccessfully",
+                {
+                    "agent": getattr(self, "name", "critic_data"),
+                    "input_key": self.input_key,
+                    "output_key": self.output_key,
+                    "prompt_snippet": jsonl_records[0]["prompt"][:200]
+                    if jsonl_records
+                    else "",
+                    "response_snippet": first_answer[:300],
+                    "num_examples": len(all_scorables),
+                    "num_correct": len(good_scorables),
+                    "num_incorrect": len(bad_scorables),
+                    "accuracy": correct_pct,
+                    "high_quality_reasoning": high_quality_pct,
+                    "model_name": self.model_name,
+                    "jsonl_path": str(self.jsonl_path),
+                    "vis_dir": str(self.vis_dir),
+                    "duration_seconds": duration,
+                    "quality_metrics": self.quality_metrics,
+                },
+            )
+
+            return context
+
+        except Exception as e:
+            # Comprehensive error logging
+            duration = (datetime.now() - start_time).total_seconds()
+            err_msg = f"{type(e).__name__}: {e}"
+            log.error(f"❌ VisualIntrospectionAgent failed after {duration:.2f}s: {err_msg}")
+            
+            import traceback
+            log.error(f"🔍 Error traceback:\n{traceback.format_exc()}")
+            
+            self.logger.log(
+                "AgentFailed",
+                {
+                    "agent": getattr(self, "name", "critic_data"),
+                    "error": err_msg,
+                    "input_key": self.input_key,
+                    "output_key": self.output_key,
+                    "context_snapshot": {k: len(str(v)) for k, v in context.items()},
+                    "duration_seconds": duration,
+                    "quality_metrics": self.quality_metrics,
+                },
+            )
+            
+            # Ensure downstream agents don't crash
+            context[self.output_key] = {
+                "error": err_msg,
+                "status": "failed",
+                "model_name": self.model_name,
+                "jsonl_path": str(self.jsonl_path),
+                "vis_dir": str(self.vis_dir),
+                "duration_seconds": duration,
+                "quality_metrics": self.quality_metrics,
+            }
+            return context
+
+# ---------------------------------------------------------------------- #
+# Enhanced parsing and scorable building functions
+# ---------------------------------------------------------------------- #
+
+def extract_number(s: str) -> Optional[str]:
+    """
+    Extract the last integer or decimal number from a string.
+    
+    Returns:
+        The last numeric substring (e.g. '72', '-3.5') if found,
+        otherwise None.
+    """
+    log.info(f"🔢 Extracting number from: '{s}'")
+    
+    # Use a non-capturing group so we get the full match
+    nums = re.findall(r"-?\d+(?:\.\d+)?", s)
+    
+    if nums:
+        result = nums[-1]
+        log.info(f"✅ Extracted number: '{result}' from '{s}'")
+        return result
+    else:
+        log.info("❌ No number found in string")
+        return None
+
+
+def canonicalize_gsm8k_gold(answer: str) -> str:
+    """
+    GSM8K usually ends with '#### 72'.
+    We'll extract the last number after '####' if present,
+    otherwise fall back to the last number in the string.
+    If we can't find any number at all, we return the stripped tail.
+    """
+    log.info(f"🏷️  Canonicalizing gold answer: '{answer}'")
+    
+    if "####" in answer:
+        tail = answer.split("####")[-1]
+        log.info(f"📌 Using tail after '####': '{tail}'")
+    else:
+        tail = answer
+        log.info(f"📌 No '####' found, using full answer")
+
+    num = extract_number(tail)
+    result = num if num is not None else tail.strip()
+    
+    log.info(f"✅ Canonicalized gold answer: '{result}'")
+    return result
+
+
+def extract_pred_answer(text: str) -> Optional[str]:
+    """More robust numeric extractor for DeepSeek outputs"""
+    log.info(f"🎯 Extracting predicted answer from text (length: {len(text)} chars)")
+
+    # 1) Try various final answer patterns
+    patterns = [
+        r"Final\s*(?:numeric\s*)?answer\s*[:\-]?\s*([^\n]+)",
+        r"Answer\s*[:\-]?\s*([^\n]+)",
+        r"The\s*answer\s*is\s*([^\n]+)",
+        r"=+\s*([^\n]+)\s*=+"
+    ]
+    
+    for pattern in patterns:
+        m = re.search(pattern, text, re.IGNORECASE)
+        if m:
+            line = m.group(1).strip()
+            log.info(f"📌 Found answer pattern '{pattern}': '{line}'")
+            
+            # Extract just the number, ignoring units or explanations
+            num_match = re.search(r"([\-]?\d+(?:\.\d+)?)", line)
+            if num_match:
+                num = num_match.group(1)
+                log.info(f"✅ Extracted numeric value: '{num}'")
+                return num
+    
+    # 2) Fallback: last number in the whole text
+    num = extract_number(text)
+    if num is not None:
+        log.info(f"🔄 Extracted predicted answer via fallback: '{num}'")
+        return num
+
+    # 3) Nothing found
+    log.info("❌ No predicted answer found in text")
+    return None
+
+def build_scorable_for_example(
+    problem_id: str,
+    question: str,
+    gold_answer: str,
+    raw_text: str,
+    *,
+    parsed: Dict[str, Any],
+    source_label: str = "deepseek-math:7b",
+) -> Scorable:
+    """Build a Scorable with rich quality metrics for analysis"""
+    log.info(f"🏗️  Building scorable for {problem_id}")
+    
+    gold_canon = canonicalize_gsm8k_gold(gold_answer)
+    pred_canon = extract_pred_answer(raw_text)
+
+    is_correct = (pred_canon is not None and gold_canon == pred_canon)
+    
+    # Calculate quality metrics
+    reasoning_length = len(parsed["reasoning"].split()) if parsed["reasoning"] else 0
+    step_count = parsed["step_count"]
+    verification_present = parsed["verification_present"]
+    
+    # Reasoning quality score (0-10)
+    reasoning_quality = 0
+    if step_count >= 3:
+        reasoning_quality += 4
+    if verification_present:
+        reasoning_quality += 3
+    if reasoning_length > 50:
+        reasoning_quality += 3
+    
+    log.info(f"📊 Correctness check: pred='{pred_canon}', gold='{gold_canon}', correct={is_correct}")
+    log.info(f"📈 Quality metrics: length={reasoning_length}, steps={step_count}, verification={verification_present}, quality={reasoning_quality}")
+
+    text = (
+        f"Question:\n{question}\n\n"
+        f"Model response:\n{raw_text}\n"
+    )
+
+    meta: Dict[str, Any] = {
+        "task": "gsm8k",
+        "problem_id": problem_id,
+        "source": source_label,
+        "gold_answer_raw": gold_answer,
+        "gold_answer_canonical": gold_canon,
+        "pred_answer_raw": raw_text,
+        "pred_answer_canonical": pred_canon,
+        "is_correct": is_correct,
+        # Quality metrics for VisiCalc analysis
+        "reasoning_length": reasoning_length,
+        "step_count": step_count,
+        "verification_present": verification_present,
+        "reasoning_quality": reasoning_quality,
+        # VisiCalc features - will be populated by downstream agents
+        "stability": 0.0,
+        "middle_dip": 0.0,
+        "std_dev": 0.0,
+        "sparsity": 0.0,
+        "entropy": 0.0,
+        "trend": 0.0,
+        "mid_bad_ratio": 0.0,
+        "frontier_util": 0.0,
+    }
+
+    scorable = Scorable(
+        text=text,
+        id=problem_id,
+        meta=meta,
+    )
+    
+    log.info(f"✅ Scorable built: correct={is_correct}, text_length={len(text)}")
+    return scorable
+
+==================================================
+FILE: agents\visicalc.py
+==================================================
+
+# stephanie/components/critic/agents/visicalc.py
+from __future__ import annotations
+
+import csv
+import json
+import logging
+import math
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+import matplotlib.pyplot as plt
+import numpy as np
+
+from stephanie.agents.base_agent import BaseAgent
+from stephanie.scoring.metrics.metric_importance import (
+    compute_metric_importance, save_metric_importance_json)
+from stephanie.scoring.metrics.metric_mapping import MetricMapper
+from stephanie.scoring.metrics.scorable_processor import ScorableProcessor
+from stephanie.utils.json_sanitize import dumps_safe
+from stephanie.scoring.metrics.visicalc import VisiCalc, graph_quality_from_report
+
+log = logging.getLogger(__name__)
+
+
+class VisiCalcAgent(BaseAgent):
+    """
+    Maintenance / analysis agent that:
+
+      1. Uses ScorableProcessor to build canonical feature rows
+      2. Builds an (N, D) metrics matrix from those rows
+      3. Runs VisiCalc cohort analytics (VisiCalc.from_rows)
+      4. Logs + saves JSON/CSV reports for offline analysis
+      5. Optionally compares baseline vs targeted cohorts + TopLeft diff
+
+    ----------
+    Inputs
+    ----------
+    Context keys expected:
+
+      - context[self.input_key]              = List[Scorable | dict]
+          Base cohort of scorables to process.
+
+      - context["scorables_targeted"]        = Optional[List[dict]]
+      - context["scorables_baseline"]        = Optional[List[dict]]
+          Optional A/B cohorts. If both are present and non-empty:
+            * targeted  → "improved" / experimental cohort
+            * baseline  → comparison cohort
+
+    ----------
+    Outputs
+    ----------
+    Core outputs:
+
+      - context[self.output_key]             = List[dict]
+          Canonical feature rows from ScorableProcessor.
+
+      - context["visicalc_report"]           = dict (single-cohort case)
+      - context["visicalc_report_text"]      = pretty JSON string
+      - context["visicalc_metric_keys"]      = List[str]
+
+      - context["visicalc_targeted_report"]  = dict (A/B case)
+      - context["visicalc_baseline_report"]  = dict
+      - context["visicalc_targeted_text"]    = pretty JSON string
+      - context["visicalc_baseline_text"]    = pretty JSON string
+      - context["visicalc_target_quality"]   = float
+      - context["visicalc_baseline_quality"] = float
+      - context["visicalc_ab_diff"]          = dict (VisiCalc.diff result)
+      - context["visicalc_ab_topleft"]       = dict (TopLeft comparison)
+
+      - Optional:
+        - context["visicalc_features"]       = List[float]   # single-cohort episode features
+        - context["visicalc_feature_names"]  = List[str]
+
+    ----------
+    Config schema (Hydra-style)
+    ----------
+    Top-level agent config:
+
+      visicalc_agent:
+        _target_: stephanie.agents.maintenance.visicalc.VisiCalcAgent
+
+        # BaseAgent wiring
+        input_key: scorables            # where to read scorables from context
+        output_key: scorable_features   # where to write canonical rows
+
+        # Progress / role filtering
+        progress: true                  # enable/disable progress logging
+        filter_role: false              # if true, restrict scorables by role
+        scorable_role: assistant        # role to keep when filter_role=true
+
+        # Scoring / batching
+        batch_size: 64                  # ScorableProcessor batch size
+        attach_scores: false            # whether ScorableProcessor attaches scores
+        scoring_dims: null              # optional: limit scoring to these dimensions
+
+        # Concurrency & progress bar behavior
+        max_concurrency: 8
+        progress_log_every: 25
+        progress_leave: true
+        progress_position: 0
+
+        # ScorableProcessor config (passed through unmodified)
+        processor:
+          offload_mode: inline          # or "rpc"/"async" etc.
+          # ... other ScorableProcessor options ...
+
+        # VisiCalc-specific options
+        visicalc:
+          enabled: true                 # turn VisiCalc on/off
+
+          # Optional: restrict to these metric keys (subset of metrics_columns)
+          # If null, use whatever metrics_columns ScorableProcessor emits.
+          metric_keys: null             # e.g. ["HRM.aggregate", "sicql.clarity.score"]
+
+          # Metric to treat as the "frontier" dimension
+          # If not present in metrics_columns, falls back to the first metric.
+          frontier_metric: "HRM.aggregate"
+
+          # How many row bands to split the episode into
+          row_region_splits: 4
+
+          # Output locations (per run_id)
+          out_dir: "runs/visicalc"      # final path is out_dir / run_id
+
+          # These are relative to out_dir / run_id unless absolute paths are given
+          json_file: "visicalc_report.json"
+          csv_file: "visicalc_report.csv"
+
+    Notes:
+      - `processor` is forwarded directly into `ScorableProcessor`; it controls
+        how scorables are annotated, scored, and offloaded to the bus.
+      - `visicalc.metric_keys` is not required; by default the agent uses whatever
+        `metrics_columns` the first row exposes.
+      - `frontier_metric` should usually be a high-level quality channel like
+        "HRM.aggregate" or "sicql.overall.score".
+    """
+
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
+
+        # Behavior knobs (sane defaults)
+        self.progress_enabled: bool = bool(cfg.get("progress", True))
+        self.filter_role: bool = bool(cfg.get("filter_role", False))
+        self.scorable_role: str = cfg.get("scorable_role", "assistant")
+
+        # Batch + scoring options
+        self.batch_size: int = int(cfg.get("batch_size", 64))
+        self.attach_scores: bool = bool(cfg.get("attach_scores", False))
+        self.scoring_dims: Optional[List[str]] = cfg.get("scoring_dims")
+
+        # progress / concurrency knobs
+        self.max_concurrency: int = int(cfg.get("max_concurrency", 8))
+        self.progress_log_every: int = int(cfg.get("progress_log_every", 25))
+        self.progress_leave: bool = bool(cfg.get("progress_leave", True))
+        self.progress_position: int = int(cfg.get("progress_position", 0))
+
+        # -----------------------------
+        # VisiCalc cohort analysis knobs
+        # -----------------------------
+        vis_cfg = cfg.get("visicalc", {}) or cfg
+        self.visicalc_enabled: bool = bool(vis_cfg.get("enabled", True))
+
+        # If None, we’ll auto-infer numeric columns from the first row
+        self.visicalc_metric_keys: Optional[List[str]] = vis_cfg.get("metric_keys")
+
+        # Which metric to treat as the "frontier" (can be None → first column)             "sicql.clarity.score",
+
+        self.visicalc_frontier_metric: Optional[str] = vis_cfg.get(
+            "frontier_metric",
+            "HRM.aggregate",
+        )
+        self.visicalc_frontier_low: float = float(vis_cfg.get("frontier_low", 0.25))
+        self.visicalc_frontier_high: float = float(vis_cfg.get("frontier_high", 0.75))
+
+        # How many row regions (coarse bands) to split into
+        self.visicalc_row_region_splits: int = int(
+            vis_cfg.get("row_region_splits", 4)
+        )
+
+        # Output directory + file names
+        self.out_dir: Path = Path(vis_cfg.get("out_dir", "runs/visicalc")) / self.run_id
+        self.out_dir.mkdir(parents=True, exist_ok=True)
+
+        # These can be overridden via config if needed
+        self.visicalc_json_file: Path = Path(
+            vis_cfg.get("json_file", self.out_dir / "visicalc_report.json")
+        ) 
+        self.visicalc_csv_file: Path = Path(
+            vis_cfg.get("csv_file", self.out_dir / "visicalc_report.csv")
+        )
+
+        self.scorable_processor: ScorableProcessor = ScorableProcessor(
+            self.cfg.get("processor", {"offload_mode": "inline"}),
+            memory,
+            container,
+            logger,
+        )
+        self.metric_mapper = MetricMapper.from_config(vis_cfg)
+        self.vpm_png_cfg: Dict[str, Any] = vis_cfg.get("vpm_png", {}) or {}
+        self.vpm_png_enabled: bool = bool(self.vpm_png_cfg.get("enabled", True))
+        self.vpm_png_mode: str = str(self.vpm_png_cfg.get("mode", "L"))
+        self.vpm_png_per_metric: bool = bool(
+            self.vpm_png_cfg.get("per_metric_normalize", True)
+        )
+        self.vpm_png_target_name: str = str(
+            self.vpm_png_cfg.get("target_file", "visicalc_targeted_vpm.png")
+        )
+        self.vpm_png_baseline_name: str = str(
+            self.vpm_png_cfg.get("baseline_file", "visicalc_baseline_vpm.png")
+        )
+        self.visicalc_top_k_metrics = vis_cfg.get("top_k_metrics", 150)  # e.g. 50
+        self.visicalc_min_effect = float(vis_cfg.get("min_effect", 0.1))  # e.g. 0.25
+
+        # --- Importance-based metric subset (online + offline) ---
+        imp_cfg = vis_cfg.get("importance_filter") or {}
+
+        # 1) Per-run *save* location for metric_importance.json
+        #    (used by VisiCalc runs, and later by OfflineImportanceReducer)
+        self.importance_save_path: Path = self.out_dir / "metric_importance.json"
+
+        # 2) Where to *load* important metric names from for filtering
+        self.importance_enabled: bool = bool(imp_cfg.get("enabled", False))
+
+        # If config specifies a path, we use that (e.g. "config/core_metrics.json").
+        # Otherwise, we default to this run's metric_importance.json.
+        importance_path_cfg = imp_cfg.get("path")
+        if importance_path_cfg:
+            self.importance_load_path: Optional[Path] = Path(str(importance_path_cfg))
+        else:
+            self.importance_load_path: Optional[Path] = self.importance_save_path
+
+        # 0 / None → no limit, use all metrics from the file that are present
+        self.importance_top_k: Optional[int] = imp_cfg.get("top_k")
+        if self.importance_top_k is not None:
+            try:
+                self.importance_top_k = int(self.importance_top_k)
+                if self.importance_top_k <= 0:
+                    self.importance_top_k = None
+            except Exception:
+                self.importance_top_k = None
+
+        # cache for loaded names
+        self._important_metric_names: Optional[List[str]] = None
+
+    async def run(self, context: dict) -> dict:
+        """
+        Expects:
+          - context[self.input_key]              = List[dict|Scorable]
+          - optional: context['scorables_targeted'], context['scorables_baseline']
+
+        Produces:
+          - context[self.output_key]                   = List[dict] (canonical rows)
+          - context['visicalc_*'] entries with cohort reports, qualities and deltas
+          - optional: context['metric_importance'], context['visicalc_metric_importance']
+        """
+        # ------------------------------------------------------------------
+        # 0) Load scorables and apply optional role filter
+        # ------------------------------------------------------------------
+        scorables_all = list(context.get(self.input_key) or [])
+
+        if self.filter_role:
+            filtered = []
+            for s in scorables_all:
+                role = None
+                if isinstance(s, dict):
+                    role = s.get("role")
+                else:
+                    role = getattr(s, "role", None)
+                if role == self.scorable_role:
+                    filtered.append(s)
+
+            log.info(
+                "VisiCalcAgent: filter_role=True scorable_role=%r → kept %d/%d scorables",
+                self.scorable_role,
+                len(filtered),
+                len(scorables_all),
+            )
+            scorables_all = filtered
+
+        # ------------------------------------------------------------------
+        # 1) Canonical feature rows for *all* scorables
+        # ------------------------------------------------------------------
+        rows = await self.scorable_processor.process_many(
+            scorables_all,
+            context=context,
+        )
+        context[self.output_key] = rows
+
+        if not self.visicalc_enabled or not rows:
+            log.warning(
+                "VisiCalcAgent: skipping VisiCalc analysis (enabled=%s, rows=%d)",
+                self.visicalc_enabled,
+                len(rows),
+            )
+            return context
+
+        # Build id → row map once (all scorables)
+        id_to_row = {
+            str(r.get("scorable_id")): r
+            for r in rows
+            if r.get("scorable_id") is not None
+        }
+
+        # Helper to slice rows by a cohort of scorables
+        def _rows_for_cohort(scorables: List[Any]) -> List[dict]:
+            out: List[dict] = []
+            for s in scorables:
+                # Robustly get an id from either dict or Scorable
+                if isinstance(s, dict):
+                    sid = s.get("scorable_id") or s.get("id")
+                else:
+                    sid = getattr(s, "scorable_id", None) or getattr(s, "id", None)
+
+                if sid is None:
+                    continue
+
+                row = id_to_row.get(str(sid))
+                if row is not None:
+                    out.append(row)
+            return out
+
+        scorables_targeted = list(context.get("scorables_targeted") or [])
+        scorables_baseline = list(context.get("scorables_baseline") or [])
+
+        try:
+            # ------------------------------------------------------------------
+            # Case A: A/B cohorts present → targeted vs baseline comparison
+            # ------------------------------------------------------------------
+            vc_tgt = None
+            vc_base = None
+            vpm_tgt = None
+            vpm_base = None
+
+            if scorables_targeted and scorables_baseline:
+                rows_tgt = _rows_for_cohort(scorables_targeted)
+                rows_base = _rows_for_cohort(scorables_baseline)
+
+                # ---- Targeted cohort ----
+                if rows_tgt:
+                    vc_tgt, metric_keys_tgt = self._compute_visicalc_for_rows(
+                        rows_tgt,
+                        cohort_label="targeted",
+                    )
+                    context["visicalc_targeted_report"] = vc_tgt.report.to_dict()
+                    context["visicalc_targeted_metric_keys"] = metric_keys_tgt
+
+                    pretty_tgt = vc_tgt.pretty()
+                    context["visicalc_targeted_text"] = pretty_tgt
+                    log.info("VisiCalc TARGETED cohort:\n%s", pretty_tgt)
+
+                    # Save reports
+                    vc_tgt.report.save_json(self.out_dir / "visicalc_targeted.json")
+                    vc_tgt.report.save_csv(self.out_dir / "visicalc_targeted.csv")
+
+                    # Scalar quality for summary dashboards
+                    target_q = graph_quality_from_report(vc_tgt.report)
+                    log.info("VisiCalc TARGETED quality=%.4f", target_q)
+                    context["visicalc_target_quality"] = target_q
+
+                    vpm_tgt = vc_tgt.scores
+
+                # ---- Baseline cohort ----
+                if rows_base:
+                    vc_base, metric_keys_base = self._compute_visicalc_for_rows(
+                        rows_base,
+                        cohort_label="baseline",
+                    )
+                    context["visicalc_baseline_report"] = vc_base.report.to_dict()
+                    context["visicalc_baseline_metric_keys"] = metric_keys_base
+
+                    pretty_base = vc_base.pretty()
+                    context["visicalc_baseline_text"] = pretty_base
+                    log.info("VisiCalc BASELINE cohort:\n%s", pretty_base)
+
+                    vc_base.report.save_json(self.out_dir / "visicalc_baseline.json")
+                    vc_base.report.save_csv(self.out_dir / "visicalc_baseline.csv")
+
+                    base_q = graph_quality_from_report(vc_base.report)
+                    log.info("VisiCalc BASELINE quality=%.4f", base_q)
+                    context["visicalc_baseline_quality"] = base_q
+
+                    vpm_base = vc_base.scores
+
+                # ---- A/B comparison, visuals + importance ----
+                if (
+                    rows_tgt
+                    and rows_base
+                    and vpm_tgt is not None
+                    and vpm_base is not None
+                ):
+                    # 1) VisiCalc's own diff (frontier deltas)
+                    diff = vc_tgt.diff(vc_base)
+                    context["visicalc_ab_diff"] = diff
+                    log.info(dumps_safe(diff, indent=2))
+
+                    # 2) TopLeft visual diff metrics (matrix-level gain/loss)
+                    topleft_res = self.compare_vpms_with_topleft(
+                        vpm_base,
+                        vpm_tgt,
+                    )
+                    log.info(
+                        "VisiCalc A/B TopLeft diff: gain=%.4f loss=%.4f improvement_ratio=%.4f",
+                        topleft_res["gain"],
+                        topleft_res["loss"],
+                        topleft_res["improvement_ratio"],
+                    )
+                    context["visicalc_ab_topleft"] = topleft_res
+
+                    log.info(
+                        "VisiCalc A/B delta: frontier_metric=%r "
+                        "global_mean_delta=%.4f frontier_frac_delta=%.4f",
+                        diff["frontier_metric"],
+                        diff["global_delta"]["mean"],
+                        diff["global_delta"]["frontier_frac"],
+                    )
+
+                    # 2A-1) Save full matrices as CSV
+                    self._save_vpm_matrix_csv(vpm_tgt,  list(vc_tgt.metric_names),  list(vc_tgt.item_ids),  self.out_dir / "visicalc_targeted_matrix.csv")
+                    self._save_vpm_matrix_csv(vpm_base, list(vc_base.metric_names), list(vc_base.item_ids), self.out_dir / "visicalc_baseline_matrix.csv")
+
+                    # 2A-2) Save combined NPZ for tiny_critic trainer (labels inside)
+                    # NOTE: metric_names must match (you already ensure same D before importance/diff)
+                    self._save_ab_npz_dataset(vpm_base, vpm_tgt, list(vc_tgt.metric_names), self.out_dir / "visicalc_ab_dataset.npz")
+
+                    # 3) VPM PNGs (full matrices)
+                    if self.vpm_png_enabled:
+                        try:
+                            if vc_tgt is not None:
+                                tgt_png = self.out_dir / self.vpm_png_target_name
+                                vc_tgt.save_vpm_png(
+                                    tgt_png,
+                                    per_metric_normalize=self.vpm_png_per_metric,
+                                    mode=self.vpm_png_mode,
+                                )
+
+                            if vc_base is not None:
+                                base_png = self.out_dir / self.vpm_png_baseline_name
+                                vc_base.save_vpm_png(
+                                    base_png,
+                                    per_metric_normalize=self.vpm_png_per_metric,
+                                    mode=self.vpm_png_mode,
+                                )
+
+                            log.info(
+                                "VisiCalcAgent: saved VPM PNGs → target=%s baseline=%s",
+                                tgt_png,
+                                base_png,
+                            )
+                        except Exception as e:
+                            log.warning(
+                                "VisiCalcAgent: failed to save VPM PNGs: %s",
+                                e,
+                                exc_info=True,
+                            )
+
+                    # 4) Top-left reordered VPM heatmaps (visual proof)
+                    try:
+                        self._render_ab_topleft_heatmaps(
+                            vpm_target=vpm_tgt,
+                            vpm_baseline=vpm_base,
+                            out_dir=self.out_dir,
+                        )
+                    except Exception:
+                        log.exception("VisiCalc: failed to render TopLeft VPM images")
+
+                    # 5) GAP-style metric importance (writes metric_importance.json)
+                    if vc_tgt.scores.shape[1] == vc_base.scores.shape[1]:
+                        importance = self._compute_and_save_metric_importance(
+                            vc_tgt,
+                            vc_base,
+                        )
+                        if importance is not None:
+                            context["metric_importance"] = [
+                                m.to_dict() for m in importance
+                            ]
+                    else:
+                        log.warning(
+                            "VisiCalcAgent: cannot compute metric importance: "
+                            "target.D=%d != baseline.D=%d",
+                            vc_tgt.scores.shape[1],
+                            vc_base.scores.shape[1],
+                        )
+
+                    # 6) Detailed separability stats (Cohen's d, entropy, etc.)
+                    try:
+                        metric_importance_report = self._compute_metric_separability(
+                            vpm_base=vc_base.scores,
+                            vpm_tgt=vc_tgt.scores,
+                            metric_names=list(vc_tgt.metric_names),
+                        )
+                        context["visicalc_metric_importance"] = metric_importance_report
+
+                        report_path = self.out_dir / "visicalc_metric_importance.json"
+                        with report_path.open("w", encoding="utf-8") as f:
+                            f.write(dumps_safe(metric_importance_report, indent=2))
+
+                        log.info(
+                            "VisiCalc: wrote metric separability report → %s",
+                            report_path,
+                        )
+                    except Exception:
+                        log.exception(
+                            "VisiCalcAgent: _compute_metric_separability failed"
+                        )
+
+
+            # ------------------------------------------------------------------
+            # Case B: single cohort only (no A/B comparison)
+            # ------------------------------------------------------------------
+            else:
+                vc, used_metric_keys = self._compute_visicalc_for_rows(
+                    rows,
+                    cohort_label="cohort",
+                )
+                context["visicalc_report"] = vc.report.to_dict()
+                context["visicalc_metric_keys"] = used_metric_keys
+
+                pretty = vc.pretty()
+                context["visicalc_report_text"] = pretty
+                log.info("VisiCalc cohort summary:\n%s", pretty)
+
+                vc.report.save_json(self.out_dir / "visicalc_report.json")
+                vc.report.save_csv(self.out_dir / "visicalc_report.csv")
+
+                # Optional: expose episode features for downstream analysis
+                context["visicalc_features"] = vc.features.tolist()
+                context["visicalc_feature_names"] = vc.feature_names
+
+        except Exception:
+            log.exception("VisiCalc cohort analysis failed")
+
+        return context
+
+    def _compute_visicalc_for_rows(
+        self,
+        rows: List[dict],
+        cohort_label: str,
+    ):
+        """
+        Build a VisiCalc instance from canonical feature rows.
+
+        Expected row schema (from ScorableProcessor):
+          - 'metrics_columns': List[str]
+          - 'metrics_values':  List[float]
+
+        Returns:
+            (VisiCalc, used_metric_keys)
+        """
+        if not rows:
+            raise ValueError("VisiCalc: no rows to analyze")
+
+        # 1) Matrix + metric names via MetricMapper / visicalc_metric_keys
+        vpm, metric_names, item_ids = self._build_vpm_and_metric_names(rows)
+
+        # 2) Optionally filter by importance
+        vpm, metric_names = self._maybe_filter_by_importance(vpm, metric_names)
+
+        # 3) Choose frontier metric
+        frontier_metric = self.visicalc_frontier_metric
+        if frontier_metric and frontier_metric not in metric_names:
+            log.warning(
+                "VisiCalc: requested frontier_metric=%r not in metric_names; "
+                "falling back to first metric=%r",
+                frontier_metric,
+                metric_names[0],
+            )
+            frontier_metric = None
+
+        if not frontier_metric:
+            frontier_metric = metric_names[0]
+
+        # 3) Build VisiCalc episode + report
+        episode_id = f"{self.name}:{cohort_label}"
+
+        vc = VisiCalc.from_matrix(
+            episode_id=episode_id,
+            scores=vpm,
+            metric_names=metric_names,
+            item_ids=item_ids,
+            frontier_metric=frontier_metric,
+            row_region_splits=self.visicalc_row_region_splits,
+            frontier_low=self.visicalc_frontier_low,
+            frontier_high=self.visicalc_frontier_high,
+            meta={"cohort": cohort_label},
+        )
+
+        log.info(
+            "VisiCalc: built episode=%r frontier_metric=%r matrix_shape=%s "
+            "(metrics=%d, rows=%d)",
+            cohort_label,
+            vc.frontier_metric,
+            vc.scores.shape,
+            len(vc.metric_names),
+            vc.scores.shape[0],
+        )
+
+        return vc, metric_names
+ 
+    def compare_vpms_with_topleft(
+        self,
+        vpm_base: np.ndarray,
+        vpm_tgt: np.ndarray,
+        *,
+        metric_mode: str = "luminance",
+        iterations: int = 5,
+        push_corner: str = "tl",
+    ) -> dict:
+        """
+        Run TopLeft on baseline and targeted VPMs with identical config,
+        then compute a simple visual-diff metric.
+        """
+        from zeromodel.pipeline.organizer.top_left import TopLeft
+        stage = TopLeft(
+            metric_mode=metric_mode,
+            iterations=iterations,
+            push_corner=push_corner,
+            monotone_push=True,
+            stretch=True,
+        )
+
+        # 1) Canonicalize both VPMs
+        tl_base, meta_base = stage.process(vpm_base)
+        tl_tgt, meta_tgt = stage.process(vpm_tgt)
+
+        # 2) Ensure same shape / type
+        tl_base = tl_base.astype(np.float32)
+        tl_tgt = tl_tgt.astype(np.float32)
+        assert tl_base.shape == tl_tgt.shape, "Base/Target shapes must match after TopLeft"
+
+        # 3) Visual difference: positive = target > base
+        diff = tl_tgt - tl_base
+
+        # 4) Aggregate into simple scores
+        gain = float(np.sum(np.clip(diff, 0.0, None)))           # total positive mass
+        loss = float(np.sum(np.clip(-diff, 0.0, None)))          # total negative mass
+        total = gain + loss + 1e-8
+
+        # fraction of mass that's an improvement (0.0–1.0)
+        improvement_ratio = gain / total
+
+        return {
+            "topleft_base": tl_base,
+            "topleft_tgt": tl_tgt,
+            "diff": diff,
+            "gain": gain,
+            "loss": loss,
+            "improvement_ratio": improvement_ratio,
+            "meta_base": meta_base,
+            "meta_tgt": meta_tgt,
+        }
+
+    def _build_vpm_and_metric_names(
+        self,
+        rows: List[dict],
+    ) -> tuple[np.ndarray, List[str], List[str]]:
+        """
+        Build the score matrix (VPM) + metric names + item_ids from canonical rows.
+
+        Expected row schema (from ScorableProcessor):
+          - 'metrics_columns': List[str]
+          - 'metrics_values':  List[float]
+          - 'scorable_id':     str
+        """
+        if not rows:
+            raise ValueError("VisiCalcAgent._build_vpm_and_metric_names: no rows")
+
+        # 0) Collect the union of metric columns across all rows
+        all_cols: List[str] = []
+        for r in rows:
+            cols = r.get("metrics_columns") or []
+            for c in cols:
+                if c not in all_cols:
+                    all_cols.append(c)
+
+        log.debug(
+            "VisiCalcAgent._build_vpm_and_metric_names: discovered %d raw metrics: %s",
+            len(all_cols),
+            all_cols[:30],
+        )
+
+        # 1) Let MetricMapper do include/exclude and basic ordering
+        base_metric_names = self.metric_mapper.select_columns(all_cols)
+        if not base_metric_names:
+            log.warning(
+                "VisiCalcAgent: MetricMapper returned no columns; "
+                "falling back to all_cols"
+            )
+            base_metric_names = all_cols
+
+        log.debug(
+            "VisiCalcAgent._build_vpm_and_metric_names: after MetricMapper → %d metrics: %s",
+            len(base_metric_names),
+            base_metric_names[:30],
+        )
+
+        # 2) Apply visicalc_metric_keys as *ordering hints*, not a hard subset
+        if self.visicalc_metric_keys:
+            preferred = [m for m in self.visicalc_metric_keys if m in base_metric_names]
+            rest = [m for m in base_metric_names if m not in preferred]
+            metric_names = preferred + rest
+            log.debug(
+                "VisiCalcAgent._build_vpm_and_metric_names: visicalc_metric_keys=%r "
+                "→ preferred=%r, total=%d",
+                self.visicalc_metric_keys,
+                preferred,
+                len(metric_names),
+            )
+        else:
+            metric_names = base_metric_names
+
+        # 3) Build the matrix rows
+        matrix_rows: List[List[float]] = []
+        item_ids: List[str] = []
+        skipped = 0
+
+        for r in rows:
+            cols = r.get("metrics_columns") or []
+            vals = r.get("metrics_values") or []
+            if not cols or not vals:
+                skipped += 1
+                continue
+
+            mapping = dict(zip(cols, vals))
+            vec = [float(mapping.get(name, 0.0)) for name in metric_names]
+            matrix_rows.append(vec)
+            item_ids.append(str(r.get("scorable_id", "unknown")))
+
+        if not matrix_rows:
+            raise ValueError("VisiCalcAgent: no rows with metrics_values after mapping")
+
+        vpm = np.asarray(matrix_rows, dtype=np.float32)
+
+        log.info(
+            "VisiCalcAgent: built VPM matrix shape=%s with %d metrics (skipped=%d rows)",
+            vpm.shape,
+            len(metric_names),
+            skipped,
+        )
+
+        return vpm, metric_names, item_ids
+
+
+    # ------------------------------------------------------------------
+    #  Top-left image helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _normalize01(arr: np.ndarray) -> np.ndarray:
+        """
+        Safe [0, 1] normalization for visualization.
+        Flat columns become 0.5 so they still show up neutrally.
+        """
+        arr = np.asarray(arr, dtype=np.float32)
+        if arr.size == 0:
+            return arr
+
+        mn = float(arr.min())
+        mx = float(arr.max())
+        if mx <= mn:
+            return np.full_like(arr, 0.5, dtype=np.float32)
+        return (arr - mn) / (mx - mn)
+
+    @staticmethod
+    def _top_left_order_pair(
+        tgt: np.ndarray,
+        base: np.ndarray,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """
+        Compute a *shared* row/col ordering that pushes the *difference*
+        (targeted - baseline) into the top-left.
+
+        Returns:
+            (row_order, col_order) as index arrays.
+        """
+        tgt = np.asarray(tgt, dtype=np.float32)
+        base = np.asarray(base, dtype=np.float32)
+        if tgt.shape != base.shape:
+            raise ValueError(
+                f"_top_left_order_pair: shape mismatch tgt={tgt.shape}, base={base.shape}"
+            )
+
+        diff = tgt - base  # positive = where targeted beats baseline
+
+        # Aggregate per-row / per-column "advantage"
+        row_scores = diff.sum(axis=1)  # [N]
+        col_scores = diff.sum(axis=0)  # [D]
+
+        # Larger advantage → earlier (closer to top-left)
+        row_order = np.argsort(-row_scores)
+        col_order = np.argsort(-col_scores)
+
+        return row_order, col_order
+
+    def _save_vpm_heatmap(
+        self,
+        matrix: np.ndarray,
+        out_path: Path,
+        title: str,
+        *,
+        vmin: float = 0.0,
+        vmax: float = 1.0,
+        cmap: str = "magma",
+    ) -> None:
+        """
+        Generic utility: save a VPM-like matrix as a heatmap PNG.
+        """
+        m = self._normalize01(matrix)
+
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+
+        fig, ax = plt.subplots(figsize=(8, 6))
+        im = ax.imshow(m, aspect="auto", cmap=cmap, vmin=vmin, vmax=vmax)
+        ax.set_title(title)
+        ax.set_xlabel("metric index")
+        ax.set_ylabel("item index")
+        fig.colorbar(im, ax=ax, fraction=0.035, pad=0.04)
+        fig.tight_layout()
+        fig.savefig(out_path.as_posix(), dpi=160)
+        plt.close(fig)
+
+        log.info("VisiCalc: wrote VPM heatmap → %s", out_path)
+
+    def _save_topleft_pair(
+        self,
+        vpm_tgt: np.ndarray,
+        vpm_base: np.ndarray,
+        run_dir: Path,
+        *,
+        prefix: str = "visicalc",
+    ) -> None:
+        """
+        Given *normalized* VPM matrices for targeted and baseline cohorts,
+        produce three images:
+
+          - {prefix}_targeted_topleft.png
+          - {prefix}_baseline_topleft.png
+          - {prefix}_delta_topleft.png
+
+        All three use the *same* row/column ordering derived from
+        (targeted - baseline), so the top-left is literally:
+           'where targeted wins hardest over baseline'.
+        """
+        if vpm_tgt.size == 0 or vpm_base.size == 0:
+            log.warning("VisiCalc: _save_topleft_pair called with empty matrices; skipping")
+            return
+
+        # 0) Normalize each matrix for fair visual comparison
+        tgt_norm = self._normalize01(vpm_tgt)
+        base_norm = self._normalize01(vpm_base)
+
+        if tgt_norm.shape != base_norm.shape:
+            raise ValueError(
+                f"_save_topleft_pair: shape mismatch tgt={tgt_norm.shape}, base={base_norm.shape}"
+            )
+
+        # 1) Shared top-left ordering based on (tgt - base)
+        row_order, col_order = self._top_left_order_pair(tgt_norm, base_norm)
+
+        tgt_tl = tgt_norm[row_order][:, col_order]
+        base_tl = base_norm[row_order][:, col_order]
+        diff_tl = tgt_tl - base_tl  # [-1, 1] ish after normalization
+
+        # 2) Optional numeric summary: how much mass is in the top-left patch?
+        h, w = tgt_tl.shape
+        top_rows = max(1, int(0.25 * h))
+        left_cols = max(1, int(0.25 * w))
+
+        tgt_mass = float(tgt_tl[:top_rows, :left_cols].sum())
+        base_mass = float(base_tl[:top_rows, :left_cols].sum())
+        log.info(
+            "VisiCalc TopLeft mass: targeted=%.4f baseline=%.4f delta=%.4f (rows=%d, cols=%d)",
+            tgt_mass,
+            base_mass,
+            tgt_mass - base_mass,
+            top_rows,
+            left_cols,
+        )
+
+        # 3) Save images
+        tgt_path = run_dir / f"{prefix}_targeted_topleft.png"
+        base_path = run_dir / f"{prefix}_baseline_topleft.png"
+        delta_path = run_dir / f"{prefix}_delta_topleft.png"
+
+        self._save_vpm_heatmap(
+            tgt_tl,
+            tgt_path,
+            title="Targeted (TopLeft-ordered)",
+            vmin=0.0,
+            vmax=1.0,
+            cmap="magma",
+        )
+        self._save_vpm_heatmap(
+            base_tl,
+            base_path,
+            title="Baseline (TopLeft-ordered)",
+            vmin=0.0,
+            vmax=1.0,
+            cmap="magma",
+        )
+
+        # Δ image with diverging colormap
+        # Note: we re-normalize to [-1, 1]-ish by clipping.
+        diff_clip = np.clip(diff_tl, -1.0, 1.0)
+        self._save_vpm_heatmap(
+            diff_clip,
+            delta_path,
+            title="Targeted − Baseline (TopLeft-ordered)",
+            vmin=-1.0,
+            vmax=1.0,
+            cmap="seismic",
+        )
+
+
+    def _render_ab_topleft_heatmaps(
+        self,
+        vpm_target: np.ndarray,
+        vpm_baseline: np.ndarray,
+        out_dir: Path,
+        *,
+        clip_percent: float = 0.01,
+        corner_frac: float = 0.35,
+    ) -> dict:
+        """
+        Save three heatmaps in `out_dir`:
+
+          - visicalc_baseline_topleft.png
+          - visicalc_targeted_topleft.png
+          - visicalc_delta_topleft.png
+
+        using a shared TopLeft ordering and shared intensity scaling.
+
+        Returns a small dict with scalar stats (gain/loss/etc.).
+        """
+        out_dir = Path(out_dir)
+        out_dir.mkdir(parents=True, exist_ok=True)
+
+        T = np.asarray(vpm_target, dtype=np.float32)
+        B = np.asarray(vpm_baseline, dtype=np.float32)
+
+        # 1) Align shapes (rows) — we already have same cols
+        n_rows = min(T.shape[0], B.shape[0])
+        T = T[:n_rows]
+        B = B[:n_rows]
+
+        n_rows, n_cols = T.shape
+
+        # 2) Shared scaling across BOTH matrices (this is the big fix)
+        stacked = np.concatenate([T.reshape(-1), B.reshape(-1)])
+        if stacked.size == 0:
+            log.warning("VisiCalc TopLeft: empty matrices, skipping render")
+            return {"status": "empty"}
+
+        # Robust global min/max with optional percentile clipping
+        lo, hi = np.quantile(stacked, [clip_percent, 1.0 - clip_percent])
+        if not math.isfinite(lo) or not math.isfinite(hi) or hi <= lo:
+            lo = float(stacked.min())
+            hi = float(stacked.max())
+        scale = max(hi - lo, 1e-8)
+
+        Tn = np.clip((T - lo) / scale, 0.0, 1.0)
+        Bn = np.clip((B - lo) / scale, 0.0, 1.0)
+
+        # 3) TopLeft ordering based on **combined** energy
+        row_score = Tn.sum(axis=1) + Bn.sum(axis=1)
+        col_score = Tn.sum(axis=0) + Bn.sum(axis=0)
+
+        row_order = np.argsort(row_score)[::-1]   # high → top
+        col_order = np.argsort(col_score)[::-1]   # high → left
+
+        T_sorted = Tn[row_order][:, col_order]
+        B_sorted = Bn[row_order][:, col_order]
+
+        # 4) Define "TopLeft" window for gain/loss stats
+        tl_rows = max(1, int(n_rows * corner_frac))
+        tl_cols = max(1, int(n_cols * corner_frac))
+
+        T_tl = T_sorted[:tl_rows, :tl_cols]
+        B_tl = B_sorted[:tl_rows, :tl_cols]
+
+        delta_tl = T_tl - B_tl
+        gain = float(np.maximum(delta_tl, 0.0).sum())
+        loss = float(np.maximum(-delta_tl, 0.0).sum())
+        total = gain + loss + 1e-8
+        improvement_ratio = gain / total
+
+        # 5) Full delta matrix (IMPORTANT: keep sign, no extra [0,1] renorm)
+        delta = T_sorted - B_sorted
+        max_abs = float(np.max(np.abs(delta))) or 1e-6
+        delta_vis = np.clip(delta, -max_abs, max_abs)
+
+        # 6) Baseline / Target heatmaps (shared [0,1] scale)
+        plt.figure(figsize=(10, 6))
+        plt.imshow(B_sorted, cmap="magma", aspect="auto", vmin=0.0, vmax=1.0)
+        plt.colorbar()
+        plt.title("Baseline (TopLeft-ordered)")
+        plt.xlabel("metric index")
+        plt.ylabel("item index")
+        baseline_png = out_dir / "visicalc_baseline_topleft.png"
+        plt.tight_layout()
+        plt.savefig(baseline_png, dpi=160)
+        plt.close()
+
+        plt.figure(figsize=(10, 6))
+        plt.imshow(T_sorted, cmap="magma", aspect="auto", vmin=0.0, vmax=1.0)
+        plt.colorbar()
+        plt.title("Targeted (TopLeft-ordered)")
+        plt.xlabel("metric index")
+        plt.ylabel("item index")
+        targeted_png = out_dir / "visicalc_targeted_topleft.png"
+        plt.tight_layout()
+        plt.savefig(targeted_png, dpi=160)
+        plt.close()
+
+        # 7) Delta heatmap with symmetric color range (no more all-red slab)
+        plt.figure(figsize=(10, 6))
+        plt.imshow(
+            delta_vis,
+            cmap="seismic",
+            aspect="auto",
+            vmin=-max_abs,
+            vmax=+max_abs,
+        )
+        plt.colorbar()
+        plt.title("Targeted − Baseline (TopLeft-ordered)")
+        plt.xlabel("metric index")
+        plt.ylabel("item index")
+        delta_png = out_dir / "visicalc_delta_topleft.png"
+        plt.tight_layout()
+        plt.savefig(delta_png, dpi=160)
+        plt.close()
+
+        log.info(
+            "VisiCalc A/B TopLeft: gain=%.4f loss=%.4f improvement_ratio=%.4f "
+            "(top-left window %d×%d, lo=%.4g hi=%.4g)",
+            gain,
+            loss,
+            improvement_ratio,
+            tl_rows,
+            tl_cols,
+            lo,
+            hi,
+        )
+
+        return {
+            "status": "ok",
+            "rows": int(n_rows),
+            "cols": int(n_cols),
+            "clip_percent": float(clip_percent),
+            "corner_frac": float(corner_frac),
+            "gain": gain,
+            "loss": loss,
+            "improvement_ratio": improvement_ratio,
+            "top_left_rows": tl_rows,
+            "top_left_cols": tl_cols,
+            "scale_lo": float(lo),
+            "scale_hi": float(hi),
+            "paths": {
+                "baseline_topleft_png": str(baseline_png),
+                "targeted_topleft_png": str(targeted_png),
+                "delta_topleft_png": str(delta_png),
+            },
+        }
+
+    def _compute_metric_separability(
+        self,
+        vpm_base: np.ndarray,
+        vpm_tgt: np.ndarray,
+        metric_names: List[str],
+    ) -> Dict[str, Any]:
+        """
+        Computes separability metrics (Cohen's d, mean diff) for each metric column
+        between the targeted and baseline VPMs.
+        """
+        if vpm_base.shape != vpm_tgt.shape:
+             # This should have been caught upstream, but is a safe check
+            log.warning("VisiCalc: Cannot compute separability due to shape mismatch.")
+            return {}
+
+        n_rows_base, n_metrics = vpm_base.shape
+        n_rows_tgt, _ = vpm_tgt.shape
+
+        import math
+
+        import numpy as np
+        from scipy.stats import differential_entropy
+
+        results = {}
+
+        eps_var = 1e-8  # variance threshold to treat as "flat"
+
+        for i, metric_name in enumerate(metric_names):
+            base_col = np.asarray(vpm_base[:, i], dtype=np.float32)
+            tgt_col = np.asarray(vpm_tgt[:, i], dtype=np.float32)
+
+            # 1. Basic Stats
+            mean_base = float(base_col.mean())
+            mean_tgt = float(tgt_col.mean())
+            std_base = float(base_col.std())
+            std_tgt = float(tgt_col.std())
+
+            # 2. Mean Difference (Targeted - Baseline)
+            delta_mean = mean_tgt - mean_base
+
+            # 3. Cohen's d (Effect Size)
+            if n_rows_base + n_rows_tgt - 2 > 0:
+                s_pooled = math.sqrt(
+                    (
+                        ((n_rows_base - 1) * std_base**2)
+                        + ((n_rows_tgt - 1) * std_tgt**2)
+                    )
+                    / (n_rows_base + n_rows_tgt - 2)
+                )
+            else:
+                s_pooled = 1e-8
+
+            cohens_d = delta_mean / s_pooled if s_pooled != 0 else 0.0
+
+            # 4. Robust differential entropy (skip flat / near-flat columns)
+            var_base = float(base_col.var())
+            var_tgt = float(tgt_col.var())
+
+            if var_base < eps_var:
+                entropy_base = float("nan")
+            else:
+                with np.errstate(divide="ignore", invalid="ignore"):
+                    try:
+                        entropy_base = float(differential_entropy(base_col))
+                    except Exception:
+                        entropy_base = float("nan")
+
+            if var_tgt < eps_var:
+                entropy_tgt = float("nan")
+            else:
+                with np.errstate(divide="ignore", invalid="ignore"):
+                    try:
+                        entropy_tgt = float(differential_entropy(tgt_col))
+                    except Exception:
+                        entropy_tgt = float("nan")
+
+            # 5. Compile results for the metric
+            results[metric_name] = {
+                "mean_base": mean_base,
+                "mean_tgt": mean_tgt,
+                "delta_mean": delta_mean,
+                "cohens_d": cohens_d,
+                "std_base": std_base,
+                "std_tgt": std_tgt,
+                "entropy_base": entropy_base,
+                "entropy_tgt": entropy_tgt,
+                "delta_entropy": (
+                    entropy_tgt - entropy_base
+                    if not (math.isnan(entropy_tgt) or math.isnan(entropy_base))
+                    else float("nan")
+                ),
+            }
+
+        # Structure the output for easy consumption/saving
+        metric_rankings = sorted(
+            results.items(),
+            key=lambda item: abs(item[1]["cohens_d"]),
+            reverse=True,
+        )
+
+        return {
+            "n_base": n_rows_base,
+            "n_tgt": n_rows_tgt,
+            "metrics_by_cohens_d": [
+                {"metric": name, "stats": stats} for name, stats in metric_rankings
+            ],
+            "metrics_all": results,
+        }
+    
+    # ------------------------------------------------------------------
+    # Importance-based metric subset
+    # ------------------------------------------------------------------
+    def _load_important_metric_names(self) -> List[str]:
+        """
+        Load ordered metric names from the importance file.
+
+        We assume the JSON is either:
+          - a list of entries (string or dict with 'metric'/'name'/...)
+          - OR a dict with one of:
+                - 'metrics': [...]
+                - 'metric_importance': [...]
+        The *list order* is treated as importance ranking.
+        """
+        if self._important_metric_names is not None:
+            return self._important_metric_names
+
+        if not self.importance_enabled:
+            self._important_metric_names = []
+            return self._important_metric_names
+
+        path = getattr(self, "importance_load_path", None)
+        if not path:
+            self._important_metric_names = []
+            return self._important_metric_names
+
+        path = Path(path)
+
+        if not path.exists():
+            self.logger.log(
+                "VisiCalcImportanceFileMissing",
+                {"path": str(path)},
+            )
+            self._important_metric_names = []
+            return self._important_metric_names
+
+        try:
+            with path.open("r", encoding="utf-8") as f:
+                data = json.load(f)
+        except Exception as e:
+            self.logger.log(
+                "VisiCalcImportanceFileLoadError",
+                {"path": str(path), "error": str(e)},
+            )
+            self._important_metric_names = []
+            return self._important_metric_names
+
+        # Normalize to a list (same as you already have)
+        if isinstance(data, dict):
+            if isinstance(data.get("metrics"), list):
+                entries = data["metrics"]
+            elif isinstance(data.get("metric_importance"), list):
+                entries = data["metric_importance"]
+            else:
+                entries = list(data.values())
+        elif isinstance(data, list):
+            entries = data
+        else:
+            entries = []
+
+        names: List[str] = []
+        for entry in entries:
+            if isinstance(entry, str):
+                names.append(entry)
+                continue
+            if isinstance(entry, dict):
+                name = (
+                    entry.get("metric")
+                    or entry.get("name")
+                    or entry.get("metric_name")
+                    or entry.get("key")
+                )
+                if name:
+                    names.append(str(name))
+
+        # Deduplicate while preserving order
+        seen = set()
+        ordered_unique: List[str] = []
+        for n in names:
+            if n in seen:
+                continue
+            seen.add(n)
+            ordered_unique.append(n)
+
+        # Apply top_k limit if configured
+        if self.importance_top_k is not None:
+            ordered_unique = ordered_unique[: self.importance_top_k]
+
+        self._important_metric_names = ordered_unique
+
+        self.logger.log(
+            "VisiCalcImportanceLoaded",
+            {
+                "path": str(path),
+                "enabled": self.importance_enabled,
+                "top_k": self.importance_top_k,
+                "num_loaded": len(ordered_unique),
+                "examples": ordered_unique[:10],
+            },
+        )
+        return self._important_metric_names
+
+    def _maybe_filter_by_importance(
+        self,
+        vpm: np.ndarray,
+        metric_names: List[str],
+    ) -> tuple[np.ndarray, List[str]]:
+        """
+        Restrict VPM columns to the important metrics if importance_filter is enabled.
+
+        - Keeps the column *order* consistent with the importance file.
+        - Only retains metrics that exist in metric_names.
+        - If the intersection is tiny (< 3), we fall back to the full set.
+        """
+        if not self.importance_enabled:
+            return vpm, metric_names
+
+        important = self._load_important_metric_names()
+        if not important:
+            # nothing to filter by
+            return vpm, metric_names
+
+        name_to_idx = {name: i for i, name in enumerate(metric_names)}
+        selected_indices: List[int] = []
+        selected_names: List[str] = []
+
+        for name in important:
+            idx = name_to_idx.get(name)
+            if idx is None:
+                continue
+            selected_indices.append(idx)
+            selected_names.append(name)
+
+        if not selected_indices:
+            self.logger.log(
+                "VisiCalcImportanceNoOverlap",
+                {
+                    "num_metrics": len(metric_names),
+                    "num_important": len(important),
+                },
+            )
+            return vpm, metric_names
+
+        # If we end up with something extremely small, it's safer to keep full matrix
+        if len(selected_indices) < 3:
+            self.logger.log(
+                "VisiCalcImportanceTooFew",
+                {
+                    "num_selected": len(selected_indices),
+                    "num_metrics": len(metric_names),
+                },
+            )
+            return vpm, metric_names
+
+        vpm_reduced = vpm[:, selected_indices]
+
+        self.logger.log(
+            "VisiCalcImportanceApplied",
+            {
+                "num_original_metrics": len(metric_names),
+                "num_selected_metrics": len(selected_names),
+                "selected_example": selected_names[:10],
+            },
+        )
+
+        return vpm_reduced, selected_names
+
+    # ------------------------------------------------------------------
+    # Metric importance: compute once per A/B run and persist to JSON
+    # ------------------------------------------------------------------
+    def _compute_and_save_metric_importance(
+        self,
+        vc_tgt,
+        vc_base,
+    ) -> Optional[list]:
+        """
+        GAP-style metric importance:
+          - uses *current* VPM matrices (vc_tgt.scores / vc_base.scores)
+          - writes a single JSON file at self.importance_path
+          - returns the importance list (or None on failure)
+        """
+        if vc_tgt.scores.shape[1] != vc_base.scores.shape[1]:
+            log.warning(
+                "VisiCalcAgent: cannot compute metric importance: target.D=%d != baseline.D=%d",
+                vc_tgt.scores.shape[1],
+                vc_base.scores.shape[1],
+            )
+            return None
+
+        X_t = vc_tgt.scores
+        X_b = vc_base.scores
+        metric_names = list(vc_tgt.metric_names)
+
+        try:
+            importance = compute_metric_importance(
+                X_target=X_t,
+                X_baseline=X_b,
+                metric_names=metric_names,
+                top_k=self.visicalc_top_k_metrics or None,
+                min_effect=self.visicalc_min_effect or 0.0,
+            )
+
+            # Single canonical importance file
+            save_metric_importance_json(importance, self.importance_save_path)
+
+            top_show = importance[:10]
+            log.info(
+                "VisiCalc metric importance (top %d): %s",
+                len(top_show),
+                ", ".join(
+                    f"{m.name}[d={m.cohen_d:+.3f}, auc={m.auc:.3f}]"
+                    for m in top_show
+                ),
+            )
+
+            # Optional: stash in context if the caller wants it
+            return importance
+
+        except Exception as e:
+            log.exception("VisiCalcAgent: metric importance computation failed: %s", e)
+            return None
+
+    def _save_vpm_matrix_csv(self, matrix: np.ndarray, metric_names: list[str], item_ids: list[str], out_path: Path) -> None:
+        """
+        Write a dense CSV:
+            scorable_id, <metric_0>, <metric_1>, ...
+            <id_0>,     <val>,      <val>, ...
+        """
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        with out_path.open("w", newline="", encoding="utf-8") as f:
+            w = csv.writer(f)
+            w.writerow(["scorable_id", *metric_names])
+            for ridx in range(matrix.shape[0]):
+                w.writerow([item_ids[ridx], *[float(x) for x in matrix[ridx]]])
+        self.logger.log("VisiCalcMatrixCSVSaved", {"path": str(out_path), "rows": int(matrix.shape[0]), "cols": int(matrix.shape[1])})
+
+    def _save_ab_npz_dataset(self, vpm_base: np.ndarray, vpm_tgt: np.ndarray, metric_names: list[str], out_path: Path) -> None:
+        """
+        Concatenate baseline & targeted matrices → X, and make binary labels y.
+        baseline → 0, targeted → 1
+        """
+        X = np.concatenate([vpm_base, vpm_tgt], axis=0).astype(np.float32, copy=False)
+        y = np.concatenate([np.zeros((vpm_base.shape[0],), dtype=np.int64),
+                            np.ones((vpm_tgt.shape[0],), dtype=np.int64)], axis=0)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        # Also stash names so training can reconstruct feature names if desired
+        np.savez(out_path.as_posix(), X=X, y=y, metric_names=np.array(metric_names, dtype=object))
+        self.logger.log("VisiCalcABDatasetSaved", {"path": str(out_path), "X_shape": list(X.shape), "y_len": int(y.shape[0])})
+
+
+==================================================
+FILE: model\critic_model.py
+==================================================
+
+# stephanie/components/critic/model/critic_model.py
+from __future__ import annotations
+
+import json
+import csv
+import sys
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Dict, List, Optional, Sequence, Any, Tuple, Union
+
+import joblib
+import numpy as np
+from sklearn.pipeline import Pipeline
+
+# Default artifact locations (match your trainer)
+DEFAULT_MODEL_PATH = Path("models/critic.joblib")
+DEFAULT_META_PATH  = Path("models/critic.meta.json")
+
+
+@dataclass(frozen=True)
+class CriticModelMeta:
+    feature_names: List[str]
+    core_only: bool
+    locked_features_path: Optional[str]
+    directionality: Dict[str, int]          # name -> {1 | -1}
+    cv_summary: Dict[str, Any]
+    holdout_summary: Dict[str, Any]
+
+
+class CriticModel:
+    """
+    Lightweight inference wrapper for the Tiny Critic.
+
+    - Loads sklearn Pipeline (StandardScaler + LogisticRegression)
+    - Aligns incoming features to `meta.feature_names`
+    - Applies the same directionality correction used in training
+    - Provides batch & single scoring + simple coefficient-based explanation
+    """
+
+    def __init__(self, model: Pipeline, meta: CriticModelMeta):
+        if not isinstance(model, Pipeline):
+            raise TypeError("Expected an sklearn Pipeline (StandardScaler -> LogisticRegression).")
+        self.model = model
+        self.meta = meta
+
+        # Convenience handles (ok if names differ, we search them)
+        self._scaler = None
+        self._clf = None
+        for name, step in self.model.named_steps.items():
+            cls = step.__class__.__name__.lower()
+            if "scaler" in cls:
+                self._scaler = step
+            if "logistic" in cls:
+                self._clf = step
+
+        if self._clf is None:
+            raise ValueError("Pipeline must contain a LogisticRegression step.")
+        if self._scaler is None:
+            # Not strictly required, but explanations need it. We allow None and degrade gracefully.
+            pass
+
+        # Precompute index map for fast alignment
+        self._name_to_pos = {n: i for i, n in enumerate(self.meta.feature_names)}
+
+    # ---------- Loading ----------
+
+    @classmethod
+    def load(
+        cls,
+        model_path: Union[str, Path] = DEFAULT_MODEL_PATH,
+        meta_path: Union[str, Path] = DEFAULT_META_PATH,
+    ) -> CriticModel:
+        model_path = Path(model_path)
+        meta_path = Path(meta_path)
+
+        model = joblib.load(model_path)
+        meta_raw = json.loads(meta_path.read_text(encoding="utf-8"))
+        meta = CriticModelMeta(
+            feature_names=list(meta_raw["feature_names"]),
+            core_only=bool(meta_raw.get("core_only", False)),
+            locked_features_path=meta_raw.get("locked_features_path"),
+            directionality=dict(meta_raw.get("directionality", {})),
+            cv_summary=dict(meta_raw.get("cv_summary", {})),
+            holdout_summary=dict(meta_raw.get("holdout_summary", {})),
+        )
+        return cls(model, meta)
+
+    # ---------- Feature prep ----------
+
+    def _align_and_direction_correct(
+        self,
+        features: Union[Dict[str, float], Sequence[float]],
+        incoming_names: Optional[Sequence[str]] = None,
+    ) -> np.ndarray:
+        """
+        Produce a (1, D) vector aligned to meta.feature_names with directionality applied.
+        - If `features` is a dict: pick values by name; missing -> 0.0; extra ignored.
+        - If `features` is a sequence: you MUST provide `incoming_names` to map positions.
+        """
+        target_names = self.meta.feature_names
+        x = np.zeros((1, len(target_names)), dtype=np.float32)
+
+        if isinstance(features, dict):
+            for name, val in features.items():
+                pos = self._name_to_pos.get(name)
+                if pos is not None:
+                    x[0, pos] = float(val)
+        else:
+            if incoming_names is None:
+                raise ValueError("When passing a numeric sequence, you must provide `incoming_names`.")
+            name_to_in = {n: i for i, n in enumerate(incoming_names)}
+            for j, name in enumerate(target_names):
+                i = name_to_in.get(name)
+                if i is not None:
+                    x[0, j] = float(features[i])
+
+        # Apply directionality flip (multiply by -1 for features trained as 'higher=worse')
+        for j, name in enumerate(target_names):
+            d = self.meta.directionality.get(name, 1)
+            if d == -1:
+                x[0, j] = -x[0, j]
+
+        return x
+
+    def _align_batch(
+        self,
+        rows: Union[List[Dict[str, float]], np.ndarray],
+        incoming_names: Optional[Sequence[str]] = None,
+    ) -> np.ndarray:
+        """
+        Batch version:
+        - If `rows` is list[dict]: align per row.
+        - If ndarray: requires `incoming_names`.
+        """
+        target_names = self.meta.feature_names
+        X = np.zeros((len(rows), len(target_names)), dtype=np.float32)
+
+        if isinstance(rows, list) and (len(rows) == 0 or isinstance(rows[0], dict)):
+            # list of dict rows
+            for r_idx, row in enumerate(rows):
+                for name, val in row.items():
+                    pos = self._name_to_pos.get(name)
+                    if pos is not None:
+                        X[r_idx, pos] = float(val)
+        else:
+            # ndarray path
+            if not isinstance(rows, np.ndarray):
+                rows = np.asarray(rows, dtype=np.float32)
+            if incoming_names is None:
+                raise ValueError("incoming_names is required when passing a numeric matrix.")
+            name_to_in = {n: i for i, n in enumerate(incoming_names)}
+            for j, name in enumerate(target_names):
+                i = name_to_in.get(name)
+                if i is not None:
+                    X[:, j] = rows[:, i]
+
+        # Directionality
+        for j, name in enumerate(target_names):
+            d = self.meta.directionality.get(name, 1)
+            if d == -1:
+                X[:, j] = -X[:, j]
+        return X
+
+    # ---------- Scoring API ----------
+
+    def score_one(
+        self,
+        features: Union[Dict[str, float], Sequence[float]],
+        incoming_names: Optional[Sequence[str]] = None,
+    ) -> float:
+        """
+        Returns P(positive) as float in [0, 1].
+        """
+        X = self._align_and_direction_correct(features, incoming_names)
+        p = self.model.predict_proba(X)[0, 1]
+        return float(p)
+
+    def score_batch(
+        self,
+        rows: Union[List[Dict[str, float]], np.ndarray],
+        incoming_names: Optional[Sequence[str]] = None,
+        return_labels: bool = False,
+        threshold: float = 0.5,
+    ) -> Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]:
+        """
+        Returns array of P(positive). If return_labels, also returns 0/1 predictions.
+        """
+        X = self._align_batch(rows, incoming_names)
+        P = self.model.predict_proba(X)[:, 1]
+        if return_labels:
+            yhat = (P >= threshold).astype(np.int32)
+            return P, yhat
+        return P
+
+    # ---------- Explanations (coef x standardized value) ----------
+
+    def explain_one(
+        self,
+        features: Union[Dict[str, float], Sequence[float]],
+        incoming_names: Optional[Sequence[str]] = None,
+        top_k: int = 10,
+    ) -> List[Tuple[str, float]]:
+        """
+        Returns list of (feature_name, contribution) sorted by |contribution| desc.
+        Contribution is coef * standardized_value (post-directionality).
+        """
+        if self._scaler is None:
+            # If you ever swap out the pipeline, we degrade gracefully.
+            return []
+
+        X = self._align_and_direction_correct(features, incoming_names)  # 1 x D
+        # Standardize using the scaler stats
+        mu = getattr(self._scaler, "mean_", None)
+        sc = getattr(self._scaler, "scale_", None)
+        if mu is None or sc is None:
+            return []
+
+        Z = (X - mu) / (sc + 1e-12)  # 1 x D
+        coef = self._clf.coef_.reshape(-1)  # (D,)
+        contrib = (Z.reshape(-1) * coef)     # (D,)
+
+        names = self.meta.feature_names
+        pairs = list(zip(names, contrib.tolist()))
+        pairs.sort(key=lambda t: abs(t[1]), reverse=True)
+        return pairs[:top_k]
+
+    # ---------- Introspection ----------
+
+    def info(self) -> Dict[str, Any]:
+        return {
+            "n_features": len(self.meta.feature_names),
+            "feature_names": self.meta.feature_names,
+            "core_only": self.meta.core_only,
+            "locked_features_path": self.meta.locked_features_path,
+            "cv_summary": self.meta.cv_summary,
+            "holdout_summary": self.meta.holdout_summary,
+        }
+
+
+# -------------------- CLI --------------------
+
+def _read_jsonl(path: Path) -> List[Dict[str, float]]:
+    rows = []
+    with path.open("r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            rows.append(json.loads(line))
+    return rows
+
+def _read_csv(path: Path) -> Tuple[List[Dict[str, float]], List[str]]:
+    with path.open("r", encoding="utf-8") as f:
+        r = csv.DictReader(f)
+        names = r.fieldnames or []
+        rows = []
+        for row in r:
+            rows.append({k: float(row[k]) if row[k] != "" else 0.0 for k in names})
+    return rows, names
+
+def _write_scores(path: Path, probs: np.ndarray, labels: Optional[np.ndarray] = None):
+    with path.open("w", encoding="utf-8", newline="") as f:
+        w = csv.writer(f)
+        if labels is None:
+            w.writerow(["score"])
+            for p in probs:
+                w.writerow([f"{float(p):.6f}"])
+        else:
+            w.writerow(["score", "label"])
+            for p, y in zip(probs, labels):
+                w.writerow([f"{float(p):.6f}", int(y)])
+
+
+def main_cli():
+    """
+    Usage:
+      python -m stephanie.components.critic.model.tiny_model --in data.jsonl --out scores.csv
+      python -m stephanie.components.critic.model.tiny_model --in data.csv --csv --out scores.csv --labels
+      python -m stephanie.components.critic.model.tiny_model --explain row.json
+    """
+    import argparse
+    p = argparse.ArgumentParser("TinyModel inference")
+    p.add_argument("--model", type=str, default=str(DEFAULT_MODEL_PATH))
+    p.add_argument("--meta",  type=str, default=str(DEFAULT_META_PATH))
+    p.add_argument("--in", dest="in_path", type=str, help="JSONL (default) or CSV if --csv set")
+    p.add_argument("--csv", action="store_true", help="Treat input as CSV")
+    p.add_argument("--out", type=str, default="", help="Write scores to CSV")
+    p.add_argument("--labels", action="store_true", help="Also emit 0/1 labels with threshold 0.5")
+    p.add_argument("--explain", type=str, default="", help="Explain a single JSON row instead of batch scoring")
+    args = p.parse_args()
+
+    model = CriticModel.load(args.model, args.meta)
+
+    if args.explain:
+        row = json.loads(Path(args.explain).read_text(encoding="utf-8"))
+        top = model.explain_one(row, top_k=15)
+        print(json.dumps({
+            "meta": model.info(),
+            "explanation": [{"feature": n, "contribution": v} for n, v in top]
+        }, indent=2))
+        return
+
+    if not args.in_path:
+        print("Missing --in path", file=sys.stderr)
+        sys.exit(2)
+
+    in_path = Path(args.in_path)
+    if args.csv:
+        rows, names = _read_csv(in_path)
+        probs = model.score_batch(rows)  # dicts already aligned by name
+    else:
+        rows = _read_jsonl(in_path)
+        probs = model.score_batch(rows)
+
+    if args.labels:
+        labels = (probs >= 0.5).astype(np.int32)
+    else:
+        labels = None
+
+    if args.out:
+        _write_scores(Path(args.out), probs, labels)
+    else:
+        # print to stdout
+        if labels is None:
+            for p in probs:
+                print(f"{float(p):.6f}")
+        else:
+            for p, y in zip(probs, labels):
+                print(f"{float(p):.6f},{int(y)}")
+
+
+if __name__ == "__main__":
+    main_cli()
+
+
+==================================================
+FILE: model\dataset.py
+==================================================
+
+# stephanie/components/critic/tiny_critic_dataset.py
+from __future__ import annotations
+import argparse
+import json
+from pathlib import Path
+from typing import List, Tuple
+import csv
+import numpy as np
+import logging
+from stephanie.scoring.metrics.dynamic_features import (
+    load_core_metric_names,
+    build_dynamic_feature_vector,
+)
+
+log = logging.getLogger(__name__)
+
+CORE_METRIC_PATH = Path("config/core_metrics.json")
+CORE_FEATURE_NAMES = [
+    "stability", "middle_dip", "std_dev", "sparsity",
+    "entropy", "trend", "mid_bad_ratio", "frontier_util"
+]
+CORE_FEATURE_COUNT = len(CORE_FEATURE_NAMES)
+
+ALIAS_MAP = {
+    "Tiny.coverage.attr.raw01": "Tiny.coverage.attr.tiny.score01",
+    "Tiny.coverage.attr.values[0]": "Tiny.coverage.attr.tiny.score01",
+    "Tiny.coverage.attr.vector.tiny.score01": "Tiny.coverage.attr.tiny.score01",
+    "Tiny.coverage.score": "Tiny.coverage.attr.tiny.score01",
+    "Tiny.coverage.attr.values[1]": "Tiny.coverage.attr.tiny.score100",
+    "Tiny.coverage.attr.vector.tiny.score100": "Tiny.coverage.attr.tiny.score100",
+}
+
+def canonicalize_metric_names(names: list[str]) -> list[str]:
+    return [ALIAS_MAP.get(n, n) for n in names]
+
+def _ensure_dir(p: Path) -> None:
+    """Ensure directory exists with proper error handling."""
+    try:
+        p.mkdir(parents=True, exist_ok=True)
+        return True
+    except Exception as e:
+        log.error(f"Failed to create directory {p}: {e}")
+        return False
+
+def _load_metric_means_from_csv(run_dir: Path, label: str) -> dict:
+    """
+    Load metric means from CSV matrix file.
+    Handles:
+      - visicalc_targeted_matrix.csv (label="targeted")
+      - visicalc_baseline_matrix.csv (label="baseline")
+    """
+    csv_name = f"visicalc_{label}_matrix.csv"
+    csv_path = run_dir / csv_name
+    if not csv_path.exists():
+        return {}
+
+    try:
+        with csv_path.open("r", encoding="utf-8", newline="") as f:
+            r = csv.reader(f)
+            header = next(r, None)
+            if not header or header[0] != "scorable_id":
+                raise ValueError(f"{csv_name} missing 'scorable_id' header")
+            metric_names = header[1:]
+            sums = [0.0] * len(metric_names)
+            cnt = 0
+            for row in r:
+                if not row:
+                    continue
+                values = row[1:]
+                # coerce to float; blank → 0.0
+                vals = [float(v) if v not in ("", None) else 0.0 for v in values]
+                if len(vals) != len(metric_names):
+                    raise ValueError(f"{csv_name}: row width mismatch at line {cnt+2}")
+                for i, v in enumerate(vals):
+                    sums[i] += v
+                cnt += 1
+
+            if cnt == 0:
+                return {}
+
+            means = [s / cnt for s in sums]
+            return dict(zip(metric_names, means))
+    except Exception as e:
+        log.error(f"Failed to load metric means from {csv_path}: {e}")
+        return {}
+
+def load_metrics_for_run(run_dir: Path, label: str) -> dict:
+    """
+    Load metrics from CSV matrix first, then fall back to JSON.
+    Returns:
+      {metric_name: mean_value} dictionary
+    """
+    # 1) CSV means (new path)
+    means = _load_metric_means_from_csv(run_dir, label)
+    if means:
+        log.info(f"✅ Loaded {len(means)} metrics from CSV for {label} in {run_dir.name}")
+        return means
+
+    # 2) Fallback JSON (legacy path)
+    metrics_path = run_dir / f"metrics_{label}.json"
+    if metrics_path.exists():
+        try:
+            with metrics_path.open("r", encoding="utf-8") as f:
+                data = json.load(f) or {}
+            log.info(f"✅ Loaded JSON metrics from {metrics_path}")
+            return data
+        except Exception as e:
+            log.error(f"❌ Failed to load metrics from {metrics_path}: {e}")
+    else:
+        log.debug(f"ℹ️ No metrics file for {label} at {metrics_path}, using defaults")
+
+    return {}
+
+def load_visicalc_report(path: Path) -> dict:
+    """Load VisiCalc report with detailed error handling."""
+    log.info(f"📂 Loading VisiCalc report: {path}")
+    try:
+        with path.open("r", encoding="utf-8") as f:
+            data = json.load(f)
+        # Validate expected structure
+        required_keys = ['frontier', 'global', 'regions']
+        if not all(k in data for k in required_keys):
+            log.warning(f"⚠️  VisiCalc report missing expected keys: {required_keys}")
+        log.info(
+            f"✅ Successfully loaded VisiCalc report: {path.name} "
+            f"(keys: {list(data.keys()) if data else 'empty'})"
+        )
+        return data
+    except Exception as e:
+        log.error(f"❌ Failed to load VisiCalc report {path}: {e}")
+        raise
+
+def collect_visicalc_samples(visicalc_root: str | Path) -> Tuple[np.ndarray, np.ndarray, List[str], List[str]]:
+    """
+    Collect VisiCalc samples with proper core/dynamic feature handling.
+    Returns:
+      (X, y, metric_names, groups) where:
+        - X: [n_samples, n_features] feature matrix
+        - y: [n_samples] binary labels (1=targeted, 0=baseline)
+        - metric_names: list of feature names in order
+        - groups: list of run identifiers for each sample
+    """
+    visicalc_root = Path(visicalc_root)
+    X: List[np.ndarray] = []
+    y: List[int] = []
+
+    log.info(f"🔍 Starting VisiCalc sample collection from: {visicalc_root.absolute()}")
+
+    if not visicalc_root.exists():
+        log.error(f"❌ VisiCalc root directory not found: {visicalc_root}")
+        raise FileNotFoundError(f"VisiCalc root not found: {visicalc_root}")
+
+    # Count directories for progress tracking
+    all_dirs = [d for d in sorted(visicalc_root.iterdir()) if d.is_dir()]
+    log.info(f"📁 Found {len(all_dirs)} potential run directories to process")
+
+    processed_runs = 0
+    successful_runs = 0
+    skipped_runs = 0
+
+    # Get dynamic metric names (core features are handled internally)
+    dynamic_metric_names = load_core_metric_names(CORE_METRIC_PATH)
+    log.info(f"📌 Loaded {len(dynamic_metric_names)} dynamic metric names from MARS summary")
+
+    # Complete feature names (core + dynamic)
+    metric_names = CORE_FEATURE_NAMES + dynamic_metric_names
+    log.info(f"📌 Total feature names: {len(metric_names)} (8 core + {len(dynamic_metric_names)} dynamic)")
+
+    # Each subdirectory under runs/visicalc is a run_id (e.g. 8967)
+    groups: list[str] = []
+    for run_dir in all_dirs:
+        processed_runs += 1
+        log.info(f"🔄 Processing run {processed_runs}/{len(all_dirs)}: {run_dir.name}")
+
+        targeted_path = run_dir / "visicalc_targeted.json"
+        baseline_path = run_dir / "visicalc_baseline.json"
+
+        # Check if required files exist
+        if not targeted_path.exists():
+            log.warning(
+                f"⚠️  Skipping {run_dir.name}: targeted report missing at {targeted_path}"
+            )
+            skipped_runs += 1
+            continue
+        if not baseline_path.exists():
+            log.warning(
+                f"⚠️  Skipping {run_dir.name}: baseline report missing at {baseline_path}"
+            )
+            skipped_runs += 1
+            continue
+
+        # Load metrics first (may be empty dicts)
+        targeted_metrics = load_metrics_for_run(run_dir, label="targeted")
+        baseline_metrics = load_metrics_for_run(run_dir, label="baseline")
+
+        try:
+            log.info(f"📊 Loading reports for {run_dir.name}...")
+            targeted_report = load_visicalc_report(targeted_path)
+            baseline_report = load_visicalc_report(baseline_path)
+
+            # Extract combined features for targeted (label=1)
+            # IMPORTANT: Only pass dynamic metrics to build_dynamic_feature_vector
+            # (core features are added internally)
+            log.info(
+                f"🔧 Building combined features for targeted report {targeted_path}"
+            )
+            xt = build_dynamic_feature_vector(
+                targeted_report,
+                targeted_metrics,
+                dynamic_metric_names
+            )
+            # Validate feature vector length
+            if len(xt) != len(metric_names):
+                log.error(
+                    f"❌ Feature vector length mismatch: "
+                    f"expected {len(metric_names)}, got {len(xt)}"
+                )
+                # Attempt to fix by padding or truncating
+                if len(xt) < len(metric_names):
+                    xt = np.pad(xt, (0, len(metric_names) - len(xt)))
+                else:
+                    xt = xt[:len(metric_names)]
+
+            X.append(xt)
+            y.append(1)
+            groups.append(run_dir.name) # Group for targeted sample
+
+            log.info(
+                f"✅ Targeted combined features: shape={xt.shape}, dtype={xt.dtype}"
+            )
+
+            # Extract combined features for baseline (label=0)
+            log.info(
+                f"🔧 Building combined features for baseline report {baseline_path}"
+            )
+            xb = build_dynamic_feature_vector(
+                baseline_report,
+                baseline_metrics,
+                dynamic_metric_names
+            )
+            # Validate feature vector length
+            if len(xb) != len(metric_names):
+                log.error(
+                    f"❌ Feature vector length mismatch: "
+                    f"expected {len(metric_names)}, got {len(xb)}"
+                )
+                # Attempt to fix by padding or truncating
+                if len(xb) < len(metric_names):
+                    xb = np.pad(xb, (0, len(metric_names) - len(xb)))
+                else:
+                    xb = xb[:len(metric_names)]
+
+            X.append(xb)
+            y.append(0)
+            groups.append(run_dir.name) # Group for baseline sample
+
+            log.info(
+                f"✅ Baseline combined features: shape={xb.shape}, dtype={xb.dtype}"
+            )
+
+            successful_runs += 1
+            log.info(
+                f"🎉 Successfully processed run {run_dir.name} "
+                f"(total samples: {len(X)}, successful runs: {successful_runs})"
+            )
+
+        except Exception as e:
+            log.error(f"❌ Failed to process run {run_dir.name}: {e}")
+            skipped_runs += 1
+            continue
+
+    # Final summary
+    log.info(
+        "📊 Collection complete! Processed: %d, Successful: %d, Skipped: %d",
+        processed_runs,
+        successful_runs,
+        skipped_runs,
+    )
+
+    if not X:
+        log.error(f"❌ No VisiCalc samples found under {visicalc_root}")
+        raise RuntimeError(f"No VisiCalc samples found under {visicalc_root}")
+
+    # Convert to numpy arrays
+    log.info(f"🔄 Converting {len(X)} samples to numpy arrays...")
+    X_arr = np.stack(X, axis=0)
+    y_arr = np.asarray(y, dtype=np.int64)
+
+    log.info(
+        "✅ Dataset created: X.shape=%s, y.shape=%s, dtypes: X=%s, y=%s",
+        X_arr.shape,
+        y_arr.shape,
+        X_arr.dtype,
+        y_arr.dtype,
+    )
+
+    # Log some statistics
+    log.info(
+        "📈 Dataset statistics: Targeted samples (y=1): %d, Baseline samples (y=0): %d, "
+        "Feature range: [%.3f, %.3f]",
+        int(np.sum(y_arr == 1)),
+        int(np.sum(y_arr == 0)),
+        float(X_arr.min()),
+        float(X_arr.max()),
+    )
+
+    return X_arr, y_arr, metric_names, groups
+
+def save_dataset(
+    X: np.ndarray,
+    y: np.ndarray,
+    metric_names: List[str],
+    groups: List[str],
+    out_path: str | Path
+) -> None:
+    """Save dataset with metric names and groups included and comprehensive logging."""
+    out_path = Path(out_path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    try:
+        # Save with complete feature names and groups
+        np.savez_compressed(
+            out_path,
+            X=X,
+            y=y,
+            metric_names=np.array(metric_names, dtype=object),
+            groups=np.array(groups, dtype=object) # Include groups for later CV
+        )
+        # Log file info
+        file_size = out_path.stat().st_size / (1024 * 1024) if out_path.exists() else 0
+        log.info(
+            "✅ Dataset saved successfully! File: %s Size: %.2f MB X.shape: %s y.shape: %s",
+            out_path,
+            file_size,
+            X.shape,
+            y.shape,
+        )
+    except Exception as e:
+        log.error(f"❌ Failed to save dataset: {e}")
+        raise
+
+def main(args):
+    """Main function for dataset generation."""
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        datefmt="%H:%M:%S",
+    )
+
+    root = Path("runs/visicalc")
+    out = Path("data/critic.npz")
+
+    log.info("🚀 Starting Tiny Critic Dataset creation...")
+    log.info(f"Source: {root.absolute()}")
+    log.info(f"Destination: {out.absolute()}")
+
+    try:
+        # 1. Collect dataset
+        X, y, metric_names, groups = collect_visicalc_samples(root)
+        # 1b. Canonicalize names once for consistency in saved file
+        metric_names = canonicalize_metric_names(list(metric_names))
+
+        # 2. Core sanity checks
+        core_dim = CORE_FEATURE_COUNT
+        core_block = X[:, :core_dim]
+        if np.isnan(core_block).any():
+            raise ValueError("NaN in VisiCalc core features — check VisiCalc computation.")
+        zero_var_core = int((core_block.std(axis=0) <= 1e-12).sum())
+        if zero_var_core:
+            log.warning("VisiCalc: %d core features are ~constant across samples", zero_var_core)
+
+        # 3. Save full dataset (including groups)
+        save_dataset(X, y, metric_names, groups, out)
+
+        log.info("🎉 Tiny Critic Dataset generation completed successfully!")
+
+    except Exception as e:
+        log.error(f"💥 Failed to create Tiny Critic Dataset: {e}", exc_info=True)
+        raise
+
+if __name__ == "__main__":
+    # Keep core_dim for consistency, but it's primarily used in the reporting script now
+    p = argparse.ArgumentParser(description="Tiny Critic Dataset Builder (Data Generation Only)")
+    p.add_argument(
+        "--core_dim",
+        type=int,
+        default=CORE_FEATURE_COUNT,
+        help="Number of core VisiCalc features (for consistency, used in reporting script)"
+    )
+    main(p.parse_args())
+
+==================================================
+FILE: model\trainer.py
+==================================================
+
+# stephanie/components/critic/model/trainer.py
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Dict, Any, Optional
+
+import json
+import joblib
+import numpy as np
+import logging
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import (
+    accuracy_score, roc_auc_score, confusion_matrix
+)
+from sklearn.model_selection import (
+    GroupShuffleSplit, GroupKFold, StratifiedKFold, GridSearchCV
+)
+from sklearn.pipeline import make_pipeline
+from sklearn.preprocessing import StandardScaler
+
+# -------------------------------------------------------------------
+# Paths / constants
+# -------------------------------------------------------------------
+log = logging.getLogger(__name__)
+
+DATA_PATH   = Path("data/critic.npz")
+MODEL_PATH  = Path("models/critic.joblib")
+META_PATH   = Path("models/critic.meta.json")
+VIZ_DIR     = Path("data/visualizations/tiny_critic")
+
+# The first 8 columns in X are VisiCalc core (by dataset construction)
+CORE_FEATURE_NAMES = [
+    "stability",
+    "middle_dip",
+    "std_dev",
+    "sparsity",
+    "entropy",
+    "trend",
+    "mid_bad_ratio",
+    "frontier_util",
+]
+
+# Note: 1 means “higher = better”, -1 means “higher = worse” (so we’ll flip)
+CORE_FEATURE_DIRECTION: Dict[str, int] = {
+    "stability":      1,
+    "middle_dip":     1,
+    "std_dev":       -1,  # strongest, but inverted
+    "sparsity":       1,
+    "entropy":        1,
+    "trend":          1,
+    "mid_bad_ratio": -1,
+    "frontier_util":  1,
+}
+
+
+# -------------------------------------------------------------------
+# IO
+# -------------------------------------------------------------------
+def load_dataset(path: Path) -> tuple[np.ndarray, np.ndarray, list[str], Optional[np.ndarray]]:
+    """
+    Load NPZ dataset. Expects keys: X, y, metric_names, (optional) groups.
+    """
+    log.info("📂 Loading dataset from: %s", path.absolute())
+    if not path.exists():
+        raise FileNotFoundError(path)
+
+    with np.load(path, allow_pickle=True) as data:
+        X = data["X"]
+        y = data["y"].astype(int)
+        metric_names = data["metric_names"].tolist() if "metric_names" in data else [
+            *CORE_FEATURE_NAMES, *[f"feat_{i}" for i in range(X.shape[1] - len(CORE_FEATURE_NAMES))]
+        ]
+        groups = data.get("groups", None)
+        if groups is not None:
+            groups = np.array(groups)
+
+    log.info("✅ Dataset: X=%s, y=%s, groups=%s", X.shape, y.shape, None if groups is None else groups.shape)
+    uniques, counts = np.unique(y, return_counts=True)
+    log.info("📊 Class distribution: %s", dict(zip(uniques.tolist(), counts.tolist())))
+    return X, y, metric_names, groups
+
+
+# -------------------------------------------------------------------
+# Feature handling
+# -------------------------------------------------------------------
+def _indices_for(names: list[str], keep: list[str]) -> list[int]:
+    idx = []
+    pos = {n: i for i, n in enumerate(names)}
+    for k in keep:
+        if k in pos:
+            idx.append(pos[k])
+    return idx
+
+def apply_directionality(X: np.ndarray, feature_names: list[str]) -> np.ndarray:
+    """
+    Flip any feature with direction -1 so that 'higher = better'.
+    We just multiply by -1 for those; StandardScaler will handle scaling later.
+    """
+    Xc = X.copy()
+    for i, n in enumerate(feature_names):
+        d = CORE_FEATURE_DIRECTION.get(n)
+        if d == -1:
+            Xc[:, i] = -Xc[:, i]
+    return Xc
+
+
+# -------------------------------------------------------------------
+# Viz (core-only quick plots)
+# -------------------------------------------------------------------
+def safe_hist(ax, x0: np.ndarray, x1: np.ndarray, bins=20):
+    ax.hist(x0, bins=bins, alpha=0.6, label="baseline")
+    ax.hist(x1, bins=bins, alpha=0.6, label="targeted")
+    ax.legend()
+
+def visualize_core(X: np.ndarray, y: np.ndarray, names: list[str]) -> None:
+    VIZ_DIR.mkdir(parents=True, exist_ok=True)
+    n_core = min(8, X.shape[1])
+    xb, xt = X[y == 0], X[y == 1]
+
+    # Core dists
+    fig, axes = plt.subplots(3, 3, figsize=(14, 12))
+    axes = axes.ravel()
+    for i in range(n_core):
+        ax = axes[i]
+        safe_hist(ax, xb[:, i], xt[:, i], bins=20)
+        ax.set_title(names[i])
+    for j in range(n_core, len(axes)):
+        axes[j].axis("off")
+    fig.tight_layout()
+    fig.savefig(VIZ_DIR / "core_feature_distributions.png", dpi=300, bbox_inches="tight")
+    plt.close(fig)
+
+    # Simple correlation
+    try:
+        import pandas as pd
+        core_cols = min(n_core, X.shape[1])
+        df = pd.DataFrame(X[:, :core_cols], columns=names[:core_cols])
+        corr = df.corr()
+        plt.figure(figsize=(9, 7))
+        sns.heatmap(corr, annot=True, cmap="coolwarm", fmt=".2f")
+        plt.title("Core Feature Correlations")
+        plt.tight_layout()
+        plt.savefig(VIZ_DIR / "core_feature_correlations.png", dpi=300, bbox_inches="tight")
+        plt.close()
+    except Exception as e:
+        log.warning("Heatmap failed: %s", e)
+
+
+# -------------------------------------------------------------------
+# CV helpers
+# -------------------------------------------------------------------
+def make_group_aware_split(X: np.ndarray, y: np.ndarray, groups: Optional[np.ndarray], test_size=0.2, seed=42):
+    if groups is not None:
+        splitter = GroupShuffleSplit(n_splits=1, test_size=test_size, random_state=seed)
+        train_idx, val_idx = next(splitter.split(X, y, groups=groups))
+        return train_idx, val_idx
+    # fallback (no groups in dataset)
+    rng = np.random.default_rng(seed)
+    n = len(y)
+    idx = np.arange(n)
+    rng.shuffle(idx)
+    cut = int((1.0 - test_size) * n)
+    return idx[:cut], idx[cut:]
+
+
+def make_cv(groups: Optional[np.ndarray], y: np.ndarray, n_splits: int = 5):
+    if groups is not None and len(np.unique(groups)) >= n_splits:
+        return GroupKFold(n_splits=n_splits), groups
+    return StratifiedKFold(n_splits=min(n_splits, len(np.unique(y))), shuffle=True, random_state=42), None
+
+
+# -------------------------------------------------------------------
+# Model training / tuning / evaluation
+# -------------------------------------------------------------------
+def tune_and_build_model(X: np.ndarray, y: np.ndarray, groups: Optional[np.ndarray]):
+    """
+    Tiny grid over C with group-aware CV when groups are available.
+    """
+    pipe = make_pipeline(
+        StandardScaler(),
+        LogisticRegression(
+            max_iter=1000, solver="liblinear", class_weight="balanced", random_state=42
+        ),
+    )
+    param_grid = {"logisticregression__C": [0.01, 0.1, 1.0, 10.0]}
+    cv, grp = make_cv(groups, y, n_splits=5)
+    gs = GridSearchCV(pipe, param_grid=param_grid, scoring="roc_auc", cv=cv, n_jobs=1)
+    gs.fit(X, y, **({"groups": grp} if grp is not None else {}))
+    log.info("🔧 Best C: %s (AUC=%.3f)", gs.best_params_["logisticregression__C"], gs.best_score_)
+    return gs.best_estimator_
+
+
+def eval_cv(model, X: np.ndarray, y: np.ndarray, groups: Optional[np.ndarray]) -> dict:
+    cv, grp = make_cv(groups, y, n_splits=5)
+    aucs, accs = [], []
+    for fold, (tr, va) in enumerate(cv.split(X, y, groups=grp)):
+        model.fit(X[tr], y[tr])
+        p = model.predict_proba(X[va])[:, 1]
+        yhat = (p >= 0.5).astype(int)
+        aucs.append(roc_auc_score(y[va], p))
+        accs.append(accuracy_score(y[va], yhat))
+    return {
+        "auc_mean": float(np.mean(aucs)), "auc_std": float(np.std(aucs)),
+        "acc_mean": float(np.mean(accs)), "acc_std": float(np.std(accs)),
+        "n_splits": int(getattr(cv, "n_splits", 5))
+    }
+
+
+# -------------------------------------------------------------------
+# Training entry
+# -------------------------------------------------------------------
+def train_tiny_critic(
+    X: np.ndarray,
+    y: np.ndarray,
+    metric_names: list[str],
+    groups: Optional[np.ndarray],
+    core_only: bool = True,
+    lock_features_path: Optional[Path] = None,
+) -> tuple[Any, dict, dict]:
+    """
+    Trains the Tiny Critic with:
+      - Directionality correction
+      - Optional core-only mode
+      - Optional locked feature set (names in a text file)
+      - Group-aware split + CV
+    Returns: (fitted_model, cv_summary, holdout_summary)
+    """
+    # 1) Directionality correction across ALL features where we know direction
+    Xc = apply_directionality(X, metric_names)
+
+    # 2) Optionally lock features by name (overrides core_only)
+    if lock_features_path and lock_features_path.exists():
+        locked = [ln.strip() for ln in lock_features_path.read_text(encoding="utf-8").splitlines() if ln.strip()]
+        keep_idx = _indices_for(metric_names, locked)
+        if not keep_idx:
+            raise ValueError("Locked feature list did not match any metric_names.")
+        Xc = Xc[:, keep_idx]
+        names_used = [metric_names[i] for i in keep_idx]
+        log.info("🔒 Using locked features (%d): %s", len(names_used), names_used[:12])
+    elif core_only:
+        keep_idx = list(range(min(8, Xc.shape[1])))
+        Xc = Xc[:, keep_idx]
+        names_used = metric_names[:len(keep_idx)]
+        log.info("✨ Core-only training on %d features", len(names_used))
+    else:
+        names_used = list(metric_names)
+        log.info("🧰 Training on all %d features", Xc.shape[1])
+
+    # 3) Group-aware holdout split
+    train_idx, val_idx = make_group_aware_split(Xc, y, groups, test_size=0.2, seed=42)
+    Xtr, Xva = Xc[train_idx], Xc[val_idx]
+    ytr, yva = y[train_idx], y[val_idx]
+    grp_tr = groups[train_idx] if groups is not None else None
+
+    # 4) Tune + fit
+    model = tune_and_build_model(Xtr, ytr, grp_tr)
+
+    # 5) CV summary on training subset (group aware)
+    cv_summary = eval_cv(model, Xtr, ytr, grp_tr)
+
+    # 6) Holdout summary (pure generalization)
+    p_val = model.predict_proba(Xva)[:, 1]
+    yhat_val = (p_val >= 0.5).astype(int)
+    holdout = {
+        "auc": float(roc_auc_score(yva, p_val)) if len(np.unique(yva)) > 1 else 0.0,
+        "acc": float(accuracy_score(yva, yhat_val)),
+        "n_val": int(len(yva))
+    }
+
+    # 7) Save artifacts
+    MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
+    joblib.dump(model, MODEL_PATH)
+    meta = {
+        "feature_names": names_used,
+        "core_only": core_only,
+        "locked_features_path": str(lock_features_path) if lock_features_path else None,
+        "directionality": CORE_FEATURE_DIRECTION,
+        "cv_summary": cv_summary,
+        "holdout_summary": holdout,
+    }
+    META_PATH.write_text(json.dumps(meta, indent=2), encoding="utf-8")
+    log.info("💾 Saved model → %s", MODEL_PATH)
+    log.info("💾 Saved meta  → %s", META_PATH)
+
+    # 8) Quick confusion matrix on holdout
+    VIZ_DIR.mkdir(parents=True, exist_ok=True)
+    plt.figure(figsize=(6, 5))
+    cm = confusion_matrix(yva, yhat_val)
+    sns.heatmap(cm, annot=True, fmt="d", cmap="Blues")
+    plt.title("Holdout Confusion Matrix")
+    plt.xlabel("Predicted"); plt.ylabel("True")
+    plt.tight_layout()
+    plt.savefig(VIZ_DIR / "confusion_matrix_holdout.png", dpi=300, bbox_inches="tight")
+    plt.close()
+
+    return model, cv_summary, holdout
+
+
+# -------------------------------------------------------------------
+# CLI
+# -------------------------------------------------------------------
+def main():
+    import argparse
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        datefmt="%H:%M:%S",
+    )
+
+    p = argparse.ArgumentParser(description="Train Tiny Critic (group-aware, direction-corrected)")
+    p.add_argument("--data", type=str, default=str(DATA_PATH))
+    p.add_argument("--core-only", action="store_true", default=False,
+                   help="Use only the 8 VisiCalc core features")
+    p.add_argument("--lock-features", type=str, default="",
+                   help="Path to a text file with feature names to lock (one per line)")
+    args = p.parse_args()
+
+    X, y, metric_names, groups = load_dataset(Path(args.data))
+    visualize_core(X, y, metric_names)
+
+    lock_path = Path(args.lock_features) if args.lock_features else None
+    model, cv_summary, holdout = train_tiny_critic(
+        X, y, metric_names, groups,
+        core_only=bool(args.core_only),
+        lock_features_path=lock_path
+    )
+
+    log.info("📊 CV:    AUC=%.3f±%.3f  ACC=%.3f±%.3f  (k=%d)",
+             cv_summary["auc_mean"], cv_summary["auc_std"],
+             cv_summary["acc_mean"], cv_summary["acc_std"],
+             cv_summary["n_splits"])
+    log.info("📊 Holdout: AUC=%.3f  ACC=%.3f  (n=%d)",
+             holdout["auc"], holdout["acc"], holdout["n_val"])
+    log.info("🎉 Training complete.")
+
+
+if __name__ == "__main__":
+    main()
+
+
+==================================================
+FILE: model\verify.py
+==================================================
+
+# stephanie/components/critic/model/verify.py
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from typing import Dict, Any
+
+import numpy as np
+from sklearn.metrics import accuracy_score
+
+from stephanie.components.critic.model.critic_model import CriticModel
+
+
+def _group_indices(groups: np.ndarray) -> Dict[Any, np.ndarray]:
+    mapping: Dict[Any, list] = {}
+    for idx, g in enumerate(groups):
+        mapping.setdefault(g, []).append(idx)
+    return {k: np.array(v, dtype=int) for k, v in mapping.items()}
+
+
+def evaluate_reranking(npz_path: str | Path, model_path: str | Path, out_dir: str | Path) -> Dict[str, Any]:
+    """
+    Reranking proof on NPZ dataset:
+
+      - For each group, choose the candidate with max Critic score.
+      - Compare accuracy to a random-choice baseline (averaged over 100 trials).
+      - Also report an oracle upper bound: proportion of groups that contain at least one positive.
+
+    Expects NPZ with keys: X, y, metric_names, groups
+    """
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    with np.load(npz_path, allow_pickle=True) as data:
+        X = data["X"]
+        y = data["y"].astype(int)
+        metric_names = data["metric_names"].tolist()
+        groups = data.get("groups", None)
+
+    if groups is None:
+        raise ValueError("Dataset NPZ must contain 'groups' to run reranking proof.")
+
+    # Load model (+ meta from default or alongside model)
+    cm = CriticModel.load(model_path)
+
+    # Compute probabilities for all samples (NOTE: use score_batch here)
+    p = cm.score_batch(X, incoming_names=metric_names)  # shape: (N,)
+
+    # Grouped rerank: pick the best candidate per group according to Critic
+    gmap = _group_indices(groups)
+    chosen_idx = []
+    for gid, idxs in gmap.items():
+        sub = p[idxs]
+        k = idxs[np.argmax(sub)]
+        chosen_idx.append(k)
+    chosen_idx = np.array(chosen_idx, dtype=int)
+
+    # Evaluate: accuracy of Critic’s chosen candidates (threshold @ 0.5)
+    critic_pred = (p[chosen_idx] >= 0.5).astype(int)
+    critic_acc = float(accuracy_score(y[chosen_idx], critic_pred))
+
+    # Random-choice baseline (repeat to estimate expectation)
+    rng = np.random.default_rng(0)
+    rand_accs = []
+    for _ in range(100):
+        picks = np.array([rng.choice(idxs) for idxs in gmap.values()], dtype=int)
+        rand_pred = (p[picks] >= 0.5).astype(int)
+        rand_accs.append(accuracy_score(y[picks], rand_pred))
+    rand_acc = float(np.mean(rand_accs))
+
+    # Oracle: fraction of groups that contain at least one positive
+    oracle_acc = float(np.mean([int(y[idxs].max() > 0) for idxs in gmap.values()]))
+
+    report = {
+        "dataset": str(npz_path),
+        "model": str(model_path),
+        "n_samples": int(X.shape[0]),
+        "n_groups": int(len(gmap)),
+        "critic_accuracy": critic_acc,
+        "baseline_random_accuracy": rand_acc,
+        "oracle_group_accuracy": oracle_acc,
+        "absolute_lift_vs_random": critic_acc - rand_acc,
+        # meta visibility (selected feature order used by this model)
+        "feature_names_used": cm.meta.feature_names,
+    }
+
+    (out_dir / "reranking_report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
+    return report
+
+
+if __name__ == "__main__":
+    import argparse, pprint
+    p = argparse.ArgumentParser(description="Verify Critic utility via reranking proof")
+    p.add_argument("--npz", type=str, default="data/critic.npz")
+    p.add_argument("--model", type=str, default="models/critic.joblib")
+    p.add_argument("--out", type=str, default="runs/critic_proof")
+    args = p.parse_args()
+
+    res = evaluate_reranking(args.npz, args.model, args.out)
+    pprint.pprint(res)
+    print("✅ Reranking proof completed. Report written.")
+
+
+==================================================
+FILE: reports\validation.py
+==================================================
+
+# stephanie/components/critic/model/report.py
+from __future__ import annotations
+import argparse
+import json
+from pathlib import Path
+from typing import List, Tuple, Dict, Any
+import csv
+import numpy as np
+import logging
+from sklearn.preprocessing import StandardScaler
+from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import GroupKFold, StratifiedKFold, cross_val_score
+from sklearn.decomposition import PCA
+from sklearn.pipeline import make_pipeline
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+from stephanie.scoring.metrics.metric_importance import compute_metric_importance, save_metric_importance_json
+
+log = logging.getLogger(__name__)
+
+CORE_FEATURE_COUNT = 8 # Assuming this is consistent; could load from config if needed
+
+def _ensure_dir(p: Path) -> None:
+    """Ensure directory exists with proper error handling."""
+    try:
+        p.mkdir(parents=True, exist_ok=True)
+        return True
+    except Exception as e:
+        log.error(f"Failed to create directory {p}: {e}")
+        return False
+
+def _dataset_cohens_d(a: np.ndarray, b: np.ndarray) -> float:
+    """Calculate Cohen's d with robust edge case handling."""
+    n1, n2 = len(a), len(b)
+    # Handle empty arrays
+    if n1 == 0 or n2 == 0:
+        return 0.0
+    # Handle single-element arrays
+    if n1 == 1 and n2 == 1:
+        return float(a[0] - b[0])
+    # Calculate means
+    mean_a = float(np.mean(a))
+    mean_b = float(np.mean(b))
+    # Handle zero variance cases
+    var_a = float(np.var(a, ddof=1))
+    var_b = float(np.var(b, ddof=1))
+    # If both have zero variance, return raw difference
+    if var_a < 1e-10 and var_b < 1e-10:
+        return mean_a - mean_b
+    # Calculate pooled standard deviation
+    pooled_var = ((n1 - 1) * var_a + (n2 - 1) * var_b) / max(n1 + n2 - 2, 1)
+    pooled_std = np.sqrt(max(pooled_var, 1e-10))
+    return (mean_a - mean_b) / pooled_std
+
+def _summarize_features(X: np.ndarray, y: np.ndarray, names: list[str]) -> list[dict]:
+    """Create comprehensive feature statistics report."""
+    rows = []
+    xb, xt = X[y == 0], X[y == 1]
+    for i, name in enumerate(names):
+        col_b = xb[:, i] if xb.size else np.empty((0,), dtype=np.float32)
+        col_t = xt[:, i] if xt.size else np.empty((0,), dtype=np.float32)
+        mean_b = float(np.mean(col_b)) if col_b.size else 0.0
+        mean_t = float(np.mean(col_t)) if col_t.size else 0.0
+        std_b = float(np.std(col_b, ddof=1)) if col_b.size > 1 else 0.0
+        std_t = float(np.std(col_t, ddof=1)) if col_t.size > 1 else 0.0
+        nz_b = int(np.count_nonzero(col_b))
+        nz_t = int(np.count_nonzero(col_t))
+        delta = mean_t - mean_b
+        rows.append({
+            "feature": name,
+            "mean_baseline": mean_b,
+            "std_baseline": std_b,
+            "nonzero_baseline": nz_b,
+            "mean_targeted": mean_t,
+            "std_targeted": std_t,
+            "nonzero_targeted": nz_t,
+            "delta_mean_t_minus_b": delta,
+            "abs_delta": abs(delta),
+            "cohens_d": _dataset_cohens_d(col_t, col_b),
+        })
+    return rows
+
+def _write_feature_stats_csv(rows: list[dict], out_csv: Path) -> None:
+    """Write feature statistics to CSV with proper error handling."""
+    try:
+        out_csv.parent.mkdir(parents=True, exist_ok=True)
+        cols = list(rows[0].keys()) if rows else [
+            "feature", "mean_baseline", "std_baseline", "nonzero_baseline",
+            "mean_targeted", "std_targeted", "nonzero_targeted",
+            "delta_mean_t_minus_b", "abs_delta", "cohens_d"
+        ]
+        with out_csv.open("w", encoding="utf-8", newline="") as f:
+            w = csv.DictWriter(f, fieldnames=cols)
+            w.writeheader()
+            w.writerows(rows)
+        log.info(f"📊 Wrote feature statistics to {out_csv}")
+    except Exception as e:
+        log.error(f"Failed to write feature stats CSV: {e}")
+
+def importance_core_and_dynamic(X: np.ndarray, y: np.ndarray,
+                                metric_names: list[str], core_dim: int,
+                                top_k_dynamic: int, min_effect: float):
+    assert X.shape[1] == len(metric_names), \
+        f"num_metrics {X.shape[1]} != metric_names length {len(metric_names)}"
+    Xt, Xb = X[y == 1], X[y == 0]
+    core_names    = list(metric_names[:core_dim])
+    dynamic_names = list(metric_names[core_dim:])
+    # full stats for core (report all)
+    imps_core = compute_metric_importance(
+        Xt[:, :core_dim], Xb[:, :core_dim], core_names,
+        top_k=len(core_names), min_effect=0.0
+    )
+    # stats for dynamic (top_k for readability; not trimming yet)
+    imps_dyn  = compute_metric_importance(
+        Xt[:, core_dim:], Xb[:, core_dim:], dynamic_names,
+        top_k=top_k_dynamic, min_effect=min_effect
+    )
+    def rowize(m, is_core: bool):
+        d = m._asdict() if hasattr(m, "_asdict") else m.__dict__.copy()
+        d["is_core"] = is_core
+        d["name"] = d.get("name") or d.get("feature")
+        return d
+    rows_core = [rowize(m, True)  for m in imps_core]
+    rows_dyn  = [rowize(m, False) for m in imps_dyn]
+    add_effective_auc(rows_core)
+    add_effective_auc(rows_dyn)
+    return rows_core, rows_dyn
+
+def importance_all_features(X: np.ndarray, y: np.ndarray, names: list[str]) -> list[dict]:
+    imps = compute_metric_importance(X[y==1], X[y==0], names,
+                                     top_k=len(names), min_effect=0.0)
+    rows = []
+    for m in imps:
+        d = m._asdict() if hasattr(m, "_asdict") else m.__dict__.copy()
+        d["is_core"] = bool(names.index(m.name) < 8)  # safe if core_dim=8; pass in if needed
+        d["name"] = d.get("name") or d.get("feature")
+        rows.append(d)
+    add_effective_auc(rows)
+    return rows
+
+def dynamic_marginals_with_core(X: np.ndarray, y: np.ndarray,
+                                names: list[str], core_dim: int) -> list[dict]:
+    Xt, Xb = X[y == 1], X[y == 0]
+    dyn_rows = []
+    for i, dyn_name in enumerate(names[core_dim:], start=core_dim):
+        idx = list(range(core_dim)) + [i]
+        sub_names = [names[j] for j in idx]
+        imps = compute_metric_importance(Xt[:, idx], Xb[:, idx], sub_names,
+                                         top_k=1, min_effect=0.0)
+        if not imps:
+            continue
+        m = imps[0]
+        d = m._asdict() if hasattr(m, "_asdict") else m.__dict__.copy()
+        d["is_core"] = False
+        d["name"] = d.get("name") or d.get("feature")
+        add_effective_auc([d])
+        dyn_rows.append(d)
+    return dyn_rows
+
+def add_effective_auc(rows: list[dict]) -> None:
+    for r in rows:
+        auc = r.get("auc")
+        direction = r.get("direction")
+        if auc is None or direction is None:
+            r["effective_auc"] = None
+        else:
+            try:
+                r["effective_auc"] = float(auc) if int(direction) == 1 else (1.0 - float(auc))
+            except Exception:
+                r["effective_auc"] = None
+
+def _write_csv(rows: list[dict], path: Path):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if not rows:
+        path.write_text("", encoding="utf-8")
+        return
+    cols = sorted({k for r in rows for k in r.keys()})
+    with path.open("w", encoding="utf-8", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=cols)
+        w.writeheader()
+        for r in rows:
+            w.writerow({c: r.get(c) for c in cols})
+
+def _write_json(rows: list[dict], path: Path):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(rows, indent=2), encoding="utf-8")
+
+def _make_cv(groups: np.ndarray | None, y: np.ndarray, n_splits: int = 5):
+    if groups is not None and len(groups) == len(y) and len(set(groups)) >= n_splits:
+        return GroupKFold(n_splits=n_splits), groups
+    # fallback to stratified if no/insufficient groups
+    return StratifiedKFold(n_splits=min(5, len(np.unique(y))), shuffle=True, random_state=0), None
+
+def _eval_linear_model(X: np.ndarray, y: np.ndarray, groups: np.ndarray | None):
+    cv, grp = _make_cv(groups, y)
+    # Use a pipeline to ensure scaler is fit inside each CV fold
+    clf = make_pipeline(
+        StandardScaler(),
+        LogisticRegression(C=0.5, penalty="l2", solver="liblinear", max_iter=500)
+    )
+    scores = cross_val_score(clf, X, y, cv=cv, groups=grp, scoring="roc_auc")
+    return float(scores.mean()), float(scores.std())
+
+def run_ablations(X: np.ndarray, y: np.ndarray, names: list[str],
+                  core_dim: int, groups: np.ndarray | None):
+    core_idx = list(range(core_dim))
+    dyn_idx  = list(range(core_dim, X.shape[1]))
+    auc_core_mean, auc_core_std = _eval_linear_model(X[:, core_idx], y, groups)
+
+    if dyn_idx:
+        auc_dyn_mean, auc_dyn_std = _eval_linear_model(X[:, dyn_idx], y, groups)
+    else:
+        # Neutral baseline if no dynamic features
+        auc_dyn_mean, auc_dyn_std = 0.5, 0.0
+
+    auc_hyb_mean,  auc_hyb_std  = _eval_linear_model(X, y, groups)
+    return {
+        "core_only_auc_mean": auc_core_mean, "core_only_auc_std": auc_core_std,
+        "dynamic_only_auc_mean": auc_dyn_mean, "dynamic_only_auc_std": auc_dyn_std,
+        "hybrid_auc_mean": auc_hyb_mean, "hybrid_auc_std": auc_hyb_std,
+    }
+
+def evaluate_all_features(
+    X: np.ndarray,
+    y: np.ndarray,
+    metric_names: list[str],
+    core_dim: int = CORE_FEATURE_COUNT,
+    groups: np.ndarray | None = None
+) -> Dict[str, Any]:
+    """
+    Comprehensive evaluation that properly validates all feature types
+    Returns:
+      {
+        "all_features": list of importance metrics for all features,
+        "core_features": importance metrics for core features only,
+        "dynamic_features": importance metrics for dynamic features only,
+        "ablation_results": {
+            "core_only": (auc_mean, auc_std),
+            "dynamic_only": (auc_mean, auc_std),
+            "hybrid": (auc_mean, auc_std)
+        }
+      }
+    """
+    log.info("🔍 Starting comprehensive feature evaluation")
+    # 1. Evaluate ALL features together (core + dynamic)
+    log.info("📊 Evaluating ALL features together")
+    all_imps = compute_metric_importance(
+        X[y == 1],
+        X[y == 0],
+        metric_names,
+        top_k=len(metric_names),
+        min_effect=0.0
+    )
+    # 2. Evaluate core features in isolation
+    log.info("📊 Evaluating core features in isolation")
+    core_imps = compute_metric_importance(
+        X[y == 1, :core_dim],
+        X[y == 0, :core_dim],
+        metric_names[:core_dim],
+        top_k=core_dim,
+        min_effect=0.0
+    )
+    # 3. Evaluate dynamic features in isolation
+    log.info("📊 Evaluating dynamic features in isolation")
+    dynamic_imps = compute_metric_importance(
+        X[y == 1, core_dim:],
+        X[y == 0, core_dim:],
+        metric_names[core_dim:],
+        top_k=len(metric_names) - core_dim,
+        min_effect=0.0
+    )
+    # 4. Run ablation study with proper grouping
+    log.info("📊 Running ablation study with proper grouping")
+    ablation_results = run_ablations(X, y, metric_names, core_dim, groups)
+    # 5. Analyze core feature contributions
+    log.info("📊 Analyzing core feature contributions")
+    core_contributions = []
+    for i, name in enumerate(metric_names[:core_dim]):
+        # How much does this core feature improve performance when added to dynamic features?
+        X_subset = np.column_stack([
+            X[:, core_dim:],  # dynamic features
+            X[:, i]            # this core feature
+        ])
+        names_subset = metric_names[core_dim:] + [name]
+        auc_mean, auc_std = _eval_linear_model(X_subset, y, groups)
+        # Baseline is dynamic features only
+        baseline_auc = ablation_results["dynamic_only_auc_std"]
+        improvement = auc_mean - baseline_auc
+        core_contributions.append({
+            "name": name,
+            "improvement": improvement,
+            "auc_mean": auc_mean,
+            "auc_std": auc_std
+        })
+
+    return {
+        "all_features": all_imps,
+        "core_features": core_imps,
+        "dynamic_features": dynamic_imps,
+        "ablation_results": ablation_results,
+        "core_contributions": core_contributions
+    }
+
+def generate_visicalc_hypothesis_report(
+    evaluation_results: Dict[str, Any],
+    out_dir: Path,
+    core_dim: int = CORE_FEATURE_COUNT
+) -> bool:
+    """Generate a report that validates or invalidates the VisiCalc hypothesis"""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    report_path = out_dir / "visicalc_hypothesis_validation.md"
+    log.info(f"📝 Generating VisiCalc hypothesis validation report: {report_path}")
+
+    # Extract key results
+    core_imps = evaluation_results["core_features"]
+    ablation = evaluation_results["ablation_results"]
+    core_contribs = evaluation_results["core_contributions"]
+
+    # Calculate key metrics
+    significant_core = sum(
+        1 for m in core_imps
+        if abs(m.cohen_d) > 0.3 and m.ks_pvalue < 0.05
+    )
+    core_avg_d = np.mean([abs(m.cohen_d) for m in core_imps])
+    core_auc_improvement = ablation["hybrid_auc_std"] - ablation["dynamic_only_auc_std"]
+
+    # Determine hypothesis status
+    hypothesis_validated = (
+        significant_core >= 2 and
+        core_avg_d > 0.25 and
+        core_auc_improvement > 0.05
+    )
+
+    # Generate report
+    report = f"""# VisiCalc Hypothesis Validation Report
+## Core Question
+Do structural reasoning patterns (VisiCalc features) contain discriminative signals for reasoning quality?
+## Methodology
+We conducted a comprehensive evaluation:
+1. ALL features evaluated together (core + dynamic)
+2. ONLY core VisiCalc features evaluated
+3. ONLY dynamic metrics evaluated
+4. Ablation study comparing core-only, dynamic-only, and hybrid models
+5. Core feature contribution analysis
+## Results
+### 1. Core VisiCalc Feature Performance
+| Feature | Cohen's d | AUC | KS p-value | Contribution |
+|---------|-----------|-----|------------|--------------|
+"""
+    # Sort core contributions by improvement
+    core_contribs_sorted = sorted(
+        core_contribs,
+        key=lambda x: x["improvement"],
+        reverse=True
+    )
+    for contrib in core_contribs_sorted:
+        name = contrib["name"]
+        core_imp = next((m for m in core_imps if m.name == name), None)
+        cohen_d = core_imp.cohen_d if core_imp else "N/A"
+        auc = core_imp.auc if core_imp else "N/A"
+        ks_pvalue = core_imp.ks_pvalue if core_imp else "N/A"
+        improvement = contrib["improvement"]
+        report += f"| {name} | {cohen_d:.3f} | {auc:.3f} | {ks_pvalue:.4e} | {improvement:.4f} |\n"
+
+    report += f"\n**Summary**: {significant_core}/{core_dim} core features show statistically significant discrimination (|d| > 0.3, p < 0.05)"
+
+    # 2. Model Comparison
+    report += f"""
+### 2. Model Comparison
+| Model | AUC (mean) | AUC (std) | Improvement vs Dynamic |
+|-------|------------|-----------|------------------------|
+| Core Only | {ablation['core_only_auc_mean']:.4f} | {ablation['core_only_auc_std']:.4f} | N/A |
+| Dynamic Only | {ablation['dynamic_only_auc_mean']:.4f} | {ablation['dynamic_only_auc_std']:.4f} | 0.0000 |
+| Hybrid (Core + Dynamic) | {ablation['hybrid_auc_mean']:.4f} | {ablation['hybrid_auc_std']:.4f} | {core_auc_improvement:.4f} |
+"""
+
+    # 3. Hypothesis Validation
+    report += "\n### 3. VisiCalc Hypothesis Validation\n"
+    if hypothesis_validated:
+        report += "✅ **HYPOTHESIS SUPPORTED**: Structural reasoning patterns contain meaningful discriminative signals\n"
+        report += f"- {significant_core}/{core_dim} core features show strong discrimination\n"
+        report += f"- Average |Cohen's d| across core features: {core_avg_d:.3f}\n"
+        report += f"- Hybrid model improves AUC by {core_auc_improvement:.4f} over dynamic-only model\n"
+    else:
+        report += "❌ **HYPOTHESIS NOT SUPPORTED**: Structural reasoning patterns lack sufficient discriminative power\n"
+        report += f"- Only {significant_core}/{core_dim} core features show strong discrimination\n"
+        report += f"- Average |Cohen's d| across core features: {core_avg_d:.3f}\n"
+        report += f"- Hybrid model improves AUC by only {core_auc_improvement:.4f} over dynamic-only model\n"
+
+    # 4. Recommended Next Steps
+    report += "\n### 4. Recommended Next Steps\n"
+    if hypothesis_validated:
+        report += "1. **Proceed with VisiCalc integration**: Core features contain meaningful signals\n"
+        report += "2. **Focus on top 3 core features**: " + ", ".join([c["name"] for c in core_contribs_sorted[:3]]) + "\n"
+        report += "3. **Build hybrid critic**: Combine top core features with top dynamic metrics\n"
+    else:
+        report += "1. **Investigate why core features underperform**:\n"
+        report += "   - Check VisiCalc implementation for errors\n"
+        report += "   - Verify core feature calculations\n"
+        report += "   - Consider alternative structural representations\n"
+        report += "2. **Re-evaluate hypothesis**: Structural patterns may not be as discriminative as expected\n"
+
+    # Save report
+    report_path.write_text(report, encoding="utf-8")
+    log.info(f"✅ Wrote VisiCalc hypothesis validation report to {report_path}")
+    return hypothesis_validated
+
+def _write_selected_feature_artifacts(
+    importance_rows: list[dict],
+    out_dir: Path,
+    dataset_info: Dict[str, Any]
+) -> None:
+    """Write comprehensive feature selection artifacts with clear core/dynamic labeling."""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    # 1. JSON (full detail with dataset context)
+    json_path = out_dir / "selected_features.json"
+    try:
+        with json_path.open("w", encoding="utf-8") as f:
+            json.dump({
+                "dataset_info": dataset_info,
+                "importance_rows": importance_rows
+            }, f, indent=2)
+        log.info(f"✅ Wrote detailed feature importance to {json_path}")
+    except Exception as e:
+        log.error(f"❌ Failed to write JSON feature report: {e}")
+
+    # 2. CSV (quick scan with core/dynamic labeling)
+    csv_path = out_dir / "selected_features.csv"
+    try:
+        cols = [
+            "name", "is_core", "mean_target", "mean_baseline", "std_target", "std_baseline",
+            "cohen_d", "abs_cohen_d", "ks_stat", "ks_pvalue", "auc", "direction"
+        ]
+        with csv_path.open("w", encoding="utf-8", newline="") as f:
+            w = csv.DictWriter(f, fieldnames=cols)
+            w.writeheader()
+            for row in importance_rows:
+                # Convert None to empty string for CSV readability
+                safe_row = {k: ("" if v is None else v) for k, v in row.items()}
+                w.writerow(safe_row)
+        log.info(f"✅ Wrote CSV feature report to {csv_path}")
+    except Exception as e:
+        log.error(f"❌ Failed to write CSV feature report: {e}")
+
+    # 3. Names only (handy for downstream)
+    names_path = out_dir / "selected_feature_names.txt"
+    try:
+        with names_path.open("w", encoding="utf-8") as f:
+            f.write("\n".join(row["name"] for row in importance_rows))
+        log.info(f"✅ Wrote feature names to {names_path}")
+    except Exception as e:
+        log.error(f"❌ Failed to write feature names: {e}")
+
+    # 4. Summary report (human-readable)
+    summary_path = out_dir / "feature_selection_summary.md"
+    try:
+        with summary_path.open("w", encoding="utf-8") as f:
+            f.write(f"# Feature Selection Summary\n")
+            f.write(f"**Dataset:** {dataset_info['samples']} samples, {dataset_info['features']} features\n")
+            f.write(f"**Core features:** {dataset_info['core_features']} (always kept)\n")
+            f.write(f"**Dynamic features selected:** {dataset_info['selected_dynamic']}/{dataset_info['total_dynamic']}\n")
+            f.write("## Top Selected Features\n")
+            f.write("| Feature | Type | Cohen's d | AUC | Direction |\n")
+            f.write("|---------|------|-----------|-----|-----------|\n")
+            # Show top 10 dynamic features
+            dynamic_rows = [r for r in importance_rows if not r["is_core"]][:10]
+            for row in dynamic_rows:
+                f.write(
+                    f"| {row['name']} | Dynamic | {row['cohen_d']:.3f} | {row['auc']:.3f} | {row['direction']} |\n"
+                )
+            # Always show core features too
+            core_rows = [r for r in importance_rows if r["is_core"]]
+            for row in core_rows:
+                cd  = row.get("cohen_d"); auc = row.get("auc"); dr = row.get("direction")
+                cd_s  = f"{cd:.3f}" if cd is not None else "N/A"
+                auc_s = f"{auc:.3f}" if auc is not None else "N/A"
+                dr_s  = f"{dr}" if dr is not None else "N/A"
+                f.write(f"| {row['name']} | Core | {cd_s} | {auc_s} | {dr_s} |\n")
+
+        log.info(f"✅ Wrote feature selection summary to {summary_path}")
+    except Exception as e:
+        log.error(f"❌ Failed to write feature selection summary: {e}")
+
+def _save_viz_plots(X: np.ndarray, y: np.ndarray, out_dir: Path, max_feats: int = 12) -> list[str]:
+    """Save visualization plots with robust error handling."""
+    saved = []
+    out_dir.mkdir(parents=True, exist_ok=True)
+    # Sanitize for visualization (drop ~constant cols)
+    std = X.std(axis=0)
+    keep = std > 1e-8
+    Xs = X[:, keep] if keep.any() else X[:, :0]
+    if Xs.shape[1] == 0:
+        log.warning("⚠️  All features are ~constant; skipping visualization plots")
+        return saved
+
+    # Histogram grid (KDE guarded)
+    try:
+        k = min(max_feats, Xs.shape[1])
+        ncols = min(4, k)
+        nrows = int(np.ceil(k / ncols))
+        fig, axes = plt.subplots(nrows, ncols, figsize=(4*ncols, 3*nrows), squeeze=False)
+        for i in range(k):
+            r, c = divmod(i, ncols)
+            ax = axes[r][c]
+            ax.hist(Xs[y == 0, i], bins=20, alpha=0.6, label="baseline")
+            ax.hist(Xs[y == 1, i], bins=20, alpha=0.6, label="targeted")
+            ax.set_title(f"feat_{i}")
+        for j in range(k, nrows*ncols):
+            r, c = divmod(j, ncols)
+            axes[r][c].axis("off")
+        fig.legend()
+        fig.tight_layout()
+        hp = out_dir / "feature_hists.png"
+        fig.savefig(hp.as_posix(), dpi=150, bbox_inches="tight")
+        plt.close(fig)
+        saved.append(str(hp))
+        log.info(f"🖼️ Saved feature histograms to {hp}")
+    except Exception as e:
+        log.error(f"❌ Failed to generate feature histograms: {e}")
+
+    # PCA scatter (optional)
+    try:
+        if Xs.shape[1] >= 2:
+            Xp = PCA(n_components=2, random_state=0).fit_transform(Xs)
+            fig2 = plt.figure(figsize=(5, 4))
+            ax2 = fig2.add_subplot(111)
+            ax2.scatter(Xp[y == 0, 0], Xp[y == 0, 1], alpha=0.7, label="baseline")
+            ax2.scatter(Xp[y == 1, 0], Xp[y == 1, 1], alpha=0.7, label="targeted")
+            ax2.legend()
+            ax2.set_title("PCA(2) of sanitized features")
+            ax2.set_xlabel("PC1")
+            ax2.set_ylabel("PC2")
+            fig2.tight_layout()
+            pp = out_dir / "pca_scatter.png"
+            fig2.savefig(pp.as_posix(), dpi=150, bbox_inches="tight")
+            plt.close(fig2)
+            saved.append(str(pp))
+            log.info(f"🖼️ Saved PCA scatter plot to {pp}")
+        else:
+            log.info("ℹ️  PCA skipped: <2 usable features")
+    except Exception as e:
+        log.error(f"❌ Failed to generate PCA scatter plot: {e}")
+
+    return saved
+
+def _write_dataset_report_md(
+    out_md: Path,
+    X: np.ndarray,
+    y: np.ndarray,
+    metric_names: list[str],
+    rows: list[dict],
+    figs: list[str],
+    dataset_info: Dict[str, Any]
+) -> None:
+    """Write comprehensive dataset report in Markdown format."""
+    out_md.parent.mkdir(parents=True, exist_ok=True)
+    targeted = int((y == 1).sum())
+    baseline = int((y == 0).sum())
+    rank = int(np.linalg.matrix_rank(X))
+    zero_var = int((X.std(axis=0) <= 1e-8).sum())
+
+    # Rank top features
+    top_delta = sorted(rows, key=lambda r: r["abs_delta"], reverse=True)[:25]
+    top_effect = sorted(rows, key=lambda r: abs(r["cohens_d"]), reverse=True)[:25]
+
+    def rows_to_md(rr: list[dict]) -> str:
+        hdr = "| feature | mean_b | mean_t | Δ | d | std_b | std_t |\n|---|---:|---:|---:|---:|---:|---:|"
+        lines = [hdr]
+        for r in rr:
+            lines.append(
+                f"| {r['feature']} | {r['mean_baseline']:.4f} | {r['mean_targeted']:.4f} "
+                f"| {r['delta_mean_t_minus_b']:.4f} | {r['cohens_d']:.3f} "
+                f"| {r['std_baseline']:.4f} | {r['std_targeted']:.4f} |"
+            )
+        return "\n".join(lines)
+
+    figs_md = ""
+    if figs:
+        figs_md = "\n### Figures saved\n" + "\n".join(f"- {Path(p).name}" for p in figs) + "\n"
+
+    # Calculate imbalance ratio
+    imbalance_ratio = max(targeted, baseline) / min(targeted, baseline) if min(targeted, baseline) > 0 else float('inf')
+    imbalance_msg = "balanced" if imbalance_ratio <= 1.5 else f"imbalanced (ratio={imbalance_ratio:.2f})"
+
+    # Calculate feature density
+    feature_density = 100 * np.mean(X != 0)
+
+    md = f"""# Tiny Critic — Combined Dataset Audit
+**Samples:** {X.shape[0]}  **Features:** {X.shape[1]}  **Rank:** {rank}  **Zero-variance:** {zero_var}
+**Class balance:** {imbalance_msg} — baseline: {baseline}  targeted: {targeted}  (ratio={imbalance_ratio:.2f})
+**Feature density:** {feature_density:.1f}% non-zero values
+**Metric columns:** {len(metric_names)}
+(See `feature_stats.csv` for complete per-feature stats.)
+## Top by |Δ mean| (targeted - baseline)
+{rows_to_md(top_delta)}
+## Top by effect size (Cohen's d)
+{rows_to_md(top_effect)}
+{figs_md}
+---
+*Auto-generated by generate_visicalc_report.py*
+"""
+    try:
+        out_md.write_text(md, encoding="utf-8")
+        log.info(f"📝 Wrote dataset report to {out_md}")
+    except Exception as e:
+        log.error(f"❌ Failed to write dataset report: {e}")
+
+def generate_dataset_report(
+    X: np.ndarray,
+    y: np.ndarray,
+    metric_names: list[str],
+    out_dir: Path,
+    save_plots: bool = False,
+    dataset_info: Dict[str, Any] = None
+) -> None:
+    """Generate comprehensive dataset report with statistics and visualizations."""
+    if dataset_info is None:
+        dataset_info = {
+            "samples": X.shape[0],
+            "features": X.shape[1],
+            "core_features": CORE_FEATURE_COUNT,
+            "total_dynamic": len(metric_names) - CORE_FEATURE_COUNT,
+            "selected_dynamic": len(metric_names) - CORE_FEATURE_COUNT
+        }
+    rows = _summarize_features(X, y, metric_names)
+    stats_csv = out_dir / "feature_stats.csv"
+    _write_feature_stats_csv(rows, stats_csv)
+    figs = _save_viz_plots(X, y, out_dir) if save_plots else []
+    _write_dataset_report_md(
+        out_dir / "tiny_critic_report.md",
+        X, y, metric_names, rows, figs, dataset_info
+    )
+
+def _select_features_via_importance_core_aware(
+    X: np.ndarray,
+    y: np.ndarray,
+    metric_names: list[str],
+    core_dim: int = CORE_FEATURE_COUNT,
+    top_k_dynamic: int = 30,
+    min_effect: float = 0.0
+) -> Tuple[List[str], List[Dict[str, Any]]]:
+    """
+    Core-aware feature selection that:
+      - Always preserves the first `core_dim` features (VisiCalc core)
+      - Selects top_k_dynamic features from the remaining metrics
+      - Labels features as core/dynamic for clear reporting
+    Returns:
+      (selected_names, importance_rows)
+    """
+    log.info(f"🔍 Starting core-aware feature selection (core_dim={core_dim}, top_k_dynamic={top_k_dynamic})")
+
+    # Validate inputs
+    if core_dim < 0 or core_dim > len(metric_names):
+        log.error(f"Invalid core_dim={core_dim} for {len(metric_names)} metrics")
+        core_dim = min(max(0, core_dim), len(metric_names))
+
+    # Split data by class
+    Xt = X[y == 1]
+    Xb = X[y == 0]
+
+    # Split metrics into core and dynamic
+    core_names = metric_names[:core_dim]
+    dynamic_names = metric_names[core_dim:]
+
+    log.info(f"📌 Core features ({len(core_names)}): {core_names}")
+    log.info(f"📌 Dynamic features ({len(dynamic_names)}): {dynamic_names[:5]}... (truncated)")
+
+    # Compute importance on dynamic metrics only
+    importance_rows = []
+    selected_dynamic = []
+
+    if len(dynamic_names) > 0:
+        try:
+            imps = compute_metric_importance(
+                Xt[:, core_dim:],
+                Xb[:, core_dim:],
+                dynamic_names,
+                top_k=top_k_dynamic,
+                min_effect=min_effect
+            )
+            # Convert to list of dicts for easier processing
+            importance_rows = []
+            for m in imps:
+                row = {
+                    "name": m.name,
+                    "mean_target": m.mean_target,
+                    "mean_baseline": m.mean_baseline,
+                    "std_target": m.std_target,
+                    "std_baseline": m.std_baseline,
+                    "cohen_d": m.cohen_d,
+                    "abs_cohen_d": m.abs_cohen_d,
+                    "ks_stat": m.ks_stat,
+                    "ks_pvalue": m.ks_pvalue,
+                    "auc": m.auc,
+                    "direction": m.direction,
+                    "is_core": False
+                }
+                importance_rows.append(row)
+
+            selected_dynamic = [m.name for m in imps]
+            log.info(f"✅ Selected {len(selected_dynamic)}/{len(dynamic_names)} dynamic features")
+        except Exception as e:
+            log.error(f"⚠️  Failed to compute metric importance: {e}")
+            # Fallback to keeping all dynamic features if importance fails
+            selected_dynamic = dynamic_names
+            log.warning("⚠️  Falling back to all dynamic features")
+
+    # Combine core + selected dynamic (preserving order)
+    selected_names = core_names + selected_dynamic
+
+    rows_core, rows_dyn_full = importance_core_and_dynamic(
+        X, y, metric_names, core_dim=core_dim,
+        top_k_dynamic=top_k_dynamic, min_effect=min_effect
+    )
+    importance_rows = rows_core[:]  # start with core rows (real stats)
+    importance_rows.extend(
+        [r for r in rows_dyn_full if r["name"] in selected_dynamic]
+    )
+
+    return selected_names, importance_rows
+
+
+# stephanie/reports/generate_visicalc_report.py (Corrected main function)
+# ... (previous code remains the same until the main function) ...
+
+def main(args):
+    """Main function for dataset analysis and reporting."""
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        datefmt="%H:%M:%S",
+    )
+
+    # Load the generated dataset
+    dataset_path = Path("data/critic.npz")
+    log.info(f"📈 Loading dataset for analysis: {dataset_path.absolute()}")
+    try:
+        with np.load(dataset_path, allow_pickle=True) as data:
+            X = data['X']
+            y = data['y']
+            metric_names = data['metric_names'].tolist()
+            groups = data.get('groups', None) # Load groups if saved
+            if groups is not None:
+                groups = np.array(groups) # Convert list back to numpy array
+            else:
+                log.info("ℹ️  Groups not found in dataset file, CV will use StratifiedKFold.")
+    except FileNotFoundError:
+        log.error(f"❌ Dataset file not found: {dataset_path}")
+        raise
+    except KeyError as e:
+        log.error(f"❌ Missing key in dataset file {dataset_path}: {e}")
+        raise
+
+    # Check shapes after loading
+    log.info(f"✅ Loaded dataset: X.shape={X.shape}, y.shape={y.shape}")
+    if groups is not None:
+        log.info(f"✅ Loaded groups: groups.shape={groups.shape}")
+    else:
+        log.info("ℹ️  No groups loaded, using default CV.")
+
+    # Ensure names 1:1 with columns
+    assert X.shape[1] == len(metric_names), \
+        f"num_metrics {X.shape[1]} != metric_names length {len(metric_names)}"
+
+    # Core sanity checks (similar to generation script)
+    core_dim = args.core_dim
+    core_block = X[:, :core_dim]
+    if np.isnan(core_block).any():
+        raise ValueError("NaN in VisiCalc core features — check VisiCalc computation.")
+    zero_var_core = int((core_block.std(axis=0) <= 1e-12).sum())
+    if zero_var_core:
+        log.warning("VisiCalc: %d core features are ~constant across samples", zero_var_core)
+
+    # --- Reporting Logic ---
+    root = Path("runs/visicalc") # Default output directory for reports
+
+    # 1. Visualize features
+    log.info("📊 Visualizing features to directory: {root}")
+    _save_viz_plots(X, y, root)
+
+    # 2. Generate comprehensive dataset report
+    log.info("📊 Generating comprehensive dataset report...")
+    generate_dataset_report(X, y, metric_names, root, save_plots=False) # Plots already saved above
+
+    # 3. Comprehensive feature evaluation
+    log.info("🔍 Starting comprehensive feature evaluation")
+    evaluation_results = evaluate_all_features(
+        X, y, metric_names,
+        core_dim=core_dim,
+        groups=groups # Pass groups if available
+    )
+
+    # 4. Validate VisiCalc hypothesis
+    log.info("🔍 Validating VisiCalc hypothesis")
+    hypothesis_validated = generate_visicalc_hypothesis_report(
+        evaluation_results,
+        root,
+        core_dim=core_dim
+    )
+
+    # 5. Feature selection based on hypothesis validation
+    log.info("🔍 Selecting features based on hypothesis validation")
+    if hypothesis_validated:
+        # Keep all core features + top dynamic metrics
+        core_names = metric_names[:core_dim]
+        dynamic_imps = sorted(
+            evaluation_results["dynamic_features"],
+            key=lambda m: abs(m.cohen_d),
+            reverse=True
+        )
+        selected_dynamic = [m.name for m in dynamic_imps[:args.top_k_dynamic]]
+        selected_names = core_names + selected_dynamic
+    else:
+        # Fall back to dynamic metrics only
+        all_imps = sorted(
+            evaluation_results["all_features"],
+            key=lambda m: abs(m.cohen_d),
+            reverse=True
+        )
+        selected_names = [m.name for m in all_imps[:args.top_k_dynamic]]
+
+    # 6. Write selected feature artifacts
+    dataset_info = {
+        "samples": X.shape[0],
+        "features": X.shape[1],
+        "core_features": core_dim,
+        "total_dynamic": len(metric_names) - core_dim,
+        "selected_dynamic": len([n for n in selected_names if n not in metric_names[:core_dim]])
+    }
+    # Calculate importance rows for selected features (for artifacts)
+    _, importance_rows = _select_features_via_importance_core_aware(
+        X, y, metric_names, core_dim=core_dim, top_k_dynamic=args.top_k_dynamic, min_effect=args.min_effect
+    )
+    _write_selected_feature_artifacts(importance_rows, root, dataset_info)
+
+    # 7. Write filtered NPZ (if requested)
+    if args.write_filtered_npz:
+        name_to_idx = {n: i for i, n in enumerate(metric_names)}
+        sel_idx = [name_to_idx[n] for n in selected_names if n in name_to_idx]
+        if len(sel_idx) == 0:
+            log.error("❌ No features selected for filtered dataset")
+        else:
+            X_sel = X[:, sel_idx].astype(X.dtype, copy=False)
+            filtered_path = root / f"visicalc_ab_dataset_core{core_dim}_dyn{len(sel_idx)-core_dim}.npz"
+            np.savez_compressed(
+                filtered_path,
+                X=X_sel,
+                y=y,
+                metric_names=np.array(selected_names, dtype=object)
+            )
+            log.info(
+                f"💾 Wrote filtered dataset with {len(sel_idx)} features "
+                f"(core={core_dim}, dynamic={len(sel_idx)-core_dim}) → {filtered_path}"
+            )
+
+    # --- Write remaining artifacts ---
+    out_dir = root / "feature_importance_reports"
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    # === Importance (core + dynamic), all-features ranking, dynamic marginals ===
+    rows_core, rows_dyn = importance_core_and_dynamic(
+        X, y, metric_names, core_dim=core_dim,
+        top_k_dynamic=min(50, max(1, X.shape[1]-core_dim)),  # just for report readability
+        min_effect=0.0
+    )
+    rows_all = importance_all_features(X, y, metric_names)
+    rows_dyn_marg = dynamic_marginals_with_core(X, y, metric_names, core_dim=core_dim)
+
+    _write_csv(rows_core, out_dir / "core_features_importance.csv")
+    _write_json(rows_core, out_dir / "core_features_importance.json")
+    _write_csv(rows_dyn,  out_dir / "dynamic_features_importance.csv")
+    _write_json(rows_dyn,  out_dir / "dynamic_features_importance.json")
+    _write_csv(rows_all, out_dir / "all_features_importance.csv")
+    _write_json(rows_all, out_dir / "all_features_importance.json")
+    _write_csv(rows_dyn_marg, out_dir / "dynamic_marginals_with_core.csv")
+    _write_json(rows_dyn_marg, out_dir / "dynamic_marginals_with_core.json")
+
+    # === CV ablations (no trimming) ===
+    cv_res = run_ablations(X, y, metric_names, core_dim=core_dim, groups=groups)
+    (out_dir / "cv_ablations.json").write_text(json.dumps(cv_res, indent=2), encoding="utf-8")
+    log.info("CV Ablations: %s", cv_res)
+
+    log.info("🎉 Tiny Critic Dataset analysis and reporting completed successfully!")
+
+
+if __name__ == "__main__":
+    p = argparse.ArgumentParser(description="Tiny Critic Dataset Analysis and Reporting")
+    p.add_argument(
+        "--core_dim",
+        type=int,
+        default=CORE_FEATURE_COUNT,
+        help="Number of core VisiCalc features (default: 8)"
+    )
+    p.add_argument(
+        "--top_k_dynamic",
+        type=int,
+        default=30,
+        help="Number of top dynamic metrics to keep based on importance"
+    )
+    p.add_argument(
+        "--min_effect",
+        type=float,
+        default=0.0,
+        help="Minimum Cohen's d effect size to include dynamic metrics"
+    )
+    p.add_argument(
+        "--write_filtered_npz",
+        action="store_true",
+        help="Write a filtered NPZ with core + top_k_dynamic features"
+    )
+    main(p.parse_args())

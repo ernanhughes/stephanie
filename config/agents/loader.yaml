@@ -13,17 +13,7 @@ loader:
 
   # Where your JSONL logs live (you can add multiple dirs)
   log_dirs:
-    - "runs/visual_introspection/8893"  
-    - "runs/visual_introspection/8892"  
-    - "runs/visual_introspection/8891"  
-    - "runs/visual_introspection/8890"  
-    - "runs/visual_introspection/8889"  
-    - "runs/visual_introspection/8888"  
-    - "runs/visual_introspection/8887"  
-    - "runs/visual_introspection/8886"  
-    - "runs/visual_introspection/8885"  
-    - "runs/visual_introspection/8884"  
-    - "runs/visual_introspection/8883"  
+    - "runs/critic_data"
   log_glob: "*.jsonl"
 
   shuffle: true

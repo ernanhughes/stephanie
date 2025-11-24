@@ -1,5 +1,5 @@
-visual_introspection:
-  name: visual_introspection
+critic_data:
+  name: critic_data
   enabled: true
   save_prompt: true
   save_context: false
@@ -13,15 +13,15 @@ visual_introspection:
     api_key: null
   input_keys: ["goal", "hypotheses"]
   input_key: documents
-  output_key: visual_introspection
+  output_key: critic_data
   prompt_mode: file
-  prompt_file: visual_introspection.txt
+  prompt_file: critic_data.txt
 
   strategy: "gsm8k_solve"
   num_examples: 10  
   split: "train"
   store_raw: true
-  out_dir: "runs/visual_introspection"
+  out_dir: "runs/critic_data"
   shuffle: true
   model_name: "deepseek-math:7b"
   params:

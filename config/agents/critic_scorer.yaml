@@ -1,0 +1,13 @@
+critic_scorer:
+  _target_: stephanie.components.critic.agents.critic_scorer.CriticScorerAgent
+  name: critic_scorer
+  input_key: scorables
+  output_key: critic_results
+  enabled: true
+
+  model_path: "models/critic.joblib"
+  meta_path:  "models/critic.meta.json"
+
+  processor:
+    offload_mode: inline
+    # extra ScorableProcessor settings…

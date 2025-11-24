@@ -7,7 +7,10 @@ defaults:
   - services: all
   - scorer: all  
 
-  - agents/visual_introspection
+  - agents/critic_data
+  - agents/critic_dataset
+  - agents/critic_trainer
+  - agents/critic_inference
   - agents/nexus_scorable_loader
   - agents/visicalc
   - agents/nexus
@@ -66,21 +69,43 @@ pipeline:
   tag: chat_training
   description: "Uses chat history to train models. Different dynamics than traditional training."
   stages:
-     - name: visual_introspection
+     - name: critic_data
        description: "Perform visual introspection on the goal and hypotheses"
-       cls: stephanie.components.critic.agents.visual_introspection.VisualIntrospectionAgent
-       enabled: true
-       iterations: 20
+       cls: stephanie.components.critic.agents.critic_data.CriticDataAgent
+       enabled: false
+       iterations: 1
 
      - name: loader
        description: "Load scorables from previous visual introspection runs"
        cls: stephanie.agents.loader.LoaderAgent
-       enabled: false
+       enabled: true
        iterations: 1
 
      - name: visicalc
        description: "Run VisiCalc cohort analysis on the loaded conversation turns"
-       cls: stephanie.components.critic.agents.visicalc.VisiCalcAgent I
+       cls: stephanie.components.critic.agents.visicalc.VisiCalcAgent
+       enabled: false
+       iterations: 1
+       
+     - name: critic_dataset
+       description: "Build Tiny Critic dataset from VisiCalc features"
+       cls: stephanie.components.critic.agents.critic_dataset.CriticDatasetAgent
        enabled: false
        iterations: 1
 
+     - name: critic_trainer
+       description: "Train the Tiny Critic model on VisiCalc-derived feature dataset"
+       cls: stephanie.components.critic.agents.critic_trainer.CriticTrainerAgent
+       enabled: false
+       iterations: 1
+ 
+     - name: critic_scorer
+       description: "Score scorables using the trained Tiny Critic model"
+       cls: stephanie.components.critic.agents.critic_scorer.CriticScorerAgent
+       enabled: false
+       iterations: 1  
+
+     - name: critic_inference
+       cls: stephanie.components.critic.agents.critic_inference.CriticInferenceAgent
+       enabled: true
+       iterations: 1

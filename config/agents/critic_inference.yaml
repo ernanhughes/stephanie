@@ -1,0 +1,13 @@
+critic_inference:
+  _target_: stephanie.components.critic.agents.critic_inference_agent.CriticInferenceAgent
+  name: critic_inference
+  enabled: true
+
+  input_key: "scorables"
+  output_key: "critic_scores"
+
+  model_path: "models/critic.joblib"
+  meta_path: "models/critic.meta.json"
+  dimension: "critic"
+
+  include_explanations: false

@@ -5,6 +5,7 @@ import json
 import random
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+import os
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.scoring.scorable import Scorable
@@ -112,19 +113,6 @@ class LoaderAgent(BaseAgent):
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _discover_log_files(self) -> List[Path]:
-        paths: List[Path] = []
-        for d in self.log_dirs:
-            if not d.exists():
-                self.logger.log(
-                    "Gsm8kLogLoaderMissingDir",
-                    {"dir": str(d)},
-                )
-                continue
-            for p in sorted(d.glob(self.log_glob)):
-                if p.is_file():
-                    paths.append(p)
-        return paths
 
     def _load_records_from_file(self, path: Path) -> List[Dict[str, Any]]:
         records: List[Dict[str, Any]] = []
@@ -235,3 +223,29 @@ class LoaderAgent(BaseAgent):
 
         return all_scorables, scorables_targeted, scorables_baseline
 
+    def _discover_log_files(self) -> List[Path]:
+        """
+        Discover all JSONL files under each log_dir, recursively.
+        Uses os.walk to traverse directories and matches log_glob against filenames.
+        """
+        paths: List[Path] = []
+        suffix = self.log_glob.replace("*", "")  # "*.jsonl" -> ".jsonl"
+
+        for root in self.log_dirs:
+            root = Path(root)
+            if not root.exists():
+                self.logger.log("LoaderMissingDir", {"dir": str(root)})
+                continue
+
+            # Walk recursively
+            for subdir, dirs, files in os.walk(root):
+                subdir_path = Path(subdir)
+
+                for fname in files:
+                    # simple glob match: endswith(".jsonl")
+                    if fname.endswith(suffix):
+                        p = subdir_path / fname
+                        log.info(f"LoaderAgent discovered: {p}")
+                        paths.append(p)
+
+        return sorted(paths)
