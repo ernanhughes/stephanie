@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict
+import csv
 import json
 import logging
 import math
@@ -415,6 +416,14 @@ class VisiCalcAgent(BaseAgent):
                         diff["global_delta"]["frontier_frac"],
                     )
 
+                    # 2A-1) Save full matrices as CSV
+                    self._save_vpm_matrix_csv(vpm_tgt,  list(vc_tgt.metric_names),  list(vc_tgt.item_ids),  self.out_dir / "visicalc_targeted_matrix.csv")
+                    self._save_vpm_matrix_csv(vpm_base, list(vc_base.metric_names), list(vc_base.item_ids), self.out_dir / "visicalc_baseline_matrix.csv")
+
+                    # 2A-2) Save combined NPZ for tiny_critic trainer (labels inside)
+                    # NOTE: metric_names must match (you already ensure same D before importance/diff)
+                    self._save_ab_npz_dataset(vpm_base, vpm_tgt, list(vc_tgt.metric_names), self.out_dir / "visicalc_ab_dataset.npz")
+
                     # 3) VPM PNGs (full matrices)
                     if self.vpm_png_enabled:
                         try:
@@ -495,6 +504,7 @@ class VisiCalcAgent(BaseAgent):
                         log.exception(
                             "VisiCalcAgent: _compute_metric_separability failed"
                         )
+
 
             # ------------------------------------------------------------------
             # Case B: single cohort only (no A/B comparison)
@@ -1383,3 +1393,30 @@ class VisiCalcAgent(BaseAgent):
         except Exception as e:
             log.exception("VisiCalcAgent: metric importance computation failed: %s", e)
             return None
+
+    def _save_vpm_matrix_csv(self, matrix: np.ndarray, metric_names: list[str], item_ids: list[str], out_path: Path) -> None:
+        """
+        Write a dense CSV:
+            scorable_id, <metric_0>, <metric_1>, ...
+            <id_0>,     <val>,      <val>, ...
+        """
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        with out_path.open("w", newline="", encoding="utf-8") as f:
+            w = csv.writer(f)
+            w.writerow(["scorable_id", *metric_names])
+            for ridx in range(matrix.shape[0]):
+                w.writerow([item_ids[ridx], *[float(x) for x in matrix[ridx]]])
+        self.logger.log("VisiCalcMatrixCSVSaved", {"path": str(out_path), "rows": int(matrix.shape[0]), "cols": int(matrix.shape[1])})
+
+    def _save_ab_npz_dataset(self, vpm_base: np.ndarray, vpm_tgt: np.ndarray, metric_names: list[str], out_path: Path) -> None:
+        """
+        Concatenate baseline & targeted matrices → X, and make binary labels y.
+        baseline → 0, targeted → 1
+        """
+        X = np.concatenate([vpm_base, vpm_tgt], axis=0).astype(np.float32, copy=False)
+        y = np.concatenate([np.zeros((vpm_base.shape[0],), dtype=np.int64),
+                            np.ones((vpm_tgt.shape[0],), dtype=np.int64)], axis=0)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        # Also stash names so training can reconstruct feature names if desired
+        np.savez(out_path.as_posix(), X=X, y=y, metric_names=np.array(metric_names, dtype=object))
+        self.logger.log("VisiCalcABDatasetSaved", {"path": str(out_path), "X_shape": list(X.shape), "y_len": int(y.shape[0])})

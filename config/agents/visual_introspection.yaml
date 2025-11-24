@@ -18,7 +18,7 @@ visual_introspection:
   prompt_file: visual_introspection.txt
 
   strategy: "gsm8k_solve"
-  num_examples: 200  # Increased from 32
+  num_examples: 10  
   split: "train"
   store_raw: true
   out_dir: "runs/visual_introspection"

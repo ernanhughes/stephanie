@@ -169,8 +169,9 @@ class ScorableProcessor(ProgressMixin):
             enabled=bool(metric_observer_cfg.get("enabled", True)),
             snapshot_path=metric_observer_cfg.get("snapshot_path", "runs/metrics/metric_universe.json")
         )
+        self.skip_if_exists = bool(self.cfg.get("skip_if_exists", True)) 
 
-    # ---------- Manifest ----------
+   # ---------- Manifest ----------
 
     def start_manifest(
         self,
@@ -777,6 +778,23 @@ class ScorableProcessor(ProgressMixin):
         try:
             for i, sc in enumerate(inputs):
                 t0i = time.perf_counter()
+                # 0) short-circuit if already stored
+                scorable_id   = sc.get("id") if isinstance(sc, dict) else sc.id
+                scorable_type = sc.get("target_type") if isinstance(sc, dict) else sc .target_type
+                if self.memory.metrics.should_skip_vector_for_scorable(
+                    scorable_id, scorable_type, skip_if_exists=self.skip_if_exists
+                ):
+                    if self.logger:
+                        self.logger.log("MetricSkipExisting", {"scorable_id": scorable_id, "type": scorable_type})
+                    # still return a minimal row so callers can proceed
+                    out.append({
+                        "scorable_id": scorable_id,
+                        "scorable_type": scorable_type,
+                        "metrics": None,
+                        "reduced": None,
+                        "skipped": True,
+                    })
+                    continue
                 row = await self.process(sc, context)
                 out.append(row)
 

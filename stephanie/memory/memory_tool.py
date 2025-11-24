@@ -45,6 +45,7 @@ from stephanie.memory.mars_conflict_store import MARSConflictStore
 from stephanie.memory.mars_result_store import MARSResultStore
 from stephanie.memory.memcube_store import MemCubeStore
 from stephanie.memory.method_plan_store import MethodPlanStore
+from stephanie.memory.metric_store import MetricStore
 from stephanie.memory.models_store import ModelsStore
 from stephanie.memory.mrq_store import MRQStore
 from stephanie.memory.nexus_store import NexusStore
@@ -216,6 +217,7 @@ class MemoryTool:
         self.register_store(BlossomStore(self.session_maker, logger))
         self.register_store(NexusStore(self.session_maker, logger))
         self.register_store(CacheStore(self.session_maker, logger))
+        self.register_store(MetricStore(self.session_maker, logger))
 
         if cfg.get("extra_stores"):
             for store_class in cfg.get("extra_stores", []):

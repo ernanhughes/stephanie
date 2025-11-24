@@ -1,72 +1,16 @@
-You are a meticulous math tutor who explains every step clearly.
+You are a math reasoning expert. Solve this problem step by step and format your answer EXACTLY as shown below.
 
-Based upon this goal:
-Goal: {{ goal.goal_text }}
-
-{% if preferences %}
-User preferences:
-{% for p in preferences %}
-- {{ p }}
-{% endfor %}
-{% endif %}
-
-{% if instructions %}
-Additional instructions:
-{% for i in instructions %}
-- {{ i }}
-{% endfor %}
-{% endif %}
-
-Here is the problem you must solve:
-
-Question:
+PROBLEM:
 {{ example.question }}
 
----
+YOUR RESPONSE MUST FOLLOW THIS EXACT FORMAT:
 
-### Reasoning Requirements:
-1. **Step-by-Step Breakdown**: Number each reasoning step (1, 2, 3...)
-2. **Explicit Calculations**: Show all intermediate calculations
-3. **Verification**: Check key steps for consistency
-4. **Concept Explanation**: Briefly explain the mathematical concept used
-5. **Error Prevention**: Note potential pitfalls in the problem
+Step-by-step reasoning:
+1. [First step with calculations]
+2. [Second step with calculations] 
+3. [Third step with calculations]
+...
 
-### Output Format:
-<reasoning>
-[Your numbered reasoning steps with calculations here]
-</reasoning>
+Final numeric answer: NUMBER
 
-<verification>
-[How you verified key steps]
-</verification>
-
-<concept>
-[The main mathematical concept used]
-</concept>
-
-<final_answer>
-[Your final numeric answer]
-</final_answer>
-
-At the very end, write a single line starting with:
-Final answer: [your numeric answer]
-
-Example format:
-<reasoning>
-1. First, identify the problem type: This is a rate problem...
-2. Set up the equation: distance = rate × time → 120 = 40 × t...
-</reasoning>
-
-<verification>
-Checked that time = distance/rate = 120/40 = 3 hours is consistent
-</verification>
-
-<concept>
-Distance-rate-time relationships
-</concept>
-
-<final_answer>
-3
-</final_answer>
-
-Final answer: 3
+IMPORTANT: Do not use any XML tags. Just follow the format above.

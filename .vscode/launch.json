@@ -62,6 +62,18 @@
             ]
         },
         {
+            "name": "visicalc_training",
+            "type": "debugpy",
+            "request": "launch",
+            "console": "integratedTerminal",
+            "module": "stephanie.main",
+            "python": "${workspaceFolder}\\venv\\Scripts\\python", // Linux/macOS
+            "args": [
+                "--config-name",
+                "visicalc_training",
+            ]
+        },
+        {
             "name": "visicalc",
             "type": "debugpy",
             "request": "launch",
