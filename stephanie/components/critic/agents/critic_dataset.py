@@ -1,19 +1,15 @@
 # stephanie/components/critic/agents/critic_dataset.py
 from __future__ import annotations
 
+import json
 import logging
 from pathlib import Path
 from typing import Any, Dict
-import json
 
 from stephanie.agents.base_agent import BaseAgent
-
 from stephanie.components.critic.model.dataset import (
-    collect_visicalc_samples,
-    canonicalize_metric_names,
-    save_dataset,
-    CORE_FEATURE_COUNT,
-)
+    CORE_FEATURE_COUNT, canonicalize_metric_names, collect_visicalc_samples,
+    save_dataset)
 
 log = logging.getLogger(__name__)
 

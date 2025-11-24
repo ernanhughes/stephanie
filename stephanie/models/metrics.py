@@ -3,14 +3,11 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import (
-    Column, Integer, String, DateTime, JSON, ForeignKey, LargeBinary,
-    Float, Index, Text
-)
+from sqlalchemy import (JSON, Column, DateTime, Float, ForeignKey, Index,
+                        Integer, LargeBinary, String, Text)
 from sqlalchemy.orm import relationship
 
-from stephanie.models.base import Base   # same as your chat models
-
+from stephanie.models.base import Base  # same as your chat models
 
 # ============================================================
 #  MetricGroupORM

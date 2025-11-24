@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Dict, Any
+from typing import Any, Dict
 
 import numpy as np
 from sklearn.metrics import accuracy_score
@@ -89,7 +89,8 @@ def evaluate_reranking(npz_path: str | Path, model_path: str | Path, out_dir: st
 
 
 if __name__ == "__main__":
-    import argparse, pprint
+    import argparse
+    import pprint
     p = argparse.ArgumentParser(description="Verify Critic utility via reranking proof")
     p.add_argument("--npz", type=str, default="data/critic.npz")
     p.add_argument("--model", type=str, default="models/critic.joblib")

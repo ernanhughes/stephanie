@@ -3,16 +3,16 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Dict, Any, List
+from typing import Any, Dict, List
 
 import numpy as np
 
 from stephanie.agents.base_agent import BaseAgent
+from stephanie.components.critic.model.critic_model import CriticModel
 from stephanie.constants import GOAL, GOAL_TEXT
-from stephanie.scoring.scorable import Scorable
 from stephanie.data.score_bundle import ScoreBundle
 from stephanie.data.score_result import ScoreResult
-from stephanie.components.critic.model.critic_model import CriticModel
+from stephanie.scoring.scorable import Scorable
 
 log = logging.getLogger(__name__)
 

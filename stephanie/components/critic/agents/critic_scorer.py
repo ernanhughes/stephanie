@@ -6,10 +6,10 @@ from typing import Any, Dict, List
 import numpy as np
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.scoring.scorable import Scorable
+from stephanie.components.critic.agents.visicalc import VisiCalcAgent
 from stephanie.components.critic.model.critic_model import CriticModel
 from stephanie.scoring.metrics.scorable_processor import ScorableProcessor
-from stephanie.components.critic.agents.visicalc import VisiCalcAgent
+from stephanie.scoring.scorable import Scorable
 
 log = logging.getLogger(__name__)
 

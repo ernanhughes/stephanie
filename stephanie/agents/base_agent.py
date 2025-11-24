@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import functools
+import logging
 import random
 from abc import ABC, abstractmethod
 from collections import defaultdict
@@ -24,7 +25,6 @@ from stephanie.services.scoring_service import ScoringService
 from stephanie.utils.llm_utils import remove_think_blocks
 from stephanie.utils.time_utils import now_ms
 
-import logging
 log = logging.getLogger(__name__)
 
 class BaseAgent(ABC):

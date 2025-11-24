@@ -1,12 +1,12 @@
 # stephanie/components/critic/model/critic_model.py
 from __future__ import annotations
 
-import json
 import csv
+import json
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence, Any, Tuple, Union
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
 import joblib
 import numpy as np

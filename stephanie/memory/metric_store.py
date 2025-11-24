@@ -1,13 +1,13 @@
 # stephanie/memory/metric_store.py
 from __future__ import annotations
-from typing import List, Dict, Any, Optional
+
+from typing import Any, Dict, List, Optional
+
 from sqlalchemy import desc
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
-
-from stephanie.models.metrics import (
-    MetricGroupORM, MetricVectorORM, MetricDeltaORM, MetricVPMORM
-)
+from stephanie.models.metrics import (MetricDeltaORM, MetricGroupORM,
+                                      MetricVectorORM, MetricVPMORM)
 
 
 class MetricStore(BaseSQLAlchemyStore):

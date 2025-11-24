@@ -5,23 +5,20 @@ import json
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Optional
 
 import joblib
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
 import seaborn as sns
-
 from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score, confusion_matrix, roc_auc_score
+from sklearn.model_selection import (GridSearchCV, GroupKFold,
+                                     GroupShuffleSplit, StratifiedKFold)
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import accuracy_score, roc_auc_score, confusion_matrix
-from sklearn.model_selection import (
-    GroupKFold, StratifiedKFold, GroupShuffleSplit, GridSearchCV
-)
 
 from stephanie.components.critic.model.trainer import load_dataset
-
 
 log = logging.getLogger(__name__)
 

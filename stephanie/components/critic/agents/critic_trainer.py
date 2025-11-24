@@ -4,6 +4,7 @@ from __future__ import annotations
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.components.critic.model.critic_trainer import CriticTrainer
 
+
 class CriticTrainerAgent(BaseAgent):
     """
     Thin wrapper around TinyCriticTrainer so training can be invoked

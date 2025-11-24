@@ -1,23 +1,19 @@
 # stephanie/components/critic/model/trainer.py
 from __future__ import annotations
 
-from pathlib import Path
-from typing import Dict, Any, Optional
-
 import json
-import joblib
-import numpy as np
 import logging
-import matplotlib.pyplot as plt
-import seaborn as sns
+from pathlib import Path
+from typing import Any, Dict, Optional
 
+import joblib
+import matplotlib.pyplot as plt
+import numpy as np
+import seaborn as sns
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import (
-    accuracy_score, roc_auc_score, confusion_matrix
-)
-from sklearn.model_selection import (
-    GroupShuffleSplit, GroupKFold, StratifiedKFold, GridSearchCV
-)
+from sklearn.metrics import accuracy_score, confusion_matrix, roc_auc_score
+from sklearn.model_selection import (GridSearchCV, GroupKFold,
+                                     GroupShuffleSplit, StratifiedKFold)
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 

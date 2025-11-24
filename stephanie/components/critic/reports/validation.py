@@ -1,21 +1,25 @@
 # stephanie/components/critic/model/report.py
 from __future__ import annotations
-import argparse
-import json
-from pathlib import Path
-from typing import List, Tuple, Dict, Any
-import csv
-import numpy as np
-import logging
-from sklearn.preprocessing import StandardScaler
-from sklearn.linear_model import LogisticRegression
-from sklearn.model_selection import GroupKFold, StratifiedKFold, cross_val_score
-from sklearn.decomposition import PCA
-from sklearn.pipeline import make_pipeline
-import seaborn as sns
-import matplotlib.pyplot as plt
 
-from stephanie.scoring.metrics.metric_importance import compute_metric_importance, save_metric_importance_json
+import argparse
+import csv
+import json
+import logging
+from pathlib import Path
+from typing import Any, Dict, List, Tuple
+
+import matplotlib.pyplot as plt
+import numpy as np
+import seaborn as sns
+from sklearn.decomposition import PCA
+from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import (GroupKFold, StratifiedKFold,
+                                     cross_val_score)
+from sklearn.pipeline import make_pipeline
+from sklearn.preprocessing import StandardScaler
+
+from stephanie.scoring.metrics.metric_importance import (
+    compute_metric_importance, save_metric_importance_json)
 
 log = logging.getLogger(__name__)
 

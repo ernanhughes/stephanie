@@ -1,13 +1,13 @@
 # stephanie/components/critic/agents/critic_data.py
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import re
-import asyncio
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-from datetime import datetime
 
 from datasets import load_dataset
 
@@ -240,8 +240,8 @@ IMPORTANT: Do not use any XML tags. Just follow the format above."""
     def _generate_feature_visualizations(self, all_scorables: List[Scorable]):
         """Generate visualizations of feature distributions by reasoning quality with robust KDE handling"""
         import matplotlib.pyplot as plt
-        import seaborn as sns
         import numpy as np
+        import seaborn as sns
         from scipy import stats
         
         log.info("📊 Creating feature visualizations for Tiny Critic training...")

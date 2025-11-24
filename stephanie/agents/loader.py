@@ -2,15 +2,15 @@
 from __future__ import annotations
 
 import json
+import logging
+import os
 import random
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
-import os
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.scoring.scorable import Scorable
 
-import logging
 log = logging.getLogger(__name__)
 
 class LoaderAgent(BaseAgent):

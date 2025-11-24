@@ -1,16 +1,17 @@
 # stephanie/components/critic/tiny_critic_dataset.py
 from __future__ import annotations
+
 import argparse
+import csv
 import json
+import logging
 from pathlib import Path
 from typing import List, Tuple
-import csv
+
 import numpy as np
-import logging
+
 from stephanie.scoring.metrics.dynamic_features import (
-    load_core_metric_names,
-    build_dynamic_feature_vector,
-)
+    build_dynamic_feature_vector, load_core_metric_names)
 
 log = logging.getLogger(__name__)
 
