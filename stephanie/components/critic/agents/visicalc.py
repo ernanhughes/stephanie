@@ -136,9 +136,10 @@ class VisiCalcAgent(BaseAgent):
         "HRM.aggregate" or "sicql.overall.score".
     """
 
-    def __init__(self, cfg, memory, container, logger):
+    def __init__(self, cfg, memory, container, logger, run_id: Optional[str] = None):
         super().__init__(cfg, memory, container, logger)
 
+        self.run_id: str = run_id
         # Behavior knobs (sane defaults)
         self.progress_enabled: bool = bool(cfg.get("progress", True))
         self.filter_role: bool = bool(cfg.get("filter_role", False))

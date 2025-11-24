@@ -43,10 +43,11 @@ class CriticScorerAgent(BaseAgent):
 
         # We will reuse VisiCalcAgent._build_vpm_and_metric_names
         self.visi_helper = VisiCalcAgent(
-            cfg={"visicalc": {"enabled": False}},
+            cfg=cfg.get("visicalc", {"enabled": False}),
             memory=memory,
             container=container,
-            logger=logger
+            logger=logger,
+            run_id=self.run_id,
         )
 
         self.model: CriticModel | None = None
@@ -83,7 +84,7 @@ class CriticScorerAgent(BaseAgent):
         rows = await self.scorable_processor.process_many(
             scorables, context=context
         )
-        context["critic_rows"] = rows
+        context["scorable_features"] = rows
 
         if not rows:
             log.warning("CriticScorerAgent: no rows from ScorableProcessor")

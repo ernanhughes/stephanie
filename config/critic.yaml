@@ -10,14 +10,9 @@ defaults:
   - agents/critic_data
   - agents/critic_dataset
   - agents/critic_trainer
+  - agents/critic_scorer
   - agents/critic_inference
-  - agents/nexus_scorable_loader
   - agents/visicalc
-  - agents/nexus
-  - agents/nexus_improver
-  - agents/gap
-  - agents/nexus_vpm_refiner
-  - agents/nexus_vpm_logic_compare
   - agents/loader
 
 embeddings:
@@ -102,7 +97,7 @@ pipeline:
      - name: critic_scorer
        description: "Score scorables using the trained Tiny Critic model"
        cls: stephanie.components.critic.agents.critic_scorer.CriticScorerAgent
-       enabled: false
+       enabled: true
        iterations: 1  
 
      - name: critic_inference

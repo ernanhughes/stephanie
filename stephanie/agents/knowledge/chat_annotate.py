@@ -20,7 +20,7 @@ from tqdm import tqdm
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.tools.scorable_classifier import ScorableClassifier
-from stephanie.tools.scorable_domains_tool import annotate_conversation_domains
+from stephanie.tools.domain_tool import annotate_conversation_domains
 from stephanie.tools.turn_ner_tool import annotate_conversation_ner
 
 
