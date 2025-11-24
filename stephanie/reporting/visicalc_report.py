@@ -11,6 +11,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import GroupKFold, StratifiedKFold, cross_val_score
 from sklearn.decomposition import PCA
+from sklearn.pipeline import make_pipeline
 import seaborn as sns
 import matplotlib.pyplot as plt
 
@@ -193,9 +194,12 @@ def _make_cv(groups: np.ndarray | None, y: np.ndarray, n_splits: int = 5):
 
 def _eval_linear_model(X: np.ndarray, y: np.ndarray, groups: np.ndarray | None):
     cv, grp = _make_cv(groups, y)
-    Xs = StandardScaler().fit_transform(X)
-    clf = LogisticRegression(C=0.5, penalty="l2", solver="liblinear", max_iter=500)
-    scores = cross_val_score(clf, Xs, y, cv=cv, groups=grp, scoring="roc_auc")
+    # Use a pipeline to ensure scaler is fit inside each CV fold
+    clf = make_pipeline(
+        StandardScaler(),
+        LogisticRegression(C=0.5, penalty="l2", solver="liblinear", max_iter=500)
+    )
+    scores = cross_val_score(clf, X, y, cv=cv, groups=grp, scoring="roc_auc")
     return float(scores.mean()), float(scores.std())
 
 def run_ablations(X: np.ndarray, y: np.ndarray, names: list[str],
@@ -203,7 +207,13 @@ def run_ablations(X: np.ndarray, y: np.ndarray, names: list[str],
     core_idx = list(range(core_dim))
     dyn_idx  = list(range(core_dim, X.shape[1]))
     auc_core_mean, auc_core_std = _eval_linear_model(X[:, core_idx], y, groups)
-    auc_dyn_mean,  auc_dyn_std  = _eval_linear_model(X[:, dyn_idx] if dyn_idx else X[:, :0], y, groups)
+
+    if dyn_idx:
+        auc_dyn_mean, auc_dyn_std = _eval_linear_model(X[:, dyn_idx], y, groups)
+    else:
+        # Neutral baseline if no dynamic features
+        auc_dyn_mean, auc_dyn_std = 0.5, 0.0
+
     auc_hyb_mean,  auc_hyb_std  = _eval_linear_model(X, y, groups)
     return {
         "core_only_auc_mean": auc_core_mean, "core_only_auc_std": auc_core_std,
