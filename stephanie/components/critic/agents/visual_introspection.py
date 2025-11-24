@@ -212,7 +212,7 @@ IMPORTANT: Do not use any XML tags. Just follow the format above."""
                 # Add timeout to prevent hanging
                 raw_text = await asyncio.wait_for(
                     self._call_llm_with_params(prompt, context=context),
-                    timeout=30.0
+                    timeout=300.0
                 )
                 return raw_text
             except asyncio.TimeoutError:

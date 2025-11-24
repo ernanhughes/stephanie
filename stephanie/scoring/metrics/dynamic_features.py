@@ -9,133 +9,9 @@ from datetime import datetime
 
 import numpy as np
 
-from stephanie.scoring.metrics.visicalc_features import extract_tiny_features
-
 CORE_METRICS_PATH = Path("config/core_metrics.json")
 
 log = logging.getLogger(__name__)
-
-
-def load_core_metric_names(path: str | Path) -> List[str]:
-    """
-    Load the ordered list of core metric names to be used as dynamic features.
-
-    Supports several formats:
-
-    1) MARS-style summary:
-       {
-         "metrics": [
-           {"name": "n_doc", ...},
-           {"name": "doc_y_lats", ...},
-           ...
-         ]
-       }
-
-    2) Simple list of strings:
-       ["n_doc", "doc_y_lats", ...]
-
-    3) Dict with "metric_names": [...]
-    """
-    path = Path(path)
-
-    if not path.exists():
-        log.info(
-            "ℹ️  No core metric config found at %s; dynamic metrics will be empty",
-            path,
-        )
-        return []
-
-    try:
-        with path.open("r", encoding="utf-8") as f:
-            data = json.load(f)
-    except Exception as e:
-        log.error("❌ Failed to load core metrics file %s: %s", path, e)
-        return []
-
-    metric_names: List[str] = []
-
-    # MARS summary / structured formats
-    if isinstance(data, dict):
-        metrics_field = data.get("metrics")
-        if isinstance(metrics_field, list):
-            # Case: ["n_doc", "doc_y_lats", ...]
-            if all(isinstance(m, str) for m in metrics_field):
-                metric_names = list(metrics_field)
-            # Case: [{"name": ...}, {...}, ...]
-            elif all(isinstance(m, dict) and "name" in m for m in metrics_field):
-                log.warning(
-                    "⚠️  Field 'metrics' exists but contains non-string elements"
-                )
-                metric_names = [str(m["name"]) for m in metrics_field if "name" in m]
-            else:
-                log.warning(
-                    "⚠️  Unrecognized 'metrics' list structure in %s", path
-                )
-        elif isinstance(data.get("metric_names"), list):
-            metric_names = [str(n) for n in data["metric_names"]]
-    # Case: bare list of strings
-    elif isinstance(data, list) and all(isinstance(m, str) for m in data):
-        metric_names = list(data)
-
-    metric_names = [m for m in metric_names if m]  # drop empty/None
-
-    log.info(
-        "📌 Loaded %d core metric names from %s",
-        len(metric_names),
-        path,
-    )
-    return metric_names
-
-
-def build_dynamic_feature_vector(
-    visicalc_report: Mapping[str, Any],
-    metrics: Mapping[str, Any] | None,
-    metric_names: Sequence[str],
-) -> np.ndarray:
-    """
-    Build a feature vector:
-
-        [ core_visicalc_features (8), dynamic_metric_values (len(metric_names)) ]
-
-    Args:
-        visicalc_report: VisiCalc JSON for this run/arm.
-        metrics: dict metric_name -> numeric value (for this run + label).
-        metric_names: ordered list of metric names to extract from `metrics`.
-
-    Missing or non-numeric metrics are filled with 0.0.
-    """
-    # 1) Core VisiCalc structural features (8-dim)
-    core = extract_tiny_features(visicalc_report)
-    if core.ndim != 1:
-        core = core.reshape(-1)
-    core = core.astype(np.float32)
-
-    # 2) Dynamic metrics (same order as metric_names)
-    if metrics is None:
-        metrics = {}
-
-    dyn_vals: List[float] = []
-    for name in metric_names:
-        raw = metrics.get(name, 0.0)
-        try:
-            dyn_vals.append(float(raw))
-        except (TypeError, ValueError):
-            log.debug(
-                "DynamicMetrics: non-numeric value for '%s' (%r); using 0.0",
-                name,
-                raw,
-            )
-            dyn_vals.append(0.0)
-
-    dyn = (
-        np.asarray(dyn_vals, dtype=np.float32)
-        if dyn_vals
-        else np.zeros(0, dtype=np.float32)
-    )
-
-    # 3) Concatenate
-    out = np.concatenate([core, dyn], axis=0)
-    return out
 
 
 def load_core_metric_names(path: Path) -> List[str]:
@@ -169,7 +45,7 @@ def load_core_metric_names(path: Path) -> List[str]:
         return []
 
     try:
-        log.debug(f"🔍 Reading core metrics file...")
+        log.debug(f"🔍 Reading core metrics file: {path}")
         with path.open("r", encoding="utf-8") as f:
             data = json.load(f)
         log.debug(f"✅ Successfully loaded core metrics file (size: {len(str(data))} chars)")
@@ -229,9 +105,9 @@ def load_core_metric_names(path: Path) -> List[str]:
                             log.debug(f"📈 Sample AUC values: {auc_values}")
                 return valid_names
             else:
-                log.warning(f"⚠️  Metrics list doesn't contain dictionaries with 'name' field")
+                log.warning(f"⚠️  Metrics list doesn't contain dictionaries with 'name' field in file: {path}")
         else:
-            log.warning(f"⚠️  'metrics' field not found or not a list in MARS format")
+            log.warning(f"⚠️  'metrics' field not found or not a list in MARS format in file: {path}")
 
     log.warning(
         f"⚠️  Core metric config at {path} has unexpected format; "
@@ -466,3 +342,33 @@ def validate_core_metrics_coverage(
         log.info(f"🔻 Worst covered metrics: {', '.join([f'{name}({cov:.1%})' for name, cov in worst_metrics])}")
     
     return coverage_stats
+
+
+def extract_tiny_features(report):
+    # 1. Overall stability (less variation = better)
+    region_values = [region["mean_frontier_value"] for region in report["regions"]]
+    stability = np.std(region_values)
+    
+    # 2. Middle region dip (more negative = worse)
+    middle_dip = region_values[2] - min(region_values[0], region_values[3])
+    
+    # 3. Standard deviation (lower = better consistency)
+    std_dev = report["global"]["std"]
+    
+    # 4. Sparsity (lower = more meaningful signal)
+    sparsity = report["global"]["sparsity_level_e3"]
+    
+    # 5. Entropy (higher = more diverse reasoning)
+    entropy = report["global"]["entropy"]
+    
+    # 6. Trend pattern (positive = improving)
+    trend = region_values[-1] - region_values[0]
+    
+    # 7. Mid-bad ratio (how much worse is middle vs average)
+    mid_bad_ratio = region_values[2] / np.mean(region_values)
+    
+    # 8. Frontier band utilization (even if 0, the pattern matters)
+    frontier_util = report["global"]["frontier_frac"]
+    
+    return np.array([stability, middle_dip, std_dev, sparsity, 
+                    entropy, trend, mid_bad_ratio, frontier_util])

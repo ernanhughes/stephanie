@@ -1,4 +1,4 @@
-# stephanie/reports/generate_visicalc_report.py
+# stephanie/components/critic/model/report.py
 from __future__ import annotations
 import argparse
 import json
@@ -733,7 +733,7 @@ def main(args):
     )
 
     # Load the generated dataset
-    dataset_path = Path("data/tiny_visicalc_critic.npz")
+    dataset_path = Path("data/critic.npz")
     log.info(f"📈 Loading dataset for analysis: {dataset_path.absolute()}")
     try:
         with np.load(dataset_path, allow_pickle=True) as data:

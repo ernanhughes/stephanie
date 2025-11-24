@@ -9,6 +9,8 @@ from typing import Any, Dict, List, Optional, Tuple
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.scoring.scorable import Scorable
 
+import logging
+log = logging.getLogger(__name__)
 
 class LoaderAgent(BaseAgent):
     """
@@ -42,20 +44,69 @@ class LoaderAgent(BaseAgent):
         self.max_records: Optional[int] = mr if mr > 0 else None
 
         # Per-cohort limits (0/None/negative → no limit)
-        mg = cfg.get("max_good", 40)
-        mb = cfg.get("max_bad", 40)
-
-        try:
-            mg = int(mg) if mg is not None else None
-        except (TypeError, ValueError):
-            mg = None
-        try:
-            mb = int(mb) if mb is not None else None
-        except (TypeError, ValueError):
-            mb = None
+        mg = int(cfg.get("max_good", 0))
+        mb = int(cfg.get("max_bad", 0))
 
         self.max_good: Optional[int] = mg if mg and mg > 0 else None
         self.max_bad: Optional[int] = mb if mb and mb > 0 else None
+
+    # ------------------------------------------------------------------
+    # Public entry point
+    # ------------------------------------------------------------------
+
+    async def run(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Ignores context input (we're fully offline).
+
+        Produces:
+          - context[self.output_key]          = List[Scorable]
+          - context["scorables_targeted"]     = List[Scorable]
+          - context["scorables_baseline"]     = List[Scorable]
+          - context["logger_stats"]           = summary dict (for logging)
+        """
+        try:
+            all_scorables, targeted, baseline = self._load_scorables_from_logs()
+
+            n_all = len(all_scorables)
+            n_tgt = len(targeted)
+            n_base = len(baseline)
+            acc = (n_tgt / n_all) if n_all > 0 else 0.0
+
+            # Wire into context for downstream agents (VisiCalc, etc.)
+            context[self.output_key] = all_scorables
+            context["scorables_targeted"] = targeted
+            context["scorables_baseline"] = baseline
+            context["loader_stats"] = {
+                "total": n_all,
+                "targeted": n_tgt,
+                "baseline": n_base,
+                "accuracy": acc,
+                "num_log_files": len(self._discover_log_files()),
+                "max_records": self.max_records,
+                "max_good": self.max_good,
+                "max_bad": self.max_bad,
+            }
+
+            self.logger.log(
+                "LoaderSummary",
+                {
+                    "agent": self.name,
+                    "total": n_all,
+                    "targeted": n_tgt,
+                    "baseline": n_base,
+                    "accuracy": acc,
+                    "max_records": self.max_records,
+                    "max_good": self.max_good,
+                    "max_bad": self.max_bad,
+                },
+            )
+
+            return context
+
+        except Exception as e:
+            err_msg = f"{type(e).__name__}: {e}"
+            log.error(f"❌ Gsm8kLogLoaderAgent exception: {err_msg}")
+            return context
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -126,7 +177,7 @@ class LoaderAgent(BaseAgent):
         """
         files = self._discover_log_files()
         if not files:
-            raise RuntimeError("Gsm8kLogLoaderAgent: no JSONL files found in configured log_dirs")
+            raise RuntimeError("LoaderAgent: no JSONL files found in configured log_dirs")
 
         all_records: List[Dict[str, Any]] = []
         for p in files:
@@ -164,10 +215,7 @@ class LoaderAgent(BaseAgent):
             try:
                 sc, is_correct = self._build_scorable_from_record(rec)
             except Exception as e:
-                self.logger.log(
-                    "Gsm8kLogLoaderBuildFailed",
-                    {"error": str(e), "record_keys": list(rec.keys())},
-                )
+                log.error(f"❌ LoaderAgent failed to build Scorable from record: {type(e).__name__}: {e}")
                 continue
 
             # Apply per-cohort caps
@@ -187,69 +235,3 @@ class LoaderAgent(BaseAgent):
 
         return all_scorables, scorables_targeted, scorables_baseline
 
-    # ------------------------------------------------------------------
-    # Public entry point
-    # ------------------------------------------------------------------
-
-    async def run(self, context: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Ignores context input (we're fully offline).
-
-        Produces:
-          - context[self.output_key]          = List[Scorable]
-          - context["scorables_targeted"]     = List[Scorable]
-          - context["scorables_baseline"]     = List[Scorable]
-          - context["gsm8k_log_stats"]        = summary dict (for logging)
-        """
-        try:
-            all_scorables, targeted, baseline = self._load_scorables_from_logs()
-
-            n_all = len(all_scorables)
-            n_tgt = len(targeted)
-            n_base = len(baseline)
-            acc = (n_tgt / n_all) if n_all > 0 else 0.0
-
-            # Wire into context for downstream agents (VisiCalc, etc.)
-            context[self.output_key] = all_scorables
-            context["scorables_targeted"] = targeted
-            context["scorables_baseline"] = baseline
-            context["gsm8k_log_stats"] = {
-                "total": n_all,
-                "targeted": n_tgt,
-                "baseline": n_base,
-                "accuracy": acc,
-                "num_log_files": len(self._discover_log_files()),
-                "max_records": self.max_records,
-                "max_good": self.max_good,
-                "max_bad": self.max_bad,
-            }
-
-            self.logger.log(
-                "Gsm8kLogLoaderSummary",
-                {
-                    "agent": self.name,
-                    "total": n_all,
-                    "targeted": n_tgt,
-                    "baseline": n_base,
-                    "accuracy": acc,
-                    "max_records": self.max_records,
-                    "max_good": self.max_good,
-                    "max_bad": self.max_bad,
-                },
-            )
-
-            return context
-
-        except Exception as e:
-            err_msg = f"{type(e).__name__}: {e}"
-            print(f"❌ Gsm8kLogLoaderAgent exception: {err_msg}")
-            self.logger.log(
-                "AgentFailed",
-                {
-                    "agent": self.name,
-                    "error": err_msg,
-                    "input_key": self.input_key,
-                    "output_key": self.output_key,
-                },
-            )
-            return context

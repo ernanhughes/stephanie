@@ -11,7 +11,6 @@ from __future__ import annotations
 from typing import Any, Dict, List
 
 from stephanie.agents.base_agent import BaseAgent
-# NOTE: module path matches the file you shared earlier
 from stephanie.dataloaders.tiny_recursion_data_loader import \
     TinyRecursionDataLoader
 from stephanie.scoring.training.tiny_recursion_trainer import TinyTrainer

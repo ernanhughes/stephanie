@@ -1,4 +1,4 @@
-# stephanie/dataloaders/tiny_critic_dataset.py
+# stephanie/components/critic/tiny_critic_dataset.py
 from __future__ import annotations
 import argparse
 import json
@@ -348,7 +348,7 @@ def main(args):
     )
 
     root = Path("runs/visicalc")
-    out = Path("data/tiny_visicalc_critic.npz")
+    out = Path("data/critic.npz")
 
     log.info("🚀 Starting Tiny Critic Dataset creation...")
     log.info(f"Source: {root.absolute()}")

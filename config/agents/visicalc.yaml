@@ -2,7 +2,7 @@
 
 visicalc:
   # --- BaseAgent wiring ---
-  _target_: stephanie.agents.maintenance.visicalc.VisiCalcAgent
+  _target_: stephanie.components.critic.agents.visicalc.VisiCalcAgent
   name: visicalc
   enabled: true
 

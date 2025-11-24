@@ -1,7 +1,6 @@
 # stephanie/agents/maintenance/visicalc.py
 from __future__ import annotations
 
-from dataclasses import asdict
 import csv
 import json
 import logging
@@ -11,7 +10,6 @@ from typing import Any, Dict, List, Optional
 
 import matplotlib.pyplot as plt
 import numpy as np
-import os
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.scoring.metrics.metric_importance import (
