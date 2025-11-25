@@ -4,7 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Dict, List, Optional
 
-from stephanie.utils.hashing import hash_dict
+from stephanie.utils.hash_utils import hash_dict
 
 
 @dataclass

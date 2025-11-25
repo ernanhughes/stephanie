@@ -180,9 +180,6 @@ class Supervisor:
         plan_trace_monitor: PlanTraceService = self.container.get("plan_trace")
         plan_trace_monitor.start_pipeline(self.context(), run_id)
 
-        # Make THIS process a scorable worker
-        await self.scorable_processor.register_bus_handlers()
-
         # Adjust pipeline if needed
         await self.maybe_adjust_pipeline(self.context())
 

@@ -1,5 +1,4 @@
 # stephanie/scoring/metrics/metric_observer.py
-# stephanie/scoring/metrics/metric_observer.py
 from __future__ import annotations
 
 import json

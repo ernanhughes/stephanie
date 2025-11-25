@@ -102,5 +102,5 @@ pipeline:
 
      - name: critic_inference
        cls: stephanie.components.critic.agents.critic_inference.CriticInferenceAgent
-       enabled: true
+       enabled: false
        iterations: 1

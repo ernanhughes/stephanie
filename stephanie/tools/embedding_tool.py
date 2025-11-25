@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 from stephanie.tools.base_tool import BaseTool
+from stephanie.utils.embed_utils import as_list_floats
 
 log = logging.getLogger(__name__)
 
@@ -34,12 +35,7 @@ class EmbeddingTool(BaseTool):
         log.debug(f"[EmbeddingTool] embedding id={embed_id}")
         vec = self.embedding_service.get_or_create(text)
 
-        # Validate vector
-        if not isinstance(vec, (list, tuple)) or not vec:
-            log.error(f"[EmbeddingTool] invalid vector for {scorable.id}: {vec}")
-            return scorable
-
-        floats = [float(x) for x in vec]
+        floats = as_list_floats(vec)
         # Attach to scorable meta
         scorable.meta.setdefault("embeddings", {})["global"] = floats
 

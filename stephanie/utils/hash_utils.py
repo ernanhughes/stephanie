@@ -1,4 +1,4 @@
-# stephanie/utils/hashing.py
+# stephanie/utils/hash_utils.py
 from __future__ import annotations
 
 import hashlib
@@ -37,3 +37,22 @@ def hash_dict(
 
     # Generate SHA-256 hash
     return hashlib.sha256(canonical_str.encode("utf-8")).hexdigest()
+
+def hash_text(text: str, algorithm: str = "sha256") -> str:
+    """
+    Generate a hash for the given text using the specified algorithm.
+
+    Args:
+        text (str): The input text to hash.
+        algorithm (str): Hash algorithm, e.g., 'sha256', 'sha1', or 'md5'.
+
+    Returns:
+        str: The hexadecimal digest of the hash.
+    """
+    if not text:
+        return ""
+
+    hasher = hashlib.new(algorithm)
+    hasher.update(text.encode("utf-8"))
+    return hasher.hexdigest()
+

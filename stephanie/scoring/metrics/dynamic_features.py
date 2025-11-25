@@ -5,7 +5,7 @@ import json
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Mapping, Optional, Sequence
+from typing import Dict, List, Optional
 
 import numpy as np
 
@@ -164,7 +164,7 @@ def build_dynamic_feature_vector(
                 value = float(metrics[name])
                 m_vals.append(value)
                 available_metrics.append((i, name, value))
-            except (ValueError, TypeError) as e:
+            except (ValueError, TypeError):
                 log.warning(f"⚠️  Metric '{name}' has non-float value: {metrics[name]} - using 0.0")
                 m_vals.append(0.0)
                 missing_metrics.append(name)
