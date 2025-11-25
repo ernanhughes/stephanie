@@ -2,6 +2,8 @@
 from __future__ import annotations
 from typing import Any, Dict, List
 
+from stephanie.scoring.metrics.feature_report import FeatureReport
+
 class BaseGroupFeature:
     """
     A group feature wraps a BaseGroupTool and is called once per batch.
@@ -20,3 +22,7 @@ class BaseGroupFeature:
         if not self.enabled:
             return rows
         return rows
+
+    def report(self) -> FeatureReport:
+        # default no-op
+        return FeatureReport(name=self.name, kind="group", ok=True, summary="no-op")

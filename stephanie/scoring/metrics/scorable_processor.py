@@ -1,12 +1,14 @@
 # stephanie/scoring/metrics/scorable_processor.py
 from __future__ import annotations
 
+from multiprocessing import context
 import time
 import logging
 from typing import Any, Dict, List, Union
 
 from stephanie.scoring.metrics.domain_feature import DomainFeature
 from stephanie.scoring.metrics.embedding_feature import EmbeddingFeature
+from stephanie.scoring.metrics.feature_report import FeatureReport
 from stephanie.scoring.metrics.metric_filter_group_feature import (
     MetricFilterGroupFeature,
 )
@@ -63,6 +65,7 @@ class ScorableProcessor(ProgressMixin):
         # ---------- Row features ----------
         feature_cfgs = self.cfg.get("feature_configs", {}) or {}
         self.features = []
+
         for name, subcfg in feature_cfgs.items():  # preserves YAML order
             cls = FEATURE_REGISTRY.get(name)
             if cls is None:
@@ -81,27 +84,20 @@ class ScorableProcessor(ProgressMixin):
                 log.info(f"[SP] feature disabled: {name}")
 
         # ---------- Group features ----------
-        group_cfgs = self.cfg.get("group_feature_configs", {}) or {}
         self.group_features = []
-        for name, subcfg in group_cfgs.items():
-            cls_or_path = GROUP_FEATURE_REGISTRY.get(name, name)  # allow direct import path
-            try:
-                Cls = _import_path(cls_or_path)
-            except Exception as e:
-                log.warning(f"[SP] group feature '{name}' import failed: {e}")
-                continue
-
-            gf = Cls(
-                cfg=subcfg or {},
+        for name, subcfg in (self.cfg.get("group_feature_configs", {}) or {}).items():
+            cls = GROUP_FEATURE_REGISTRY.get(name)
+            if not cls:
+                log.warning("[SP] unknown group feature '%s'", name); continue
+            gf = cls(                  # MUST pass the sub-config
+                cfg=subcfg,            # ← not `cfg`
                 memory=self.memory,
                 container=self.container,
                 logger=self.logger,
             )
-            if getattr(gf, "enabled", True):
+            if gf.enabled:
                 self.group_features.append(gf)
-                log.info(f"[SP] group feature loaded: {name} → {Cls.__name__}")
-            else:
-                log.info(f"[SP] group feature disabled: {name}")
+                log.info("[SP] group feature loaded: %s → %s", name, cls.__name__)
 
         # ---------- Row builder ----------
         self.row_builder = RowBuilder()
@@ -173,7 +169,7 @@ class ScorableProcessor(ProgressMixin):
             self.pdone(task=task_rows)
 
         # Optional: enforce simple dependencies if group features declare `requires`
-        available = {getattr(f, "name", f"f{idx}") for idx, f in enumerate(self.features)}
+        available = {getattr(f, "name", f"f{idx}") for idx, f in enumerate(self.group_features)}
         for gf in self.group_features:
             reqs = getattr(gf, "requires", []) or []
             missing = [r for r in reqs if r not in available]
@@ -192,6 +188,10 @@ class ScorableProcessor(ProgressMixin):
         finally:
             self.pdone(task=task_group)
 
+
+        if context is not None:
+            context.setdefault("feature_reports", self.feature_reports())
+        
         log.debug(
             "[ScorableProcessor] batch_size=%d finished in %.2f ms",
             n,
@@ -199,11 +199,18 @@ class ScorableProcessor(ProgressMixin):
         )
         return rows
 
-def _import_path(path_or_cls):
-    """Allow registry entry to be a class OR a 'pkg.mod.Class' string."""
-    if not isinstance(path_or_cls, str):
-        return path_or_cls
-    if "." not in path_or_cls:
-        raise ValueError(f"Invalid import path: {path_or_cls}")
-    mod, cls = path_or_cls.rsplit(".", 1)
-    return getattr(importlib.import_module(mod), cls)
+    def feature_reports(self) -> List[dict]:
+        reps = []
+        for f in self.features:
+            if hasattr(f, "report"):
+                try:
+                    reps.append(f.report())
+                except Exception as e:
+                    reps.append({"feature": getattr(f, "name", f.__class__.__name__), "error": str(e)})
+        for gf in getattr(self, "group_features", []):
+            if hasattr(gf, "report"):
+                try:
+                    reps.append(gf.report())
+                except Exception as e:
+                    reps.append({"feature": getattr(gf, "name", gf.__class__.__name__), "error": str(e)})
+        return reps

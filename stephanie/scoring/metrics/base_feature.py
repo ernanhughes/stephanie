@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import abc
 from typing import Dict, Any
+from stephanie.scoring.metrics.feature_report import FeatureReport
 from stephanie.scoring.scorable import Scorable
 
 class BaseFeature(abc.ABC):
@@ -36,3 +37,7 @@ class BaseFeature(abc.ABC):
         compute new attributes and return updated accumulator.
         """
         raise NotImplementedError
+
+    def report(self) -> FeatureReport:
+        # default no-op
+        return FeatureReport(name=self.name, kind="row", ok=True, summary="no-op")

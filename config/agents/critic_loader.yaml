@@ -17,5 +17,5 @@ critic_loader:
 
   shuffle: true
   max_records: 0               # 0 → use all records
-  max_good: 50
-  max_bad: 50
+  max_good: 5
+  max_bad: 5

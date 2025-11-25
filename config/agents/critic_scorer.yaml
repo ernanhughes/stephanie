@@ -7,103 +7,83 @@ critic_scorer:
 
   model_path: "models/critic.joblib"
   meta_path:  "models/critic.meta.json"
- 
-  # ------------------------------------------------------------
-  # ScorableProcessor configuration
-  # ------------------------------------------------------------
+
   processor:
     _target_: stephanie.scoring.metrics.scorable_processor.ScorableProcessor
 
-    # Inline mode — fast and simple
     offload_mode: inline
-
-    # No manifest for critic runs (fast)
     enable_manifest: false
-
-    # Disable expensive features
     enable_item_progress: false
     persist_vpm_png: false
     save_vpm_channels: false
     require_metrics_for_vpm: false
     attach_scores: true
 
-    # What features to run for the critic pipeline
+    # ---- per-row features (run on each scorable) ----
     features:
-      - metrics        # generates metrics_vector, columns, values
-      - visicalc       # runs cohort analysis using those metrics
+      - metrics
+      - visicalc   # optional: basic per-row VisiCalc hints (kept if you need them)
 
-    # Feature-specific sub-configs
     feature_configs:
-
       metrics:
         enabled: true
         scorers: ["hrm", "sicql", "tiny"]
-        dimensions:
-          - coverage
-          - reasoning
-          - knowledge
-          - clarity
-          - faithfulness
+        dimensions: [coverage, reasoning, knowledge, clarity, faithfulness]
         persist: false
 
       visicalc:
         enabled: true
-
-        # Preferred metrics order override
         metric_keys:
           - "HRM.coverage.score"
           - "sicql.coverage.score"
           - "tiny.coverage.score"
-
         frontier_metric: "HRM.aggregate"
         row_region_splits: 4
         frontier_low: 0.25
         frontier_high: 0.75
-
-        # Output settings
         out_dir: "runs/visicalc"
         json_file: "visicalc_report.json"
         csv_file:  "visicalc_report.csv"
-
-        # Include/exclude mapping for metric selection
         metric_mapping:
-          include:
-            - "HRM.*"
-            - "sicql.*"
-            - "tiny.*"
-          exclude:
-            - "*.raw"
-            - "*.debug"
-
-        # Optional VPM output for visual inspection
+          include: ["HRM.*", "sicql.*", "tiny.*"]
+          exclude: ["*.raw", "*.debug"]
         vpm_png:
           enabled: true
-          mode: "L"            # grayscale
+          mode: "L"
           per_metric_normalize: true
           target_file: "visicalc_targeted_vpm.png"
           baseline_file: "visicalc_baseline_vpm.png"
-
-        # Metric importance / Cohen's d filters
         top_k_metrics: 50
         min_effect: 0.25
-
         importance_filter:
           enabled: true
           path: "config/core_metrics.json"
           top_k: 150
           min_effect: 0.1
 
-    metrics_filter:
-      enabled: true
-      top_k: 100           # 50 / 100 / 150
-      normalize: true
-      dup_threshold: 0.995
-      min_variance: 1e-8
-      include:             # optional, supports * wildcards
-        - "HRM.*"
-        - "sicql.*"
-        - "tiny.*"
-      exclude:
-        - "*.raw"
-        - "*.debug"
-        - "*.stdev"        # if you decide to exclude SD-only channels
+    # ---- group features (run after all rows are built) ----
+    group_feature_configs:
+      metric_filter:
+        enabled: true
+        # Keep only stable, non-duplicative, normalized metrics across the batch
+        top_k: 100            # choose 50 / 100 / 150 as needed
+        normalize: true
+        dup_threshold: 0.995  # treat ~identical columns as duplicates
+        min_variance: 1e-8    # drop near-constant signals
+        include: ["HRM.*", "sicql.*", "tiny.*"]
+        exclude: ["*.raw", "*.debug", "*.stdev"]
+        alias_strip: true     # collapse alias suffixes like ".score", ".value" when dup checking
+
+      visicalc_group:
+        enabled: true
+        # Runs cohort analysis on the filtered metric matrix; attaches per-row
+        # visicalc_features / visicalc_feature_names / visicalc_report / visicalc_quality
+        episode_id: "critic:${hydra:runtime.run_dir}"  # any unique tag is fine
+        frontier_metric: "HRM.aggregate"
+        row_region_splits: 4
+        frontier_low: 0.25
+        frontier_high: 0.75
+        per_metric_normalize: true
+        metric_mapping:
+          include: ["HRM.*", "sicql.*", "tiny.*"]
+          exclude: ["*.raw", "*.debug"]

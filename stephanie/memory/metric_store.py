@@ -240,3 +240,23 @@ class MetricStore(BaseSQLAlchemyStore):
             "deltas":  [d.to_dict() for d in group.deltas],
             "vpms":    [v.to_dict(meta=True) for v in group.vpms],
         }
+
+    def upsert_group_meta(self, run_id: str, patch: dict) -> MetricGroupORM:
+        """
+        Create the MetricGroup if missing, otherwise shallow-merge `patch` into meta.
+        Returns the updated MetricGroupORM row.
+        """
+        patch = patch or {}
+        def op(s):
+            g = s.query(MetricGroupORM).filter_by(run_id=run_id).one_or_none()
+            if g is None:
+                g = MetricGroupORM(run_id=run_id, meta=dict(patch))
+                s.add(g)
+                s.flush()
+                return g
+            meta = dict(g.meta or {})
+            meta.update(patch)
+            g.meta = meta
+            s.flush()
+            return g
+        return self._run(op)

@@ -79,7 +79,7 @@ class VisiCalcTool(BaseTool):
     # =====================================================================
     # 2) BATCH API  (used by critic/nexus)
     # =====================================================================
-    def apply_batch(
+    def apply_rows(
         self,
         *,
         episode_id: str,
@@ -96,6 +96,16 @@ class VisiCalcTool(BaseTool):
             - quality
         """
         vpm, metric_names, item_ids = self._matrix_for_rows(rows)
+        if vpm.size == 0 or vpm.ndim != 2 or vpm.shape[1] == 0:
+            log.warning("VisiCalcTool.apply_rows: empty matrix after selection; skipping VisiCalc.")
+            return {
+                "report": None,
+                "features": np.empty((len(rows), 0), dtype=float),
+                "feature_names": [],
+                "vpm": np.empty((0, 0), dtype=np.uint8),
+                "quality": {},
+            }    
+
 
         vc = VisiCalc.from_matrix(
             episode_id      = episode_id,
@@ -122,42 +132,55 @@ class VisiCalcTool(BaseTool):
     # =====================================================================
     # Internal helper
     # =====================================================================
+
     def _matrix_for_rows(
         self,
         rows: List[Dict[str, Any]],
     ) -> tuple[np.ndarray, List[str], List[str]]:
-        """
-        Build:
-            scores matrix
-            metric_names
-            item_ids
-        """
-        # Collect all metric names from first row
-        all_cols = rows[0].get("metrics_columns", [])
+        if not rows:
+            raise ValueError("VisiCalcTool: no rows given")
 
-        metric_names = self.mapper.select_columns(all_cols) or all_cols
+        # UNION of all metric columns across rows
+        union_cols, seen = [], set()
+        non_empty = 0
+        for r in rows:
+            cols = r.get("metrics_columns") or []
+            if cols:
+                non_empty += 1
+            for c in cols:
+                if c not in seen:
+                    seen.add(c)
+                    union_cols.append(c)
 
-        # Apply optional preferred ordering
+        if not union_cols:
+            raise ValueError("VisiCalcTool: no metric columns found on any row")
+
+        metric_names = self.mapper.select_columns(union_cols) or union_cols
+
         if self.visicalc_metric_keys:
             preferred = [k for k in self.visicalc_metric_keys if k in metric_names]
-            rest      = [k for k in metric_names if k not in preferred]
+            rest = [k for k in metric_names if k not in preferred]
             metric_names = preferred + rest
 
-        # Build matrix
-        matrix_rows = []
-        item_ids    = []
-
+        matrix_rows, item_ids = [], []
+        skipped = 0
         for r in rows:
             cols = r.get("metrics_columns") or []
             vals = r.get("metrics_values") or []
-            if not cols:
+            if not cols or not vals:
+                skipped += 1
                 continue
 
             mapping = dict(zip(cols, vals))
-            vector  = [float(mapping.get(name, 0.0)) for name in metric_names]
+            vec = [float(mapping.get(name, 0.0)) for name in metric_names]
+            matrix_rows.append(vec)
+            item_ids.append(str(r.get("scorable_id", "unknown")))
 
-            matrix_rows.append(vector)
-            item_ids.append(str(r["scorable_id"]))
+        if not matrix_rows:
+            raise ValueError(
+                "VisiCalcTool: no rows had usable metrics after mapping "
+                f"(non_empty_rows={non_empty}, union_cols={len(union_cols)}, kept={len(metric_names)}, skipped={skipped})"
+            )
 
         vpm = np.asarray(matrix_rows, dtype=np.float32)
         return vpm, metric_names, item_ids

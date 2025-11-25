@@ -6,7 +6,7 @@ import json
 import logging
 import math
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -644,103 +644,64 @@ class VisiCalcAgent(BaseAgent):
             "topleft_base": tl_base,
             "topleft_tgt": tl_tgt,
             "diff": diff,
-            "gain": gain,
-            "loss": loss,
-            "improvement_ratio": improvement_ratio,
-            "meta_base": meta_base,
-            "meta_tgt": meta_tgt,
-        }
+                "gain": gain,
+                "loss": loss,
+                "improvement_ratio": improvement_ratio,
+                "meta_base": meta_base,
+                "meta_tgt": meta_tgt,
+            }
 
-    def _build_vpm_and_metric_names(
-        self,
-        rows: List[dict],
-    ) -> tuple[np.ndarray, List[str], List[str]]:
-        """
-        Build the score matrix (VPM) + metric names + item_ids from canonical rows.
-
-        Expected row schema (from ScorableProcessor):
-          - 'metrics_columns': List[str]
-          - 'metrics_values':  List[float]
-          - 'scorable_id':     str
-        """
+        
+    def _build_vpm_and_metric_names(self, rows: List[dict]) -> tuple[np.ndarray, List[str], List[str]]:
         if not rows:
-            raise ValueError("VisiCalcAgent._build_vpm_and_metric_names: no rows")
+            raise ValueError("VisiCalcAgent: no rows provided")
 
-        # 0) Collect the union of metric columns across all rows
-        all_cols: List[str] = []
+        # UNION of metric columns across *all* rows
+        union_cols, seen = [], set()
+        non_empty = 0
         for r in rows:
             cols = r.get("metrics_columns") or []
+            if cols:
+                non_empty += 1
             for c in cols:
-                if c not in all_cols:
-                    all_cols.append(c)
+                if c not in seen:
+                    seen.add(c)
+                    union_cols.append(c)
 
-        log.debug(
-            "VisiCalcAgent._build_vpm_and_metric_names: discovered %d raw metrics: %s",
-            len(all_cols),
-            all_cols[:30],
-        )
+        if not union_cols:
+            raise ValueError("VisiCalcAgent: no metric columns found on any row")
 
-        # 1) Let MetricMapper do include/exclude and basic ordering
-        base_metric_names = self.metric_mapper.select_columns(all_cols)
-        if not base_metric_names:
-            log.warning(
-                "VisiCalcAgent: MetricMapper returned no columns; "
-                "falling back to all_cols"
-            )
-            base_metric_names = all_cols
 
-        log.debug(
-            "VisiCalcAgent._build_vpm_and_metric_names: after MetricMapper → %d metrics: %s",
-            len(base_metric_names),
-            base_metric_names[:30],
-        )
+        metric_names = self.metric_mapper.select_columns(union_cols) or union_cols
 
-        # 2) Apply visicalc_metric_keys as *ordering hints*, not a hard subset
+        # Optional preferred ordering
         if self.visicalc_metric_keys:
-            preferred = [m for m in self.visicalc_metric_keys if m in base_metric_names]
-            rest = [m for m in base_metric_names if m not in preferred]
+            preferred = [m for m in self.visicalc_metric_keys if m in metric_names]
+            rest = [m for m in metric_names if m not in preferred]
             metric_names = preferred + rest
-            log.debug(
-                "VisiCalcAgent._build_vpm_and_metric_names: visicalc_metric_keys=%r "
-                "→ preferred=%r, total=%d",
-                self.visicalc_metric_keys,
-                preferred,
-                len(metric_names),
-            )
-        else:
-            metric_names = base_metric_names
 
-        # 3) Build the matrix rows
-        matrix_rows: List[List[float]] = []
-        item_ids: List[str] = []
+        matrix_rows, item_ids = [], []
         skipped = 0
-
         for r in rows:
             cols = r.get("metrics_columns") or []
             vals = r.get("metrics_values") or []
             if not cols or not vals:
                 skipped += 1
                 continue
-
             mapping = dict(zip(cols, vals))
             vec = [float(mapping.get(name, 0.0)) for name in metric_names]
             matrix_rows.append(vec)
             item_ids.append(str(r.get("scorable_id", "unknown")))
 
         if not matrix_rows:
-            raise ValueError("VisiCalcAgent: no rows with metrics_values after mapping")
+            raise ValueError(
+                "VisiCalcAgent: no rows with metrics_values after mapping "
+                f"(non_empty={non_empty}, skipped={skipped}, "
+                f"union_cols={len(union_cols)}, kept={len(metric_names)})"
+            )
 
-        vpm = np.asarray(matrix_rows, dtype=np.float32)
-
-        log.info(
-            "VisiCalcAgent: built VPM matrix shape=%s with %d metrics (skipped=%d rows)",
-            vpm.shape,
-            len(metric_names),
-            skipped,
-        )
-
-        return vpm, metric_names, item_ids
-
+        X = np.asarray(matrix_rows, dtype=np.float32)
+        return X, metric_names, item_ids
 
     # ------------------------------------------------------------------
     #  Top-left image helpers

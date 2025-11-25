@@ -1,10 +1,17 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional
 
-from sqlalchemy import (JSON, Column, DateTime, Float, ForeignKey, Index,
-                        Integer, LargeBinary, String, Text)
+from sqlalchemy import (
+    JSON,
+    Column,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    LargeBinary,
+    String,
+)
 from sqlalchemy.orm import relationship
 
 from stephanie.models.base import Base  # same as your chat models
@@ -14,18 +21,27 @@ from stephanie.models.base import Base  # same as your chat models
 #  One record per pipeline run
 # ============================================================
 
+
 class MetricGroupORM(Base):
     __tablename__ = "metric_groups"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    run_id = Column(String, nullable=False, unique=True)   # pipeline run ID
+    run_id = Column(String, nullable=False, unique=True)  # pipeline run ID
     created_at = Column(DateTime, default=datetime.now)
-    meta = Column(JSON, default={})  # can contain metric_importance, core_metrics, etc.
+    meta = Column(
+        JSON, default={}
+    )  # can contain metric_importance, core_metrics, etc.
 
     # relationships
-    vectors = relationship("MetricVectorORM", back_populates="group", cascade="all, delete-orphan")
-    deltas  = relationship("MetricDeltaORM",  back_populates="group", cascade="all, delete-orphan")
-    vpms    = relationship("MetricVPMORM",    back_populates="group", cascade="all, delete-orphan")
+    vectors = relationship(
+        "MetricVectorORM", back_populates="group", cascade="all, delete-orphan"
+    )
+    deltas = relationship(
+        "MetricDeltaORM", back_populates="group", cascade="all, delete-orphan"
+    )
+    vpms = relationship(
+        "MetricVPMORM", back_populates="group", cascade="all, delete-orphan"
+    )
 
     def to_dict(self, include_children=False):
         d = {
@@ -36,8 +52,8 @@ class MetricGroupORM(Base):
         }
         if include_children:
             d["vectors"] = [v.to_dict() for v in self.vectors]
-            d["deltas"]  = [d.to_dict() for d in self.deltas]
-            d["vpms"]    = [v.to_dict(meta=False) for v in self.vpms]
+            d["deltas"] = [d.to_dict() for d in self.deltas]
+            d["vpms"] = [v.to_dict(meta=False) for v in self.vpms]
         return d
 
 
@@ -46,13 +62,16 @@ class MetricGroupORM(Base):
 #  Raw + reduced vectors for a Scorable in a run
 # ============================================================
 
+
 class MetricVectorORM(Base):
     __tablename__ = "metric_vectors"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
 
     run_id = Column(
-        String, ForeignKey("metric_groups.run_id", ondelete="CASCADE"), nullable=False
+        String,
+        ForeignKey("metric_groups.run_id", ondelete="CASCADE"),
+        nullable=False,
     )
     scorable_id = Column(String, nullable=False)
     scorable_type = Column(String, nullable=False)
@@ -88,13 +107,16 @@ class MetricVectorORM(Base):
 #  Target vs baseline for a scorable
 # ============================================================
 
+
 class MetricDeltaORM(Base):
     __tablename__ = "metric_deltas"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
 
     run_id = Column(
-        String, ForeignKey("metric_groups.run_id", ondelete="CASCADE"), nullable=False
+        String,
+        ForeignKey("metric_groups.run_id", ondelete="CASCADE"),
+        nullable=False,
     )
     scorable_id = Column(String, nullable=False)
     scorable_type = Column(String, nullable=False)
@@ -126,19 +148,22 @@ class MetricDeltaORM(Base):
 #  Stores visual policy maps produced by ZeroModel/VPM
 # ============================================================
 
+
 class MetricVPMORM(Base):
     __tablename__ = "metric_vpms"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
 
     run_id = Column(
-        String, ForeignKey("metric_groups.run_id", ondelete="CASCADE"), nullable=False
+        String,
+        ForeignKey("metric_groups.run_id", ondelete="CASCADE"),
+        nullable=False,
     )
     scorable_id = Column(String, nullable=False)
     scorable_type = Column(String, nullable=False)
     dimension = Column(String, nullable=True)  # optional per-dimension VPM
 
-    width  = Column(Integer, nullable=False)
+    width = Column(Integer, nullable=False)
     height = Column(Integer, nullable=False)
 
     # Actual VPM image bytes (PNG is recommended)
@@ -152,7 +177,12 @@ class MetricVPMORM(Base):
     group = relationship("MetricGroupORM", back_populates="vpms")
 
     __table_args__ = (
-        Index("ix_metric_vpms_run_scorable_dim", "run_id", "scorable_id", "dimension"),
+        Index(
+            "ix_metric_vpms_run_scorable_dim",
+            "run_id",
+            "scorable_id",
+            "dimension",
+        ),
     )
 
     def to_dict(self, meta=True):

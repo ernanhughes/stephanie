@@ -181,6 +181,78 @@ class MetricFilter:
         )
         return Xf, names_f, report
 
+
+    # ---------------- Optional helper for array-based selection ----------------
+    def select(self, names: list[str], X: np.ndarray, labels=None) -> tuple[np.ndarray, list[str]]:
+        """
+        Returns:
+        keep_mask: np.ndarray[bool] with len == len(names)  (original width)
+        selected_names: List[str] of kept metric names (in final order)
+        """ 
+        names = self._make_hashable_names(names)
+        names0 = list(names)
+        n_rows, n_cols = X.shape
+
+        def _empty():
+            # all-False mask aligned to original columns; zero selected names
+            return np.zeros(len(names0), dtype=bool), []
+
+        # 0) trivial/degenerate cases
+        if n_cols == 0 or not names0:
+            return _empty()
+
+        # 1) include/exclude filter -> names1, X1
+        names1 = self._apply_include_exclude(names0)
+        names1 = self._make_hashable_names(names1)
+        if not names1:
+            return _empty()
+        col_idx = {nm: i for i, nm in enumerate(names0)}
+        X1 = X[:, [col_idx[nm] for nm in names1]]
+
+        # 2) alias collapse (optional)
+        if self.alias_strip:
+            names2, _ = self._alias_collapse(names1)
+        else:
+            names2 = names1
+        names2 = self._make_hashable_names(names2)
+        if not names2:
+            return _empty()
+        col_idx2 = {nm: i for i, nm in enumerate(names1)}
+        X2 = X1[:, [col_idx2[nm] for nm in names2]]
+
+        # 3) per-column normalization (robust: constant columns -> zeros)
+        if self.normalize:
+            X2 = self._minmax_normalize_safe(X2)  # make sure it handles zero-range
+
+        # 4) merge exact dups (safe-guarded)
+        X3, names3 = self._merge_exact_dups(X2, names2)
+        if X3.shape[1] == 0 or not names3:
+            return _empty()
+
+        # 5) variance filter
+        keep_var = self._variance_keep_mask(X3, min_var=self.min_variance)
+        names4 = [nm for nm, k in zip(names3, keep_var) if k]
+        X4 = X3[:, keep_var] if any(keep_var) else np.empty((X3.shape[0], 0), dtype=float)
+        if X4.shape[1] == 0 or not names4:
+            return _empty()
+
+        # 6) optional supervised / effect-size filter using `labels` (if provided)
+        if labels is not None and len(set(labels)) > 1:
+            names5, X5 = self._effect_size_rank_and_cut(names4, X4, labels, top_k=self.k)
+        else:
+            # unsupervised: top-K by variance
+            names5, X5 = self._variance_rank_and_cut(names4, X4, top_k=self.k)
+
+        if X5.shape[1] == 0 or not names5:
+            return _empty()
+
+        # 7) final: build mask aligned to original names
+        selected = set(names5)
+        keep_mask = np.array([nm in selected for nm in names0], dtype=bool)
+        return keep_mask, names5
+
+
+
     # ---------------- Helpers ----------------
     def _union_metric_names(self, rows: List[Dict[str, Any]]) -> List[str]:
         seen = set()
@@ -256,6 +328,10 @@ class MetricFilter:
                 order[n] = len(merged)
                 merged.append(n)
                 cols.append(X[:, j].copy())
+        if not cols:
+            # return an empty (n_rows x 0) matrix and no names
+            return np.empty((X.shape[0], 0), dtype=float), []
+
         X2 = np.stack(cols, axis=1)
         return X2, merged
 
@@ -319,3 +395,98 @@ class MetricFilter:
                 return score, "MI(+AUC)"
         # Fallback: variance (works even unlabeled)
         return X.var(axis=0).astype(np.float64), "variance"
+
+    def _minmax_normalize_safe(self, X: np.ndarray) -> np.ndarray:
+        Xn = X.astype(float, copy=True)
+        mins = Xn.min(axis=0)
+        maxs = Xn.max(axis=0)
+        rng = maxs - mins
+        # avoid /0: constant columns -> zeros
+        safe_rng = np.where(rng == 0.0, 1.0, rng)
+        Xn = (Xn - mins) / safe_rng
+        # also clamp tiny numerical drift to [0,1]
+        np.clip(Xn, 0.0, 1.0, out=Xn)
+        return Xn
+
+    def _make_hashable_names(self, names):
+        """
+        Ensure all metric names are hashable, flat strings.
+        - If a name is a list/tuple, keep only the first element (stringify it).
+        - If a name is not a string, stringify it.
+        """
+        fixed = []
+        dropped = 0
+        for n in names:
+            if isinstance(n, (list, tuple)):
+                if len(n) == 0:
+                    dropped += 1
+                    continue
+                n = n[0]
+            if not isinstance(n, str):
+                n = str(n)
+            fixed.append(n)
+        if dropped:
+            import logging
+            logging.getLogger(__name__).warning(
+                "[MetricFilter] dropped %d empty/invalid metric-name containers", dropped
+            )
+        return fixed
+
+    def _variance_keep_mask(self, X: np.ndarray, min_var: float) -> np.ndarray:
+        """
+        Return a boolean mask of columns whose (NaN-safe) variance >= min_var.
+
+        - Works for any 2D array-like (treats NaNs as missing).
+        - Non-finite variances are treated as 0 to avoid crashes.
+        """
+        X = np.asarray(X, dtype=float)
+        if X.ndim != 2:
+            X = np.atleast_2d(X)
+
+        # NaN-safe variance per column
+        with np.errstate(invalid="ignore"):
+            col_var = np.nanvar(X, axis=0)
+
+        # Replace non-finite with 0 so we can compare safely
+        col_var = np.where(np.isfinite(col_var), col_var, 0.0)
+
+        return col_var >= float(min_var)
+    
+    def _variance_rank_and_cut(
+        self,
+        names: List[str],
+        X: np.ndarray,
+        top_k: Optional[int],
+    ) -> Tuple[List[str], np.ndarray]:
+        """
+        Returns (kept_names, kept_matrix) by selecting the top_k columns with the
+        largest NaN-safe variance. Stable and deterministic.
+
+        - If top_k is None/<=0 or >= num_cols, returns inputs unchanged.
+        - Non-finite variances treated as 0 to avoid crashes.
+        """
+        X = np.asarray(X, dtype=float)
+        if X.ndim != 2:
+            X = np.atleast_2d(X)
+
+        n_cols = X.shape[1]
+        if not names or n_cols == 0:
+            return [], X
+
+        k = int(top_k) if (top_k is not None and int(top_k) > 0) else n_cols
+        if k >= n_cols:
+            # nothing to cut
+            return list(names), X
+
+        # NaN-safe variance per column
+        with np.errstate(invalid="ignore"):
+            col_var = np.nanvar(X, axis=0)
+        col_var = np.where(np.isfinite(col_var), col_var, 0.0)
+
+        # Stable sort by variance desc; ties break by original index
+        order = np.argsort(col_var, kind="mergesort")[::-1]
+        sel_idx = order[:k]
+
+        kept_names = [names[i] for i in sel_idx]
+        kept_X = X[:, sel_idx]
+        return kept_names, kept_X
