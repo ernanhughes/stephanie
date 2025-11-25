@@ -1,7 +1,7 @@
 # stephanie/scoring/metrics/scorable_processor.py
 from __future__ import annotations
+from dataclasses import asdict
 
-from multiprocessing import context
 import time
 import logging
 from typing import Any, Dict, List, Union
@@ -199,18 +199,64 @@ class ScorableProcessor(ProgressMixin):
         )
         return rows
 
-    def feature_reports(self) -> List[dict]:
+    def feature_reports(self) -> list[dict]:
         reps = []
+        # per-row features
         for f in self.features:
             if hasattr(f, "report"):
                 try:
-                    reps.append(f.report())
+                    reps.append(_report_to_dict(f.report(), f))
                 except Exception as e:
-                    reps.append({"feature": getattr(f, "name", f.__class__.__name__), "error": str(e)})
-        for gf in getattr(self, "group_features", []):
+                    reps.append({
+                        "name": getattr(f, "name", f.__class__.__name__),
+                        "kind": getattr(f, "kind", "row"),
+                        "ok": False,
+                        "summary": "report() raised",
+                        "details": {"error": str(e)},
+                    })
+        # group features
+        for gf in self.group_features:
             if hasattr(gf, "report"):
                 try:
-                    reps.append(gf.report())
+                    reps.append(_report_to_dict(gf.report(), gf))
                 except Exception as e:
-                    reps.append({"feature": getattr(gf, "name", gf.__class__.__name__), "error": str(e)})
+                    reps.append({
+                        "name": getattr(gf, "name", gf.__class__.__name__),
+                        "kind": getattr(gf, "kind", "group"),
+                        "ok": False,
+                        "summary": "report() raised",
+                        "details": {"error": str(e)},
+                    })
         return reps
+
+
+def _report_to_dict(rep, feature):
+    # 1) FeatureReport dataclass → dict
+    try:
+        from stephanie.scoring.metrics.feature_report import FeatureReport  # adjust import if needed
+        if isinstance(rep, FeatureReport):
+            d = asdict(rep)
+            # ensure minimal fields
+            d.setdefault("name", getattr(feature, "name", feature.__class__.__name__))
+            d.setdefault("kind", getattr(feature, "kind", "row"))
+            return d
+    except Exception:
+        pass
+
+    # 2) Already a mapping → ensure name/kind
+    if isinstance(rep, dict):
+        rep = dict(rep)
+        rep.setdefault("name", getattr(feature, "name", feature.__class__.__name__))
+        rep.setdefault("kind", getattr(feature, "kind", "row"))
+        rep.setdefault("ok", rep.get("ok", True))
+        return rep
+
+    # 3) Fallback: opaque value
+    return {
+        "name": getattr(feature, "name", feature.__class__.__name__),
+        "kind": getattr(feature, "kind", "row"),
+        "ok": False,
+        "summary": "Unknown report type",
+        "details": {"raw": repr(rep)},
+        "warnings": ["non-dict/non-FeatureReport report"],
+    }

@@ -51,7 +51,8 @@ class VisiCalcGroupFeature(BaseGroupFeature):
         feats = out.get("features")
         names = out.get("feature_names") or []
 
-        self._quality = float(out.get("quality")) if out.get("quality") is not None else None
+        q = out.get("quality")
+        self._quality = float(q) if isinstance(q, (int, float)) else None
         self._kept_cols = len(names)
         self._rows_used = int(vpm.shape[0]) if isinstance(vpm, np.ndarray) else 0
 
@@ -65,12 +66,17 @@ class VisiCalcGroupFeature(BaseGroupFeature):
         return rows
 
     def report(self) -> Dict[str, Any]:
+        ok = (self._error is None) and (self._quality is None or self._quality >= 0.5)
         return {
             "feature": self.name,
-            "ok": (self._error is None) and (self._quality is None or self._quality >= 0.5),
+            "ok": ok,
             "quality": self._quality,
             "rows_in": self._rows_in,
             "rows_used": self._rows_used,
             "kept_metric_cols": self._kept_cols,
             "error": self._error,
+            "summary": (
+                f"rows={self._rows_used}/{self._rows_in}; "
+                f"kept_cols={self._kept_cols}; quality={self._quality}"
+            ),
         }

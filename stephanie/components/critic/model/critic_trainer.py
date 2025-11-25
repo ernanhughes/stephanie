@@ -82,13 +82,16 @@ class CriticTrainer:
         self.data_path = Path(cfg.get("data_path", "data/critic.npz"))
         self.model_path = Path(cfg.get("model_path", "models/critic.joblib"))
         self.meta_path = Path(cfg.get("meta_path", "models/critic.meta.json"))
-        self.core_only = bool(cfg.get("core_only", True))
+ 
+        # feature selection
+        self.core_only = bool(cfg.get("core_only", False))
         self.lock_features_path = (
             Path(cfg["lock_features"]) if cfg.get("lock_features") else None
         )
+        self.lock_features_names = list(self.cfg.get("lock_features_names") or [])  # type: list[str]
 
         # visualization directory
-        self.viz_dir = Path(cfg.get("viz_dir", "data/visualizations/tiny_critic"))
+        self.viz_dir = Path(cfg.get("viz_dir", "data/visualizations/critic"))
         self.viz_dir.mkdir(parents=True, exist_ok=True)
 
         # directionality (same as legacy)
@@ -164,6 +167,22 @@ class CriticTrainer:
         return Xc
 
     def _select_features(self, X, names):
+        # Prefer in-memory locked names if present
+        locked_names = self.lock_features_names or None
+
+        # Fall back to file if names not supplied
+        if not locked_names and self.lock_features_path and self.lock_features_path.exists():
+            locked_names = [ln.strip() for ln in self.lock_features_path.read_text(encoding="utf-8").splitlines() if ln.strip()]
+
+        if locked_names:
+            name_to_idx = {n: i for i, n in enumerate(names)}
+            keep_idx = [name_to_idx[n] for n in locked_names if n in name_to_idx]
+            missing = [n for n in locked_names if n not in name_to_idx]
+            if missing:
+                self.logger.warning("Locked features missing from dataset: %d → %s", len(missing), missing[:10])
+            X_sel = X[:, keep_idx]
+            names_sel = [names[i] for i in keep_idx]
+            return X_sel, names_sel
         if self.lock_features_path and self.lock_features_path.exists():
             locked = [
                 ln.strip()

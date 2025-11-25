@@ -103,9 +103,8 @@ class VisiCalcTool(BaseTool):
                 "features": np.empty((len(rows), 0), dtype=float),
                 "feature_names": [],
                 "vpm": np.empty((0, 0), dtype=np.uint8),
-                "quality": {},
-            }    
-
+                "quality": None,  # ← was {}. Make it None so callers can treat “no signal” cleanly
+            }
 
         vc = VisiCalc.from_matrix(
             episode_id      = episode_id,

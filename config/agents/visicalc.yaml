@@ -70,7 +70,7 @@ visicalc:
 
     metric_mapping:
       include:
-        - "HRM.*"
+        - "hrm.*"
         - "sicql.*"
         - "tiny.*"
       exclude:

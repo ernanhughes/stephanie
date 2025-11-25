@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from typing import Any, Dict, List
 
 import numpy as np
@@ -10,6 +11,7 @@ from stephanie.components.critic.agents.visicalc import VisiCalcAgent
 from stephanie.components.critic.model.critic_model import CriticModel
 from stephanie.scoring.metrics.scorable_processor import ScorableProcessor
 from stephanie.scoring.scorable import Scorable
+from stephanie.components.critic.reports.critic_reporter import build_critic_report
 
 log = logging.getLogger(__name__)
 
@@ -50,6 +52,8 @@ class CriticScorerAgent(BaseAgent):
             run_id=self.run_id,
         )
 
+        self.report_dir = cfg.get("report_dir", "runs/critic/reports")
+        os.makedirs(self.report_dir, exist_ok=True)
         self.model: CriticModel | None = None
 
     # -----------------------------------------------------------
@@ -125,4 +129,33 @@ class CriticScorerAgent(BaseAgent):
         context["critic_labels"] = labels.tolist()
         context["critic_metric_names"] = metric_names
 
+        # rows already built; context may have feature reports
+        feature_reports = context.get("feature_reports") or []
+
+        # load meta.feature_names from your saved critic meta
+        model_feature_names = []
+        try:
+            import json
+            with open(self.meta_path, "r", encoding="utf-8") as f:
+                meta = json.load(f)
+                model_feature_names = meta.get("feature_names") or []
+        except Exception:
+            pass
+
+        # MetricStore from memory
+        metric_store = self.memory.metrics  # your MetricStore wrapper
+        run_id = context.get("pipeline_run_id")
+
+        out_md = f"{self.report_dir}/critic_run_{run_id}.md"
+        path = build_critic_report(
+            rows=rows,
+            feature_reports=feature_reports,
+            model_feature_names=model_feature_names,
+            metric_store=metric_store,
+            run_id=run_id,
+            out_path=out_md,
+        )
+        log.info("Saved Critic report: %s", out_md)
+
+        self.logger.info("Critic run report saved → %s", path)
         return context

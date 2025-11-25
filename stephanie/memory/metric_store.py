@@ -260,3 +260,36 @@ class MetricStore(BaseSQLAlchemyStore):
             s.flush()
             return g
         return self._run(op)
+
+    def get_or_create_group(self, run_id: str, meta: Optional[dict] = None) -> MetricGroupORM:
+        """
+        Fetch the MetricGroup for run_id, creating it if it doesn't exist.
+        If `meta` is provided and the group exists, meta is shallow-merged.
+        """
+        meta = meta or {}
+        def op(s):
+            g = s.query(MetricGroupORM).filter_by(run_id=run_id).one_or_none()
+            if g is None:
+                g = MetricGroupORM(run_id=run_id, meta=dict(meta))
+                s.add(g)
+                s.flush()
+                return g
+            if meta:
+                current = dict(g.meta or {})
+                current.update(meta)
+                g.meta = current
+                s.flush()
+            return g
+        return self._run(op)
+
+    def get_group_meta(self, run_id: str) -> dict:
+        g = self.get_group(run_id)
+        return dict(g.meta or {}) if g else {}
+
+    def get_kept_columns(self, run_id: str) -> list[str]:
+        """
+        Return the kept feature names selected by MetricFilter for this run.
+        Empty list if not present.
+        """
+        meta = self.get_group_meta(run_id)
+        return list((meta.get("metric_filter") or {}).get("kept_columns") or [])

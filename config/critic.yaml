@@ -111,32 +111,13 @@ pipeline:
       iterations: 1
 
     # ---------------------------------------------------------------
-    - name: visicalc
-      description: >
-        Run VisiCalc on the loaded rows to compute frontier splits,
-        aggregate quality metrics, feature maps, and structural VPMs for
-        cohort-level understanding.
-      cls: stephanie.components.critic.agents.visicalc.VisiCalcAgent
-      enabled: false
-      iterations: 1
-
-    # ---------------------------------------------------------------
     - name: critic_dataset
       description: >
         Convert VisiCalc features into a supervised dataset. Includes
         alignment with HRM/SICQL/EBT signals, filtering, normalization,
         and auto-balanced sampling.
       cls: stephanie.components.critic.agents.critic_dataset.CriticDatasetAgent
-      enabled: false
-      iterations: 1
-
-    # ---------------------------------------------------------------
-    - name: critic_trainer
-      description: >
-        Train the Tiny Critic (LogReg or small MLP) on the VisiCalc-derived
-        feature dataset. Produces a calibrated model + meta file.
-      cls: stephanie.components.critic.agents.critic_trainer.CriticTrainerAgent
-      enabled: false
+      enabled: true
       iterations: 1
 
     # ---------------------------------------------------------------
@@ -145,6 +126,15 @@ pipeline:
         Apply the trained TinyCritic to generate scores for each scorable.
         Writes scores back to memory, enabling cross-model diagnostics.
       cls: stephanie.components.critic.agents.critic_scorer.CriticScorerAgent
+      enabled: true
+      iterations: 1
+
+    # ---------------------------------------------------------------
+    - name: critic_trainer
+      description: >
+        Train the Tiny Critic (LogReg or small MLP) on the VisiCalc-derived
+        feature dataset. Produces a calibrated model + meta file.
+      cls: stephanie.components.critic.agents.critic_trainer.CriticTrainerAgent
       enabled: true
       iterations: 1
 
