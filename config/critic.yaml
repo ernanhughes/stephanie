@@ -98,8 +98,8 @@ pipeline:
         Pull raw signal data from Huggingface or other sources. This builds
         the foundational corpus of scorables used by VisiCalc.
       cls: stephanie.components.critic.agents.critic_data.CriticDataAgent
-      enabled: true
-      iterations: 10
+      enabled: false
+      iterations: 1
 
     # ---------------------------------------------------------------
     - name: critic_loader
@@ -117,7 +117,7 @@ pipeline:
         aggregate quality metrics, feature maps, and structural VPMs for
         cohort-level understanding.
       cls: stephanie.components.critic.agents.visicalc.VisiCalcAgent
-      enabled: true
+      enabled: false
       iterations: 1
 
     # ---------------------------------------------------------------
@@ -127,7 +127,7 @@ pipeline:
         alignment with HRM/SICQL/EBT signals, filtering, normalization,
         and auto-balanced sampling.
       cls: stephanie.components.critic.agents.critic_dataset.CriticDatasetAgent
-      enabled: true
+      enabled: false
       iterations: 1
 
     # ---------------------------------------------------------------
@@ -136,7 +136,7 @@ pipeline:
         Train the Tiny Critic (LogReg or small MLP) on the VisiCalc-derived
         feature dataset. Produces a calibrated model + meta file.
       cls: stephanie.components.critic.agents.critic_trainer.CriticTrainerAgent
-      enabled: true
+      enabled: false
       iterations: 1
 
     # ---------------------------------------------------------------

@@ -92,3 +92,18 @@ critic_scorer:
           path: "config/core_metrics.json"
           top_k: 150
           min_effect: 0.1
+
+    metrics_filter:
+      enabled: true
+      top_k: 100           # 50 / 100 / 150
+      normalize: true
+      dup_threshold: 0.995
+      min_variance: 1e-8
+      include:             # optional, supports * wildcards
+        - "HRM.*"
+        - "sicql.*"
+        - "tiny.*"
+      exclude:
+        - "*.raw"
+        - "*.debug"
+        - "*.stdev"        # if you decide to exclude SD-only channels
