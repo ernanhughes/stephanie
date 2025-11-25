@@ -12,7 +12,7 @@ class RowBuilder:
     Builds ScorableRow objects from a Scorable + accumulator dictionary.
 
     This is the final glue step after all Features + Tools have run.
-    """
+    " OK""
 
     # ------------------------------------------------------------------
     def build(self, scorable, acc: dict) -> ScorableRow:

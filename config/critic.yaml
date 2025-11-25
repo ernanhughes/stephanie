@@ -1,57 +1,76 @@
 defaults:
   - _self_
   - db: postgres
-  - bus: disabled   
+  - bus: disabled
   - plan_monitor: disabled
   - logging: json_logger
   - services: all
-  - scorer: all  
+  - scorer: all
 
+  # Critic pipeline agents
   - agents/critic_data
   - agents/critic_dataset
   - agents/critic_trainer
   - agents/critic_scorer
   - agents/critic_inference
   - agents/visicalc
-  - agents/loader
+  - agents/critic_loader
+
 
 embeddings:
   backend: hnet
 
+
+# ---------------------------------------------------------------------
+# High-level goal conditioning: why we are running this pipeline
+# ---------------------------------------------------------------------
 goal:
-  source: "driver"              # or "from_turn" if you want the turn to override
-  goal_text: >
-    Construct a goal-conditioned Nexus from chat turns, perform blossom search
-    (Tree/Graph-of-Thoughts) to propose candidate trajectories, render a
-    synchronized A/B filmstrip (baseline | targeted | delta), compute global
-    sensemaking metrics (community detection + summaries), and pick the winner
-    by SICQL/EBT/HRM signals. Export artifacts + deltas for GAP analysis.
+  source: "driver"
   goal_type: "tactical"
-  goal_category: "nexus_ab_compare"
-  focus_area: "visual_graph_memory"
+  goal_category: "visual_graph_memory"
+
+  # ✦ NEW: Cleaner narrative explaining why this pipeline exists ✦
+  goal_text: >
+    Evaluate and refine Stephanie’s internal critic by constructing a
+    VisiCalc-based cohort analysis across chat turns, identifying stable
+    high-signal behavioral features, training a compact critic model, and
+    validating its predictive power via HRM/SICQL/EBT agreement. Produce a
+    full lifecycle artifact set (raw → metrics → VPM → cohort summaries →
+    critic model → improvement deltas) that together form a self-improving
+    feedback loop.
+
   strategy:
-    - "graph_search"
-    - "stepwise_decomposition"
-    - "global_sensemaking"
-  difficulty: "medium-high"
+    - "cohort_metric_analysis"        # VisiCalc → baseline → targeted
+    - "critic_training"               # Train TinyCritic on extracted features
+    - "model_evaluation"              # HRM + SICQL + EBT cross-checks
+    - "visual_reasoning"              # VPM and color-normalized A/B frames
+    - "feedback_integration"          # Update scorer configs & calibration
+
   expected_formats:
-    - "symbolic_prompt_plan"
-    - "stepwise_reasoning_trace"
-    - "annotated_score_vector"
-    - "ab_filmstrip_gif"
-    - "graph_compare_json"
-    - "community_summaries_md"
+    - "visicalc_report_json"
+    - "visicalc_feature_matrix"
+    - "critic_dataset_csv"
+    - "critic_model_joblib"
+    - "critic_cross_validation_md"
+    - "ab_vpm_filmstrip"
+    - "model_quality_metrics_json"
+
   success_criteria:
-    min_goal_alignment_improvement: 0.05        # targ.mean - base.mean
-    min_community_lift_p90: 0.05                # p90(goal_alignment in top communities)
-    prefer_lower_spatial_edge_len: true         # shorter edges indicate tighter coherence
+    min_goal_alignment_improvement: 0.05
+    min_signal_lift_p80: 0.05
+    require_cross_model_agreement: true
+    prefer_low_variance_visicalc_features: true
+
   scorer_signals:
     - "SICQL"
     - "EBT"
     - "HRM"
+
   calibration:
-    color_scale: "global_both_runs"             # stable intensity across A/B
-    winsorize_pct: 1.0                          # clip extremes for readability
+    color_scale: "global_full_pipeline"
+    winsorize_pct: 1.0
+
+
 paths:
   prompts: ${hydra:runtime.cwd}/prompts
 
@@ -59,48 +78,81 @@ report:
   generate_report: true
   path: ${hydra:runtime.cwd}/reports
 
+
+# ---------------------------------------------------------------------
+# Pipeline execution graph (linear, but goals-aware)
+# ---------------------------------------------------------------------
 pipeline:
-  name: chat training
-  tag: chat_training
-  description: "Uses chat history to train models. Different dynamics than traditional training."
+  name: chat_critic_training
+  tag: critic_training
+  description: >
+    Extract, diagnose, train, validate, and apply a TinyCritic model using
+    VisiCalc-derived structural metrics to understand how Stephanie evaluates
+    knowledge, alignment, and reasoning quality in chat turns.
+
   stages:
-     - name: critic_data
-       description: "Perform visual introspection on the goal and hypotheses"
-       cls: stephanie.components.critic.agents.critic_data.CriticDataAgent
-       enabled: false
-       iterations: 1
 
-     - name: loader
-       description: "Load scorables from previous visual introspection runs"
-       cls: stephanie.agents.loader.LoaderAgent
-       enabled: true
-       iterations: 1
+    # ---------------------------------------------------------------
+    - name: critic_data
+      description: >
+        Pull raw signal data from Huggingface or other sources. This builds
+        the foundational corpus of scorables used by VisiCalc.
+      cls: stephanie.components.critic.agents.critic_data.CriticDataAgent
+      enabled: true
+      iterations: 10
 
-     - name: visicalc
-       description: "Run VisiCalc cohort analysis on the loaded conversation turns"
-       cls: stephanie.components.critic.agents.visicalc.VisiCalcAgent
-       enabled: false
-       iterations: 1
-       
-     - name: critic_dataset
-       description: "Build Tiny Critic dataset from VisiCalc features"
-       cls: stephanie.components.critic.agents.critic_dataset.CriticDatasetAgent
-       enabled: false
-       iterations: 1
+    # ---------------------------------------------------------------
+    - name: critic_loader
+      description: >
+        Load fully processed ScorableRows from disk or DB. These contain all
+        embeddings, metrics, vision signals, and near-identity data.
+      cls: stephanie.agents.loader.LoaderAgent
+      enabled: true
+      iterations: 1
 
-     - name: critic_trainer
-       description: "Train the Tiny Critic model on VisiCalc-derived feature dataset"
-       cls: stephanie.components.critic.agents.critic_trainer.CriticTrainerAgent
-       enabled: false
-       iterations: 1
- 
-     - name: critic_scorer
-       description: "Score scorables using the trained Tiny Critic model"
-       cls: stephanie.components.critic.agents.critic_scorer.CriticScorerAgent
-       enabled: true
-       iterations: 1  
+    # ---------------------------------------------------------------
+    - name: visicalc
+      description: >
+        Run VisiCalc on the loaded rows to compute frontier splits,
+        aggregate quality metrics, feature maps, and structural VPMs for
+        cohort-level understanding.
+      cls: stephanie.components.critic.agents.visicalc.VisiCalcAgent
+      enabled: true
+      iterations: 1
 
-     - name: critic_inference
-       cls: stephanie.components.critic.agents.critic_inference.CriticInferenceAgent
-       enabled: false
-       iterations: 1
+    # ---------------------------------------------------------------
+    - name: critic_dataset
+      description: >
+        Convert VisiCalc features into a supervised dataset. Includes
+        alignment with HRM/SICQL/EBT signals, filtering, normalization,
+        and auto-balanced sampling.
+      cls: stephanie.components.critic.agents.critic_dataset.CriticDatasetAgent
+      enabled: true
+      iterations: 1
+
+    # ---------------------------------------------------------------
+    - name: critic_trainer
+      description: >
+        Train the Tiny Critic (LogReg or small MLP) on the VisiCalc-derived
+        feature dataset. Produces a calibrated model + meta file.
+      cls: stephanie.components.critic.agents.critic_trainer.CriticTrainerAgent
+      enabled: true
+      iterations: 1
+
+    # ---------------------------------------------------------------
+    - name: critic_scorer
+      description: >
+        Apply the trained TinyCritic to generate scores for each scorable.
+        Writes scores back to memory, enabling cross-model diagnostics.
+      cls: stephanie.components.critic.agents.critic_scorer.CriticScorerAgent
+      enabled: true
+      iterations: 1
+
+    # ---------------------------------------------------------------
+    - name: critic_inference
+      description: >
+        Evaluate generalization of the critic on fresh chat turns.
+        Disabled by default, but can be turned on for live experimentation.
+      cls: stephanie.components.critic.agents.critic_inference.CriticInferenceAgent
+      enabled: false
+      iterations: 1
