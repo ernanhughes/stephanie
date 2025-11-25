@@ -490,3 +490,22 @@ class MetricFilter:
         kept_names = [names[i] for i in sel_idx]
         kept_X = X[:, sel_idx]
         return kept_names, kept_X
+    
+
+def assert_feature_consistency(source, X, metric_names, kept):
+    # 1) empty checks
+    if X.size == 0 or len(metric_names) == 0:
+        raise RuntimeError(f"[{source}] empty feature space")
+
+    # 2) if kept is present, enforce length & order
+    if kept:
+        if len(metric_names) != len(kept):
+            raise RuntimeError(f"[{source}] header mismatch: metric_names={len(metric_names)} kept={len(kept)}")
+        # order equality (exact)
+        if any(a != b for a, b in zip(metric_names, kept)):
+            raise RuntimeError(f"[{source}] column order drift vs kept; refuse to proceed")
+
+    # 3) NaN/Inf guard
+    import numpy as np
+    if not np.isfinite(X).all():
+        raise RuntimeError(f"[{source}] non-finite values in feature matrix")

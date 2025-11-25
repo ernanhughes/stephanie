@@ -109,8 +109,8 @@ def _try_recompute_with_agent(run_dir: Path) -> bool:
         scorables = load_scorables_for_run(run_id)
         if not scorables:
             return False
-        from visicalc import VisiCalcAgent
-        agent = VisiCalcAgent(cfg={"visicalc": {"out_dir": str(RUNS_DIR)}}, memory=None, container=None, logger=None)
+        from visicalc import CriticCohortAgent
+        agent = CriticCohortAgent(cfg={"visicalc": {"out_dir": str(RUNS_DIR)}}, memory=None, container=None, logger=None)
         context = {agent.input_key: scorables, "run_id": run_id}
         import asyncio
         asyncio.get_event_loop().run_until_complete(agent.run(context))

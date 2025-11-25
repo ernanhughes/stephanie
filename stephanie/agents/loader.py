@@ -16,7 +16,7 @@ log = logging.getLogger(__name__)
 class LoaderAgent(BaseAgent):
     """
     Offline loader for Qen3 runs.
-    Reads one or more JSONL files produced by the VisualIntrospectionAgent
+    Reads one or more JSONL files produced by the DataAgent
     (each line is a dict with a `scorable` payload and meta like `is_correct`),
     converts them back into Scorable objects, and splits them into:
 
@@ -24,7 +24,7 @@ class LoaderAgent(BaseAgent):
       - context["scorables_targeted"] = correct scorables (is_correct=True)
       - context["scorables_baseline"] = incorrect scorables
 
-    This is designed to feed directly into VisiCalcAgent.
+    This is designed to feed directly into CriticCohortAgent.
     """
 
     def __init__(self, cfg: Dict[str, Any], memory, container, logger):

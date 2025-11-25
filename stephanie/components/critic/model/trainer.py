@@ -68,7 +68,7 @@ def load_dataset(path: Path) -> tuple[np.ndarray, np.ndarray, list[str], Optiona
         y = data["y"].astype(int)
         metric_names = data["metric_names"].tolist() if "metric_names" in data else [
             *CORE_FEATURE_NAMES, *[f"feat_{i}" for i in range(X.shape[1] - len(CORE_FEATURE_NAMES))]
-        ]
+        ] 
         groups = data.get("groups", None)
         if groups is not None:
             groups = np.array(groups)

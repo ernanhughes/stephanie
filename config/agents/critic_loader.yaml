@@ -5,7 +5,7 @@ critic_loader:
   enabled: true
 
   input_key: "unused"          # we ignore context input
-  output_key: "scorables"      # matches what VisiCalcAgent expects
+  output_key: "scorables"      # matches what CriticCohortAgent expects
 
   save_prompt: false
   save_context: false

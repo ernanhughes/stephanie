@@ -2,15 +2,13 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Any, Dict, List
+from typing import Any, Dict
 
-import numpy as np
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.components.critic.agents.visicalc import VisiCalcAgent
+from stephanie.components.critic.agents.critic_cohort import CriticCohortAgent
 from stephanie.components.critic.model.critic_model import CriticModel
 from stephanie.scoring.metrics.scorable_processor import ScorableProcessor
-from stephanie.scoring.scorable import Scorable
 from stephanie.components.critic.reports.critic_reporter import build_critic_report
 
 log = logging.getLogger(__name__)
@@ -43,8 +41,8 @@ class CriticScorerAgent(BaseAgent):
             logger,
         )
 
-        # We will reuse VisiCalcAgent._build_vpm_and_metric_names
-        self.visi_helper = VisiCalcAgent(
+        # We will reuse CriticCohortAgent._build_vpm_and_metric_names
+        self.visi_helper = CriticCohortAgent(
             cfg=cfg.get("visicalc", {"enabled": False}),
             memory=memory,
             container=container,

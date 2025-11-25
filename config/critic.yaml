@@ -8,12 +8,12 @@ defaults:
   - scorer: all
 
   # Critic pipeline agents
+  - agents/critic_cohort
   - agents/critic_data
   - agents/critic_dataset
   - agents/critic_trainer
   - agents/critic_scorer
   - agents/critic_inference
-  - agents/visicalc
   - agents/critic_loader
 
 
@@ -98,25 +98,14 @@ pipeline:
         Pull raw signal data from Huggingface or other sources. This builds
         the foundational corpus of scorables used by VisiCalc.
       cls: stephanie.components.critic.agents.critic_data.CriticDataAgent
-      enabled: false
+      enabled: true
       iterations: 1
 
     # ---------------------------------------------------------------
     - name: critic_loader
       description: >
-        Load fully processed ScorableRows from disk or DB. These contain all
-        embeddings, metrics, vision signals, and near-identity data.
+        Load fully Scorable data from disk.
       cls: stephanie.agents.loader.LoaderAgent
-      enabled: true
-      iterations: 1
-
-    # ---------------------------------------------------------------
-    - name: critic_dataset
-      description: >
-        Convert VisiCalc features into a supervised dataset. Includes
-        alignment with HRM/SICQL/EBT signals, filtering, normalization,
-        and auto-balanced sampling.
-      cls: stephanie.components.critic.agents.critic_dataset.CriticDatasetAgent
       enabled: true
       iterations: 1
 
@@ -126,6 +115,26 @@ pipeline:
         Apply the trained TinyCritic to generate scores for each scorable.
         Writes scores back to memory, enabling cross-model diagnostics.
       cls: stephanie.components.critic.agents.critic_scorer.CriticScorerAgent
+      enabled: true
+      iterations: 1
+
+    - name: critic_cohort
+      description: >
+        Convert VisiCalc features into a supervised dataset. Includes
+        alignment with HRM/SICQL/EBT signals, filtering, normalization,
+        and auto-balanced sampling.
+      cls: stephanie.components.critic.agents.critic_cohort.CriticCohortAgent
+      enabled: true
+      iterations: 1
+
+
+    # ---------------------------------------------------------------
+    - name: critic_dataset
+      description: >
+        Convert VisiCalc features into a supervised dataset. Includes
+        alignment with HRM/SICQL/EBT signals, filtering, normalization,
+        and auto-balanced sampling.
+      cls: stephanie.components.critic.agents.critic_dataset.CriticDatasetAgent
       enabled: true
       iterations: 1
 

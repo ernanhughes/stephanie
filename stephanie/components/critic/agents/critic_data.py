@@ -36,7 +36,7 @@ class CriticDataAgent(BaseAgent):
     - Splits into:
         * context["scorables_targeted"] = correct solutions
         * context["scorables_baseline"] = incorrect solutions
-        * context["scorables"] = union of both (for VisiCalcAgent input)
+        * context["scorables"] = union of both (for CriticCohortAgent input)
     - Writes a JSONL log file for this run with comprehensive quality metrics
     
     Configure in Hydra:
@@ -45,7 +45,7 @@ class CriticDataAgent(BaseAgent):
         _target_: stephanie.agents.critic_data.VisualIntrospectionAgent
         name: critic_data
         enabled: true
-        input_key: "scorables"          # VisiCalcAgent expects this later
+        input_key: "scorables"          # CriticCohortAgent expects this later
         output_key: "critic_data"
         strategy: "gsm8k_solve"
         num_examples: 200               # Recommended for Tiny Critic training
@@ -521,7 +521,7 @@ IMPORTANT: Do not use any XML tags. Just follow the format above."""
             log.info(f"✅ Feature visualizations saved to {self.vis_dir}")
 
             # -----------------------------------------------------------------
-            # 5) Populate context for downstream agents (VisiCalcAgent)
+            # 5) Populate context for downstream agents (CriticCohortAgent)
             # -----------------------------------------------------------------
             # These scorables will be processed by ScorableProcessor, then VisiCalc.
             context["scorables"] = all_scorables
@@ -561,7 +561,7 @@ IMPORTANT: Do not use any XML tags. Just follow the format above."""
             log.info(f"   💭 Reasoning Found: {self.quality_metrics['reasoning_found']}/{self.quality_metrics['total_examples']} ({self.quality_metrics['reasoning_found']/self.quality_metrics['total_examples']*100:.1f}%)")
             log.info(f"   🎯 Final Answer Found: {self.quality_metrics['final_answer_found']}/{self.quality_metrics['total_examples']} ({self.quality_metrics['final_answer_found']/self.quality_metrics['total_examples']*100:.1f}%)")
             log.info(f"   🌟 High-Quality Reasoning: {self.quality_metrics['high_quality_reasoning']}/{self.quality_metrics['total_examples']} ({high_quality_pct:.1f}%)")
-            log.info(f"   📊 Reasoning Quality Metrics:")
+            log.info("   📊 Reasoning Quality Metrics:")
             log.info(f"      - Avg. steps: {sum(s.meta.get('step_count', 0) for s in all_scorables) / len(all_scorables):.1f}")
             log.info(f"      - Verification rate: {sum(1 for s in all_scorables if s.meta.get('verification_present')) / len(all_scorables):.1%}")
             

@@ -177,7 +177,7 @@ def _aggregate_metrics(all_runs: List[List[Dict[str, Any]]]) -> List[Dict[str, A
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Aggregate metric importance across VisiCalc runs "
-        "and write a core metric subset usable by VisiCalcAgent."
+        "and write a core metric subset usable by CriticCohortAgent."
     )
     parser.add_argument(
         "--runs-root",
@@ -325,7 +325,7 @@ def main() -> None:
         "num_metrics": len(summary),
         "num_core_metrics": len(filtered),
         # IMPORTANT: "metrics" is a list of dicts with 'name', which
-        # VisiCalcAgent._load_important_metric_names knows how to read.
+        # CriticCohortAgent._load_important_metric_names knows how to read.
         "metrics": filtered,
     }
 

@@ -94,31 +94,31 @@ class MetricMapper:
 
         self.include_unmatched: bool = bool(include_unmatched)
         self.normalize_unmatched: bool = bool(normalize_unmatched)
+        self.case_insensitive: bool = True
 
         # ---- DEBUG: construction summary ----
-        if log.isEnabledFor(logging.DEBUG):
+        log.info(
+            "MetricMapper.__init__: "
+            "include_patterns=%r exclude_patterns=%r "
+            "preferred_keys=%r include_unmatched=%r normalize_unmatched=%r "
+            "rename_map_keys=%r rules=%d",
+            self.include_patterns,
+            self.exclude_patterns,
+            self.preferred_keys,
+            self.include_unmatched,
+            self.normalize_unmatched,
+            sorted(self.rename_map.keys()),
+            len(self.rules),
+        )
+        for r in self.rules:
             log.info(
-                "MetricMapper.__init__: "
-                "include_patterns=%r exclude_patterns=%r "
-                "preferred_keys=%r include_unmatched=%r normalize_unmatched=%r "
-                "rename_map_keys=%r rules=%d",
-                self.include_patterns,
-                self.exclude_patterns,
-                self.preferred_keys,
-                self.include_unmatched,
-                self.normalize_unmatched,
-                sorted(self.rename_map.keys()),
-                len(self.rules),
+                "MetricMapper.__init__: rule name=%r patterns=%r "
+                "normalize=%r allow_missing=%r",
+                r.name,
+                r.patterns,
+                r.normalize,
+                r.allow_missing,
             )
-            for r in self.rules:
-                log.info(
-                    "MetricMapper.__init__: rule name=%r patterns=%r "
-                    "normalize=%r allow_missing=%r",
-                    r.name,
-                    r.patterns,
-                    r.normalize,
-                    r.allow_missing,
-                )
 
     # ------------------------------------------------------------------
     # Factory from Hydra-style config (your visicalc.yaml)
@@ -240,15 +240,15 @@ class MetricMapper:
         return cls()
 
     # ------------------------------------------------------------------
-    # Column selection / ordering (used by VisiCalcAgent)
+    # Column selection / ordering (used by CriticCohortAgent)
     # ------------------------------------------------------------------
 
     # ------------------------------------------------------------------
-    # Column selection / ordering (used by VisiCalcAgent)
+    # Column selection / ordering (used by CriticCohortAgent)
     # ------------------------------------------------------------------
 
     # ------------------------------------------------------------------
-    # Column selection / ordering (used by VisiCalcAgent)
+    # Column selection / ordering (used by CriticCohortAgent)
     # ------------------------------------------------------------------
 
     def _match_any(self, name: str, patterns: Sequence[str]) -> bool:
@@ -432,25 +432,20 @@ class MetricMapper:
         Return a list of column indices that match any of rule.patterns,
         in the *original* order of metric_names.
         """
-        if not rule.patterns:
+        if not rule.patterns and self._canon(rule.name) in {self._canon(n): None for n in metric_names}:
+            idx = next(i for i, n in enumerate(metric_names) if self._canon(n) == self._canon(rule.name))
             # Direct name match fallback
-            if rule.name in name_to_idx:
-                log.info(
-                    "MetricMapper._match_rule: rule=%r direct name match %r -> idx=%d",
-                    rule.name,
-                    rule.name,
-                    name_to_idx[rule.name],
-                )
-                return [name_to_idx[rule.name]]
             log.info(
-                "MetricMapper._match_rule: rule=%r no patterns and no direct match",
+                "MetricMapper._match_rule: rule=%r direct name match %r -> idx=%d",
                 rule.name,
+                rule.name,
+                name_to_idx[rule.name],
             )
-            return []
+            return [idx]
 
         matched: List[int] = []
         for i, name in enumerate(metric_names):
-            if any(fnmatch(name, pat) for pat in rule.patterns):
+            if any(fnmatch(self._canon(name), self._canon(p)) for p in rule.patterns):
                 matched.append(i)
 
         log.info(
@@ -535,3 +530,11 @@ class MetricMapper:
                 )
 
         return scores
+
+
+    def _canon(self, s: str) -> str:
+        return s.lower() if self.case_insensitive and isinstance(s, str) else s
+
+    def _match_any(self, name: str, patterns: Sequence[str]) -> bool:
+        n = self._canon(name)
+        return any(fnmatch(self._canon(p), n) or fnmatch(n, self._canon(p)) for p in patterns)

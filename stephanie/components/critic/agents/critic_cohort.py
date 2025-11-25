@@ -23,7 +23,7 @@ from stephanie.utils.json_sanitize import dumps_safe
 log = logging.getLogger(__name__)
 
 
-class VisiCalcAgent(BaseAgent):
+class CriticCohortAgent(BaseAgent):
     """
     Maintenance / analysis agent that:
 
@@ -78,7 +78,7 @@ class VisiCalcAgent(BaseAgent):
     Top-level agent config:
 
       visicalc_agent:
-        _target_: stephanie.agents.maintenance.visicalc.VisiCalcAgent
+        _target_: stephanie.agents.maintenance.critic_cohort.CriticCohortAgent
 
         # BaseAgent wiring
         input_key: scorables            # where to read scorables from context
@@ -211,7 +211,7 @@ class VisiCalcAgent(BaseAgent):
         self.vpm_png_baseline_name: str = str(
             self.vpm_png_cfg.get("baseline_file", "visicalc_baseline_vpm.png")
         )
-        self.visicalc_top_k_metrics = vis_cfg.get("top_k_metrics", 150)  # e.g. 50
+        self.visicalc_top_k_metrics = vis_cfg.get("top_k_metrics", 100)  # e.g. 50
         self.visicalc_min_effect = float(vis_cfg.get("min_effect", 0.1))  # e.g. 0.25
 
         # --- Importance-based metric subset (online + offline) ---
@@ -273,7 +273,7 @@ class VisiCalcAgent(BaseAgent):
                     filtered.append(s)
 
             log.info(
-                "VisiCalcAgent: filter_role=True scorable_role=%r → kept %d/%d scorables",
+                "CriticCohortAgent: filter_role=True scorable_role=%r → kept %d/%d scorables",
                 self.scorable_role,
                 len(filtered),
                 len(scorables_all),
@@ -291,7 +291,7 @@ class VisiCalcAgent(BaseAgent):
 
         if not self.visicalc_enabled or not rows:
             log.warning(
-                "VisiCalcAgent: skipping VisiCalc analysis (enabled=%s, rows=%d)",
+                "CriticCohortAgent: skipping VisiCalc analysis (enabled=%s, rows=%d)",
                 self.visicalc_enabled,
                 len(rows),
             )
@@ -445,13 +445,13 @@ class VisiCalcAgent(BaseAgent):
                                 )
 
                             log.info(
-                                "VisiCalcAgent: saved VPM PNGs → target=%s baseline=%s",
+                                "CriticCohortAgent: saved VPM PNGs → target=%s baseline=%s",
                                 tgt_png,
                                 base_png,
                             )
                         except Exception as e:
                             log.warning(
-                                "VisiCalcAgent: failed to save VPM PNGs: %s",
+                                "CriticCohortAgent: failed to save VPM PNGs: %s",
                                 e,
                                 exc_info=True,
                             )
@@ -478,7 +478,7 @@ class VisiCalcAgent(BaseAgent):
                             ]
                     else:
                         log.warning(
-                            "VisiCalcAgent: cannot compute metric importance: "
+                            "CriticCohortAgent: cannot compute metric importance: "
                             "target.D=%d != baseline.D=%d",
                             vc_tgt.scores.shape[1],
                             vc_base.scores.shape[1],
@@ -503,7 +503,7 @@ class VisiCalcAgent(BaseAgent):
                         )
                     except Exception:
                         log.exception(
-                            "VisiCalcAgent: _compute_metric_separability failed"
+                            "CriticCohortAgent: _compute_metric_separability failed"
                         )
 
 
@@ -655,7 +655,7 @@ class VisiCalcAgent(BaseAgent):
         
     def _build_vpm_and_metric_names(self, rows: List[dict]) -> tuple[np.ndarray, List[str], List[str]]:
         if not rows:
-            raise ValueError("VisiCalcAgent: no rows provided")
+            raise ValueError("CriticCohortAgent: no rows provided")
 
         # UNION of metric columns across *all* rows
         union_cols, seen = [], set()
@@ -670,16 +670,20 @@ class VisiCalcAgent(BaseAgent):
                     union_cols.append(c)
 
         if not union_cols:
-            raise ValueError("VisiCalcAgent: no metric columns found on any row")
+            raise ValueError("CriticCohortAgent: no metric columns found on any row")
 
 
         metric_names = self.metric_mapper.select_columns(union_cols) or union_cols
 
         # Optional preferred ordering
-        if self.visicalc_metric_keys:
-            preferred = [m for m in self.visicalc_metric_keys if m in metric_names]
-            rest = [m for m in metric_names if m not in preferred]
-            metric_names = preferred + rest
+        kept = self.memory.metrics.get_kept_columns(self.run_id)
+        if kept:
+            kept_set = set(kept)
+            # keep the DB order, but only those that actually exist in metric_names
+            metric_names = [m for m in kept if m in set(metric_names)]
+            # if the intersection is tiny (e.g., mis-match), fall back gracefully
+            if len(metric_names) < 3:
+                metric_names = self.metric_mapper.select_columns(union_cols) or union_cols
 
         matrix_rows, item_ids = [], []
         skipped = 0
@@ -696,7 +700,7 @@ class VisiCalcAgent(BaseAgent):
 
         if not matrix_rows:
             raise ValueError(
-                "VisiCalcAgent: no rows with metrics_values after mapping "
+                "CriticCohortAgent: no rows with metrics_values after mapping "
                 f"(non_empty={non_empty}, skipped={skipped}, "
                 f"union_cols={len(union_cols)}, kept={len(metric_names)})"
             )
@@ -1317,7 +1321,7 @@ class VisiCalcAgent(BaseAgent):
         """
         if vc_tgt.scores.shape[1] != vc_base.scores.shape[1]:
             log.warning(
-                "VisiCalcAgent: cannot compute metric importance: target.D=%d != baseline.D=%d",
+                "CriticCohortAgent: cannot compute metric importance: target.D=%d != baseline.D=%d",
                 vc_tgt.scores.shape[1],
                 vc_base.scores.shape[1],
             )
@@ -1353,7 +1357,7 @@ class VisiCalcAgent(BaseAgent):
             return importance
 
         except Exception as e:
-            log.exception("VisiCalcAgent: metric importance computation failed: %s", e)
+            log.exception("CriticCohortAgent: metric importance computation failed: %s", e)
             return None
 
     def _save_vpm_matrix_csv(self, matrix: np.ndarray, metric_names: list[str], item_ids: list[str], out_path: Path) -> None:
@@ -1382,3 +1386,20 @@ class VisiCalcAgent(BaseAgent):
         # Also stash names so training can reconstruct feature names if desired
         np.savez(out_path.as_posix(), X=X, y=y, metric_names=np.array(metric_names, dtype=object))
         self.logger.log("VisiCalcABDatasetSaved", {"path": str(out_path), "X_shape": list(X.shape), "y_len": int(y.shape[0])})
+
+def project_to_kept(X, metric_names, kept):
+    """
+    Project matrix X (n, d_in) with columns 'metric_names' to the order in 'kept'.
+    Missing columns fill with 0.0; extra columns are dropped.
+    Returns: X_proj (n, len(kept)), kept (same list back for convenience)
+    """
+    import numpy as np
+    if not kept:
+        return X, metric_names
+    idx = {n: i for i, n in enumerate(metric_names)}
+    out = np.zeros((X.shape[0], len(kept)), dtype=X.dtype)
+    for j, name in enumerate(kept):
+        i = idx.get(name)
+        if i is not None:
+            out[:, j] = X[:, i]
+    return out, list(kept)

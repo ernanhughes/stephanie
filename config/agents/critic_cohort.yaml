@@ -1,15 +1,12 @@
-# config/agents/critic_scorer.yaml
-critic_scorer:
+# config/agents/critic_cohort.yaml
+critic_cohort:
   _target_: stephanie.components.critic.agents.critic_cohort.CriticCohortAgent
-  name: critic_scorer
-  input_key: scorables
-  output_key: critic_results
+  name: critic_cohort
   enabled: true
 
-  model_path: "models/critic.joblib"
-  meta_path:  "models/critic.meta.json"
-
-
+  # Context IO
+  input_key: "scorables"            # incoming raw scorables (dicts or Scorable)
+  output_key: "scorable_features"   # rows after ScorableProcessor (+ group features)
 
   # General
   save_prompt: false
@@ -106,9 +103,7 @@ critic_scorer:
       # 2) Cohort VisiCalc (heavy batch) + feature lock
       visicalc_group:
         enabled: true
-        # Runs cohort analysis on the filtered metric matrix; attaches per-row
-        # visicalc_features / visicalc_feature_names / visicalc_report / visicalc_quality
-        episode_id: "critic:${hydra:runtime.run_dir}"  # any unique tag is fine
+        episode_id: "critic:${hydra:runtime.run_dir}"  # unique tag per run
         frontier_metric: "HRM.aggregate"
         row_region_splits: 4
         frontier_low: 0.25
@@ -118,7 +113,7 @@ critic_scorer:
           include: ["HRM.*", "sicql.*", "tiny.*", "svm.*"]
           exclude: ["*.raw", "*.debug"]
         # files written under runs/visicalc/<run_id> by your tool
-        out_dir: "runs/critic/scorer"
+        out_dir: "runs/visicalc"
         json_file: "visicalc_report.json"
         csv_file: "visicalc_report.csv"
 

@@ -1,4 +1,4 @@
-# stephanie/components/critic/tiny_critic_dataset.py
+# stephanie/components/critic/ How do you feel bad I like I feel bad like dataset.py
 from __future__ import annotations
 
 import argparse
@@ -131,7 +131,7 @@ def load_visicalc_report(path: Path) -> dict:
         log.error(f"❌ Failed to load VisiCalc report {path}: {e}")
         raise
 
-def collect_visicalc_samples(visicalc_root: str | Path) -> Tuple[np.ndarray, np.ndarray, List[str], List[str]]:
+def collect_visicalc_samples(metric_names: list[str], visicalc_root: str | Path) -> Tuple[np.ndarray, np.ndarray, List[str], List[str]]:
     """
     Collect VisiCalc samples with proper core/dynamic feature handling.
     Returns:
@@ -158,14 +158,6 @@ def collect_visicalc_samples(visicalc_root: str | Path) -> Tuple[np.ndarray, np.
     processed_runs = 0
     successful_runs = 0
     skipped_runs = 0
-
-    # Get dynamic metric names (core features are handled internally)
-    dynamic_metric_names = load_core_metric_names(CORE_METRIC_PATH)
-    log.info(f"📌 Loaded {len(dynamic_metric_names)} dynamic metric names from MARS summary")
-
-    # Complete feature names (core + dynamic)
-    metric_names = CORE_FEATURE_NAMES + dynamic_metric_names
-    log.info(f"📌 Total feature names: {len(metric_names)} (8 core + {len(dynamic_metric_names)} dynamic)")
 
     # Each subdirectory under runs/visicalc is a run_id (e.g. 8967)
     groups: list[str] = []
@@ -208,7 +200,7 @@ def collect_visicalc_samples(visicalc_root: str | Path) -> Tuple[np.ndarray, np.
             xt = build_dynamic_feature_vector(
                 targeted_report,
                 targeted_metrics,
-                dynamic_metric_names
+                metric_names
             )
             # Validate feature vector length
             if len(xt) != len(metric_names):
@@ -237,7 +229,7 @@ def collect_visicalc_samples(visicalc_root: str | Path) -> Tuple[np.ndarray, np.
             xb = build_dynamic_feature_vector(
                 baseline_report,
                 baseline_metrics,
-                dynamic_metric_names
+                metric_names
             )
             # Validate feature vector length
             if len(xb) != len(metric_names):
@@ -300,7 +292,7 @@ def collect_visicalc_samples(visicalc_root: str | Path) -> Tuple[np.ndarray, np.
         "📈 Dataset statistics: Targeted samples (y=1): %d, Baseline samples (y=0): %d, "
         "Feature range: [%.3f, %.3f]",
         int(np.sum(y_arr == 1)),
-        int(np.sum(y_arr == 0)),
+        int(np.sum(y_arr == 0)), 
         float(X_arr.min()),
         float(X_arr.max()),
     )
