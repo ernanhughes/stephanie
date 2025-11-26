@@ -1,11 +1,14 @@
 # stephanie/components/critic/agents/critic_trainer.py
 from __future__ import annotations
 
+import numpy as np
+import math
+
 import json
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Optional, List, Tuple
+from typing import Dict, Optional, List, Tuple
 
 import joblib
 import matplotlib.pyplot as plt
@@ -17,6 +20,8 @@ from sklearn.model_selection import (GridSearchCV, GroupKFold,
                                      GroupShuffleSplit, StratifiedKFold)
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
+from sklearn.pipeline import Pipeline
+from sklearn.impute import SimpleImputer
 
 from stephanie.components.critic.model.trainer import load_dataset
 
@@ -70,11 +75,12 @@ class CriticTrainer:
       - Persists model + meta + optional visualizations (best-effort)
     """
 
-    def __init__(self, cfg, memory=None, container=None, logger=None):
+    def __init__(self, cfg, memory, container, logger, run_id):
         self.cfg = cfg or {}
         self.memory = memory
         self.container = container
-        self.logger = logger or log
+        self.logger = logger
+        self.run_id = run_id
 
         # paths configurable via YAML
         self.data_path = Path(self.cfg.get("data_path", "data/critic.npz"))
@@ -100,7 +106,7 @@ class CriticTrainer:
         # directionality
         self.directionality: Dict[str, int] = self.cfg.get("directionality", {})
 
-        self.logger.info(
+        log.info(
             "TinyCriticTrainer initialized",
             extra={"data_path": str(self.data_path), "model_path": str(self.model_path)},
         )
@@ -119,13 +125,9 @@ class CriticTrainer:
     # -----------------------------------------------------
     # Core training logic
     # -----------------------------------------------------
-    def train(
-        self,
-        X: np.ndarray,
-        y: np.ndarray,
-        metric_names: List[str],
-        groups: Optional[np.ndarray],
-    ) -> CriticTrainingResult:
+    def train(self, X, y, metric_names, groups) -> CriticTrainingResult:
+        # ---- 0: Audit (logs which features have NaN/Inf; keep sanitize=False)
+        X = self._audit_and_optionally_sanitize_X(X, metric_names, sanitize=False)
 
         # ---- 1: Directionality correction
         Xc = self._apply_direction(X, metric_names)
@@ -138,6 +140,7 @@ class CriticTrainer:
         Xtr, Xva = Xc[tr], Xc[va]
         ytr, yva = y[tr], y[va]
         groups_tr = groups[tr] if groups is not None else None
+        groups_va = groups[va] if groups is not None else None
 
         # ---- 4: CV + tuning
         model = self._tune(Xtr, ytr, groups_tr)
@@ -147,9 +150,9 @@ class CriticTrainer:
         holdout = self._eval_holdout(model, Xva, yva)
 
         # ---- 6: Save artifacts (plots are best-effort)
-        self._save(model, used_names, cv_summary, holdout, Xva, yva, locked_source)
+        self._save(model, used_names, cv_summary, holdout, Xva, yva, locked_source,
+                       groups_va=groups_va)
 
-        # ---- return structured result
         return CriticTrainingResult(
             model_path=str(self.model_path),
             meta_path=str(self.meta_path),
@@ -192,7 +195,7 @@ class CriticTrainer:
             if isinstance(mf, dict) and isinstance(mf.get("kept"), list):
                 return list(mf["kept"])
         except Exception as e:
-            self.logger.warning("MetricStore locked-features fetch failed: %s", e)
+            log.warning("MetricStore locked-features fetch failed: %s", e)
         return None
 
     def _resolve_locked_names(
@@ -263,52 +266,64 @@ class CriticTrainer:
             keep_idx = [name_to_idx[n] for n in resolved_names if n in name_to_idx]
 
             if missing:
-                self.logger.warning(
+                log.warning(
                     "Locked features missing from dataset (%s): %d → %s",
                     source, len(missing), missing[:10]
                 )
 
             if not keep_idx:
-                self.logger.warning("No locked features matched; falling back to %s", "core_only" if self.core_only else "all")
+                log.warning("No locked features matched; falling back to %s", "core_only" if self.core_only else "all")
                 # fallthrough to core_only / all
 
             else:
                 X_sel = X[:, keep_idx]
                 names_sel = [names[i] for i in keep_idx]
-                self.logger.info("Using %d locked features from %s", len(names_sel), source)
+                log.info("Using %d locked features from %s", len(names_sel), source)
                 return X_sel, names_sel, source
 
         # No locked list matched → honor core_only if requested
         if self.core_only:
             k = min(8, X.shape[1])
-            self.logger.info("core_only=True → using first %d features", k)
+            log.info("core_only=True → using first %d features", k)
             return X[:, :k], names[:k], "core_only"
 
         # Otherwise keep all
         return X, names, "all"
 
     # --- Model + evaluation -----------------------------------------------------
-    def _tune(self, X, y, groups):
-        pipe = make_pipeline(
-            StandardScaler(),
-            LogisticRegression(
-                max_iter=1000,
-                solver="liblinear",
-                class_weight="balanced",
-                random_state=42,
-            ),
-        )
-        params = {"logisticregression__C": [0.01, 0.1, 1.0, 10.0]}
+    def _tune(self, X: np.ndarray, y: np.ndarray, groups: Optional[np.ndarray]):
+        """
+        Grid-search a robust pipeline (Imputer → Scaler → LogisticRegression)
+        using group-aware CV when groups are provided.
+        """
+        # 1) Build the robust pipeline (imputer handles NaN/Inf; scaler standardizes)
+        pipe = self._build_pipeline()  # (imputer, scaler, clf)
 
+        # 2) Hyper-params to search (keep small & stable for tiny datasets)
+        #    If you later want to expand, consider C grid or elasticnet l1_ratio.
+        param_grid = {
+            "clf__C": [0.01, 0.1, 1.0, 10.0],
+        }
+
+        # 3) Make CV splitter (group-aware if possible)
         cv, grp = _make_cv(groups, y)
+
+        # 4) Run grid search
         gs = GridSearchCV(
-            pipe,
-            params,
+            estimator=pipe,
+            param_grid=param_grid,
             scoring="roc_auc",
             cv=cv,
-            n_jobs=1
+            n_jobs=1,               # keep deterministic; raise if you want parallelism
+            refit=True,
+            error_score="raise"     # fail fast if something is wrong
         )
-        gs.fit(X, y, **({"groups": grp} if grp is not None else {}))
+        fit_kwargs = {"groups": grp} if grp is not None else {}
+        gs.fit(X, y, **fit_kwargs)
+
+        # 5) Return the best pipeline (already refit on full training folds)
+        log.info("Tuning complete: best_params=%s, best_score=%.4f",
+                        gs.best_params_, float(gs.best_score_))
         return gs.best_estimator_
 
     def _eval_cv(self, model, X, y, groups):
@@ -336,17 +351,31 @@ class CriticTrainer:
         }
 
     # --- Persistence + best-effort plots ---------------------------------------
-    def _save(self, model, names, cv, holdout, Xva, yva, locked_source: str):
+    def _save(
+        self,
+        model,
+        names: List[str],
+        cv: dict,
+        holdout: dict,
+        Xva: np.ndarray,
+        yva: np.ndarray,
+        locked_source: str,
+        *,
+        groups_va: Optional[np.ndarray] = None,  # NEW
+    ) -> None:
+
         self.model_path.parent.mkdir(parents=True, exist_ok=True)
         joblib.dump(model, self.model_path)
 
         meta = {
-            "feature_names": names,
-            "core_only": self.core_only,
+            "feature_names_used": list(names),        # <= CRITICAL
+            "feature_count_used": int(len(names)),
             "locked_source": locked_source,
-            "directionality": self.directionality,
             "cv": cv,
             "holdout": holdout,
+            "feature_names": names,
+            "core_only": self.core_only,
+            "directionality": self.directionality,
         }
         self.meta_path.write_text(json.dumps(meta, indent=2))
 
@@ -356,23 +385,58 @@ class CriticTrainer:
                 "\n".join(names), encoding="utf-8"
             )
         except Exception as e:
-            self.logger.warning("Could not write critic.features.txt: %s", e)
+            log.warning("Could not write critic.features.txt: %s", e)
 
         # Plots are best-effort (never break training)
         try:
             self._plot_coefficients(model, names, self.viz_dir / "coef_importance.png")
         except Exception as e:
-            self.logger.warning("coef plot failed: %s", e)
+            log.warning("coef plot failed: %s", e)
 
         try:
             self._plot_holdout_cm(model, Xva, yva, self.viz_dir / "holdout_confusion.png")
         except Exception as e:
-            self.logger.warning("confusion plot failed: %s", e)
+            log.warning("confusion plot failed: %s", e)
 
         try:
             self._plot_holdout_roc(model, Xva, yva, self.viz_dir / "holdout_roc.png")
         except Exception as e:
-            self.logger.warning("roc plot failed: %s", e)
+            log.warning("roc plot failed: %s", e)
+
+        # ---- Shadow pack (for CriticInference) ----
+        try:
+            from stephanie.components.critic.model.shadow import save_shadow_pack
+            # Prefer DB-locked kept columns; fall back to used_names
+            kept = None
+            try:
+                kept = self.memory.metrics.get_kept_columns(self.run_id)
+            except Exception:
+                pass
+            if not kept:
+                kept = list(names)
+
+            shadow_meta = {
+                "cv": cv,
+                "holdout": holdout,
+                "locked_source": locked_source,
+                "run_id": self.run_id,
+                "model_path": str(self.model_path),
+                "meta_path": str(self.meta_path),
+            }
+
+            shadow_path = Path(self.model_path).with_name("critic_shadow.npz")
+            save_shadow_pack(
+                shadow_path,
+                X=Xva,
+                y=yva,
+                groups=groups_va,
+                feature_names=names,
+                kept=kept,
+                meta=shadow_meta,
+            )
+            log.info("CriticTrainer: saved shadow pack → %s", shadow_path)
+        except Exception as e:
+            log.warning("CriticTrainer: shadow pack save skipped: %s", e)
 
     # --- Plot helpers -----------------------------------------------------------
     def _plot_coefficients(self, model, feature_names: List[str], out_path: Path, top_k: int = 30):
@@ -431,3 +495,56 @@ class CriticTrainer:
         out_path.parent.mkdir(parents=True, exist_ok=True)
         plt.savefig(out_path)
         plt.close()
+
+
+    def _build_pipeline(self):
+        # median is robust; if you prefer zero-fill, use strategy="constant", fill_value=0.0
+        return Pipeline(steps=[
+            ("imputer", SimpleImputer(strategy="median")),
+            ("scaler",  StandardScaler()),  # keep your current setting; or with_mean=False if sparse
+            ("clf",     LogisticRegression(
+                penalty="l2",
+                solver="lbfgs",
+                max_iter=2000,
+                n_jobs=None,
+                class_weight="balanced",   # optional but helpful on small/balanced sets
+                random_state=42,
+            )),
+        ])
+ 
+    def _audit_and_optionally_sanitize_X(self, X: np.ndarray, feature_names: list[str], *, sanitize: bool = False):
+        nan_mask  = ~np.isfinite(X)  # True for NaN or ±Inf
+        n_bad     = int(nan_mask.sum())
+        if n_bad == 0:
+            log.info("CriticTrainer: X audit OK (no NaN/Inf)")
+            return X
+
+        # column-wise stats
+        bad_per_col = nan_mask.sum(axis=0)
+        bad_cols = [(feature_names[i] if i < len(feature_names) else f"col_{i}", int(b))
+                    for i, b in enumerate(bad_per_col) if b > 0]
+        bad_cols.sort(key=lambda kv: kv[1], reverse=True)
+
+        # log top offenders
+        top = bad_cols[:10]
+        log.warning("CriticTrainer: found %d bad values in X; %d/%d cols affected",
+                            n_bad, len(bad_cols), X.shape[1])
+        for name, cnt in top:
+            log.warning("  - bad[%s] = %d", name, cnt)
+
+        if not sanitize:
+            return X
+
+        # Replace non-finites with column medians (or 0.0 if entire col is bad)
+        Xc = X.copy()
+        for j in range(X.shape[1]):
+            col = Xc[:, j]
+            mask = ~np.isfinite(col)
+            if mask.any():
+                # median of finite values
+                finite = col[np.isfinite(col)]
+                fill = float(np.median(finite)) if finite.size > 0 else 0.0
+                col[mask] = fill
+                Xc[:, j] = col
+        log.info("CriticTrainer: sanitized X (NaN/Inf → median/0.0)")
+        return Xc

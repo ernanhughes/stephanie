@@ -14,7 +14,7 @@ class CriticTrainerAgent(BaseAgent):
     """
     def __init__(self, cfg, memory, container, logger):
         super().__init__(cfg, memory, container, logger)
-        self.trainer = CriticTrainer(cfg, memory, container, logger)
+        self.trainer = CriticTrainer(cfg, memory, container, logger, self.run_id)
 
     async def run(self, context: dict) -> dict:
         run_id = context.get("pipeline_run_id")

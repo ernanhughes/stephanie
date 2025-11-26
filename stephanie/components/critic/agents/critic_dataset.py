@@ -51,7 +51,7 @@ class CriticDatasetAgent(BaseAgent):
 
         # 1) Collect full dataset
         kept_columns = self.memory.metrics.get_kept_columns(self.run_id)
-        kept_columns.extend(CORE_FEATURE_NAMES)  # always keep core features
+        kept_columns = canonicalize_metric_names(kept_columns) 
         X, y, metric_names, groups = collect_visicalc_samples(kept_columns, self.visicalc_root)
 
         # 2) Project to DB-locked kept columns (order preserved)

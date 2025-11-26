@@ -1,0 +1,27 @@
+# stephanie/config/agents/critic_improver.yaml
+critic_improver:
+  name: critic_improver
+  description: "Promote a newly-trained Tiny Critic model only if it beats the current one."
+  cls: stephanie.components.critic.agents.self_improver.CriticSelfImproverAgent
+  enabled: true
+
+  # Inputs written by critic_trainer
+  model_path: "models/critic.joblib"
+  meta_path:  "models/critic.meta.json"
+
+  # Small local registry tracking the currently promoted model
+  registry_path: "models/critic_registry.json"
+
+  # Promotion gates (explicit, auditable)
+  policy:
+    min_auroc: 0.70          # absolute floor to consider promotion
+    max_ece: 0.20            # absolute ceiling (lower is better)
+    require_improvement: true
+    auroc_margin: 0.01       # require +1pt AUROC vs current
+    ece_margin: -0.02        # require ≤ -2pt ECE delta vs current
+
+  # Optional: future shadow benchmark (kept here for convenience; currently unused by the agent)
+  # shadow_benchmark:
+  #   enabled: false
+  #   dataset_path: "data/critic_shadow.npz"  # fixed set to compare current vs candidate
+  #   require_wins: 0.67                       # candidate must win on >= 2/3 metrics

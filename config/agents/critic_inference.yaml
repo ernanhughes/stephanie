@@ -1,13 +1,29 @@
+# config/agents/critic_inference.yaml
 critic_inference:
-  _target_: stephanie.components.critic.agents.critic_inference_agent.CriticInferenceAgent
+  _target_: stephanie.components.critic.agents.critic_inference.CriticInferenceAgent
   name: critic_inference
   enabled: true
 
-  input_key: "scorables"
-  output_key: "critic_scores"
+  # Fixed shadow benchmark
+  shadow_path: "models/critic_shadow.npz"
+  candidate_path: ""        # empty or omit → single-model mode
+  
+  # Current (promoted) model
+  current_model_path: "models/critic.joblib"
+  current_meta_path:  "models/critic.meta.json"
 
-  model_path: "models/critic.joblib"
-  meta_path: "models/critic.meta.json"
-  dimension: "critic"
+  # Candidate (freshly trained) model
+  candidate_model_path: "models/critic_candidate.joblib"
+  candidate_meta_path:  "models/critic_candidate.meta.json"
 
-  include_explanations: false
+  report_dir: "runs/critic/reports"
+
+  # Promotion gates
+  promotion_gates:
+    min_auroc_gain: 0.01        # require +1pt AUROC
+    max_ece_increase: 0.00      # don't allow worse calibration
+    min_auroc_absolute: 0.60    # require acceptable absolute AUROC
+    require_shadow_version_match: false
+
+  viz:
+    enabled: true

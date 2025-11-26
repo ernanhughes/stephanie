@@ -50,7 +50,7 @@ class CriticScorerAgent(BaseAgent):
             run_id=self.run_id,
         )
 
-        self.report_dir = cfg.get("report_dir", "runs/critic/reports")
+        self.report_dir = cfg.get("report_dir", f"runs/critic/{self.run_id}/reports")
         os.makedirs(self.report_dir, exist_ok=True)
         self.model: CriticModel | None = None
 
