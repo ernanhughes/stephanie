@@ -1,6 +1,9 @@
 from __future__ import annotations
+
+import fnmatch
+import hashlib
+import logging
 from typing import Any, Dict, List, Optional
-import logging, hashlib, fnmatch
 
 from stephanie.scoring.metrics.metric_filter import MetricFilter
 

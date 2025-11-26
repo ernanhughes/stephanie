@@ -2,16 +2,8 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import (
-    JSON,
-    Column,
-    DateTime,
-    ForeignKey,
-    Index,
-    Integer,
-    LargeBinary,
-    String,
-)
+from sqlalchemy import (JSON, Column, DateTime, ForeignKey, Index, Integer,
+                        LargeBinary, String)
 from sqlalchemy.orm import relationship
 
 from stephanie.models.base import Base  # same as your chat models

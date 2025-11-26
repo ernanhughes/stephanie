@@ -1,6 +1,7 @@
 # stephanie/tools/base_tool.py
 from __future__ import annotations
 
+
 class BaseTool:
     """
     Standard interface for reusable long-running tools.

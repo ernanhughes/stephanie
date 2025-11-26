@@ -1,9 +1,10 @@
 # stephanie/memory/metric_store.py
 from __future__ import annotations
 
+import datetime
 from typing import List, Optional
-from sqlalchemy import desc
 
+from sqlalchemy import desc
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
 from stephanie.models.metrics import (MetricDeltaORM, MetricGroupORM,
@@ -297,20 +298,67 @@ class MetricStore(BaseSQLAlchemyStore):
 
     def get_recent_run_ids(self, limit: int = 5) -> List[str]:
         """
-        Return the most recent MetricGroup run_ids (newest first).
+        Return the most recent `run_id`s, newest first.
 
-        Args:
-            limit: max number of run_ids to return.
-
-        Returns:
-            List[str]: run_id values ordered by created_at DESC.
+        Prefers MetricGroupORM (one row per run). If no groups exist, falls back
+        to distinct run_ids from MetricVectorORM. Filters out null/empty ids.
         """
         def op(s):
+            run_ids: List[str] = []
+
+            # --- Primary: use MetricGroupORM (newest first)
+            try:
+                # Prefer created_at if available; otherwise order by id desc.
+                order_col = getattr(MetricGroupORM, "created_at", None) or MetricGroupORM.id
+                q = (
+                    s.query(MetricGroupORM.run_id)
+                    .order_by(order_col.desc())
+                    .limit(limit)
+                )
+                run_ids = [rid for (rid,) in q.all() if rid]
+            except Exception:
+                run_ids = []
+
+            # --- Fallback: distinct run_id from MetricVectorORM
+            if not run_ids:
+                try:
+                    order_col_vec = getattr(MetricVectorORM, "created_at", None) or MetricVectorORM.id
+                    # DISTINCT ON run_id (portable approach)
+                    q2 = (
+                        s.query(MetricVectorORM.run_id)
+                        .filter(MetricVectorORM.run_id.isnot(None))
+                        .filter(MetricVectorORM.run_id != "")
+                        .order_by(order_col_vec.desc())
+                    )
+                    seen = set()
+                    for (rid,) in q2.all():
+                        if rid not in seen:
+                            seen.add(rid)
+                            run_ids.append(rid)
+                            if len(run_ids) >= limit:
+                                break
+                except Exception:
+                    pass
+
+            return run_ids[:limit]
+
+        return self._run(op)
+
+    def get_run_ids_since(self, since: datetime, limit: Optional[int] = None) -> List[str]:
+        """
+        Return run_ids whose MetricGroupORM.created_at >= since.
+        If `limit` provided, cap results. Newest first.
+        """
+        def op(s):
+            run_ids: List[str] = []
+            order_col = getattr(MetricGroupORM, "created_at", None) or MetricGroupORM.id
             q = (
                 s.query(MetricGroupORM.run_id)
-                 .order_by(desc(MetricGroupORM.created_at))
-                 .limit(limit)
+                .filter(getattr(MetricGroupORM, "created_at", None) >= since)  # if created_at exists
+                .order_by(order_col.desc())
             )
-            # q.all() returns list of 1-tuples like [('run123',), ...]
-            return [row[0] for row in q.all() if row and row[0]]
+            if limit:
+                q = q.limit(limit)
+            run_ids = [rid for (rid,) in q.all() if rid]
+            return run_ids
         return self._run(op)

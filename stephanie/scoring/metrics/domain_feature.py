@@ -4,6 +4,7 @@ from __future__ import annotations
 from stephanie.scoring.metrics.base_feature import BaseFeature
 from stephanie.tools.domain_tool import DomainTool
 
+
 class DomainFeature(BaseFeature):
     name = "domain"
 

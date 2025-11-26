@@ -5,12 +5,12 @@ import logging
 import os
 from typing import Any, Dict
 
-
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.components.critic.agents.critic_cohort import CriticCohortAgent
 from stephanie.components.critic.model.critic_model import CriticModel
+from stephanie.components.critic.reports.critic_reporter import \
+    build_critic_report
 from stephanie.scoring.metrics.scorable_processor import ScorableProcessor
-from stephanie.components.critic.reports.critic_reporter import build_critic_report
 
 log = logging.getLogger(__name__)
 

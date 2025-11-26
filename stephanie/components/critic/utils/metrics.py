@@ -1,18 +1,15 @@
 # stephanie/components/critic/utils/critic_metrics.py
-import numpy as np
-from sklearn.metrics import (
-    roc_auc_score, 
-    precision_score, 
-    brier_score_loss,
-    roc_curve,
-    precision_recall_curve
-)
-from scipy import stats
-import matplotlib.pyplot as plt
-import seaborn as sns
-import pandas as pd
-from typing import Dict, Tuple, List, Optional
 import json
+from typing import Dict, List, Optional, Tuple
+
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import seaborn as sns
+from scipy import stats
+from sklearn.metrics import (brier_score_loss, precision_recall_curve,
+                             precision_score, roc_auc_score, roc_curve)
+
 
 def compute_ece(probs: np.ndarray, y_true: np.ndarray, n_bins: int = 10) -> float:
     """Compute Expected Calibration Error"""

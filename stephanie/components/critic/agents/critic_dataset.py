@@ -5,12 +5,13 @@ import json
 import logging
 from pathlib import Path
 from typing import Any, Dict
+
 import numpy as np
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.components.critic.model.dataset import (
-    CORE_FEATURE_COUNT, CORE_FEATURE_NAMES, canonicalize_metric_names, collect_visicalc_samples,
-    save_dataset)
+    CORE_FEATURE_COUNT, CORE_FEATURE_NAMES, canonicalize_metric_names,
+    collect_visicalc_samples, save_dataset)
 
 log = logging.getLogger(__name__)
 

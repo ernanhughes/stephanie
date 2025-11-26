@@ -1,8 +1,11 @@
 # stephanie/tools/visicalc_group_tool.py
 from __future__ import annotations
-from typing import Any, Dict, List
+
 import logging
+from typing import Any, Dict, List
+
 import numpy as np
+
 from stephanie.tools.visicalc_tool import VisiCalcTool
 
 log = logging.getLogger(__name__)

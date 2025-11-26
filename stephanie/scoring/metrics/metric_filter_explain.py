@@ -1,11 +1,13 @@
 # stephanie/scoring/metrics/metric_filter_explain.py
 from __future__ import annotations
+
+import csv
+import json
+import math
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
-import csv
-import math
-import json
+
 import numpy as np
 
 try:

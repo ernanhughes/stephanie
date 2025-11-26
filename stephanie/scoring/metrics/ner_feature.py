@@ -4,6 +4,7 @@ from __future__ import annotations
 from stephanie.scoring.metrics.base_feature import BaseFeature
 from stephanie.tools.ner_tool import NerTool
 
+
 class NerFeature(BaseFeature):
     name = "ner"
 

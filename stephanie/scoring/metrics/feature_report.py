@@ -1,7 +1,9 @@
 # stephanie/scoring/metrics/feature_report.py
 from __future__ import annotations
+
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
+
 
 @dataclass
 class FeatureReport:

@@ -1,8 +1,10 @@
 # stephanie/components/critic/utils/stability_checker.py
-import numpy as np
+from typing import Any, Callable, Dict, List
+
 import matplotlib.pyplot as plt
-from typing import Callable, List, Dict, Any
+import numpy as np
 from sklearn.metrics import roc_auc_score
+
 
 def check_feature_stability(run_ids: List[str], memory) -> Dict[str, Any]:
     """Check stability of feature selection across multiple runs"""

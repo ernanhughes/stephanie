@@ -1,30 +1,27 @@
 # stephanie/scoring/metrics/scorable_processor.py
 from __future__ import annotations
-from dataclasses import asdict
 
-import time
+import importlib
 import logging
+import time
+from dataclasses import asdict
 from typing import Any, Dict, List, Union
 
 from stephanie.scoring.metrics.domain_feature import DomainFeature
 from stephanie.scoring.metrics.embedding_feature import EmbeddingFeature
 from stephanie.scoring.metrics.feature_report import FeatureReport
-from stephanie.scoring.metrics.metric_filter_group_feature import (
-    MetricFilterGroupFeature,
-)
+from stephanie.scoring.metrics.metric_filter_group_feature import \
+    MetricFilterGroupFeature
+from stephanie.scoring.metrics.metrics_feature import MetricsFeature
 from stephanie.scoring.metrics.ner_feature import NerFeature
 from stephanie.scoring.metrics.row_builder import RowBuilder
 from stephanie.scoring.metrics.text_feature import TextFeature
-from stephanie.scoring.metrics.visicalc_group_feature import (
-    VisiCalcGroupFeature,
-)
+from stephanie.scoring.metrics.visicalc_basic_feature import \
+    VisiCalcBasicFeature
+from stephanie.scoring.metrics.visicalc_group_feature import \
+    VisiCalcGroupFeature
 from stephanie.scoring.scorable import Scorable, ScorableFactory
 from stephanie.utils.progress_mixin import ProgressMixin
-from stephanie.scoring.metrics.metrics_feature import MetricsFeature
-from stephanie.scoring.metrics.visicalc_basic_feature import (
-    VisiCalcBasicFeature,
-)
-import importlib
 
 log = logging.getLogger(__name__)
 
@@ -233,7 +230,8 @@ class ScorableProcessor(ProgressMixin):
 def _report_to_dict(rep, feature):
     # 1) FeatureReport dataclass → dict
     try:
-        from stephanie.scoring.metrics.feature_report import FeatureReport  # adjust import if needed
+        from stephanie.scoring.metrics.feature_report import \
+            FeatureReport  # adjust import if needed
         if isinstance(rep, FeatureReport):
             d = asdict(rep)
             # ensure minimal fields

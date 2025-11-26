@@ -4,6 +4,7 @@ from __future__ import annotations
 from stephanie.scoring.metrics.base_feature import BaseFeature
 from stephanie.tools.embedding_tool import EmbeddingTool
 
+
 class EmbeddingFeature(BaseFeature):
     name = "embedding"
 

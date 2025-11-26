@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+
 from stephanie.tools.base_tool import BaseTool
 
 log = logging.getLogger(__name__)

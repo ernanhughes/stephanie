@@ -1,9 +1,10 @@
 # stephanie/tools/text_tool.py
 from __future__ import annotations
 
-import math
 import logging
+import math
 from collections import Counter
+
 from stephanie.tools.base_tool import BaseTool
 
 log = logging.getLogger(__name__)

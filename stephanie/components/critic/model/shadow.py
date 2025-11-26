@@ -2,11 +2,12 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
-from typing import Dict, List, Optional, Tuple
-import numpy as np
-from typing import Sequence, Mapping, Any
 import logging
+from pathlib import Path
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
+
+import numpy as np
+
 log = logging.getLogger(__name__)    
 
 def project_to_kept(

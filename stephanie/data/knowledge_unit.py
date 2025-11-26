@@ -7,6 +7,7 @@ from typing import Any, Dict, List
 from stephanie.scoring.scorable import Scorable, ScorableType
 from stephanie.utils.hash_utils import hash_text
 
+
 @dataclass
 class KnowledgeUnit:
     """

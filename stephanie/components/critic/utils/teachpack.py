@@ -1,11 +1,13 @@
 # stephanie/components/critic/critic_teachpack.py
 from __future__ import annotations
 
-import json
 import hashlib
+import json
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import Any, Dict, List
+
 import numpy as np
+
 
 def export_teachpack(
     out_path: Path,

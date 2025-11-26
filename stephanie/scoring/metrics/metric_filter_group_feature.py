@@ -1,15 +1,18 @@
 from __future__ import annotations
-import logging
-import hashlib
+
 import fnmatch
-from typing import Any, Dict, List
+import hashlib
+import logging
 from pathlib import Path
-from stephanie.scoring.metrics.metric_filter_explain import write_metric_filter_explain
+from typing import Any, Dict, List
+
 import numpy as np
 
 from stephanie.scoring.metrics.base_group_feature import BaseGroupFeature
-from stephanie.scoring.metrics.metric_filter import MetricFilter
 from stephanie.scoring.metrics.feature_report import FeatureReport
+from stephanie.scoring.metrics.metric_filter import MetricFilter
+from stephanie.scoring.metrics.metric_filter_explain import \
+    write_metric_filter_explain
 from stephanie.utils.hash_utils import hash_list
 
 log = logging.getLogger(__name__)

@@ -1,13 +1,15 @@
 from __future__ import annotations
+
 import re
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Sequence, Tuple
+
 import numpy as np
 
 # Optional: fast MI/AUC if sklearn available; otherwise fall back to variance
 try:
-    from sklearn.metrics import roc_auc_score
     from sklearn.feature_selection import mutual_info_classif
+    from sklearn.metrics import roc_auc_score
 
     _SK = True
 except Exception:

@@ -1,7 +1,9 @@
 # stephanie/scoring/metrics/visicalc_group_feature.py
 from __future__ import annotations
+
 import logging
 from typing import Any, Dict, List
+
 import numpy as np
 
 from stephanie.scoring.metrics.base_group_feature import BaseGroupFeature

@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 import abc
-from typing import Dict, Any
+from typing import Any, Dict
+
 from stephanie.scoring.metrics.feature_report import FeatureReport
 from stephanie.scoring.scorable import Scorable
+
 
 class BaseFeature(abc.ABC):
     """

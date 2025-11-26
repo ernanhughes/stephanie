@@ -1,8 +1,9 @@
 # stephanie/components/scorable_processor/features/visicalc_basic_feature.py
 
 from __future__ import annotations
+
 import logging
-from typing import Dict, Any
+from typing import Any, Dict
 
 from stephanie.scoring.metrics.base_feature import BaseFeature
 from stephanie.tools.visicalc_tool import VisiCalcTool

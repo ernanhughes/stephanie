@@ -1,13 +1,16 @@
 from __future__ import annotations
+
 import asyncio
 import logging
 import time
 from typing import Any, Dict, List, Optional
+
 import numpy as np
+
+from stephanie.scoring.scorable import Scorable
 
 from .base_feature import BaseFeature
 from .feature_report import FeatureReport
-from stephanie.scoring.scorable import Scorable
 
 log = logging.getLogger(__name__)
 

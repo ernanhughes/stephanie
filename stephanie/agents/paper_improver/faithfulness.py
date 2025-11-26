@@ -12,6 +12,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 import numpy as np
 import torch
 from sentence_transformers import SentenceTransformer, util
+
 from stephanie.utils.hash_utils import hash_text
 
 try:

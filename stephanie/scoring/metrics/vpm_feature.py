@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Dict, Any
+from typing import Any, Dict
 
 from stephanie.scoring.metrics.base_feature import BaseFeature
 from stephanie.tools.vpm_tool import VpmTool

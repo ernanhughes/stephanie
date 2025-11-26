@@ -1,10 +1,11 @@
 # stephanie/components/critic/agents/critic_trainer_agent.py
 from __future__ import annotations
 
+import logging
+
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.components.critic.model.critic_trainer import CriticTrainer
 
-import logging
 log = logging.getLogger(__name__)
 
 class CriticTrainerAgent(BaseAgent):

@@ -1,13 +1,16 @@
 # stephanie/components/critic/critic_self_eval.py
 from __future__ import annotations
+
+import hashlib
 import json
 import math
-import hashlib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List
+
 import numpy as np
-from sklearn.metrics import roc_auc_score, brier_score_loss
+from sklearn.metrics import brier_score_loss, roc_auc_score
+
 
 # ---------- small utilities ----------
 def _hash(arr: List[str]) -> str:

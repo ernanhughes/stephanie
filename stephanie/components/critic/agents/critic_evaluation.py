@@ -4,24 +4,27 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
-from typing import Dict, Any, List, Tuple, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import joblib
 import numpy as np
 
 # Evaluation utilities (assumed present in your tree)
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.components.critic.utils.critic_metrics import generate_evaluation_report
-from stephanie.components.critic.utils.downstream_evaluator import run_downstream_experiment
+from stephanie.components.critic.model.shadow import project_to_kept
+from stephanie.components.critic.utils.calibration import (
+    IsoCalibrator, PlattCalibrator, brier, expected_calibration_error,
+    reliability_bins)
+from stephanie.components.critic.utils.metrics import \
+    generate_evaluation_report
+from stephanie.components.critic.utils.downstream import (
+    compute_downstream_impact, generate_downstream_plot, generate_lift_curve,
+    run_downstream_experiment)
 from stephanie.components.critic.utils.stability_checker import (
-    check_feature_stability,
-    run_ablation_study,
-    label_shuffle_sanity_check,
-)
+    check_feature_stability, label_shuffle_sanity_check, run_ablation_study)
+from stephanie.components.critic.utils.statistics import \
+    paired_bootstrap_auc_diff
 
-# Use your canonical projector; update import if this lives elsewhere
-from stephanie.components.critic.model.shadow import project_to_kept  # or stephanie.scoring.metrics.kept_features
-    
 log = logging.getLogger(__name__)
 
 
@@ -44,7 +47,7 @@ class CriticEvaluationAgent(BaseAgent):
         self.shadow_path = Path(self.cfg.get("shadow_path", "models/critic_shadow.npz"))
         self.current_path = Path(self.cfg.get("current_path", "models/critic.joblib"))
         self.candidate_path = Path(self.cfg.get("candidate_path", "models/critic_candidate.joblib"))
-        self.report_dir = Path(self.cfg.get("report_dir", f"/runs/{self.run_id}/full_evaluation"))
+        self.report_dir = Path(self.cfg.get("report_dir", f"/runs/critic/{self.run_id}/full_evaluation"))
         self.run_history = int(self.cfg.get("run_history", 5))
         self.random_seed = int(self.cfg.get("seed", 42))
 
@@ -253,6 +256,25 @@ class CriticEvaluationAgent(BaseAgent):
                 log.info("Running single-model evaluation (no candidate found).")
                 probs_candidate = np.full_like(probs_current, 0.5, dtype=float)
 
+            # Bootstrap ΔAUC with CI/p-value (seeded, stratified)
+            boot = paired_bootstrap_auc_diff(
+                y, probs_current, probs_candidate,
+                n_boot=5000, alpha=0.05, seed=42, stratified=True
+            )
+
+            # Calibration metrics
+            ece_cur  = expected_calibration_error(y, probs_current, n_bins=15, strategy="quantile")
+            ece_cand = expected_calibration_error(y, probs_candidate, n_bins=15, strategy="quantile")
+            brier_cur  = brier(y, probs_current)
+            brier_cand = brier(y, probs_candidate)
+
+            iso = IsoCalibrator().fit(y, probs_candidate)
+            probs_candidate_iso = iso.transform(probs_candidate)
+            ece_cand_iso = expected_calibration_error(y, probs_candidate_iso, n_bins=15, strategy="quantile")
+
+
+            rel_c = reliability_bins(y, probs_candidate, n_bins=15, strategy="quantile")
+
             core_report = generate_evaluation_report(
                 y_true=y,
                 probs_current=probs_current,
@@ -260,6 +282,19 @@ class CriticEvaluationAgent(BaseAgent):
                 feature_names=feature_names,
                 output_dir=str(core_dir),
             )
+            core_report["reliability_candidate"] = {
+                "bin_edges": rel_c["bin_edges"].tolist(),
+                "bin_confidence": np.nan_to_num(rel_c["bin_confidence"], nan=-1).tolist(),
+                "bin_accuracy": np.nan_to_num(rel_c["bin_accuracy"], nan=-1).tolist(),
+                "bin_count": rel_c["bin_count"].tolist(),
+            }
+            core_report["bootstrap"] = boot
+            core_report["metrics"]["current"]["ece"] = ece_cur
+            core_report["metrics"]["candidate"]["ece"] = ece_cand
+            core_report["metrics"]["current"]["brier"] = brier_cur
+            core_report["metrics"]["candidate"]["brier"] = brier_cand
+            core_report["metrics"]["candidate"]["ece_iso"] = ece_cand_iso
+            log.info("Core evaluation complete. Report at %s", core_dir)
 
             # 4) Downstream impact (simple slice accuracy; replace with your real task func)
             log.info("Running downstream impact evaluation…")
@@ -267,9 +302,11 @@ class CriticEvaluationAgent(BaseAgent):
             downstream_dir.mkdir(parents=True, exist_ok=True)
 
             def accuracy_func(selected_idx: np.ndarray) -> float:
-                # Placeholder: % of positives in selection; replace with real task metric
+                """Safer implementation that avoids warnings for empty selections"""
                 sel = np.asarray(selected_idx, dtype=int)
-                return float(np.mean(y[sel])) if sel.size > 0 else 0.0
+                if len(sel) == 0:
+                    return 0.0  # No selections means 0% accuracy (or could use np.nan)
+                return float(np.mean(y[sel]))
 
             downstream_report = run_downstream_experiment(
                 y_true=y,
@@ -300,10 +337,10 @@ class CriticEvaluationAgent(BaseAgent):
             }
 
             def model_factory():
-                from sklearn.pipeline import make_pipeline
                 from sklearn.impute import SimpleImputer
-                from sklearn.preprocessing import StandardScaler
                 from sklearn.linear_model import LogisticRegression
+                from sklearn.pipeline import make_pipeline
+                from sklearn.preprocessing import StandardScaler
 
                 return make_pipeline(
                     SimpleImputer(strategy="median"),
@@ -332,7 +369,40 @@ class CriticEvaluationAgent(BaseAgent):
                 output_dir=str(sanity_dir),
             )
 
-            # 8) Summary
+            # 8. Compute downstream impact
+            log.info("Computing downstream impact...")
+            downstream_dir = self.report_dir / "downstream"
+            downstream_dir.mkdir(parents=True, exist_ok=True)
+            # Define accuracy function (for GSM8K, this is just the correctness)
+            def accuracy_func(selected_idx):
+                return y[selected_idx].mean()
+
+            # Compute impact
+            downstream_results = compute_downstream_impact(
+                y, 
+                probs_current,  # Use current model's scores for downstream impact
+                accuracy_func
+            )
+
+            # Generate plots
+            generate_downstream_plot(
+                downstream_results,
+                str(downstream_dir / "downstream_impact.png"),
+                title="Downstream Impact on Task Accuracy"
+            )
+            generate_lift_curve(
+                y,
+                probs_current,
+                str(downstream_dir / "lift_curve.png"),
+                title="Lift Curve: Critic vs Random Selection"
+            )
+
+            # Save results
+            with open(downstream_dir / "downstream_results.json", "w") as f:
+                json.dump(downstream_results, f, indent=2)
+
+
+            # 9) Summary
             self._generate_summary_report(
                 core_report=core_report,
                 downstream_report=downstream_report,

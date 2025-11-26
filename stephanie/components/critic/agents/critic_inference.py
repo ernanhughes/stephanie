@@ -1,23 +1,24 @@
 # stephanie/components/critic/agents/critic_inference.py
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
-import hashlib
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-from stephanie.agents.base_agent import BaseAgent
+
 import numpy as np
 from sklearn.pipeline import Pipeline
-from stephanie.components.critic.critic_self_eval import self_evaluate, update_competence_ema
-from stephanie.components.critic.critic_teachpack import export_teachpack, teachpack_meta
+
+from stephanie.agents.base_agent import BaseAgent
+from stephanie.components.critic.utils.self_eval import (
+    self_evaluate, update_competence_ema)
+from stephanie.components.critic.utils.teachpack import (export_teachpack,
+                                                          teachpack_meta)
 # Add our new metrics module
-from stephanie.components.critic.utils.critic_metrics import (
-    generate_evaluation_report,
-    compute_ece,
-    lift_at_k
-)
+from stephanie.components.critic.utils.metrics import (
+    compute_ece, generate_evaluation_report, lift_at_k)
 
 log = logging.getLogger(__name__)
 
@@ -315,7 +316,7 @@ class CriticInferenceAgent(BaseAgent):
         ema = update_competence_ema(Path(f"runs/critic/{self.run_id}/competence_state.json"), ser.competence)
 
         # 5) Metrics
-        from sklearn.metrics import roc_auc_score, accuracy_score
+        from sklearn.metrics import accuracy_score, roc_auc_score
         def _scores(y_true, y_prob):
             out = {}
             try:
@@ -335,6 +336,7 @@ class CriticInferenceAgent(BaseAgent):
         }
 
         # 5. Generate evaluation report
+        report_data = {}
         if p_cand is not None:
             self.logger.info("Generating side-by-side evaluation report...")
             report_data = generate_evaluation_report(
@@ -346,9 +348,6 @@ class CriticInferenceAgent(BaseAgent):
             )
             
             # 6. Make promotion decision
-            auroc_test = report_data["statistical_tests"]["auroc"]
-            brier_test = report_data["statistical_tests"]["brier"]
-            win_rate_val = report_data["statistical_tests"]["win_rate"]
 
         # 6) Promotion logic
         compare_key = self.metric_to_compare if self.metric_to_compare in ("auroc", "accuracy") else "auroc"
@@ -413,7 +412,11 @@ class CriticInferenceAgent(BaseAgent):
             "teachpack": str(teachpack_file),
             "self_eval": {
                 "error_flips_idx": flips
-            }
+            },
+            "auroc_test": report_data.get("statistical_tests", {}).get("auroc"),
+            "brier_test": report_data.get("statistical_tests", {}).get("brier"),
+            "win_rate_val": report_data.get("statistical_tests", {}).get("win_rate")
+
         }
         try:
             self.report_path.parent.mkdir(parents=True, exist_ok=True)

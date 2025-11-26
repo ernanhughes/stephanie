@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 import time
+
 import numpy as np
-from stephanie.utils.hash_utils import hash_text
+
 from stephanie.data.scorable_row import ScorableRow
+from stephanie.utils.hash_utils import hash_text
 
 
 class RowBuilder:
