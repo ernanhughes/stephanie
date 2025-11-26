@@ -10,6 +10,12 @@ critic_trainer:
   model_path: "models/critic.joblib"
   meta_path: "models/critic.meta.json"
 
+  # critic_trainer.yaml (or wherever you configure)
+  save_as_candidate: true           # if true, write candidate artifacts
+  candidate_model_path: models/critic_candidate.joblib
+  candidate_meta_path:  models/critic_candidate.meta.json
+
+
   core_only: false                         # train only on 8 core VisiCalc features
   lock_features: ""                       # optional: path to locked feature list file
 

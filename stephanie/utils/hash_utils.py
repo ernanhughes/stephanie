@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from typing import Any
+from typing import Any, List
 
 
 def hash_dict(
@@ -55,4 +55,10 @@ def hash_text(text: str, algorithm: str = "sha256") -> str:
     hasher = hashlib.new(algorithm)
     hasher.update(text.encode("utf-8"))
     return hasher.hexdigest()
+
+def hash_list(names: List[str]) -> str:
+    h = hashlib.sha256()
+    for n in names:
+        h.update((n + "\n").encode("utf-8"))
+    return h.hexdigest()[:16]
 

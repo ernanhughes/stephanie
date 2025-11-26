@@ -4,13 +4,14 @@ from __future__ import annotations
 import json
 import logging
 import hashlib
-import pickle
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional
 from stephanie.agents.base_agent import BaseAgent
 import numpy as np
 from sklearn.pipeline import Pipeline
+from stephanie.components.critic.critic_self_eval import self_evaluate, update_competence_ema
+from stephanie.components.critic.critic_teachpack import export_teachpack, teachpack_meta
 
 log = logging.getLogger(__name__)
 
@@ -220,8 +221,8 @@ def _predict_proba1(model, X: np.ndarray, have_names: List[str], need_names: Lis
         if n_fit is not None and n_fit != Xp.shape[1]:
             log.warning("[%s] pipeline n_features_in_=%s but meta need_names=%s; continuing with meta order.",
                         tag, n_fit, Xp.shape[1])
-    except Exception:
-        pass
+    except Exception as e:
+        log.warning("[%s] failed to verify model n_features_in_: %s", tag, e)
     return model.predict_proba(Xp)[:, 1]
 
 # -----------------------------
@@ -266,10 +267,8 @@ class CriticInferenceAgent(BaseAgent):
         # 1) Load models
         cur = _load_model(self.model_path)
         cand = _load_model(self.candidate_path)
-
         if cur is None and cand is None:
             raise FileNotFoundError(f"Missing model(s): {self.model_path} and {self.candidate_path}")
-
         missing = []
         if cur is None:
             missing.append(str(self.model_path))
@@ -279,23 +278,38 @@ class CriticInferenceAgent(BaseAgent):
             raise FileNotFoundError(f"Missing model(s): {missing}")
 
         # 2) Load feature-name lists
-        need_current  = _load_feature_names_for_model(str(self.model_path), shadow_path=str(self.shadow_path))
+        need_current   = _load_feature_names_for_model(str(self.model_path),    shadow_path=str(self.shadow_path))
         need_candidate = _load_feature_names_for_model(str(self.candidate_path), shadow_path=str(self.shadow_path))
 
         # 3) Reconcile with fitted widths (key stabilization)
         nfit_cur  = _model_n_features(cur)
         nfit_cand = _model_n_features(cand)
-        need_current  = _reconcile_need_names(need_current,  nfit_cur,  tag="current")
+        need_current   = _reconcile_need_names(need_current,   nfit_cur,  tag="current")
         need_candidate = _reconcile_need_names(need_candidate, nfit_cand, tag="candidate")
 
-        # 4) Predict on shadow
-        p_cur  = _predict_proba1(cur,  X, have_names, need_current,  tag="current")
-        p_cand = _predict_proba1(cand, X, have_names, need_candidate, tag="candidate")
+        log.info("[critic_inference] widths: shadow=%d | current_need=%d | candidate_need=%d",
+                 X.shape[1], len(need_current), len(need_candidate))
+
+        # 4) Project THEN predict on shadow (keep projected matrices for flips/teachpack)
+        X_curr_proj = _project_to_names(X, have_names, need_current)
+        X_cand_proj = _project_to_names(X, have_names, need_candidate)
+        try:
+            p_cur  = cur.predict_proba(X_curr_proj)[:, 1]
+        except Exception as e:
+            log.error("[current] predict_proba failed: %s", e)
+            raise
+        try:
+            p_cand = cand.predict_proba(X_cand_proj)[:, 1]
+        except Exception as e:
+            log.error("[candidate] predict_proba failed: %s", e)
+            raise
+
+        # Self-eval (uses candidate's need list for fingerprinting)
+        ser = self_evaluate(y, p_cur, p_cand, need_candidate)
+        ema = update_competence_ema(Path(f"runs/critic/{self.run_id}/competence_state.json"), ser.competence)
 
         # 5) Metrics
         from sklearn.metrics import roc_auc_score, accuracy_score
-        metrics: Dict[str, Dict[str, float]] = {"current": {}, "candidate": {}}
-
         def _scores(y_true, y_prob):
             out = {}
             try:
@@ -309,19 +323,17 @@ class CriticInferenceAgent(BaseAgent):
                 out["accuracy"] = float("nan")
             return out
 
-        metrics["current"] = _scores(y, p_cur)
-        metrics["candidate"] = _scores(y, p_cand)
+        metrics = {
+            "current":   _scores(y, p_cur),
+            "candidate": _scores(y, p_cand),
+        }
 
         # 6) Promotion logic
         compare_key = self.metric_to_compare if self.metric_to_compare in ("auroc", "accuracy") else "auroc"
         new_val = metrics["candidate"].get(compare_key, float("nan"))
         cur_val = metrics["current"].get(compare_key, float("nan"))
+        ece_new = "NA"; ece_cur = "NA"
 
-        # ECE (optional) if present in shadow meta
-        # ece_new = shadow_meta.get("ece", "NA")
-        ece_cur = "NA"
-
-        # fingerprints
         fp_cur  = _model_fingerprint_from_file(str(self.model_path))
         fp_cand = _model_fingerprint_from_file(str(self.candidate_path))
 
@@ -332,12 +344,28 @@ class CriticInferenceAgent(BaseAgent):
         elif not np.isnan(new_val) and not np.isnan(cur_val) and new_val > cur_val:
             promote = True
             log.info("🔎 Promotion check: new(%s=%.4f) > cur(%.4f) → PROMOTE", compare_key, new_val, cur_val)
-        # else:
-        #     log.info("🔎 Promotion check: new(%s=%.4f, ECE=%s) vs cur(%.4f) → REJECT",
-        #              compare_key, new_val, ece_new, cur_val)
+        else:
+            log.info("🔎 Promotion check: new(%s=%.4f, ECE=%s) vs cur(%.4f) → REJECT",
+                     compare_key, new_val, ece_new, cur_val)
+
+        # 6b) Error flips (unambiguous boolean grouping)
+        bad_to_good = ((p_cur < 0.5) & (y == 1) & (p_cand >= 0.5))
+        good_to_bad = ((p_cur >= 0.5) & (y == 0) & (p_cand < 0.5))
+        flip_idx = np.where(bad_to_good | good_to_bad)[0]
+        order = flip_idx[np.argsort(-np.abs(p_cand[flip_idx] - p_cur[flip_idx]))][:12]
+        flips = order.tolist()
+
+        # 6c) Teachpack export
+        teach_dir = Path("runs/critic/teachpacks")
+        teach_dir.mkdir(parents=True, exist_ok=True)
+        teachpack_file = teach_dir / f"teachpack_{ser.feature_fingerprint}.npz"
+        meta = teachpack_meta(fp_cand, need_candidate, calib=None)
+        export_teachpack(teachpack_file, X_cand_proj, need_candidate, y, p_cand, meta)
 
         # 7) Report
         report = {
+            **asdict(ser),
+            "competence_ema": ema,
             "shadow_path": str(self.shadow_path),
             "n_samples": int(X.shape[0]),
             "n_features_shadow": int(X.shape[1]),
@@ -348,6 +376,7 @@ class CriticInferenceAgent(BaseAgent):
                 "expects": int(nfit_cur) if nfit_cur is not None else None,
                 "need_names": len(need_current),
                 "metrics": metrics["current"],
+                "feature_hash": _digest_names(need_current),
             },
             "candidate": {
                 "model_path": str(self.candidate_path),
@@ -355,9 +384,14 @@ class CriticInferenceAgent(BaseAgent):
                 "expects": int(nfit_cand) if nfit_cand is not None else None,
                 "need_names": len(need_candidate),
                 "metrics": metrics["candidate"],
+                "feature_hash": _digest_names(need_candidate),
             },
             "compare_key": compare_key,
             "promote": bool(promote and self.promote_when_better),
+            "teachpack": str(teachpack_file),
+            "self_eval": {
+                "error_flips_idx": flips
+            }
         }
         try:
             self.report_path.parent.mkdir(parents=True, exist_ok=True)
@@ -368,8 +402,7 @@ class CriticInferenceAgent(BaseAgent):
         # 8) Promotion (file swap + sidecars)
         if promote and self.promote_when_better:
             try:
-                cand_bytes = Path(self.candidate_path).read_bytes()
-                Path(self.model_path).write_bytes(cand_bytes)
+                Path(self.model_path).write_bytes(Path(self.candidate_path).read_bytes())
                 _write_model_sidecar_features(self.model_path, need_candidate, meta={
                     "promoted_from": str(self.candidate_path),
                     "compare_key": compare_key,
@@ -379,6 +412,36 @@ class CriticInferenceAgent(BaseAgent):
             except Exception as e:
                 log.warning("Promotion failed: %s", e)
 
-        # 9) Attach to context
+        # 9) Ledger append (use self.run_id)
+        try:
+            ledger = Path(f"runs/critic/{self.run_id}/promotion_ledger.jsonl")
+            ledger.parent.mkdir(parents=True, exist_ok=True)
+            with ledger.open("a", encoding="utf-8") as f:
+                f.write(json.dumps({
+                    "shadow": str(self.shadow_path),
+                    "current_fp": fp_cur,
+                    "candidate_fp": fp_cand,
+                    "current_feature_hash": _digest_names(need_current),
+                    "candidate_feature_hash": _digest_names(need_candidate),
+                    "metrics": metrics["candidate"],
+                    "compare_key": compare_key,
+                    "promote": bool(promote and self.promote_when_better),
+                }) + "\n")
+        except Exception as e:
+            log.warning("promotion ledger write failed: %s", e)
+
+        # 10) Attach to context
         context["critic_inference"] = report
         return context
+
+
+def _digest_names(names: List[str]) -> str:
+    import hashlib
+    return hashlib.sha256("|".join(names).encode("utf-8")).hexdigest()[:12]
+
+def top_error_flips(X_cur, X_cand, y, p_cur, p_cand, k=10):
+    idx = np.where((p_cur >= 0.5) & (y == 0) & (p_cand < 0.5) | (p_cur < 0.5) & (y == 1) & (p_cand >= 0.5))[0]
+    # prioritize biggest |p_cand - p_cur|
+    order = idx[np.argsort(-np.abs(p_cand[idx] - p_cur[idx]))][:k]
+    return order.tolist()
+

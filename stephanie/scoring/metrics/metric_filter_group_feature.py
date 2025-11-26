@@ -10,14 +10,9 @@ import numpy as np
 from stephanie.scoring.metrics.base_group_feature import BaseGroupFeature
 from stephanie.scoring.metrics.metric_filter import MetricFilter
 from stephanie.scoring.metrics.feature_report import FeatureReport
+from stephanie.utils.hash_utils import hash_list
 
 log = logging.getLogger(__name__)
-
-def _digest_kept(names: List[str]) -> str:
-    h = hashlib.sha256()
-    for n in names:
-        h.update((n + "\n").encode("utf-8"))
-    return h.hexdigest()[:16]
 
 def _casefold(s: str) -> str:
     return s.casefold() if hasattr(s, "casefold") else s.lower()
@@ -98,7 +93,7 @@ class MetricFilterGroupFeature(BaseGroupFeature):
             if kept_locked:
                 log.info("[MetricFilterGroupFeature] short-circuit: using DB-locked %d kept columns", len(kept_locked))
                 _project_rows_to_names(rows, kept_locked)
-                dig = _digest_kept(kept_locked)
+                dig = hash_list(kept_locked)
                 summary = {
                     "status": "short_circuit",
                     "reason": "DB-locked kept columns found",
@@ -195,7 +190,7 @@ class MetricFilterGroupFeature(BaseGroupFeature):
         # Write lock file
         (run_dir / "kept_features.txt").write_text("\n".join(selected_names), encoding="utf-8")
 
-        digest = _digest_kept(selected_names)
+        digest = hash_list(selected_names)
         summary = {
             "status": "ok",
             "kept_count": len(selected_names),
@@ -303,7 +298,7 @@ class MetricFilterGroupFeature(BaseGroupFeature):
                 patch["metric_filter"] = {
                     "kept_columns": list(kept),
                     "n_kept": len(kept),
-                    "kept_digest": _digest_kept(kept),
+                    "kept_digest": hash_list(kept),
                 }
             self.memory.metrics.upsert_group_meta(run_id=run_id, patch=patch)
         except Exception as e:

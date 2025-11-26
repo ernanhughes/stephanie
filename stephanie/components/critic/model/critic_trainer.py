@@ -1,5 +1,7 @@
 # stephanie/components/critic/agents/critic_trainer.py
 from __future__ import annotations
+import datetime
+import hashlib
 
 import numpy as np
 import math
@@ -448,6 +450,31 @@ class CriticTrainer:
         except Exception as e:
             log.warning("CriticTrainer: shadow pack save skipped: %s", e)
 
+        save_as_candidate = bool(self.cfg.get("save_as_candidate", False))
+        model_path = Path(self.cfg.get("candidate_model_path", "models/critic_candidate.joblib")) \
+                    if save_as_candidate else self.model_path
+        meta_path  = Path(self.cfg.get("candidate_meta_path",  "models/critic_candidate.meta.json")) \
+                    if save_as_candidate else self.meta_path
+
+        model_path.parent.mkdir(parents=True, exist_ok=True)
+        joblib.dump(model, model_path)
+
+        # features sidecar must match the fitted width exactly
+        features_sidecar = model_path.with_suffix(model_path.suffix + ".features.txt")
+        features_sidecar.write_text("\n".join(names), encoding="utf-8")
+
+        meta = {
+            "feature_names": list(names),
+            "feature_names_used": list(names),
+            "n_features": int(len(names)),
+            "core_only": bool(self.core_only),
+            "locked_features_path": str(self.lock_features_path) if self.lock_features_path else None,
+            "directionality": dict(self.directionality or {}),
+            "cv_summary": cv or {},
+            "holdout_summary": holdout or {},
+        }
+        meta_path.write_text(json.dumps(meta, indent=2), encoding="utf-8")
+
     # --- Plot helpers -----------------------------------------------------------
     def _plot_coefficients(self, model, feature_names: List[str], out_path: Path, top_k: int = 30):
         # unwrap pipeline to logisticregression step
@@ -573,3 +600,28 @@ def _model_n_features(model) -> int | None:
     except Exception:
         pass
     return None
+
+def save_shadow_pack(self, X_val, y_val, feature_names, groups, output_path="models/critic_shadow.npz"):
+    """Save a frozen evaluation set with all necessary metadata"""
+    # Save the shadow pack with all required components
+    np.savez(
+        output_path,
+        X=X_val.astype(np.float32),
+        y=y_val.astype(np.int8),
+        feature_names=np.array(feature_names, dtype=object),
+        groups=np.array(groups, dtype=object) if groups is not None else np.array([], dtype=object),
+        meta={
+            "feature_digest": digest_kept(feature_names),
+            "data_hash": self._calculate_data_hash(X_val, y_val),
+            "timestamp": datetime.now().isoformat(),
+            "run_id": self.run_id,
+            "trainer_version": "1.0"
+        }
+    )
+    self.logger.info(f"✅ Saved shadow pack to {output_path} with {len(feature_names)} features")
+    return output_path
+
+def _calculate_data_hash(self, X, y):
+    """Calculate a reproducible hash of the data for versioning"""
+    data_bytes = X.tobytes() + y.tobytes()
+    return hashlib.sha256(data_bytes).hexdigest()[:16]
