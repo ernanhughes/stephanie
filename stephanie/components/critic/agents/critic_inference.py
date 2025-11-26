@@ -12,6 +12,12 @@ import numpy as np
 from sklearn.pipeline import Pipeline
 from stephanie.components.critic.critic_self_eval import self_evaluate, update_competence_ema
 from stephanie.components.critic.critic_teachpack import export_teachpack, teachpack_meta
+# Add our new metrics module
+from stephanie.components.critic.utils.critic_metrics import (
+    generate_evaluation_report,
+    compute_ece,
+    lift_at_k
+)
 
 log = logging.getLogger(__name__)
 
@@ -327,6 +333,22 @@ class CriticInferenceAgent(BaseAgent):
             "current":   _scores(y, p_cur),
             "candidate": _scores(y, p_cand),
         }
+
+        # 5. Generate evaluation report
+        if p_cand is not None:
+            self.logger.info("Generating side-by-side evaluation report...")
+            report_data = generate_evaluation_report(
+                y,
+                p_cur,
+                p_cand,
+                have_names,
+                output_dir=str(f"runs/critic/{self.run_id}")
+            )
+            
+            # 6. Make promotion decision
+            auroc_test = report_data["statistical_tests"]["auroc"]
+            brier_test = report_data["statistical_tests"]["brier"]
+            win_rate_val = report_data["statistical_tests"]["win_rate"]
 
         # 6) Promotion logic
         compare_key = self.metric_to_compare if self.metric_to_compare in ("auroc", "accuracy") else "auroc"

@@ -16,6 +16,7 @@ defaults:
   - agents/critic_inference
   - agents/critic_loader
   - agents/critic_improver
+  - agents/critic_evaluation
 
 
 embeddings:
@@ -162,5 +163,15 @@ pipeline:
         Evaluate generalization of the critic on fresh chat turns.
         Disabled by default, but can be turned on for live experimentation.
       cls: stephanie.components.critic.agents.critic_inference.CriticInferenceAgent
+      enabled: true
+      iterations: 1
+
+    # ---------------------------------------------------------------
+    - name: critic_evaluation
+      description: >
+        Perform a comprehensive evaluation of the Tiny Critic model,
+        including core metrics, downstream performance, stability,
+        ablation, and sanity checks.
+      cls: stephanie.components.critic.agents.critic_evaluation.CriticEvaluationAgent
       enabled: true
       iterations: 1

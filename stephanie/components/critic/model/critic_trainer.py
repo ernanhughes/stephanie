@@ -26,6 +26,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.impute import SimpleImputer
 
 from stephanie.components.critic.model.trainer import load_dataset
+from stephanie.utils.hash_utils import hash_list
 
 log = logging.getLogger(__name__)
 
@@ -586,6 +587,11 @@ class CriticTrainer:
         log.info("CriticTrainer: sanitized X (NaN/Inf → median/0.0)")
         return Xc
 
+    def _calculate_data_hash(self, X, y):
+        """Calculate a reproducible hash of the data for versioning"""
+        data_bytes = X.tobytes() + y.tobytes()
+        return hashlib.sha256(data_bytes).hexdigest()[:16]
+    
 def _model_n_features(model) -> int | None:
     # Try to infer from first step that exposes n_features_in_
     try:
@@ -600,28 +606,3 @@ def _model_n_features(model) -> int | None:
     except Exception:
         pass
     return None
-
-def save_shadow_pack(self, X_val, y_val, feature_names, groups, output_path="models/critic_shadow.npz"):
-    """Save a frozen evaluation set with all necessary metadata"""
-    # Save the shadow pack with all required components
-    np.savez(
-        output_path,
-        X=X_val.astype(np.float32),
-        y=y_val.astype(np.int8),
-        feature_names=np.array(feature_names, dtype=object),
-        groups=np.array(groups, dtype=object) if groups is not None else np.array([], dtype=object),
-        meta={
-            "feature_digest": digest_kept(feature_names),
-            "data_hash": self._calculate_data_hash(X_val, y_val),
-            "timestamp": datetime.now().isoformat(),
-            "run_id": self.run_id,
-            "trainer_version": "1.0"
-        }
-    )
-    self.logger.info(f"✅ Saved shadow pack to {output_path} with {len(feature_names)} features")
-    return output_path
-
-def _calculate_data_hash(self, X, y):
-    """Calculate a reproducible hash of the data for versioning"""
-    data_bytes = X.tobytes() + y.tobytes()
-    return hashlib.sha256(data_bytes).hexdigest()[:16]

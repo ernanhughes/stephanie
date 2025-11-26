@@ -77,13 +77,14 @@ def save_shadow_pack(path: str | Path,
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     np.savez(path,
-             X=X,
-             y=y,
-             feature_names=names_arr,
+             X=X.astype(np.float32),
+             y=y.astype(np.int8),
+             feature_names=np.array(names_arr, dtype=object),
              kept=kept_arr,
-             groups=groups,
+             groups=np.array(groups, dtype=object) if groups is not None else np.array([], dtype=object),
              meta=meta_str)
     log.info("CriticTrainer: saved shadow pack → %s", path)
+
 
 
 def load_shadow_pack(path: str | Path) -> Tuple[np.ndarray, np.ndarray, List[str], np.ndarray, Dict]:

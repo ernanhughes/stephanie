@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from typing import List, Optional
+from sqlalchemy import desc
 
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
@@ -293,3 +294,23 @@ class MetricStore(BaseSQLAlchemyStore):
         """
         meta = self.get_group_meta(run_id)
         return list((meta.get("metric_filter") or {}).get("kept_columns") or [])
+
+    def get_recent_run_ids(self, limit: int = 5) -> List[str]:
+        """
+        Return the most recent MetricGroup run_ids (newest first).
+
+        Args:
+            limit: max number of run_ids to return.
+
+        Returns:
+            List[str]: run_id values ordered by created_at DESC.
+        """
+        def op(s):
+            q = (
+                s.query(MetricGroupORM.run_id)
+                 .order_by(desc(MetricGroupORM.created_at))
+                 .limit(limit)
+            )
+            # q.all() returns list of 1-tuples like [('run123',), ...]
+            return [row[0] for row in q.all() if row and row[0]]
+        return self._run(op)
