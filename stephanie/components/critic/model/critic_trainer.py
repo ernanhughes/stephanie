@@ -364,20 +364,30 @@ class CriticTrainer:
         groups_va: Optional[np.ndarray] = None,  # NEW
     ) -> None:
 
+        # assert trained pipeline matches names
+        n_fit = _model_n_features(model)
+        if n_fit is not None and n_fit != len(names):
+            raise RuntimeError(f"Trainer invariant violated: model fitted on {n_fit} ≠ len(feature_names)={len(names)}")
+
         self.model_path.parent.mkdir(parents=True, exist_ok=True)
         joblib.dump(model, self.model_path)
 
+        # 2) Persist feature names (sidecar) for robust recovery
+        features_sidecar = Path(self.model_path).with_suffix("").with_name(f"{Path(self.model_path).stem}.features.txt")
+        features_sidecar.write_text("\n".join(names), encoding="utf-8")
+
+        # 3) Persist full meta (ALWAYS include feature_names + feature_names_used)
         meta = {
-            "feature_names_used": list(names),        # <= CRITICAL
-            "feature_count_used": int(len(names)),
-            "locked_source": locked_source,
-            "cv": cv,
-            "holdout": holdout,
-            "feature_names": names,
-            "core_only": self.core_only,
-            "directionality": self.directionality,
+            "feature_names": list(names),          # <- critical
+            "feature_names_used": list(names),     # <- compatible alias
+            "n_features": int(len(names)),
+            "core_only": bool(self.core_only),
+            "locked_features_path": str(self.lock_features_path) if self.lock_features_path else None,
+            "directionality": dict(self.directionality or {}),
+            "cv_summary": cv or {},
+            "holdout_summary": holdout or {},
         }
-        self.meta_path.write_text(json.dumps(meta, indent=2))
+        Path(self.meta_path).write_text(json.dumps(meta, indent=2), encoding="utf-8")
 
         # also persist locked features for downstream agents (txt)
         try:
@@ -548,3 +558,18 @@ class CriticTrainer:
                 Xc[:, j] = col
         log.info("CriticTrainer: sanitized X (NaN/Inf → median/0.0)")
         return Xc
+
+def _model_n_features(model) -> int | None:
+    # Try to infer from first step that exposes n_features_in_
+    try:
+        for _, step in model.named_steps.items():
+            nfi = getattr(step, "n_features_in_", None)
+            if nfi is not None:
+                return int(nfi)
+        # scikit transforms sometimes keep .statistics_ (imputer)
+        imp = model.named_steps.get("imputer")
+        if imp is not None and hasattr(imp, "statistics_"):
+            return int(imp.statistics_.shape[0])
+    except Exception:
+        pass
+    return None

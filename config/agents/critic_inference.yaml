@@ -6,7 +6,7 @@ critic_inference:
 
   # Fixed shadow benchmark
   shadow_path: "models/critic_shadow.npz"
-  candidate_path: ""        # empty or omit → single-model mode
+  candidate_path: "models/critic_candidate.joblib"   
   
   # Current (promoted) model
   current_model_path: "models/critic.joblib"

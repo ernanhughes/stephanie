@@ -6,7 +6,8 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 import numpy as np
 from typing import Sequence, Mapping, Any
-
+import logging
+log = logging.getLogger(__name__)    
 
 def project_to_kept(
     X: np.ndarray,
@@ -82,6 +83,7 @@ def save_shadow_pack(path: str | Path,
              kept=kept_arr,
              groups=groups,
              meta=meta_str)
+    log.info("CriticTrainer: saved shadow pack → %s", path)
 
 
 def load_shadow_pack(path: str | Path) -> Tuple[np.ndarray, np.ndarray, List[str], np.ndarray, Dict]:

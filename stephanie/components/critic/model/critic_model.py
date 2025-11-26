@@ -69,14 +69,30 @@ class CriticModel:
         cls,
         model_path: Union[str, Path] = DEFAULT_MODEL_PATH,
         meta_path: Union[str, Path] = DEFAULT_META_PATH,
-    ) -> CriticModel:
+    ) -> "CriticModel":
         model_path = Path(model_path)
         meta_path = Path(meta_path)
 
         model = joblib.load(model_path)
-        meta_raw = json.loads(meta_path.read_text(encoding="utf-8"))
+
+        try:
+            meta_raw = json.loads(meta_path.read_text(encoding="utf-8"))
+        except Exception:
+            meta_raw = {}
+
+        # Try all sources for feature names
+        names = None
+        for k in ("feature_names_used", "feature_names"):
+            v = meta_raw.get(k)
+            if isinstance(v, list) and v:
+                names = list(v)
+                break
+        if not names:
+            # Robust recovery path:
+            names = _recover_feature_names(meta_path, model_path, model)  # uses sidecar or n_features_in_
+
         meta = CriticModelMeta(
-            feature_names=list(meta_raw["feature_names"]),
+            feature_names=names,
             core_only=bool(meta_raw.get("core_only", False)),
             locked_features_path=meta_raw.get("locked_features_path"),
             directionality=dict(meta_raw.get("directionality", {})),
@@ -269,6 +285,57 @@ def _write_scores(path: Path, probs: np.ndarray, labels: Optional[np.ndarray] = 
             w.writerow(["score", "label"])
             for p, y in zip(probs, labels):
                 w.writerow([f"{float(p):.6f}", int(y)])
+
+def _recover_feature_names(meta_path: Path, model_path: Path, pipeline) -> list[str]:
+    """
+    Priority:
+      1) meta["feature_names_used"]
+      2) meta["feature_names"]
+      3) <model>.features.txt (one name per line)
+      4) infer width from pipeline (n_features_in_) -> ["col_0".."col_{n-1}"]
+    """
+    # 1/2: meta
+    try:
+        meta_raw = json.loads(meta_path.read_text(encoding="utf-8"))
+    except Exception:
+        meta_raw = {}
+
+    for k in ("feature_names_used", "feature_names"):
+        v = meta_raw.get(k)
+        if isinstance(v, list) and v:
+            return list(v)
+
+    # 3: sidecar *.features.txt
+    sidecar = model_path.with_suffix("").with_name(f"{model_path.stem}.features.txt")
+    if sidecar.exists():
+        try:
+            names = [ln.strip() for ln in sidecar.read_text(encoding="utf-8").splitlines() if ln.strip()]
+            if names:
+                return names
+        except Exception:
+            pass
+
+    # 4: infer from fitted pipeline
+    n = None
+    try:
+        if hasattr(pipeline, "named_steps"):
+            for _, step in pipeline.named_steps.items():
+                nfi = getattr(step, "n_features_in_", None)
+                if nfi is not None:
+                    n = int(nfi)
+                    break
+        if n is None:
+            nfi = getattr(pipeline, "n_features_in_", None)
+            if nfi is not None:
+                n = int(nfi)
+    except Exception:
+        n = None
+
+    if n is None:
+        raise KeyError("feature_names")  # preserve original error if truly unrecoverable
+
+    return [f"col_{i}" for i in range(n)]
+
 
 
 def main_cli():

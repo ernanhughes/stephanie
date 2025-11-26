@@ -1,24 +1,53 @@
-# stephanie/scoring/metrics/metric_filter_group_feature.py
-
 from __future__ import annotations
 import logging
+import hashlib
+import fnmatch
 from typing import Any, Dict, List
-
+from pathlib import Path
+from stephanie.scoring.metrics.metric_filter_explain import write_metric_filter_explain
 import numpy as np
 
 from stephanie.scoring.metrics.base_group_feature import BaseGroupFeature
 from stephanie.scoring.metrics.metric_filter import MetricFilter
-from stephanie.scoring.metrics.feature_report import FeatureReport  # assuming you have this (same used elsewhere)
-from pathlib import Path
+from stephanie.scoring.metrics.feature_report import FeatureReport
 
 log = logging.getLogger(__name__)
 
+def _digest_kept(names: List[str]) -> str:
+    h = hashlib.sha256()
+    for n in names:
+        h.update((n + "\n").encode("utf-8"))
+    return h.hexdigest()[:16]
+
+def _casefold(s: str) -> str:
+    return s.casefold() if hasattr(s, "casefold") else s.lower()
+
+def _match_any(name: str, patterns: List[str]) -> bool:
+    """Case-insensitive glob check."""
+    ncf = _casefold(name)
+    for p in (patterns or []):
+        if fnmatch.fnmatch(ncf, _casefold(p)):
+            return True
+    return False
+
+def _project_rows_to_names(rows: List[Dict[str, Any]], kept: List[str]) -> None:
+    """Rewrite each row to the kept column set (zeros if missing)."""
+    for r in rows:
+        cols = r.get("metrics_columns") or []
+        vals = r.get("metrics_values") or []
+        mapping = dict(zip(cols, vals)) if cols and vals else {}
+        new_vals = [float(mapping.get(k, 0.0)) for k in kept]
+        r["metrics_columns"] = list(kept)
+        r["metrics_values"] = new_vals
+        r["metrics_vector"] = {k: v for k, v in zip(kept, new_vals)}
+
 class MetricFilterGroupFeature(BaseGroupFeature):
     name = "metric_filter"
-    requires: list[str] = []  # upstream deps if you ever want enforced ordering
+    requires: list[str] = []
 
     def __init__(self, cfg, memory, container, logger):
         super().__init__(cfg, memory, container, logger)
+
         self.filter = MetricFilter(
             k=int(cfg.get("top_k", 100)),
             dup_threshold=float(cfg.get("dup_threshold", 0.995)),
@@ -28,27 +57,68 @@ class MetricFilterGroupFeature(BaseGroupFeature):
             exclude_patterns=list(cfg.get("exclude", []) or []),
             alias_strip=bool(cfg.get("alias_strip", True)),
         )
+
+        # Behavior knobs
+        self.short_circuit_if_locked = bool(cfg.get("short_circuit_if_locked", True))
+        self.always_include: List[str] = list(cfg.get("always_include", []) or [])
+
+        # Optional “core” visicalc columns you always want present
+        if cfg.get("include_visicalc_core", False):
+            core = list(cfg.get("visicalc_core_names", []) or [])
+            # common default if none provided
+            if not core:
+                core = [
+                    "Visi.frontier_util","Visi.stability","Visi.middle_dip","Visi.std_dev",
+                    "Visi.sparsity","Visi.entropy","Visi.trend","HRM.aggregate"
+                ]
+            self.always_include.extend([c for c in core if c not in self.always_include])
+
+        self.always_include: list[str] = list(cfg.get("always_include", []) or [])
+        self.explain_cfg = dict(cfg.get("explain", {}) or {})
+
+        # Internal
         self._last_summary: Dict[str, Any] | None = None
         self._last_selected: List[str] | None = None
 
+    # ---------- Main ----------
     async def apply(self, rows: list[dict], context: dict) -> list[dict]:
-        """
-        Batch-level metric selection + cleanup.
-        - Builds a consistent column universe across rows
-        - Runs MetricFilter.select()
-        - Rewrites each row's metrics to the selected column set
-        - Persists a short summary in MetricStore (if available)
-        """
         if not self.enabled or not rows:
             return rows
 
-        # 0) Collect union of metric columns across all rows
+        run_id = context.get("pipeline_run_id") or context.get("run_id") or "unknown"
+        run_dir = Path(context.get("run_dir") or f"runs/critic/{run_id}")
+        run_dir.mkdir(parents=True, exist_ok=True)
+
+        # (A) Short-circuit if kept already locked in DB
+        if self.short_circuit_if_locked and getattr(self.memory, "metrics", None):
+            try:
+                kept_locked = self.memory.metrics.get_kept_columns(run_id)
+            except Exception:
+                kept_locked = None
+            if kept_locked:
+                log.info("[MetricFilterGroupFeature] short-circuit: using DB-locked %d kept columns", len(kept_locked))
+                _project_rows_to_names(rows, kept_locked)
+                dig = _digest_kept(kept_locked)
+                summary = {
+                    "status": "short_circuit",
+                    "reason": "DB-locked kept columns found",
+                    "kept_count": len(kept_locked),
+                    "kept_digest": dig,
+                    "source": "MetricStore.get_kept_columns",
+                }
+                self._last_summary = summary
+                self._last_selected = list(kept_locked)
+                self._persist_summary(context, summary, kept_locked)
+                # still write lock file for reproducibility
+                (run_dir / "kept_features.txt").write_text("\n".join(kept_locked), encoding="utf-8")
+                return rows
+
+        # (B) Build column universe
         all_cols: list[str] = []
         for r in rows:
             cols = r.get("metrics_columns") or []
             if cols:
                 all_cols.extend(cols)
-
         if not all_cols:
             summary = {
                 "status": "no_cols",
@@ -57,94 +127,185 @@ class MetricFilterGroupFeature(BaseGroupFeature):
             }
             context["metric_filter_summary"] = summary
             self._last_summary = summary
-            self._persist_summary(context, summary)
+            self._persist_summary(context, summary, kept=None)
             return rows
 
-        # 1) Dense matrix X (n_rows x n_cols) aligned to uniq_cols
-        uniq_cols = list(dict.fromkeys(all_cols))  # stable de-dup while preserving order
-        name_to_idx = {name: i for i, name in enumerate(uniq_cols)}
+        uniq_cols = list(dict.fromkeys(all_cols))
+        name_to_idx = {n: i for i, n in enumerate(uniq_cols)}
+        X = np.asarray(
+            [[float(dict(zip(r.get("metrics_columns") or [], r.get("metrics_values") or [])).get(n, 0.0)) for n in uniq_cols]
+             for r in rows],
+            dtype=np.float32
+        )
 
-        X_rows: list[list[float]] = []
-        for r in rows:
-            cols = r.get("metrics_columns") or []
-            vals = r.get("metrics_values") or []
-            mapping = dict(zip(cols, vals)) if cols and vals else {}
-            vec = [float(mapping.get(name, 0.0)) for name in uniq_cols]
-            X_rows.append(vec)
+        names_union = list(uniq_cols)
+        # keep original X (pre-selection) for diagnostics
+        X_union = X.copy()
 
-        X = np.asarray(X_rows, dtype=np.float32)
+        # (C) Pre-diagnostics for pattern filters (case-insensitive)
+        include_pats = list(self.filter.include_patterns or [])
+        exclude_pats = list(self.filter.exclude_patterns or [])
+        dropped_by_exclude = [n for n in uniq_cols if _match_any(n, exclude_pats)]
+        # If include_patterns specified, anything not matching include is at-risk
+        if include_pats:
+            not_included = [n for n in uniq_cols if not _match_any(n, include_pats)]
+        else:
+            not_included = []
+        pattern_drops_preview = {
+            "would_drop_by_exclude": dropped_by_exclude[:20],
+            "would_drop_by_not_included": not_included[:20],
+            "counts": {
+                "exclude_hits": len(dropped_by_exclude),
+                "not_included": len(not_included),
+            },
+            "patterns": {
+                "include": include_pats,
+                "exclude": exclude_pats,
+            }
+        }
 
-        # 2) Run selection
+        # (D) Run the metric filter selection
         keep_mask, selected_names = self.filter.select(uniq_cols, X, labels=context.get("labels"))
 
-        run_id = context.get("pipeline_run_id")
-        run_dir  = Path(context.get("run_dir") or f"runs/critic/{run_id}")
-        run_dir.mkdir(parents=True, exist_ok=True)
+        # (E) Always-include columns (append any missing; preserve relative order)
+        forced_in = []
+        have = set(selected_names)
+        # --- Always-include core columns ---------------------------------
+        if self.always_include:
+            # Ensure all exist in union and append any missing to the selection in a stable way
+            extra = [n for n in self.always_include if n in names_union and n not in selected_names]
+            if extra:
+                selected_names = selected_names + extra
 
-        # A) Write a lock list file for downstream training
-        lock_path = run_dir / "kept_features.txt"
-        lock_path.write_text("\n".join(selected_names), encoding="utf-8")
-        # Persist for reporters / downstream tools
-        metric_store = self.memory.metrics
-        try:
-            metric_store.upsert_group_meta(
-                run_id=run_id,
-                patch={
-                    "metric_filter": {
-                        "kept_columns": selected_names,  # <-- reporter should read this exact key
-                        "n_kept": len(selected_names),
-                        "total_raw": len(uniq_cols),
-                    }
-                },
-            )
-        except Exception as e:
-            log.warning("[MetricFilterGroupFeature] persist kept_columns failed: %s", e)
-        # Safety fallback
         if not selected_names:
-            self._warn("[MetricFilterGroupFeature] selection empty; keeping original columns.")
+            log.warning("[MetricFilterGroupFeature] selection empty; falling back to all columns")
             selected_names = list(uniq_cols)
-            keep_mask = np.ones((len(uniq_cols),), dtype=bool)
 
-        self._last_selected = list(selected_names)
+        # (F) Categorize drops for the report
+        selected_set = set(selected_names)
+        raw_set = set(uniq_cols)
+        actually_dropped = [n for n in uniq_cols if n not in selected_set]
 
-        # 3) Rewrite each row's metrics to the filtered column set (and sync metrics_vector)
-        for r in rows:
-            cols = r.get("metrics_columns") or []
-            vals = r.get("metrics_values") or []
-            mapping = dict(zip(cols, vals)) if cols and vals else {}
+        dropped_by_pattern = [n for n in actually_dropped if (_match_any(n, exclude_pats) or (include_pats and not _match_any(n, include_pats)))]
+        dropped_by_simvar = [n for n in actually_dropped if n not in dropped_by_pattern]
 
-            r["metrics_columns"] = list(selected_names)
-            filtered_vals = [float(mapping.get(name, 0.0)) for name in selected_names]
-            r["metrics_values"] = filtered_vals
-            r["metrics_vector"] = {name: val for name, val in zip(selected_names, filtered_vals)}
+        # (G) Project rows and persist locks + summary
+        _project_rows_to_names(rows, selected_names)
 
-        # 4) Build + stash summary for debugging / observability
+        # Write lock file
+        (run_dir / "kept_features.txt").write_text("\n".join(selected_names), encoding="utf-8")
+
+        digest = _digest_kept(selected_names)
         summary = {
             "status": "ok",
             "kept_count": len(selected_names),
             "total_raw": len(uniq_cols),
-            "kept_sample": selected_names[:20],
+            "kept_digest": digest,
+            "forced_in": forced_in[:20],
+            "drops": {
+                "pattern": {
+                    "count": len(dropped_by_pattern),
+                    "examples": dropped_by_pattern[:20],
+                    "patterns": {"include": include_pats, "exclude": exclude_pats},
+                    "preview_counts": pattern_drops_preview["counts"],
+                },
+                "similarity_or_variance": {
+                    "count": len(dropped_by_simvar),
+                    "examples": dropped_by_simvar[:20],
+                },
+            },
+            "samples": {
+                "kept_head": selected_names[:20],
+                "raw_head": uniq_cols[:20],
+            },
         }
-        context["metric_filter_summary"] = summary
-        context["filtered_metric_names"] = list(selected_names)
         self._last_summary = summary
+        self._last_selected = list(selected_names)
 
-        log.info(
-            "[MetricFilterGroupFeature] kept %d of %d metrics",
-            summary["kept_count"], summary["total_raw"]
-        )
+        self._persist_summary(context, summary, kept=selected_names)
 
-        # 5) Persist summary (best-effort)
-        self._persist_summary(context, summary)
+        log.info("[MetricFilterGroupFeature] kept %d of %d metrics (forced +%d) digest=%s",
+                 summary["kept_count"], summary["total_raw"], len(forced_in), digest)
+
+
+        # (H) Write detailed explain report (MD + CSV + quick figs)
+        try:
+            # ---- Build diagnostics with safe fallbacks ----
+            # union of columns seen pre-filter
+            names_union = list(uniq_cols)
+
+            # labels (optional supervision)
+            labels = context.get("labels")
+
+            # Attempt to pull diagnostics from MetricFilter, else fall back
+            # dup_pairs: List[Tuple[kept_name, dropped_name, similarity]]
+            dup_pairs = []
+            if hasattr(self.filter, "last_dup_pairs") and self.filter.last_dup_pairs:
+                dup_pairs = list(self.filter.last_dup_pairs)
+
+            # indices of columns in names_union flagged as non-finite / low variance
+            nonfinite_idx = []
+            if hasattr(self.filter, "last_nonfinite_idx") and self.filter.last_nonfinite_idx is not None:
+                nonfinite_idx = list(self.filter.last_nonfinite_idx)
+
+            lowvar_idx = []
+            if hasattr(self.filter, "last_lowvar_idx") and self.filter.last_lowvar_idx is not None:
+                lowvar_idx = list(self.filter.last_lowvar_idx)
+
+            # rank method (string label for the report)
+            rank_method = getattr(self.filter, "rank_method", "variance+similarity")
+
+            # whether normalization was used
+            normalize_used = bool(getattr(self.filter, "normalize", True))
+
+            # always-include list if you wired it on the feature (optional)
+            always_include = list(getattr(self, "always_include", []) or [])
+
+            # snapshot the filter config for reproducibility
+            cfg_snapshot = {
+                "k": getattr(self.filter, "k", None),
+                "dup_threshold": getattr(self.filter, "dup_threshold", None),
+                "min_variance": getattr(self.filter, "min_variance", None),
+                "normalize": normalize_used,
+                "include": list(getattr(self.filter, "include_patterns", []) or []),
+                "exclude": list(getattr(self.filter, "exclude_patterns", []) or []),
+                "alias_strip": getattr(self.filter, "alias_strip", True),
+                "rank_method": rank_method,
+            }
+
+            write_metric_filter_explain(
+                run_dir=run_dir,
+                names_union=names_union,
+                rows=rows,                              # current (post-application) rows are fine: we rebuild union X inside writer
+                kept_names=list(selected_names),
+                dup_pairs=list(dup_pairs),
+                nonfinite_idx=list(nonfinite_idx),
+                lowvar_idx=list(lowvar_idx),
+                labels=labels,
+                normalize_used=normalize_used,
+                rank_method=str(rank_method),
+                cfg_snapshot=cfg_snapshot,
+                md_filename="metric_filter_explain.md",
+                csv_filename="metric_filter_explain.csv",
+                always_include=always_include,
+            )
+        except Exception as e:
+            log.warning("[MetricFilterGroupFeature] explain writer failed: %s", e)
 
         return rows
 
-    def _persist_summary(self, context: dict, summary: dict) -> None:
+    # ---------- Persistence ----------
+    def _persist_summary(self, context: dict, summary: dict, kept: List[str] | None) -> None:
         try:
-            self.memory.metrics.upsert_group_meta(
-                run_id=context.get("pipeline_run_id", "unknown"),
-                patch={"metric_filter_summary": summary},
-            )
+            run_id = context.get("pipeline_run_id", "unknown")
+            patch = {"metric_filter_summary": summary}
+            if kept is not None:
+                patch["metric_filter"] = {
+                    "kept_columns": list(kept),
+                    "n_kept": len(kept),
+                    "kept_digest": _digest_kept(kept),
+                }
+            self.memory.metrics.upsert_group_meta(run_id=run_id, patch=patch)
         except Exception as e:
             self._warn(f"[MetricFilterGroupFeature] persist skipped: {e}")
 
@@ -152,27 +313,19 @@ class MetricFilterGroupFeature(BaseGroupFeature):
     def report(self) -> FeatureReport:
         if not self._last_summary:
             return FeatureReport(
-                name=self.name,
-                kind="group",
-                ok=True,
-                quality=None,
-                summary="no-op",
-                details={},
-                warnings=[],
+                name=self.name, kind="group", ok=True, quality=None,
+                summary="no-op", details={}, warnings=[]
             )
-        kept = self._last_summary.get("kept_count")
-        total = self._last_summary.get("total_raw")
-        ok = kept is not None and total is not None and kept > 0
-        quality = float(kept / max(total, 1)) if (kept is not None and total) else None
+        kept = self._last_summary.get("kept_count", 0)
+        total = self._last_summary.get("total_raw", 0)
+        quality = float(kept / max(total, 1)) if total else None
+        ok = kept > 0
         return FeatureReport(
             name=self.name,
             kind="group",
             ok=ok,
             quality=quality,
-            summary=f"kept {kept} of {total} metrics",
-            details={
-                "summary": self._last_summary,
-                "selected_names_sample": (self._last_selected or [])[:20],
-            },
+            summary=f"kept {kept} of {total} metrics; digest={self._last_summary.get('kept_digest')}",
+            details=self._last_summary,
             warnings=[],
         )

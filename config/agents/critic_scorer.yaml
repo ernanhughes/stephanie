@@ -49,7 +49,7 @@ critic_scorer:
       metrics:
         enabled: true
         # Keep all four so we don't accidentally drop Tiny again
-        scorers: ["hrm", "sicql", "tiny", "svm"]
+        scorers: ["hrm", "sicql", "tiny", "ebt"]
         dimensions: [coverage, reasoning, knowledge, clarity, faithfulness]
         persist: false          # compute on the fly; DB persistence optional
         attach_scores: true
@@ -91,17 +91,27 @@ critic_scorer:
 
     # ---- group features (run once after all rows are built) ----
     group_feature_configs:
-      # 1) Column de-duplication + normalization + variance cut + TOP-K
       metric_filter:
         enabled: true
-        top_k: 100             # switch to 50/150 as needed
+        top_k: 100
         normalize: true
-        dup_threshold: 0.995
-        min_variance: 1e-8
-        alias_strip: true      # collapse alias suffixes (.score/.value/etc)
-        # Case-insensitive patterns so Tiny/SVM don’t get dropped due to casing
-        include: ["HRM.*", "sicql.*", "tiny.*", "svm.*"]
-        exclude: ["*.raw", "*.debug", "*.stdev"]
+        include: ["HRM.*", "sicql.*", "Tiny.*"]
+        exclude: ["*.raw", "*.debug"]
+        alias_strip: true
+        short_circuit_if_locked: true
+        include_visicalc_core: true
+        visicalc_core_names:
+          - "frontier_util"
+          - "stability"
+          - "middle_dip"
+          - "std_dev"
+          - "sparsity"
+          - "entropy"
+          - "trend"
+          - "HRM.aggregate"
+        always_include:
+          - "tiny.aggregate"
+          - "svm.aggregate"
 
       # 2) Cohort VisiCalc (heavy batch) + feature lock
       visicalc_group:
