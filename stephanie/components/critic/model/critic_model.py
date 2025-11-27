@@ -11,6 +11,9 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 import joblib
 import numpy as np
 from sklearn.pipeline import Pipeline
+import logging
+
+log = logging.getLogger(__name__)
 
 # Default artifact locations (match your trainer)
 DEFAULT_MODEL_PATH = Path("models/critic.joblib")
@@ -102,6 +105,8 @@ class CriticModel:
         return cls(model, meta)
 
     # ---------- Feature prep ----------
+
+
 
     def _align_and_direction_correct(
         self,
@@ -251,6 +256,8 @@ class CriticModel:
             "cv_summary": self.meta.cv_summary,
             "holdout_summary": self.meta.holdout_summary,
         }
+
+
 
 
 # -------------------- CLI --------------------

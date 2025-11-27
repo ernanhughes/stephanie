@@ -10,16 +10,16 @@ from typing import Any, Dict, List, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
-import seaborn as sns
 from sklearn.decomposition import PCA
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import (GroupKFold, StratifiedKFold,
                                      cross_val_score)
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
+from sklearn.impute import SimpleImputer
 
 from stephanie.scoring.metrics.metric_importance import (
-    compute_metric_importance, save_metric_importance_json)
+    compute_metric_importance)
 
 log = logging.getLogger(__name__)
 
@@ -196,13 +196,27 @@ def _make_cv(groups: np.ndarray | None, y: np.ndarray, n_splits: int = 5):
     # fallback to stratified if no/insufficient groups
     return StratifiedKFold(n_splits=min(5, len(np.unique(y))), shuffle=True, random_state=0), None
 
+
 def _eval_linear_model(X: np.ndarray, y: np.ndarray, groups: np.ndarray | None):
+    # Ensure finite + float
+    X = np.asarray(X, dtype=np.float32)
+    mask = ~np.isfinite(X)
+    if mask.any():
+        X[mask] = np.nan
+
     cv, grp = _make_cv(groups, y)
-    # Use a pipeline to ensure scaler is fit inside each CV fold
+
     clf = make_pipeline(
+        SimpleImputer(strategy="mean"),
         StandardScaler(),
-        LogisticRegression(C=0.5, penalty="l2", solver="liblinear", max_iter=500)
+        LogisticRegression(
+            C=0.5,
+            penalty="l2",
+            solver="liblinear",
+            max_iter=500,
+        ),
     )
+
     scores = cross_val_score(clf, X, y, cv=cv, groups=grp, scoring="roc_auc")
     return float(scores.mean()), float(scores.std())
 
@@ -230,25 +244,42 @@ def evaluate_all_features(
     y: np.ndarray,
     metric_names: list[str],
     core_dim: int = CORE_FEATURE_COUNT,
-    groups: np.ndarray | None = None
+    groups: np.ndarray | None = None,
 ) -> Dict[str, Any]:
     """
-    Comprehensive evaluation that properly validates all feature types
+    Comprehensive evaluation that properly validates all feature types.
+
     Returns:
       {
-        "all_features": list of importance metrics for all features,
-        "core_features": importance metrics for core features only,
-        "dynamic_features": importance metrics for dynamic features only,
-        "ablation_results": {...},
-        "core_contributions": [...]
-      }
+        "all_features": [...],          # importance for all features
+        "core_features": [...],         # importance for core features only
+        "dynamic_features": [...],      # importance for dynamic features only
+        "ablation_results": {           # AUCs from run_ablations(...)
+            "core_only_auc_mean": ...,
+            "core_only_auc_std": ...,
+            "dynamic_only_auc_mean": ...,
+            "dynamic_only_auc_std": ...,
+            "hybrid_auc_mean": ...,
+            "hybrid_auc_std": ...,
+        },
+        "core_contributions": [         # per-core-feature contribution vs dynamic baseline
+            {
+                "name": str,
+                "improvement": float,
+                "auc_mean": float,
+                "auc_std": float,
+            },
+            ...
+        ],
+    }
     """
     log.info("🔍 Starting comprehensive feature evaluation")
 
-    # --- NEW: harden against NaN / Inf in features ---
+    # ------------------------------------------------------------------
+    # 0) Harden against NaN / Inf before *any* downstream eval
+    # ------------------------------------------------------------------
     X = np.asarray(X, dtype=np.float64)
 
-    # Replace NaN/Inf with 0.0 (or you can choose column means if you want)
     if not np.isfinite(X).all():
         n_total = X.size
         n_nan = np.isnan(X).sum()
@@ -262,74 +293,110 @@ def evaluate_all_features(
             n_neginf,
             n_total,
         )
+        # Simple, robust policy: map all nasty values to 0.0
         X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
 
-    # (Optional) ensure core_dim doesn’t exceed feature count
-    if core_dim > X.shape[1]:
+    # Safety: clamp core_dim so we don't index past the feature count
+    n_features = X.shape[1]
+    if core_dim > n_features:
         log.warning(
-            "evaluate_all_features: core_dim=%d > n_features=%d; clamping",
+            "evaluate_all_features: core_dim=%d > n_features=%d; clamping core_dim",
             core_dim,
-            X.shape[1],
+            n_features,
         )
-        core_dim = X.shape[1]
-    log.info("🔍 Starting comprehensive feature evaluation")
-    # 1. Evaluate ALL features together (core + dynamic)
+        core_dim = n_features
+
+    # ------------------------------------------------------------------
+    # 1) Evaluate ALL features together (core + dynamic)
+    # ------------------------------------------------------------------
     log.info("📊 Evaluating ALL features together")
     all_imps = compute_metric_importance(
         X[y == 1],
         X[y == 0],
         metric_names,
         top_k=len(metric_names),
-        min_effect=0.0
+        min_effect=0.0,
     )
-    # 2. Evaluate core features in isolation
+
+    # ------------------------------------------------------------------
+    # 2) Evaluate core features in isolation
+    # ------------------------------------------------------------------
     log.info("📊 Evaluating core features in isolation")
-    core_imps = compute_metric_importance(
-        X[y == 1, :core_dim],
-        X[y == 0, :core_dim],
-        metric_names[:core_dim],
-        top_k=core_dim,
-        min_effect=0.0
-    )
-    # 3. Evaluate dynamic features in isolation
+    if core_dim > 0:
+        core_imps = compute_metric_importance(
+            X[y == 1, :core_dim],
+            X[y == 0, :core_dim],
+            metric_names[:core_dim],
+            top_k=core_dim,
+            min_effect=0.0,
+        )
+    else:
+        core_imps = []
+
+    # ------------------------------------------------------------------
+    # 3) Evaluate dynamic features in isolation
+    # ------------------------------------------------------------------
     log.info("📊 Evaluating dynamic features in isolation")
-    dynamic_imps = compute_metric_importance(
-        X[y == 1, core_dim:],
-        X[y == 0, core_dim:],
-        metric_names[core_dim:],
-        top_k=len(metric_names) - core_dim,
-        min_effect=0.0
-    )
-    # 4. Run ablation study with proper grouping
+    if core_dim < n_features:
+        dyn_X_pos = X[y == 1, core_dim:]
+        dyn_X_neg = X[y == 0, core_dim:]
+        dyn_names = metric_names[core_dim:]
+        dynamic_imps = compute_metric_importance(
+            dyn_X_pos,
+            dyn_X_neg,
+            dyn_names,
+            top_k=len(dyn_names),
+            min_effect=0.0,
+        )
+    else:
+        dynamic_imps = []
+
+    # ------------------------------------------------------------------
+    # 4) Run ablation study (uses your run_ablations + _eval_linear_model)
+    # ------------------------------------------------------------------
     log.info("📊 Running ablation study with proper grouping")
     ablation_results = run_ablations(X, y, metric_names, core_dim, groups)
-    # 5. Analyze core feature contributions
+
+    # ------------------------------------------------------------------
+    # 5) Analyze core feature contributions
+    # ------------------------------------------------------------------
     log.info("📊 Analyzing core feature contributions")
-    core_contributions = []
-    for i, name in enumerate(metric_names[:core_dim]):
-        # How much does this core feature improve performance when added to dynamic features?
-        X_subset = np.column_stack([
-            X[:, core_dim:],  # dynamic features
-            X[:, i]            # this core feature
-        ])
-        names_subset = metric_names[core_dim:] + [name]
-        auc_mean, auc_std = _eval_linear_model(X_subset, y, groups)
-        # Baseline is dynamic features only
-        baseline_auc = ablation_results["dynamic_only_auc_mean"]
-        improvement = auc_mean - baseline_auc
-        core_contributions.append({
-            "name": name,
-            "improvement": improvement,
-            "auc_mean": auc_mean,
-            "auc_std": auc_std
-        })
+    core_contributions: list[Dict[str, Any]] = []
+
+    if core_dim > 0 and core_dim < n_features:
+        # Baseline = dynamic-only AUC *mean* (not std!)
+        dyn_baseline_auc = ablation_results["dynamic_only_auc_mean"]
+
+        for i, name in enumerate(metric_names[:core_dim]):
+            # For each core feature, see how much it improves over dynamic-only
+            X_subset = np.column_stack(
+                [
+                    X[:, core_dim:],  # dynamic features
+                    X[:, i],          # this core feature
+                ]
+            )
+            auc_mean, auc_std = _eval_linear_model(X_subset, y, groups)
+
+            core_contributions.append(
+                {
+                    "name": name,
+                    "improvement": float(auc_mean - dyn_baseline_auc),
+                    "auc_mean": auc_mean,
+                    "auc_std": auc_std,
+                }
+            )
+    else:
+        log.info(
+            "evaluate_all_features: skipping core_contributions "
+            "(core_dim=%d, n_features=%d)", core_dim, n_features
+        )
 
     return {
         "all_features": all_imps,
         "core_features": core_imps,
         "dynamic_features": dynamic_imps,
         "ablation_results": ablation_results,
-        "core_contributions": core_contributions
+        "core_contributions": core_contributions,
     }
 
 def generate_visicalc_hypothesis_report(
@@ -363,7 +430,7 @@ def generate_visicalc_hypothesis_report(
     )
 
     # Generate report
-    report = f"""# VisiCalc Hypothesis Validation Report
+    report = """# VisiCalc Hypothesis Validation Report
 ## Core Question
 Do structural reasoning patterns (VisiCalc features) contain discriminative signals for reasoning quality?
 ## Methodology
@@ -517,7 +584,7 @@ def _write_selected_feature_artifacts(
     summary_path = out_dir / "feature_selection_summary.md"
     try:
         with summary_path.open("w", encoding="utf-8") as f:
-            f.write(f"# Feature Selection Summary\n")
+            f.write("# Feature Selection Summary\n")
             f.write(f"**Dataset:** {dataset_info['samples']} samples, {dataset_info['features']} features\n")
             f.write(f"**Core features:** {dataset_info['core_features']} (always kept)\n")
             f.write(f"**Dynamic features selected:** {dataset_info['selected_dynamic']}/{dataset_info['total_dynamic']}\n")

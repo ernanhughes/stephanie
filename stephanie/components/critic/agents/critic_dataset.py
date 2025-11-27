@@ -36,7 +36,7 @@ class CriticDatasetAgent(BaseAgent):
         super().__init__(cfg, memory, container, logger)
 
         # Configurable paths
-        self.visicalc_root = Path(cfg.get("visicalc_root", "runs/visicalc"))
+        self.visicalc_root = Path(cfg.get("visicalc_root", "runs/critic"))
         self.output_path = Path(cfg.get("output_path", "data/critic.npz"))
         self.meta_path = Path(cfg.get("meta_path", "data/critic_metadata.json"))
 

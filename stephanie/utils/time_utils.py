@@ -15,3 +15,5 @@ def json_friendly_time(dt: datetime) -> str:
 
 def now_ms() -> int:
     return int(time.time() * 1000)
+
+

@@ -134,11 +134,11 @@ class ScorableProcessor(ProgressMixin):
 
         for feature in self.features:
             try:
-                log.info(
+                log.debug(
                     f"[ScorableProcessor] applying feature: {feature.name}"
                 )
                 acc = await feature.apply(scorable, acc, context)
-                log.info(
+                log.debug(
                     f"[ScorableProcessor] applied feature: {feature.name}"
                 )
             except Exception as e:

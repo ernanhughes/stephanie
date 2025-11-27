@@ -1,15 +1,11 @@
 # stephanie/components/critic/agents/critic_cohort.py
 from __future__ import annotations
 
-import csv
-from datetime import datetime
 import json
 import logging
-import math
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
-import matplotlib.pyplot as plt
 import numpy as np
 
 from stephanie.agents.base_agent import BaseAgent
@@ -415,11 +411,7 @@ class CriticCohortAgent(BaseAgent):
                         vpm_base,
                         vpm_tgt,
                     )
-                    context["visicalc_ab_topleft"] = {
-                        "gain": topleft_res["gain"],
-                        "loss": topleft_res["loss"],
-                        "improvement_ratio": topleft_res["improvement_ratio"],
-                    }
+                    context["visicalc_ab_topleft"] = topleft_res
 
                     log.info(
                         "VisiCalc A/B TopLeft diff: gain=%.4f loss=%.4f improvement_ratio=%.4f",
@@ -427,7 +419,6 @@ class CriticCohortAgent(BaseAgent):
                         topleft_res["loss"],
                         topleft_res["improvement_ratio"],
                     )
-                    context["visicalc_ab_topleft"] = topleft_res
 
                     log.info(
                         "VisiCalc A/B delta: frontier_metric=%r "
@@ -578,6 +569,7 @@ class CriticCohortAgent(BaseAgent):
             log.exception("[CriticCohortAgent] reporter failed: %s", e)
 
         return context
+
 
 
     def _compute_frontier_lens_for_rows(

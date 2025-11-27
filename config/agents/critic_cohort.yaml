@@ -40,7 +40,7 @@ critic_cohort:
     # ---- per-row features (run on each scorable) ----
     features:
       - metrics
-      - visicalc  # light per-row summary; the heavy lift happens in visicalc_group
+      - frontier_lens  # light per-row summary; the heavy lift happens in frontier_lens_group
 
     feature_configs:
       metrics:
@@ -51,7 +51,7 @@ critic_cohort:
         persist: false          # compute on the fly; DB persistence optional
         attach_scores: true
 
-      visicalc:
+      frontier_lens:
         enabled: true
         # Preferred metric ordering (optional)
         metric_keys:
@@ -96,7 +96,7 @@ critic_cohort:
         exclude: ["*.raw", "*.debug"]
         alias_strip: true
         short_circuit_if_locked: true
-        include_visicalc_core: true
+        include_visicalc_core: false
         visicalc_core_names:
           - "frontier_util"
           - "stability"
@@ -111,7 +111,7 @@ critic_cohort:
           - "svm.aggregate"
 
       # 2) Cohort VisiCalc (heavy batch) + feature lock
-      visicalc_group:
+      frontier_lens_group:
         enabled: true
         episode_id: "critic:${hydra:runtime.run_dir}"  # unique tag per run
         frontier_metric: "HRM.aggregate"

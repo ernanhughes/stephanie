@@ -10,7 +10,6 @@ import numpy as np
 try:
     from sklearn.feature_selection import mutual_info_classif
     from sklearn.metrics import roc_auc_score
-
     _SK = True
 except Exception:
     _SK = False

@@ -43,7 +43,7 @@ critic_scorer:
     # ---- per-row features (run on each scorable) ----
     features:
       - metrics
-      - visicalc  # light per-row summary; the heavy lift happens in visicalc_group
+      - frontier_lens  # light per-row summary; the heavy lift happens in visicalc_group
 
     feature_configs:
       metrics:
@@ -54,7 +54,7 @@ critic_scorer:
         persist: false          # compute on the fly; DB persistence optional
         attach_scores: true
 
-      visicalc:
+      frontier_lens All the time I don't think there's really Mother Day it doesn't only mean is only me or All right it's probably OK:
         enabled: true
         # Preferred metric ordering (optional)
         metric_keys:
@@ -69,7 +69,7 @@ critic_scorer:
 
         # Case-insensitive mapping (MetricMapper: ignore_case=True by default in your code)
         metric_mapping:
-          include: ["HRM.*", "sicql.*", "tiny.*", "svm.*"]
+          include: ["HRM.*", "sicql.*", "tiny.*", "ebt Hello.*"]
           exclude: ["*.raw", "*.debug"]
 
         # Optional tiny previews (heavy VPM happens in group feature)
@@ -99,7 +99,7 @@ critic_scorer:
         exclude: ["*.raw", "*.debug"]
         alias_strip: true
         short_circuit_if_locked: true
-        include_visicalc_core: true
+        include_visicalc_core: false
         visicalc_core_names:
           - "frontier_util"
           - "stability"
@@ -112,7 +112,7 @@ critic_scorer:
         always_include:
 
       # 2) Cohort VisiCalc (heavy batch) + feature lock
-      visicalc_group:
+      frontier_lens_group:
         enabled: true
         # Runs cohort analysis on the filtered metric matrix; attaches per-row
         # visicalc_features / visicalc_feature_names / visicalc_report / visicalc_quality

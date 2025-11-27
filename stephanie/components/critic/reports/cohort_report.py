@@ -3,22 +3,19 @@ from __future__ import annotations
 
 import csv
 from datetime import datetime
-import json
 import logging
 import math
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy.stats import differential_entropy
 
-from stephanie.scoring.metrics.frontier_lens import graph_quality_from_report
 from stephanie.utils.json_sanitize import dumps_safe
 
 log = logging.getLogger(__name__)
 
-@staticmethod
 def normalize01(arr: np.ndarray) -> np.ndarray:
     """
     Safe [0, 1] normalization for visualization.
@@ -35,7 +32,6 @@ def normalize01(arr: np.ndarray) -> np.ndarray:
     return (arr - mn) / (mx - mn)
 
 
-@staticmethod
 def top_left_order_pair(
     tgt: np.ndarray,
     base: np.ndarray,
@@ -315,7 +311,6 @@ def compute_metric_separability(
     import math
 
     import numpy as np
-    from scipy.stats import differential_entropy
 
     results = {}
 
@@ -700,7 +695,7 @@ class CriticCohortReporter:
     def _render_markdown(self, s: Dict[str, Any]) -> str:
         lines: List[str] = []
 
-        lines.append(f"# Critic Cohort Report")
+        lines.append("# Critic Cohort Report")
         lines.append("")
         lines.append(f"- **run_id**: `{s['run_id']}`")
         lines.append(f"- **generated_utc**: `{s['generated_utc']}`")

@@ -220,18 +220,6 @@ def _project_to_names(X: np.ndarray, have_names: List[str], need_names: List[str
                     len(missing), ", ".join(missing[:10]) + ("..." if len(missing) > 10 else ""))
     return Xp
 
-def _predict_proba1(model, X: np.ndarray, have_names: List[str], need_names: List[str], tag: str) -> np.ndarray:
-    """Project then predict_proba with meta order; warn if pipeline width disagrees."""
-    Xp = _project_to_names(X, have_names, need_names)
-    try:
-        n_fit = _model_n_features(model)
-        if n_fit is not None and n_fit != Xp.shape[1]:
-            log.warning("[%s] pipeline n_features_in_=%s but meta need_names=%s; continuing with meta order.",
-                        tag, n_fit, Xp.shape[1])
-    except Exception as e:
-        log.warning("[%s] failed to verify model n_features_in_: %s", tag, e)
-    return model.predict_proba(Xp)[:, 1]
-
 # -----------------------------
 # Agent
 # -----------------------------
@@ -268,8 +256,6 @@ class CriticInferenceAgent(BaseAgent):
         # 0) Load shadow pack
         shadow = _load_shadow(self.shadow_path)
         X, y, have_names = shadow.X, shadow.y, shadow.feature_names
-        groups = shadow.groups
-        shadow_meta = shadow.meta or {}
 
         # 1) Load models
         cur = _load_model(self.model_path)

@@ -6,6 +6,6 @@ critic_dataset:
   input_key: "unused"
   output_key: "unused"
 
-  visicalc_root: "runs/visicalc"
+  visicalc_root: "runs/critic"
   output_path: "data/critic.npz"
   meta_path: "data/critic_metadata.json"
