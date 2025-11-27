@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 from zeromodel.pipeline.organizer.top_left import TopLeft
 
-from stephanie.scoring.metrics.visicalc import (FrontierLensEpisode,
+from stephanie.scoring.metrics.frontier_lens import (FrontierLensEpisode,
                                                 episode_features)
 
 # If you’ve moved VisiCalcReport into Stephanie core, you can also

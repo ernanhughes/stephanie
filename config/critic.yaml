@@ -100,7 +100,7 @@ pipeline:
         Pull raw signal data from Huggingface or other sources. This builds
         the foundational corpus of scorables used by VisiCalc.
       cls: stephanie.components.critic.agents.critic_data.CriticDataAgent
-      enabled: true
+      enabled: false
       iterations: 1
 
     # ---------------------------------------------------------------
