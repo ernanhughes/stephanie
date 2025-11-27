@@ -21,9 +21,12 @@ from stephanie.components.critic.reports.frontier_lens_viz import (
     render_frontier_lens_figure,
 )
 
+from stephanie.utils.vpm_utils import ensure_chw_u8
+
 from stephanie.components.critic.reports.cohort_report import (
     CriticCohortReporter,
     normalize01,
+    save_topleft_vpm_triptych,
     top_left_order_pair,
     save_vpm_matrix_csv,
     save_ab_npz_dataset,
@@ -417,6 +420,14 @@ class CriticCohortAgent(BaseAgent):
                     )
                     context["visicalc_ab_topleft"] = topleft_res
 
+                    topleft_png = self.out_dir / "visicalc_ab_topleft.png"
+                    save_topleft_vpm_triptych(
+                        vpm_base=vpm_base,
+                        vpm_tgt=vpm_tgt,
+                        out_path=topleft_png,
+                    )
+                    context["save_topleft_vpm_triptych"] = topleft_png
+
                     log.info(
                         "VisiCalc A/B TopLeft diff: gain=%.4f loss=%.4f improvement_ratio=%.4f",
                         topleft_res["gain"],
@@ -671,58 +682,85 @@ class CriticCohortAgent(BaseAgent):
 
         return vc, metric_names
  
+
+
     def compare_vpms_with_topleft(
         self,
         vpm_base: np.ndarray,
         vpm_tgt: np.ndarray,
         *,
-        metric_mode: str = "luminance",
-        iterations: int = 5,
-        push_corner: str = "tl",
-    ) -> dict:
+        channel: int = 0,
+        top_frac: float = 0.5,
+        left_frac: float = 0.5,
+    ) -> Dict[str, Any]:
         """
-        Run TopLeft on baseline and targeted VPMs with identical config,
-        then compute a simple visual-diff metric.
+        Compare baseline vs targeted VPMs in the *TopLeft* high-intensity region.
+
+        - Robust to different base/target shapes.
+        - Uses the minimum overlapping region so shapes always match.
+        - Returns gain/loss and improvement_ratio suitable for reporting.
         """
-        from zeromodel.pipeline.organizer.top_left import TopLeft
-        stage = TopLeft(
-            metric_mode=metric_mode,
-            iterations=iterations,
-            push_corner=push_corner,
-            monotone_push=True,
-            stretch=True,
+        base = ensure_chw_u8(vpm_base)  # (C, H, W), uint8
+        tgt  = ensure_chw_u8(vpm_tgt)
+
+        if base.ndim != 3 or tgt.ndim != 3:
+            raise ValueError(
+                f"VPMs must be CHW images; got base={base.shape}, tgt={tgt.shape}"
+            )
+
+        c_b, h_b, w_b = base.shape
+        c_t, h_t, w_t = tgt.shape
+
+        if channel < 0 or channel >= min(c_b, c_t):
+            raise ValueError(
+                f"channel={channel} out of range for base={base.shape}, tgt={tgt.shape}"
+            )
+
+        # --- Align shapes by overlapping region ---
+        H = min(h_b, h_t)
+        W = min(w_b, w_t)
+
+        # Make sure we always keep at least 1 pixel
+        top_frac  = float(top_frac)
+        left_frac = float(left_frac)
+        h_cut = max(1, int(H * top_frac))
+        w_cut = max(1, int(W * left_frac))
+
+        # --- Extract TopLeft regions on the chosen channel ---
+        tl_base = base[channel, :h_cut, :w_cut].astype(np.float32) / 255.0
+        tl_tgt  = tgt[channel,  :h_cut, :w_cut].astype(np.float32) / 255.0
+
+        assert tl_base.shape == tl_tgt.shape, (
+            f"TopLeft shapes still mismatch base={tl_base.shape}, tgt={tl_tgt.shape}"
         )
 
-        # 1) Canonicalize both VPMs
-        tl_base, meta_base = stage.process(vpm_base)
-        tl_tgt, meta_tgt = stage.process(vpm_tgt)
+        # --- Compute gain/loss in that region ---
+        delta = tl_tgt - tl_base
+        gain  = float(delta[delta > 0].sum())
+        loss  = float(-delta[delta < 0].sum())  # make positive
 
-        # 2) Ensure same shape / type
-        tl_base = tl_base.astype(np.float32)
-        tl_tgt = tl_tgt.astype(np.float32)
-        assert tl_base.shape == tl_tgt.shape, "Base/Target shapes must match after TopLeft"
+        denom = gain + loss
+        improvement_ratio = gain / denom if denom > 0 else 0.5
 
-        # 3) Visual difference: positive = target > base
-        diff = tl_tgt - tl_base
-
-        # 4) Aggregate into simple scores
-        gain = float(np.sum(np.clip(diff, 0.0, None)))           # total positive mass
-        loss = float(np.sum(np.clip(-diff, 0.0, None)))          # total negative mass
-        total = gain + loss + 1e-8
-
-        # fraction of mass that's an improvement (0.0–1.0)
-        improvement_ratio = gain / total
+        status = "ok"
+        if denom == 0:
+            status = "flat"
+        elif improvement_ratio < 0.5:
+            status = "worse"
 
         return {
-            "topleft_base": tl_base,
-            "topleft_tgt": tl_tgt,
-            "diff": diff,
-                "gain": gain,
-                "loss": loss,
-                "improvement_ratio": improvement_ratio,
-                "meta_base": meta_base,
-                "meta_tgt": meta_tgt,
-            }
+            "gain": gain,
+            "loss": loss,
+            "improvement_ratio": improvement_ratio,
+            "status": status,
+            "shape": {
+                "height": h_cut,
+                "width": w_cut,
+            },
+            "channel": channel,
+            "top_frac": top_frac,
+            "left_frac": left_frac,
+        }
 
         
     def _build_vpm_and_metric_names(self, rows: List[dict]) -> tuple[np.ndarray, List[str], List[str]]:

@@ -6,13 +6,14 @@ from datetime import datetime
 import logging
 import math
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy.stats import differential_entropy
 
 from stephanie.utils.json_sanitize import dumps_safe
+from stephanie.utils.vpm_utils import ensure_chw_u8
 
 log = logging.getLogger(__name__)
 
@@ -397,6 +398,78 @@ def compute_metric_separability(
         ],
         "metrics_all": results,
     }
+
+def save_topleft_vpm_triptych(
+    vpm_base: np.ndarray,
+    vpm_tgt: np.ndarray,
+    out_path: Union[str, Path],
+    *,
+    channel: int = 0,
+    top_frac: float = 0.5,
+    left_frac: float = 0.5,
+) -> str:
+    """
+    Save a 3-panel image visualizing the frontier lens TopLeft region:
+
+    [0] baseline TopLeft
+    [1] targeted TopLeft
+    [2] (targeted - baseline) difference heatmap
+
+    Returns the path as a string for logging / markdown linking.
+    """
+    out_path = Path(out_path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    base = ensure_chw_u8(vpm_base)
+    tgt  = ensure_chw_u8(vpm_tgt)
+
+    c_b, h_b, w_b = base.shape
+    c_t, h_t, w_t = tgt.shape
+
+    H = min(h_b, h_t)
+    W = min(w_b, w_t)
+
+    top_frac  = float(top_frac)
+    left_frac = float(left_frac)
+    h_cut = max(1, int(H * top_frac))
+    w_cut = max(1, int(W * left_frac))
+
+    base_tl = base[channel, :h_cut, :w_cut].astype(np.float32) / 255.0
+    tgt_tl  = tgt[channel,  :h_cut, :w_cut].astype(np.float32) / 255.0
+
+    # Difference map for visualization
+    diff = tgt_tl - base_tl
+    max_abs = float(np.max(np.abs(diff))) if diff.size > 0 else 1.0
+    if max_abs == 0:
+        max_abs = 1.0
+
+    fig, axes = plt.subplots(1, 3, figsize=(12, 4))
+
+    ax = axes[0]
+    im0 = ax.imshow(base_tl, aspect="auto")
+    ax.set_title("Baseline TopLeft")
+    ax.axis("off")
+    fig.colorbar(im0, ax=ax, fraction=0.046, pad=0.04)
+
+    ax = axes[1]
+    im1 = ax.imshow(tgt_tl, aspect="auto")
+    ax.set_title("Targeted TopLeft")
+    ax.axis("off")
+    fig.colorbar(im1, ax=ax, fraction=0.046, pad=0.04)
+
+    ax = axes[2]
+    im2 = ax.imshow(diff, aspect="auto", vmin=-max_abs, vmax=max_abs, cmap="bwr")
+    ax.set_title("Δ (target − baseline)")
+    ax.axis("off")
+    fig.colorbar(im2, ax=ax, fraction=0.046, pad=0.04)
+
+    fig.suptitle("Frontier Lens — TopLeft Focus Region", fontsize=14)
+    fig.tight_layout()
+
+    fig.savefig(out_path, dpi=150)
+    plt.close(fig)
+
+    return str(out_path)
 
 # --------------------------------------------------------------------------- #
 # Critic Cohort Reporter
