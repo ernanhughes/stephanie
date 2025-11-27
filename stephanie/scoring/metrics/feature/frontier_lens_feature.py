@@ -1,10 +1,10 @@
-# stephanie/scoring/metrics/frontier_lens_feature.py
+# stephanie/scoring/metrics/feature/frontier_lens_feature.py
 from __future__ import annotations
 
 import logging
 from typing import Any, Dict
 
-from stephanie.scoring.metrics.base_feature import BaseFeature
+from stephanie.scoring.metrics.feature.base_feature import BaseFeature
 from stephanie.tools.frontier_lens_tool import FrontierLensTool
 
 log = logging.getLogger(__name__)

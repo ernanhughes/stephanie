@@ -36,11 +36,6 @@ class MetricFilterGroupTool:
 
         if self.cfg.get("include_visicalc_core", False):
             core = list(self.cfg.get("visicalc_core_names", []) or [])
-            if not core:
-                core = [
-                    "frontier_util","stability","middle_dip","std_dev",
-                    "sparsity","entropy","trend","HRM.aggregate"
-                ]
             # Ensure we're using canonical names
             core = [CORE_METRIC_MAPPING.get(name.lower(), name) for name in core]
             self.always_include.extend([c for c in core if c not in self.always_include])

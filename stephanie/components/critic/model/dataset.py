@@ -10,7 +10,7 @@ from typing import List, Tuple
 
 import numpy as np
 
-from stephanie.scoring.metrics.dynamic_features import (
+from stephanie.scoring.metrics.feature.dynamic_features import (
     build_dynamic_feature_vector,
 )
 

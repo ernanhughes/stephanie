@@ -1,3 +1,4 @@
+# stephanie/scoring/metrics/feature/metric_filter_group_feature.py
 from __future__ import annotations
 
 import fnmatch
@@ -7,9 +8,9 @@ from typing import Any, Dict, List
 
 import numpy as np
 
-from stephanie.scoring.metrics.base_group_feature import BaseGroupFeature
+from stephanie.scoring.metrics.feature.base_group_feature import BaseGroupFeature
 from stephanie.scoring.metrics.core_metrics import CORE_METRIC_MAPPING
-from stephanie.scoring.metrics.feature_report import FeatureReport
+from stephanie.scoring.metrics.feature.feature_report import FeatureReport
 from stephanie.scoring.metrics.metric_filter import MetricFilter
 from stephanie.scoring.metrics.metric_filter_explain import \
     write_metric_filter_explain

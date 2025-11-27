@@ -28,7 +28,7 @@ class FrontierLensTool(BaseTool):
         super().__init__(cfg, memory, container, logger)
 
         # config
-        self.frontier_metric = cfg.get("frontier_metric", "HRM.aggregate")
+        self.frontier_metric = cfg.get("frontier_metric", "Tiny.faithfulness.attr.scm.aggregate01")
         self.row_region_splits = cfg.get("row_region_splits", 3)
         self.frontier_low = cfg.get("frontier_low", 0.25)
         self.frontier_high = cfg.get("frontier_high", 0.75)

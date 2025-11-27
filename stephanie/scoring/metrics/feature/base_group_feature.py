@@ -1,9 +1,9 @@
-# stephanie/scoring/metrics/base_group_feature.py
+# stephanie/scoring/metrics/feature/base_group_feature.py
 from __future__ import annotations
 
 from typing import Any, Dict, List
 
-from stephanie.scoring.metrics.feature_report import FeatureReport
+from stephanie.scoring.metrics.feature.feature_report import FeatureReport
 
 
 class BaseGroupFeature:

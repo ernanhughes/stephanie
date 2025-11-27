@@ -25,15 +25,6 @@ log = logging.getLogger(__name__)
 
 CORE_FEATURE_COUNT = 8 # Assuming this is consistent; could load from config if needed
 
-def _ensure_dir(p: Path) -> None:
-    """Ensure directory exists with proper error handling."""
-    try:
-        p.mkdir(parents=True, exist_ok=True)
-        return True
-    except Exception as e:
-        log.error(f"Failed to create directory {p}: {e}")
-        return False
-
 def _dataset_cohens_d(a: np.ndarray, b: np.ndarray) -> float:
     """Calculate Cohen's d with robust edge case handling."""
     n1, n2 = len(a), len(b)

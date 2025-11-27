@@ -4,7 +4,7 @@ from __future__ import annotations
 import abc
 from typing import Any, Dict
 
-from stephanie.scoring.metrics.feature_report import FeatureReport
+from stephanie.scoring.metrics.feature.feature_report import FeatureReport
 from stephanie.scoring.scorable import Scorable
 
 

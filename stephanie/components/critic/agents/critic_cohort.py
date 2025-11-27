@@ -15,7 +15,11 @@ from stephanie.scoring.metrics.metric_mapping import MetricMapper
 from stephanie.scoring.metrics.scorable_processor import ScorableProcessor
 from stephanie.scoring.metrics.frontier_lens import (FrontierLens, normalize_scores,
                                                 graph_quality_from_report)
+
 from stephanie.utils.json_sanitize import dumps_safe
+from stephanie.components.critic.reports.frontier_lens_viz import (
+    render_frontier_lens_figure,
+)
 
 from stephanie.components.critic.reports.cohort_report import (
     CriticCohortReporter,
@@ -179,7 +183,7 @@ class CriticCohortAgent(BaseAgent):
 
         self.visicalc_frontier_metric: Optional[str] = vis_cfg.get(
             "frontier_metric",
-            "HRM.aggregate",
+            "Tiny.faithfulness.attr.scm.aggregate01",
         )
         self.visicalc_frontier_low: float = float(vis_cfg.get("frontier_low", 0.25))
         self.visicalc_frontier_high: float = float(vis_cfg.get("frontier_high", 0.75))
@@ -618,7 +622,7 @@ class CriticCohortAgent(BaseAgent):
         vpm = np.asarray(matrix_rows, dtype=np.float32)
 
         # 2) Optional per-metric normalization
-        if getattr(self, "visicalc_per_metric_normalize", True):
+        if self.visicalc_per_metric_normalize:
             vpm = normalize_scores(vpm).astype(np.float32)
 
         # 3) Frontier metric
@@ -649,6 +653,11 @@ class CriticCohortAgent(BaseAgent):
             frontier_high=self.visicalc_frontier_high,
             meta={"cohort": cohort_label},
         )
+
+        img_path = self.out_dir / f"frontier_lens_{cohort_label or 'cohort'}.png"
+        render_frontier_lens_figure(vc, img_path)
+        # optionally stash path in context/report
+        log.info("FrontierLens: saved figure → %s", img_path)
 
         log.info(
             "FrontierLens: built episode=%r frontier_metric=%r matrix_shape=%s "

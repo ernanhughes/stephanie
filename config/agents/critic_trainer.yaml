@@ -29,7 +29,5 @@ critic_trainer:
     mid_bad_ratio: -1
     frontier_util: 1
 
-  # Where to save visualizations
-  viz_dir: "runs/critic"
-
+ 
  

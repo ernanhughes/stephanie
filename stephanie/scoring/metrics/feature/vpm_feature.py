@@ -1,10 +1,10 @@
-# stephanie/features/vpm_feature.py
+# stephanie/scoring/metrics/feature/vpm_feature.py
 from __future__ import annotations
 
 import logging
 from typing import Any, Dict
 
-from stephanie.scoring.metrics.base_feature import BaseFeature
+from stephanie.scoring.metrics.feature.base_feature import BaseFeature
 from stephanie.tools.vpm_tool import VpmTool
 
 log = logging.getLogger(__name__)

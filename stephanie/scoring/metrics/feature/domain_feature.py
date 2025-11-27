@@ -1,7 +1,7 @@
-# stephanie/features/domain_feature.py
+# stephanie/scoring/metrics/feature/domain_feature.py
 from __future__ import annotations
 
-from stephanie.scoring.metrics.base_feature import BaseFeature
+from stephanie.scoring.metrics.feature.base_feature import BaseFeature
 from stephanie.tools.domain_tool import DomainTool
 
 

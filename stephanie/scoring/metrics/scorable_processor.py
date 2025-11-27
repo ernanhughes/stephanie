@@ -7,19 +7,19 @@ from dataclasses import asdict
 from typing import Any, Dict, List, Union
 
 from stephanie.constants import PIPELINE_RUN_ID
-from stephanie.scoring.metrics.domain_feature import DomainFeature
-from stephanie.scoring.metrics.embedding_feature import EmbeddingFeature
-from stephanie.scoring.metrics.metric_filter_group_feature import (
+from stephanie.scoring.metrics.feature.domain_feature import DomainFeature
+from stephanie.scoring.metrics.feature.embedding_feature import EmbeddingFeature
+from stephanie.scoring.metrics.feature.metric_filter_group_feature import (
     MetricFilterGroupFeature,
 )
-from stephanie.scoring.metrics.metrics_feature import MetricsFeature
-from stephanie.scoring.metrics.ner_feature import NerFeature
+from stephanie.scoring.metrics.feature.metrics_feature import MetricsFeature
+from stephanie.scoring.metrics.feature.ner_feature import NerFeature
 from stephanie.scoring.metrics.row_builder import RowBuilder
-from stephanie.scoring.metrics.text_feature import TextFeature
-from stephanie.scoring.metrics.frontier_lens_feature import (
+from stephanie.scoring.metrics.feature.text_feature import TextFeature
+from stephanie.scoring.metrics.feature.frontier_lens_feature import (
     FrontierLensFeature,
 )
-from stephanie.scoring.metrics.frontier_lens_group_feature import (
+from stephanie.scoring.metrics.feature.frontier_lens_group_feature import (
     FrontierLensGroupFeature,
 )
 from stephanie.scoring.scorable import Scorable, ScorableFactory
@@ -274,7 +274,7 @@ class ScorableProcessor(ProgressMixin):
 def _report_to_dict(rep, feature):
     # 1) FeatureReport dataclass → dict
     try:
-        from stephanie.scoring.metrics.feature_report import (
+        from stephanie.scoring.metrics.feature.feature_report import (
             FeatureReport,
         )  # adjust import if needed
 

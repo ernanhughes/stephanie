@@ -101,15 +101,10 @@ critic_scorer:
         short_circuit_if_locked: true
         include_visicalc_core: false
         visicalc_core_names:
-          - "frontier_util"
-          - "stability"
-          - "middle_dip"
-          - "std_dev"
-          - "sparsity"
-          - "entropy"
-          - "trend"
-          - "HRM.aggregate"
         always_include:
+          - "tiny.aggregate"
+          - "svm.aggregate"
+          - "Tiny.faithfulness.attr.scm.aggregate01"
 
       # 2) Cohort VisiCalc (heavy batch) + feature lock
       frontier_lens_group:
@@ -117,7 +112,7 @@ critic_scorer:
         # Runs cohort analysis on the filtered metric matrix; attaches per-row
         # visicalc_features / visicalc_feature_names / visicalc_report / visicalc_quality
         episode_id: "critic:${hydra:runtime.run_dir}"  # any unique tag is fine
-        frontier_metric: "HRM.aggregate"
+        frontier_metric: "Tiny.faithfulness.attr.scm.aggregate01"
         row_region_splits: 4
         frontier_low: 0.25
         frontier_high: 0.75
