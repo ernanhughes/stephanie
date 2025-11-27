@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import fnmatch
-import hashlib
 import logging
 from pathlib import Path
 from typing import Any, Dict, List
@@ -9,11 +8,13 @@ from typing import Any, Dict, List
 import numpy as np
 
 from stephanie.scoring.metrics.base_group_feature import BaseGroupFeature
+from stephanie.scoring.metrics.core_metrics import CORE_METRIC_MAPPING
 from stephanie.scoring.metrics.feature_report import FeatureReport
 from stephanie.scoring.metrics.metric_filter import MetricFilter
 from stephanie.scoring.metrics.metric_filter_explain import \
     write_metric_filter_explain
 from stephanie.utils.hash_utils import hash_list
+from stephanie.constants import PIPELINE_RUN_ID
 
 log = logging.getLogger(__name__)
 
@@ -66,13 +67,13 @@ class MetricFilterGroupFeature(BaseGroupFeature):
             # common default if none provided
             if not core:
                 core = [
-                    "Visi.frontier_util","Visi.stability","Visi.middle_dip","Visi.std_dev",
-                    "Visi.sparsity","Visi.entropy","Visi.trend","HRM.aggregate"
+                    "frontier_util","stability","middle_dip","std_dev",
+                    "sparsity","entropy","trend","HRM.aggregate"
                 ]
+            # Ensure we're using canonical names
+            core = [CORE_METRIC_MAPPING.get(name.lower(), name) for name in core]
             self.always_include.extend([c for c in core if c not in self.always_include])
 
-        self.always_include: list[str] = list(cfg.get("always_include", []) or [])
-        self.explain_cfg = dict(cfg.get("explain", {}) or {})
 
         # Internal
         self._last_summary: Dict[str, Any] | None = None
@@ -83,7 +84,7 @@ class MetricFilterGroupFeature(BaseGroupFeature):
         if not self.enabled or not rows:
             return rows
 
-        run_id = context.get("pipeline_run_id") or context.get("run_id") or "unknown"
+        run_id = context.get(PIPELINE_RUN_ID)
         run_dir = Path(context.get("run_dir") or f"runs/critic/{run_id}")
         run_dir.mkdir(parents=True, exist_ok=True)
 
@@ -162,41 +163,61 @@ class MetricFilterGroupFeature(BaseGroupFeature):
             }
         }
 
-        # (D) Run the metric filter selection
-        keep_mask, selected_names = self.filter.select(uniq_cols, X, labels=context.get("labels"))
+        # (D) Resolve always-include/core metrics against the universe
+        core_names = self._resolve_always_include(uniq_cols)
+        core_set = set(core_names)
 
-        # (E) Always-include columns (append any missing; preserve relative order)
-        forced_in = []
-        have = set(selected_names)
-        # --- Always-include core columns ---------------------------------
-        if self.always_include:
-            # Ensure all exist in union and append any missing to the selection in a stable way
-            extra = [n for n in self.always_include if n in names_union and n not in selected_names]
-            if extra:
-                selected_names = selected_names + extra
+        # (E) Run the metric filter selection on NON-core columns only
+        candidate_cols = [n for n in uniq_cols if n not in core_set]
+        selected_names: List[str] = []
+        if candidate_cols:
+            # Build candidate matrix
+            cand_idx = [name_to_idx[n] for n in candidate_cols]
+            X_cand = X[:, cand_idx]
 
-        if not selected_names:
-            log.warning("[MetricFilterGroupFeature] selection empty; falling back to all columns")
+            keep_mask, selected_subset = self.filter.select(
+                candidate_cols, X_cand, labels=context.get("labels")
+            )
+            # ensure list
+            selected_names = list(selected_subset or [])
+        else:
+            keep_mask = None
+            selected_names = []
+
+        # (F) If everything got dropped, fall back gracefully
+        if not core_names and not selected_names:
+            log.warning(
+                "[MetricFilterGroupFeature] selection empty; falling back to all columns"
+            )
             selected_names = list(uniq_cols)
 
-        # (F) Categorize drops for the report
-        selected_set = set(selected_names)
-        raw_set = set(uniq_cols)
+        # (G) Compose final kept set: core first, then filtered candidates
+        final_selected = core_names + [n for n in selected_names if n not in core_set]
+
+        # Track which came from always_include for the summary
+        forced_in = [n for n in core_names if n not in candidate_cols]
+        if not forced_in and core_names:
+            # core_names were present in candidate_cols but bypassed the filter by design,
+            # so treat them as forced as well.
+            forced_in = list(core_names)
+
+        # (H) Categorize drops for the report
+        selected_set = set(final_selected)
         actually_dropped = [n for n in uniq_cols if n not in selected_set]
 
         dropped_by_pattern = [n for n in actually_dropped if (_match_any(n, exclude_pats) or (include_pats and not _match_any(n, include_pats)))]
         dropped_by_simvar = [n for n in actually_dropped if n not in dropped_by_pattern]
 
-        # (G) Project rows and persist locks + summary
-        _project_rows_to_names(rows, selected_names)
+        # (I) Project rows and persist locks + summary
+        _project_rows_to_names(rows, final_selected)
 
-        # Write lock file
-        (run_dir / "kept_features.txt").write_text("\n".join(selected_names), encoding="utf-8")
+        # (J) Write lock file
+        (run_dir / "kept_features.txt").write_text("\n".join(final_selected), encoding="utf-8")
 
-        digest = hash_list(selected_names)
+        digest = hash_list(final_selected)
         summary = {
             "status": "ok",
-            "kept_count": len(selected_names),
+            "kept_count": len(final_selected),
             "total_raw": len(uniq_cols),
             "kept_digest": digest,
             "forced_in": forced_in[:20],
@@ -213,20 +234,21 @@ class MetricFilterGroupFeature(BaseGroupFeature):
                 },
             },
             "samples": {
-                "kept_head": selected_names[:20],
+                "kept_head": final_selected[:20],
                 "raw_head": uniq_cols[:20],
             },
         }
         self._last_summary = summary
-        self._last_selected = list(selected_names)
+        self._last_selected = list(final_selected)
 
-        self._persist_summary(context, summary, kept=selected_names)
+        # (K) Persist to MetricStore
+        self._persist_summary(context, summary, kept=final_selected)
 
         log.info("[MetricFilterGroupFeature] kept %d of %d metrics (forced +%d) digest=%s",
                  summary["kept_count"], summary["total_raw"], len(forced_in), digest)
 
 
-        # (H) Write detailed explain report (MD + CSV + quick figs)
+        # (L) Write detailed explain report (MD + CSV + quick figs)
         try:
             # ---- Build diagnostics with safe fallbacks ----
             # union of columns seen pre-filter
@@ -275,7 +297,7 @@ class MetricFilterGroupFeature(BaseGroupFeature):
                 run_dir=run_dir,
                 names_union=names_union,
                 rows=rows,                              # current (post-application) rows are fine: we rebuild union X inside writer
-                kept_names=list(selected_names),
+                kept_names=list(final_selected),
                 dup_pairs=list(dup_pairs),
                 nonfinite_idx=list(nonfinite_idx),
                 lowvar_idx=list(lowvar_idx),
@@ -327,3 +349,89 @@ class MetricFilterGroupFeature(BaseGroupFeature):
             details=self._last_summary,
             warnings=[],
         )
+
+    def _strip_alias(self, name: str) -> str:
+        """
+        Alias-stripping logic consistent with MetricFilter.alias_strip:
+        'Visi.frontier_util' -> 'frontier_util'
+        """
+        return name.split(".", 1)[1] if "." in name else name
+
+    def _resolve_always_include(self, names_union: List[str]) -> List[str]:
+        """
+        Map self.always_include (which may be bare names or alias-prefixed)
+        to actual column names present in names_union.
+
+        - If an entry already exists in names_union, use it.
+        - Else try to match by alias-stripped stem.
+        - Log a warning for anything that can't be resolved.
+        """
+        if not self.always_include:
+            return []
+
+        union_set = set(names_union)
+
+        # Build stem -> [full names] index from the universe
+        stem_to_full: Dict[str, List[str]] = {}
+        for n in names_union:
+            stem = self._strip_alias(n).casefold()
+            stem_to_full.setdefault(stem, []).append(n)
+
+        resolved: List[str] = []
+        for raw in self.always_include:
+            # 1) Exact match
+            if raw in union_set:
+                resolved.append(raw)
+                continue
+
+            # 2) Match by stem
+            stem = self._strip_alias(raw).casefold()
+            candidates = stem_to_full.get(stem)
+            if candidates:
+                # Pick a stable representative (first occurrence)
+                resolved.append(candidates[0])
+            else:
+                log.warning(
+                    "[MetricFilterGroupFeature] always_include '%s' not found in metric universe",
+                    raw,
+                )
+
+        # De-duplicate while preserving order
+        seen: set[str] = set()
+        out: List[str] = []
+        for n in resolved:
+            if n not in seen:
+                seen.add(n)
+                out.append(n)
+        return out
+
+    def _order_core_first(self, selected_names: List[str], core_names: List[str]) -> List[str]:
+        """
+        Ensure core_names appear first (in the order given), and preserve
+        the relative ordering of the remaining names.
+        """
+        core_set = set(core_names)
+        core_block: List[str] = []
+        other_block: List[str] = []
+
+        for n in selected_names:
+            if n in core_set:
+                core_block.append(n)
+            else:
+                other_block.append(n)
+
+        # Make sure any core_names not in selected_names (but resolved from universe)
+        # are still included at the very front, in the order of core_names.
+        final_core: List[str] = []
+        seen = set()
+        for n in core_names:
+            if n not in seen:
+                seen.add(n)
+                final_core.append(n)
+        # Now merge with any that came from selected_names but weren't in core_names order
+        for n in core_block:
+            if n not in seen:
+                seen.add(n)
+                final_core.append(n)
+
+        return final_core + [n for n in other_block if n not in seen]

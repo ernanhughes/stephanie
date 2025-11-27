@@ -16,7 +16,7 @@ from stephanie.scoring.metrics.metric_importance import (
     compute_metric_importance, save_metric_importance_json)
 from stephanie.scoring.metrics.metric_mapping import MetricMapper
 from stephanie.scoring.metrics.scorable_processor import ScorableProcessor
-from stephanie.scoring.metrics.visicalc import (VisiCalc,
+from stephanie.scoring.metrics.visicalc import (FrontierLens,
                                                 graph_quality_from_report)
 from stephanie.utils.json_sanitize import dumps_safe
 
@@ -340,7 +340,7 @@ class CriticCohortAgent(BaseAgent):
 
                 # ---- Targeted cohort ----
                 if rows_tgt:
-                    vc_tgt, metric_keys_tgt = self._compute_visicalc_for_rows(
+                    vc_tgt, metric_keys_tgt = self._compute_frontier_lens_for_rows(
                         rows_tgt,
                         cohort_label="targeted",
                     )
@@ -364,7 +364,7 @@ class CriticCohortAgent(BaseAgent):
 
                 # ---- Baseline cohort ----
                 if rows_base:
-                    vc_base, metric_keys_base = self._compute_visicalc_for_rows(
+                    vc_base, metric_keys_base = self._compute_frontier_lens_for_rows(
                         rows_base,
                         cohort_label="baseline",
                     )
@@ -511,7 +511,7 @@ class CriticCohortAgent(BaseAgent):
             # Case B: single cohort only (no A/B comparison)
             # ------------------------------------------------------------------
             else:
-                vc, used_metric_keys = self._compute_visicalc_for_rows(
+                vc, used_metric_keys = self._compute_frontier_lens_for_rows(
                     rows,
                     cohort_label="cohort",
                 )
@@ -534,7 +534,7 @@ class CriticCohortAgent(BaseAgent):
 
         return context
 
-    def _compute_visicalc_for_rows(
+    def _compute_frontier_lens_for_rows(
         self,
         rows: List[dict],
         cohort_label: str,
@@ -575,7 +575,7 @@ class CriticCohortAgent(BaseAgent):
         # 3) Build VisiCalc episode + report
         episode_id = f"{self.name}:{cohort_label}"
 
-        vc = VisiCalc.from_matrix(
+        vc = FrontierLens.from_matrix(
             episode_id=episode_id,
             scores=vpm,
             metric_names=metric_names,

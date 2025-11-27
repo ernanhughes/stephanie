@@ -32,16 +32,10 @@ ALIAS_MAP = {
 }
 
 def canonicalize_metric_names(names: list[str]) -> list[str]:
-    return [ALIAS_MAP.get(n, n) for n in names]
+    result = [ALIAS_MAP.get(n, n) for n in names]
+    result.extend(CORE_FEATURE_NAMES)
+    return list(set(result))
 
-def _ensure_dir(p: Path) -> None:
-    """Ensure directory exists with proper error handling."""
-    try:
-        p.mkdir(parents=True, exist_ok=True)
-        return True
-    except Exception as e:
-        log.error(f"Failed to create directory {p}: {e}")
-        return False
 
 def _load_metric_means_from_csv(run_dir: Path, label: str) -> dict:
     """

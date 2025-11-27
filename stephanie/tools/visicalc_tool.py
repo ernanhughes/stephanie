@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional, Sequence
 import numpy as np
 
 from stephanie.scoring.metrics.metric_mapping import MetricMapper
-from stephanie.scoring.metrics.visicalc import VisiCalc
+from stephanie.scoring.metrics.visicalc import FrontierLens
 from stephanie.tools.base_tool import BaseTool
 
 log = logging.getLogger(__name__)
@@ -106,7 +106,7 @@ class VisiCalcTool(BaseTool):
                 "quality": None,  # ← was {}. Make it None so callers can treat “no signal” cleanly
             }
 
-        vc = VisiCalc.from_matrix(
+        vc = FrontierLens.from_matrix(
             episode_id      = episode_id,
             scores          = vpm,
             metric_names    = metric_names,

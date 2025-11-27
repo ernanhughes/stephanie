@@ -7,19 +7,23 @@ import time
 from dataclasses import asdict
 from typing import Any, Dict, List, Union
 
+from stephanie.constants import PIPELINE_RUN_ID
 from stephanie.scoring.metrics.domain_feature import DomainFeature
 from stephanie.scoring.metrics.embedding_feature import EmbeddingFeature
 from stephanie.scoring.metrics.feature_report import FeatureReport
-from stephanie.scoring.metrics.metric_filter_group_feature import \
-    MetricFilterGroupFeature
+from stephanie.scoring.metrics.metric_filter_group_feature import (
+    MetricFilterGroupFeature,
+)
 from stephanie.scoring.metrics.metrics_feature import MetricsFeature
 from stephanie.scoring.metrics.ner_feature import NerFeature
 from stephanie.scoring.metrics.row_builder import RowBuilder
 from stephanie.scoring.metrics.text_feature import TextFeature
-from stephanie.scoring.metrics.visicalc_basic_feature import \
-    VisiCalcBasicFeature
-from stephanie.scoring.metrics.visicalc_group_feature import \
-    VisiCalcGroupFeature
+from stephanie.scoring.metrics.visicalc_basic_feature import (
+    VisiCalcBasicFeature,
+)
+from stephanie.scoring.metrics.visicalc_group_feature import (
+    VisiCalcGroupFeature,
+)
 from stephanie.scoring.scorable import Scorable, ScorableFactory
 from stephanie.utils.progress_mixin import ProgressMixin
 
@@ -82,25 +86,32 @@ class ScorableProcessor(ProgressMixin):
 
         # ---------- Group features ----------
         self.group_features = []
-        for name, subcfg in (self.cfg.get("group_feature_configs", {}) or {}).items():
+        for name, subcfg in (
+            self.cfg.get("group_feature_configs", {}) or {}
+        ).items():
             cls = GROUP_FEATURE_REGISTRY.get(name)
             if not cls:
-                log.warning("[SP] unknown group feature '%s'", name); continue
-            gf = cls(                  # MUST pass the sub-config
-                cfg=subcfg,            # ← not `cfg`
+                log.warning("[SP] unknown group feature '%s'", name)
+                continue
+            gf = cls(  # MUST pass the sub-config
+                cfg=subcfg,  # ← not `cfg`
                 memory=self.memory,
                 container=self.container,
                 logger=self.logger,
             )
             if gf.enabled:
                 self.group_features.append(gf)
-                log.info("[SP] group feature loaded: %s → %s", name, cls.__name__)
+                log.info(
+                    "[SP] group feature loaded: %s → %s", name, cls.__name__
+                )
 
         # ---------- Row builder ----------
         self.row_builder = RowBuilder()
 
         # ---------- Writers (optional legacy) ----------
-        self.writers = self.cfg.get("writers", [])  # consider removing entirely later
+        self.writers = self.cfg.get(
+            "writers", []
+        )  # consider removing entirely later
 
         # ---------- Progress + misc ----------
         self._init_progress(self.container, self.logger)
@@ -116,14 +127,26 @@ class ScorableProcessor(ProgressMixin):
         context: Dict[str, Any],
     ) -> Dict[str, Any]:
         t0 = time.perf_counter()
-        scorable = input_data if isinstance(input_data, Scorable) else ScorableFactory.from_dict(input_data)
+        scorable = (
+            input_data
+            if isinstance(input_data, Scorable)
+            else ScorableFactory.from_dict(input_data)
+        )
         acc: Dict[str, Any] = {}
 
         for feature in self.features:
             try:
+                log.info(
+                    f"[ScorableProcessor] applying feature: {feature.name}"
+                )
                 acc = await feature.apply(scorable, acc, context)
+                log.info(
+                    f"[ScorableProcessor] applied feature: {feature.name}"
+                )
             except Exception as e:
-                log.warning(f"[ScorableProcessor] Feature {feature.name} failed: {e}")
+                log.warning(
+                    f"[ScorableProcessor] Feature {feature.name} failed: {e}"
+                )
 
         row_obj = self.row_builder.build(scorable, acc)
         row = row_obj.to_dict()
@@ -132,7 +155,9 @@ class ScorableProcessor(ProgressMixin):
             try:
                 await writer.persist(scorable, acc)
             except Exception as e:
-                log.warning(f"[ScorableProcessor] Writer {getattr(writer,'name','writer')} failed: {e}")
+                log.warning(
+                    f"[ScorableProcessor] Writer {getattr(writer, 'name', 'writer')} failed: {e}"
+                )
 
         log.debug(
             "[ScorableProcessor] done id=%s in %.2f ms",
@@ -153,7 +178,9 @@ class ScorableProcessor(ProgressMixin):
         n = len(inputs)
         t_all = time.perf_counter()
 
-        task_rows = f"ScorableProcess:rows:{context.get('pipeline_run_id','na')}"
+        task_rows = (
+            f"ScorableProcess:rows:{context.get(PIPELINE_RUN_ID, 'na')}"
+        )
         self.pstart(task=task_rows, total=n)
 
         rows: List[Dict[str, Any]] = []
@@ -166,29 +193,45 @@ class ScorableProcessor(ProgressMixin):
             self.pdone(task=task_rows)
 
         # Optional: enforce simple dependencies if group features declare `requires`
-        available = {getattr(f, "name", f"f{idx}") for idx, f in enumerate(self.group_features)}
+        available = {
+            getattr(f, "name", f"f{idx}")
+            for idx, f in enumerate(self.group_features)
+        }
         for gf in self.group_features:
             reqs = getattr(gf, "requires", []) or []
             missing = [r for r in reqs if r not in available]
             if missing:
-                log.warning(f"[SP] group feature '{gf.name}' missing requirements: {missing}")
+                log.warning(
+                    f"[SP] group feature '{gf.name}' missing requirements: {missing}"
+                )
 
-        task_group = f"ScorableProcess:group:{context.get('pipeline_run_id','na')}"
+        task_group = (
+            f"ScorableProcess:group:{context.get('pipeline_run_id', 'na')}"
+        )
         self.pstart(task=task_group, total=len(self.group_features))
         try:
             for i, gf in enumerate(self.group_features, start=1):
                 try:
+                    log.info(
+                        f"[ScorableProcessor] applying group feature: {gf.name}"
+                    )
                     rows = await gf.apply(rows, context)
+                    log.info(
+                        f"[ScorableProcessor] applied group feature: {gf.name}"
+                    )
                 except Exception as e:
-                    log.warning(f"[ScorableProcessor] Group feature {gf.name} failed: {e}")
-                self.ptick(task=task_group, done=i, total=len(self.group_features))
+                    log.warning(
+                        f"[ScorableProcessor] Group feature {gf.name} failed: {e}"
+                    )
+                self.ptick(
+                    task=task_group, done=i, total=len(self.group_features)
+                )
         finally:
             self.pdone(task=task_group)
 
-
         if context is not None:
             context.setdefault("feature_reports", self.feature_reports())
-        
+
         log.debug(
             "[ScorableProcessor] batch_size=%d finished in %.2f ms",
             n,
@@ -204,38 +247,46 @@ class ScorableProcessor(ProgressMixin):
                 try:
                     reps.append(_report_to_dict(f.report(), f))
                 except Exception as e:
-                    reps.append({
-                        "name": getattr(f, "name", f.__class__.__name__),
-                        "kind": getattr(f, "kind", "row"),
-                        "ok": False,
-                        "summary": "report() raised",
-                        "details": {"error": str(e)},
-                    })
+                    reps.append(
+                        {
+                            "name": getattr(f, "name", f.__class__.__name__),
+                            "kind": getattr(f, "kind", "row"),
+                            "ok": False,
+                            "summary": "report() raised",
+                            "details": {"error": str(e)},
+                        }
+                    )
         # group features
         for gf in self.group_features:
             if hasattr(gf, "report"):
                 try:
                     reps.append(_report_to_dict(gf.report(), gf))
                 except Exception as e:
-                    reps.append({
-                        "name": getattr(gf, "name", gf.__class__.__name__),
-                        "kind": getattr(gf, "kind", "group"),
-                        "ok": False,
-                        "summary": "report() raised",
-                        "details": {"error": str(e)},
-                    })
+                    reps.append(
+                        {
+                            "name": getattr(gf, "name", gf.__class__.__name__),
+                            "kind": getattr(gf, "kind", "group"),
+                            "ok": False,
+                            "summary": "report() raised",
+                            "details": {"error": str(e)},
+                        }
+                    )
         return reps
 
 
 def _report_to_dict(rep, feature):
     # 1) FeatureReport dataclass → dict
     try:
-        from stephanie.scoring.metrics.feature_report import \
-            FeatureReport  # adjust import if needed
+        from stephanie.scoring.metrics.feature_report import (
+            FeatureReport,
+        )  # adjust import if needed
+
         if isinstance(rep, FeatureReport):
             d = asdict(rep)
             # ensure minimal fields
-            d.setdefault("name", getattr(feature, "name", feature.__class__.__name__))
+            d.setdefault(
+                "name", getattr(feature, "name", feature.__class__.__name__)
+            )
             d.setdefault("kind", getattr(feature, "kind", "row"))
             return d
     except Exception:
@@ -244,7 +295,9 @@ def _report_to_dict(rep, feature):
     # 2) Already a mapping → ensure name/kind
     if isinstance(rep, dict):
         rep = dict(rep)
-        rep.setdefault("name", getattr(feature, "name", feature.__class__.__name__))
+        rep.setdefault(
+            "name", getattr(feature, "name", feature.__class__.__name__)
+        )
         rep.setdefault("kind", getattr(feature, "kind", "row"))
         rep.setdefault("ok", rep.get("ok", True))
         return rep

@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 from zeromodel.pipeline.organizer.top_left import TopLeft
 
-from stephanie.scoring.metrics.visicalc import (VisiCalcEpisode,
+from stephanie.scoring.metrics.visicalc import (FrontierLensEpisode,
                                                 episode_features)
 
 # If you’ve moved VisiCalcReport into Stephanie core, you can also
@@ -58,7 +58,7 @@ def _episode_from_scores(
       - feature names
       - a simple scalar 'quality' (mean frontier-ish)
     """
-    episode = VisiCalcEpisode(
+    episode = FrontierLensEpisode(
         episode_id=episode_id,
         scores=scores,
         metric_names=list(metric_names),
