@@ -11,14 +11,21 @@ from typing import List, Tuple
 import numpy as np
 
 from stephanie.scoring.metrics.dynamic_features import (
-    build_dynamic_feature_vector, load_core_metric_names)
+    build_dynamic_feature_vector,
+)
 
 log = logging.getLogger(__name__)
 
 CORE_METRIC_PATH = Path("config/core_metrics.json")
 CORE_FEATURE_NAMES = [
-    "stability", "middle_dip", "std_dev", "sparsity",
-    "entropy", "trend", "mid_bad_ratio", "frontier_util"
+    "stability",
+    "middle_dip",
+    "std_dev",
+    "sparsity",
+    "entropy",
+    "trend",
+    "mid_bad_ratio",
+    "frontier_util",
 ]
 CORE_FEATURE_COUNT = len(CORE_FEATURE_NAMES)
 
@@ -30,6 +37,7 @@ ALIAS_MAP = {
     "Tiny.coverage.attr.values[1]": "Tiny.coverage.attr.tiny.score100",
     "Tiny.coverage.attr.vector.tiny.score100": "Tiny.coverage.attr.tiny.score100",
 }
+
 
 def canonicalize_metric_names(names: list[str]) -> list[str]:
     result = [ALIAS_MAP.get(n, n) for n in names]
@@ -63,9 +71,13 @@ def _load_metric_means_from_csv(run_dir: Path, label: str) -> dict:
                     continue
                 values = row[1:]
                 # coerce to float; blank → 0.0
-                vals = [float(v) if v not in ("", None) else 0.0 for v in values]
+                vals = [
+                    float(v) if v not in ("", None) else 0.0 for v in values
+                ]
                 if len(vals) != len(metric_names):
-                    raise ValueError(f"{csv_name}: row width mismatch at line {cnt+2}")
+                    raise ValueError(
+                        f"{csv_name}: row width mismatch at line {cnt + 2}"
+                    )
                 for i, v in enumerate(vals):
                     sums[i] += v
                 cnt += 1
@@ -79,6 +91,7 @@ def _load_metric_means_from_csv(run_dir: Path, label: str) -> dict:
         log.error(f"Failed to load metric means from {csv_path}: {e}")
         return {}
 
+
 def load_metrics_for_run(run_dir: Path, label: str) -> dict:
     """
     Load metrics from CSV matrix first, then fall back to JSON.
@@ -88,7 +101,9 @@ def load_metrics_for_run(run_dir: Path, label: str) -> dict:
     # 1) CSV means (new path)
     means = _load_metric_means_from_csv(run_dir, label)
     if means:
-        log.info(f"✅ Loaded {len(means)} metrics from CSV for {label} in {run_dir.name}")
+        log.info(
+            f"✅ Loaded {len(means)} metrics from CSV for {label} in {run_dir.name}"
+        )
         return means
 
     # 2) Fallback JSON (legacy path)
@@ -102,9 +117,12 @@ def load_metrics_for_run(run_dir: Path, label: str) -> dict:
         except Exception as e:
             log.error(f"❌ Failed to load metrics from {metrics_path}: {e}")
     else:
-        log.debug(f"ℹ️ No metrics file for {label} at {metrics_path}, using defaults")
+        log.debug(
+            f"ℹ️ No metrics file for {label} at {metrics_path}, using defaults"
+        )
 
     return {}
+
 
 def load_frontier_lens_report(path: Path) -> dict:
     """Load FrontierLens report with detailed error handling."""
@@ -113,9 +131,11 @@ def load_frontier_lens_report(path: Path) -> dict:
         with path.open("r", encoding="utf-8") as f:
             data = json.load(f)
         # Validate expected structure
-        required_keys = ['frontier', 'global', 'regions']
+        required_keys = ["frontier", "global", "regions"]
         if not all(k in data for k in required_keys):
-            log.warning(f"⚠️  FrontierLens report missing expected keys: {required_keys}")
+            log.warning(
+                f"⚠️  FrontierLens report missing expected keys: {required_keys}"
+            )
         log.info(
             f"✅ Successfully loaded FrontierLens report: {path.name} "
             f"(keys: {list(data.keys()) if data else 'empty'})"
@@ -125,7 +145,10 @@ def load_frontier_lens_report(path: Path) -> dict:
         log.error(f"❌ Failed to load FrontierLens report {path}: {e}")
         raise
 
-def collect_frontier_lens_samples(metric_names: list[str], visicalc_root: str | Path) -> Tuple[np.ndarray, np.ndarray, List[str], List[str]]:
+
+def collect_frontier_lens_samples(
+    metric_names: list[str], visicalc_root: str | Path
+) -> Tuple[np.ndarray, np.ndarray, List[str], List[str]]:
     """
     Collect VisiCalc samples with proper core/dynamic feature handling.
     Returns:
@@ -139,7 +162,9 @@ def collect_frontier_lens_samples(metric_names: list[str], visicalc_root: str | 
     X: List[np.ndarray] = []
     y: List[int] = []
 
-    log.info(f"🔍 Starting VisiCalc sample collection from: {visicalc_root.absolute()}")
+    log.info(
+        f"🔍 Starting VisiCalc sample collection from: {visicalc_root.absolute()}"
+    )
 
     if not visicalc_root.exists():
         log.error(f"❌ VisiCalc root directory not found: {visicalc_root}")
@@ -157,7 +182,9 @@ def collect_frontier_lens_samples(metric_names: list[str], visicalc_root: str | 
     groups: list[str] = []
     for run_dir in all_dirs:
         processed_runs += 1
-        log.info(f"🔄 Processing run {processed_runs}/{len(all_dirs)}: {run_dir.name}")
+        log.info(
+            f"🔄 Processing run {processed_runs}/{len(all_dirs)}: {run_dir.name}"
+        )
 
         targeted_path = run_dir / "visicalc_targeted.json"
         baseline_path = run_dir / "visicalc_baseline.json"
@@ -192,9 +219,7 @@ def collect_frontier_lens_samples(metric_names: list[str], visicalc_root: str | 
                 f"🔧 Building combined features for targeted report {targeted_path}"
             )
             xt = build_dynamic_feature_vector(
-                targeted_report,
-                targeted_metrics,
-                metric_names
+                targeted_report, targeted_metrics, metric_names
             )
             # Validate feature vector length
             if len(xt) != len(metric_names):
@@ -206,11 +231,11 @@ def collect_frontier_lens_samples(metric_names: list[str], visicalc_root: str | 
                 if len(xt) < len(metric_names):
                     xt = np.pad(xt, (0, len(metric_names) - len(xt)))
                 else:
-                    xt = xt[:len(metric_names)]
+                    xt = xt[: len(metric_names)]
 
             X.append(xt)
             y.append(1)
-            groups.append(run_dir.name) # Group for targeted sample
+            groups.append(run_dir.name)  # Group for targeted sample
 
             log.info(
                 f"✅ Targeted combined features: shape={xt.shape}, dtype={xt.dtype}"
@@ -221,9 +246,7 @@ def collect_frontier_lens_samples(metric_names: list[str], visicalc_root: str | 
                 f"🔧 Building combined features for baseline report {baseline_path}"
             )
             xb = build_dynamic_feature_vector(
-                baseline_report,
-                baseline_metrics,
-                metric_names
+                baseline_report, baseline_metrics, metric_names
             )
             # Validate feature vector length
             if len(xb) != len(metric_names):
@@ -235,11 +258,11 @@ def collect_frontier_lens_samples(metric_names: list[str], visicalc_root: str | 
                 if len(xb) < len(metric_names):
                     xb = np.pad(xb, (0, len(metric_names) - len(xb)))
                 else:
-                    xb = xb[:len(metric_names)]
+                    xb = xb[: len(metric_names)]
 
             X.append(xb)
             y.append(0)
-            groups.append(run_dir.name) # Group for baseline sample
+            groups.append(run_dir.name)  # Group for baseline sample
 
             log.info(
                 f"✅ Baseline combined features: shape={xb.shape}, dtype={xb.dtype}"
@@ -286,19 +309,20 @@ def collect_frontier_lens_samples(metric_names: list[str], visicalc_root: str | 
         "📈 Dataset statistics: Targeted samples (y=1): %d, Baseline samples (y=0): %d, "
         "Feature range: [%.3f, %.3f]",
         int(np.sum(y_arr == 1)),
-        int(np.sum(y_arr == 0)), 
+        int(np.sum(y_arr == 0)),
         float(X_arr.min()),
         float(X_arr.max()),
     )
 
     return X_arr, y_arr, metric_names, groups
 
+
 def save_dataset(
     X: np.ndarray,
     y: np.ndarray,
     metric_names: List[str],
     groups: List[str],
-    out_path: str | Path
+    out_path: str | Path,
 ) -> None:
     """Save dataset with metric names and groups included and comprehensive logging."""
     out_path = Path(out_path)
@@ -311,10 +335,14 @@ def save_dataset(
             X=X,
             y=y,
             metric_names=np.array(metric_names, dtype=object),
-            groups=np.array(groups, dtype=object) # Include groups for later CV
+            groups=np.array(
+                groups, dtype=object
+            ),  # Include groups for later CV
         )
         # Log file info
-        file_size = out_path.stat().st_size / (1024 * 1024) if out_path.exists() else 0
+        file_size = (
+            out_path.stat().st_size / (1024 * 1024) if out_path.exists() else 0
+        )
         log.info(
             "✅ Dataset saved successfully! File: %s Size: %.2f MB X.shape: %s y.shape: %s",
             out_path,
@@ -325,6 +353,7 @@ def save_dataset(
     except Exception as e:
         log.error(f"❌ Failed to save dataset: {e}")
         raise
+
 
 def main(args):
     """Main function for dataset generation."""
@@ -351,10 +380,15 @@ def main(args):
         core_dim = CORE_FEATURE_COUNT
         core_block = X[:, :core_dim]
         if np.isnan(core_block).any():
-            raise ValueError("NaN in VisiCalc core features — check VisiCalc computation.")
+            raise ValueError(
+                "NaN in VisiCalc core features — check VisiCalc computation."
+            )
         zero_var_core = int((core_block.std(axis=0) <= 1e-12).sum())
         if zero_var_core:
-            log.warning("VisiCalc: %d core features are ~constant across samples", zero_var_core)
+            log.warning(
+                "VisiCalc: %d core features are ~constant across samples",
+                zero_var_core,
+            )
 
         # 3. Save full dataset (including groups)
         save_dataset(X, y, metric_names, groups, out)
@@ -362,16 +396,21 @@ def main(args):
         log.info("🎉 Tiny Critic Dataset generation completed successfully!")
 
     except Exception as e:
-        log.error(f"💥 Failed to create Tiny Critic Dataset: {e}", exc_info=True)
+        log.error(
+            f"💥 Failed to create Tiny Critic Dataset: {e}", exc_info=True
+        )
         raise
+
 
 if __name__ == "__main__":
     # Keep core_dim for consistency, but it's primarily used in the reporting script now
-    p = argparse.ArgumentParser(description="Tiny Critic Dataset Builder (Data Generation Only)")
+    p = argparse.ArgumentParser(
+        description="Tiny Critic Dataset Builder (Data Generation Only)"
+    )
     p.add_argument(
         "--core_dim",
         type=int,
         default=CORE_FEATURE_COUNT,
-        help="Number of core VisiCalc features (for consistency, used in reporting script)"
+        help="Number of core VisiCalc features (for consistency, used in reporting script)",
     )
     main(p.parse_args())

@@ -24,6 +24,7 @@ from sklearn.pipeline import Pipeline, make_pipeline
 from sklearn.preprocessing import StandardScaler
 
 from stephanie.components.critic.model.trainer import load_dataset
+from stephanie.components.critic.reports.training_report import generate_training_reports
 from stephanie.utils.hash_utils import hash_list
 
 log = logging.getLogger(__name__)
@@ -101,7 +102,7 @@ class CriticTrainer:
         self.lock_store_meta_key: str = self.cfg.get("lock_store_meta_key", "metric_filter.kept")
 
         # visualization directory
-        self.viz_dir = Path(self.cfg.get("viz_dir", "data/visualizations/critic"))
+        self.viz_dir = Path(self.cfg.get("viz_dir", f"runs/critic/{self.run_id}/visualizations/"))
         self.viz_dir.mkdir(parents=True, exist_ok=True)
 
         # directionality
@@ -398,21 +399,26 @@ class CriticTrainer:
         except Exception as e:
             log.warning("Could not write critic.features.txt: %s", e)
 
-        # Plots are best-effort (never break training)
+        # Training reports are best-effort (never break training)
         try:
-            self._plot_coefficients(model, names, self.viz_dir / "coef_importance.png")
+            extra_meta = {
+                "locked_source": locked_source,
+                "run_id": self.run_id,
+                "model_path": str(self.model_path),
+                "viz_dir": str(self.viz_dir),
+            }
+            generate_training_reports(
+                model=model,
+                feature_names=names,
+                cv_summary=cv,
+                holdout_summary=holdout,
+                X_holdout=Xva,
+                y_holdout=yva,
+                viz_dir=self.viz_dir,
+                extra_meta=extra_meta,
+            )
         except Exception as e:
-            log.warning("coef plot failed: %s", e)
-
-        try:
-            self._plot_holdout_cm(model, Xva, yva, self.viz_dir / "holdout_confusion.png")
-        except Exception as e:
-            log.warning("confusion plot failed: %s", e)
-
-        try:
-            self._plot_holdout_roc(model, Xva, yva, self.viz_dir / "holdout_roc.png")
-        except Exception as e:
-            log.warning("roc plot failed: %s", e)
+            log.warning("CriticTrainer: training reports failed: %s", e)
 
         # ---- Shadow pack (for CriticInference) ----
         try:
@@ -475,65 +481,6 @@ class CriticTrainer:
             "holdout_summary": holdout or {},
         }
         meta_path.write_text(json.dumps(meta, indent=2), encoding="utf-8")
-
-    # --- Plot helpers -----------------------------------------------------------
-    def _plot_coefficients(self, model, feature_names: List[str], out_path: Path, top_k: int = 30):
-        # unwrap pipeline to logisticregression step
-        try:
-            lr = None
-            for step in getattr(model, "steps", []):
-                if hasattr(step[1], "coef_"):
-                    lr = step[1]
-            if lr is None and hasattr(model, "coef_"):
-                lr = model
-            if lr is None:
-                raise ValueError("no linear model with coef_ found")
-            coefs = lr.coef_.ravel()
-        except Exception:
-            # maybe liblinear returns classes_[1] coef only when fitted; ensure we can extract
-            raise
-
-        order = np.argsort(np.abs(coefs))[::-1][: min(top_k, len(coefs))]
-        imp_names = [feature_names[i] for i in order]
-        imp_vals = coefs[order]
-
-        plt.figure(figsize=(8, max(4, len(order) * 0.25)))
-        sns.barplot(x=np.abs(imp_vals), y=imp_names, orient="h")
-        plt.title("TinyCritic | |coef| (top)")
-        plt.xlabel("|coef|")
-        plt.ylabel("feature")
-        plt.tight_layout()
-        out_path.parent.mkdir(parents=True, exist_ok=True)
-        plt.savefig(out_path)
-        plt.close()
-
-    def _plot_holdout_cm(self, model, X: np.ndarray, y: np.ndarray, out_path: Path):
-        if len(y) == 0 or len(np.unique(y)) < 2:
-            return
-        yhat = (model.predict_proba(X)[:, 1] >= 0.5).astype(int)
-        cm = confusion_matrix(y, yhat)
-        plt.figure(figsize=(5, 4))
-        sns.heatmap(cm, annot=True, fmt="d", cmap="Blues")
-        plt.title("TinyCritic | Holdout Confusion")
-        plt.xlabel("pred")
-        plt.ylabel("true")
-        plt.tight_layout()
-        out_path.parent.mkdir(parents=True, exist_ok=True)
-        plt.savefig(out_path)
-        plt.close()
-
-    def _plot_holdout_roc(self, model, X: np.ndarray, y: np.ndarray, out_path: Path):
-        if len(y) == 0 or len(np.unique(y)) < 2:
-            return
-        p = model.predict_proba(X)[:, 1]
-        plt.figure(figsize=(5, 4))
-        RocCurveDisplay.from_predictions(y, p)
-        plt.title("TinyCritic | Holdout ROC")
-        plt.tight_layout()
-        out_path.parent.mkdir(parents=True, exist_ok=True)
-        plt.savefig(out_path)
-        plt.close()
-
 
     def _build_pipeline(self):
         # median is robust; if you prefer zero-fill, use strategy="constant", fill_value=0.0

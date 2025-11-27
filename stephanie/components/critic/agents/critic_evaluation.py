@@ -25,6 +25,15 @@ from stephanie.components.critic.utils.stability_checker import (
 from stephanie.components.critic.utils.statistics import \
     paired_bootstrap_auc_diff
 
+from stephanie.components.critic.reports.validation import (
+    CORE_FEATURE_COUNT,
+    generate_dataset_report,
+    evaluate_all_features,
+    generate_visicalc_hypothesis_report,
+    _select_features_via_importance_core_aware,
+    _write_selected_feature_artifacts,
+)
+
 log = logging.getLogger(__name__)
 
 
@@ -402,7 +411,17 @@ class CriticEvaluationAgent(BaseAgent):
                 json.dump(downstream_results, f, indent=2)
 
 
-            # 9) Summary
+            # 9) Validation / VisiCalc-style reports
+            log.info("Running Tiny Critic / VisiCalc validation reports...")
+            validation_summary = self._run_validation_reports(
+                X=X,
+                y=y,
+                feature_names=feature_names,
+                groups=groups,
+            )
+
+
+            # 10) Summary markdown (top-level overview)
             self._generate_summary_report(
                 core_report=core_report,
                 downstream_report=downstream_report,
@@ -411,7 +430,7 @@ class CriticEvaluationAgent(BaseAgent):
                 sanity_report=sanity_report,
             )
 
-            # 9) Context
+            # 11) Context payload for downstream agents / UI
             context["full_evaluation"] = {
                 "report_dir": str(self.report_dir),
                 "core_metrics": core_report.get("metrics", {}),
@@ -419,7 +438,9 @@ class CriticEvaluationAgent(BaseAgent):
                 "feature_stability": stability_report,
                 "ablation_results": ablation_report.get("results", {}),
                 "sanity_check": sanity_report,
+                "validation": validation_summary,  # <- NEW: Tiny Critic / VisiCalc validation
             }
+
             log.info("✅ Comprehensive evaluation complete. Full report at %s", self.report_dir)
             return context
 
@@ -427,3 +448,126 @@ class CriticEvaluationAgent(BaseAgent):
             log.exception("Comprehensive evaluation failed")
             context["evaluation_error"] = str(e)
             return context
+
+    # ----------------------- Validation / VisiCalc reports -----------------------
+
+    def _run_validation_reports(
+        self,
+        X: np.ndarray,
+        y: np.ndarray,
+        feature_names: List[str],
+        groups: Optional[np.ndarray],
+    ) -> Dict[str, Any]:
+        """
+        Run Tiny Critic / VisiCalc-style validation reports and write them
+        alongside the main evaluation outputs under self.report_dir.
+        """
+        validation_dir = self.report_dir / "validation"
+        validation_dir.mkdir(parents=True, exist_ok=True)
+
+        log.info("Running Tiny Critic / VisiCalc validation in %s", validation_dir)
+
+        # --- 1) Dataset-level audit: stats + tiny_critic_report.md ---
+        dataset_info = {
+            "samples": int(X.shape[0]),
+            "features": int(X.shape[1]),
+            "core_features": CORE_FEATURE_COUNT,
+            "total_dynamic": max(0, len(feature_names) - CORE_FEATURE_COUNT),
+            # We'll fill selected_dynamic after feature selection
+            "selected_dynamic": 0,
+        }
+
+        # This writes:
+        #   - feature_stats.csv
+        #   - tiny_critic_report.md
+        #   - optional plots if save_plots=True
+        generate_dataset_report(
+            X=X,
+            y=y,
+            metric_names=feature_names,
+            out_dir=validation_dir,
+            save_plots=True,
+            dataset_info=dataset_info,
+        )
+
+        # --- 2) Comprehensive feature evaluation ---
+        # Returns dict with all_features/core_features/dynamic_features/ablation_results/core_contributions
+        evaluation_results = evaluate_all_features(
+            X=X,
+            y=y,
+            metric_names=feature_names,
+            core_dim=CORE_FEATURE_COUNT,
+            groups=groups,
+        )
+
+        # --- 3) VisiCalc hypothesis validation report ---
+        hypothesis_validated = generate_visicalc_hypothesis_report(
+            evaluation_results=evaluation_results,
+            out_dir=validation_dir,
+            core_dim=CORE_FEATURE_COUNT,
+        )
+
+        # --- 4) Core-aware feature selection + artifacts ---
+        # (keeps all core features + top dynamic ones by importance)
+        selected_names, importance_rows = _select_features_via_importance_core_aware(
+            X=X,
+            y=y,
+            metric_names=feature_names,
+            core_dim=CORE_FEATURE_COUNT,
+            top_k_dynamic=30,   # you can make this a cfg knob later
+            min_effect=0.0,
+        )
+
+        dynamic_selected = [
+            name for name in selected_names
+            if name not in feature_names[:CORE_FEATURE_COUNT]
+        ]
+        dataset_info["selected_dynamic"] = len(dynamic_selected)
+
+        # Store feature selection artifacts in a subfolder
+        feature_artifact_dir = validation_dir / "feature_selection"
+        _write_selected_feature_artifacts(
+            importance_rows=importance_rows,
+            out_dir=feature_artifact_dir,
+            dataset_info=dataset_info,
+        )
+
+        # --- 5) (Optional) Write filtered NPZ of selected features ---
+        try:
+            name_to_idx = {n: i for i, n in enumerate(feature_names)}
+            sel_idx = [name_to_idx[n] for n in selected_names if n in name_to_idx]
+            if sel_idx:
+                X_sel = X[:, sel_idx].astype(X.dtype, copy=False)
+                filtered_path = validation_dir / (
+                    f"visicalc_ab_dataset_core{CORE_FEATURE_COUNT}_"
+                    f"dyn{max(0, len(sel_idx) - CORE_FEATURE_COUNT)}.npz"
+                )
+                np.savez_compressed(
+                    filtered_path,
+                    X=X_sel,
+                    y=y,
+                    metric_names=np.array(selected_names, dtype=object),
+                )
+                log.info(
+                    "💾 Wrote filtered validation dataset with %d features "
+                    "(core=%d, dynamic=%d) → %s",
+                    len(sel_idx),
+                    min(CORE_FEATURE_COUNT, len(sel_idx)),
+                    max(0, len(sel_idx) - CORE_FEATURE_COUNT),
+                    filtered_path,
+                )
+            else:
+                log.warning("No features selected for filtered validation dataset; skipping NPZ export.")
+        except Exception:
+            log.exception("Failed to write filtered validation NPZ; continuing without it.")
+
+        # Return a compact summary for the context dict
+        return {
+            "validation_dir": str(validation_dir),
+            "hypothesis_validated": bool(hypothesis_validated),
+            "evaluation_results": {
+                "ablation_results": evaluation_results.get("ablation_results", {}),
+                "core_feature_count": CORE_FEATURE_COUNT,
+            },
+            "selected_features": selected_names,
+        }

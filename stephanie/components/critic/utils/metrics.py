@@ -1,14 +1,10 @@
 # stephanie/components/critic/utils/critic_metrics.py
 import json
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
-import seaborn as sns
-from scipy import stats
-from sklearn.metrics import (brier_score_loss, precision_recall_curve,
-                             precision_score, roc_auc_score, roc_curve)
+from sklearn.metrics import (brier_score_loss, roc_auc_score, roc_curve)
 
 
 def compute_ece(probs: np.ndarray, y_true: np.ndarray, n_bins: int = 10) -> float:

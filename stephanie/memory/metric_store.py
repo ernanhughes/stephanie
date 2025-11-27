@@ -362,3 +362,43 @@ class MetricStore(BaseSQLAlchemyStore):
             run_ids = [rid for (rid,) in q.all() if rid]
             return run_ids
         return self._run(op)
+
+    def set_kept_columns(self, run_id: str, kept_columns: list[str]) -> MetricGroupORM:
+        """
+        Persist the feature names selected by MetricFilter / FrontierLens for this run.
+
+        Stored layout in MetricGroupORM.meta:
+
+            {
+              "metric_filter": {
+                "kept_columns": ["feat1", "feat2", ...]
+              },
+              ...
+            }
+
+        This matches `get_kept_columns` and is safe to call multiple times –
+        it will create the MetricGroup if missing, or update the meta if it exists.
+        """
+        kept_columns = list(dict.fromkeys(kept_columns or []))  # de-dupe, keep order
+
+        def op(s):
+            g = (
+                s.query(MetricGroupORM)
+                .filter_by(run_id=run_id)
+                .one_or_none()
+            )
+            if g is None:
+                # Create a new group with minimal meta
+                g = MetricGroupORM(run_id=run_id, meta={})
+                s.add(g)
+                s.flush()
+
+            meta = dict(g.meta or {})
+            metric_filter = dict(meta.get("metric_filter") or {})
+            metric_filter["kept_columns"] = kept_columns
+            meta["metric_filter"] = metric_filter
+            g.meta = meta
+            s.flush()
+            return g
+
+        return self._run(op)

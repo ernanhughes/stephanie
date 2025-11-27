@@ -221,7 +221,7 @@ def build_dynamic_feature_vector(
 def build_dynamic_feature_vectors_batch(
     visicalc_reports: List[dict],
     metrics_list: List[Dict[str, float]],
-    metric_names: List[str],
+    metric_names: List[str], 
     problem_ids: Optional[List[str]] = None
 ) -> np.ndarray:
     """

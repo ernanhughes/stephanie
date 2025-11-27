@@ -66,7 +66,7 @@ critic_cohort:
 
         # Case-insensitive mapping (MetricMapper: ignore_case=True by default in your code)
         metric_mapping:
-          include: ["HRM.*", "sicql.*", "tiny.*", "svm.*"]
+          include: ["HRM.*", "sicql.*", "tiny.*", "svm.*", "ebt.*"]
           exclude: ["*.raw", "*.debug"]
 
         # Optional tiny previews (heavy VPM happens in group feature)
@@ -120,12 +120,19 @@ critic_cohort:
         frontier_high: 0.75
         per_metric_normalize: true
         metric_mapping:
-          include: ["HRM.*", "sicql.*", "Tiny.*", "svm.*"]
+          include: ["HRM.*", "sicql.*", "Tiny.*", "ebt.*"]
           exclude: ["*.raw", "*.debug"]
         # files written under runs/visicalc/<run_id> by your tool
         out_dir: "runs/visicalc"
         json_file: "visicalc_report.json"
         csv_file: "visicalc_report.csv"
+
+  frontier_lens:
+    enabled: true
+    frontier_metric: "HRM.aggregate"
+    row_region_splits: 4
+
+    per_metric_normalize: true   # per-metric [0,1] min-max
 
   # ──────────────────────────────────────────────────────────────────────────
   # Optional A/B “TopLeft” nudge (only used if both cohorts are present)

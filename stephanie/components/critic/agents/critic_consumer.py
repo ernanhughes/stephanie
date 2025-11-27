@@ -6,8 +6,9 @@ from typing import Any, Dict
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.components.critic.utils.teachpack import train_from_teachpack
+from stephanie.utils.file_utils import save_json
 
-logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 class CriticConsumerAgent(BaseAgent):
     """
@@ -19,7 +20,7 @@ class CriticConsumerAgent(BaseAgent):
         self.cfg = cfg
         self.memory = memory
         self.container = container
-        self.logger = logger
+        log = logger
         
         # Configuration
         self.teachpack_path = Path(cfg.get("teachpack_path", "/models/teachpacks/default_teachpack.npz"))
@@ -31,11 +32,11 @@ class CriticConsumerAgent(BaseAgent):
         self.output_model_path.parent.mkdir(parents=True, exist_ok=True)
         self.report_dir.mkdir(parents=True, exist_ok=True)
         
-        self.logger.info(f"Initialized TeachpackConsumerAgent with teachpack={self.teachpack_path}")
+        log.info(f"Initialized TeachpackConsumerAgent with teachpack={self.teachpack_path}")
 
     async def run(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """Run the teachpack consumption"""
-        self.logger.info(f"Training new critic from teachpack: {self.teachpack_path}")
+        log.info(f"Training new critic from teachpack: {self.teachpack_path}")
         
         try:
             # Train from teachpack
@@ -57,8 +58,7 @@ class CriticConsumerAgent(BaseAgent):
             
             # Save report
             report_path = self.report_dir / "teachpack_results.json"
-            with open(report_path, "w") as f:
-                json.dump(report, f, indent=2)
+            save_json(report, str(report_path))
             
             # Generate markdown report
             md_content = f"""# Teachpack Consumption Report
@@ -94,10 +94,10 @@ class CriticConsumerAgent(BaseAgent):
                 "md_path": str(md_path)
             }
             
-            self.logger.info(f"Teachpack consumption complete. Report saved to {md_path}")
+            log.info(f"Teachpack consumption complete. Report saved to {md_path}")
             return context
             
         except Exception as e:
-            self.logger.exception("Teachpack consumption failed")
+            log.exception("Teachpack consumption failed")
             context["teachpack_error"] = str(e)
             return context

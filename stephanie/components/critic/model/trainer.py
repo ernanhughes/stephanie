@@ -17,6 +17,8 @@ from sklearn.model_selection import (GridSearchCV, GroupKFold,
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 
+
+
 # -------------------------------------------------------------------
 # Paths / constants
 # -------------------------------------------------------------------
@@ -25,7 +27,6 @@ log = logging.getLogger(__name__)
 DATA_PATH   = Path("data/critic.npz")
 MODEL_PATH  = Path("models/critic.joblib")
 META_PATH   = Path("models/critic.meta.json")
-VIZ_DIR     = Path("data/visualizations/tiny_critic")
 
 # The first 8 columns in X are VisiCalc core (by dataset construction)
 CORE_FEATURE_NAMES = [
@@ -111,8 +112,8 @@ def safe_hist(ax, x0: np.ndarray, x1: np.ndarray, bins=20):
     ax.hist(x1, bins=bins, alpha=0.6, label="targeted")
     ax.legend()
 
-def visualize_core(X: np.ndarray, y: np.ndarray, names: list[str]) -> None:
-    VIZ_DIR.mkdir(parents=True, exist_ok=True)
+def visualize_core(X: np.ndarray, y: np.ndarray, names: list[str], viz_dir: Path) -> None:
+    viz_dir.mkdir(parents=True, exist_ok=True)
     n_core = min(8, X.shape[1])
     xb, xt = X[y == 0], X[y == 1]
 
@@ -126,7 +127,7 @@ def visualize_core(X: np.ndarray, y: np.ndarray, names: list[str]) -> None:
     for j in range(n_core, len(axes)):
         axes[j].axis("off")
     fig.tight_layout()
-    fig.savefig(VIZ_DIR / "core_feature_distributions.png", dpi=300, bbox_inches="tight")
+    fig.savefig(viz_dir / "core_feature_distributions.png", dpi=300, bbox_inches="tight")
     plt.close(fig)
 
     # Simple correlation
@@ -139,7 +140,7 @@ def visualize_core(X: np.ndarray, y: np.ndarray, names: list[str]) -> None:
         sns.heatmap(corr, annot=True, cmap="coolwarm", fmt=".2f")
         plt.title("Core Feature Correlations")
         plt.tight_layout()
-        plt.savefig(VIZ_DIR / "core_feature_correlations.png", dpi=300, bbox_inches="tight")
+        plt.savefig(viz_dir / "core_feature_correlations.png", dpi=300, bbox_inches="tight")
         plt.close()
     except Exception as e:
         log.warning("Heatmap failed: %s", e)
@@ -215,6 +216,7 @@ def train_tiny_critic(
     groups: Optional[np.ndarray],
     core_only: bool = True,
     lock_features_path: Optional[Path] = None,
+    viz_dir: Optional[Path] = None,
 ) -> tuple[Any, dict, dict]:
     """
     Trains the Tiny Critic with:
@@ -282,14 +284,14 @@ def train_tiny_critic(
     log.info("💾 Saved meta  → %s", META_PATH)
 
     # 8) Quick confusion matrix on holdout
-    VIZ_DIR.mkdir(parents=True, exist_ok=True)
+    viz_dir.mkdir(parents=True, exist_ok=True)
     plt.figure(figsize=(6, 5))
     cm = confusion_matrix(yva, yhat_val)
     sns.heatmap(cm, annot=True, fmt="d", cmap="Blues")
     plt.title("Holdout Confusion Matrix")
     plt.xlabel("Predicted"); plt.ylabel("True")
     plt.tight_layout()
-    plt.savefig(VIZ_DIR / "confusion_matrix_holdout.png", dpi=300, bbox_inches="tight")
+    plt.savefig(viz_dir / "confusion_matrix_holdout.png", dpi=300, bbox_inches="tight")
     plt.close()
 
     return model, cv_summary, holdout
@@ -314,14 +316,16 @@ def main():
                    help="Path to a text file with feature names to lock (one per line)")
     args = p.parse_args()
 
+    viz_dir = Path("data/visualizations/tiny_critic")
     X, y, metric_names, groups = load_dataset(Path(args.data))
-    visualize_core(X, y, metric_names)
+    visualize_core(X, y, metric_names, viz_dir=viz_dir)
 
     lock_path = Path(args.lock_features) if args.lock_features else None
     model, cv_summary, holdout = train_tiny_critic(
         X, y, metric_names, groups,
         core_only=bool(args.core_only),
-        lock_features_path=lock_path
+        lock_features_path=lock_path,
+        viz_dir=viz_dir,
     )
 
     log.info("📊 CV:    AUC=%.3f±%.3f  ACC=%.3f±%.3f  (k=%d)",

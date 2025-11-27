@@ -239,13 +239,39 @@ def evaluate_all_features(
         "all_features": list of importance metrics for all features,
         "core_features": importance metrics for core features only,
         "dynamic_features": importance metrics for dynamic features only,
-        "ablation_results": {
-            "core_only": (auc_mean, auc_std),
-            "dynamic_only": (auc_mean, auc_std),
-            "hybrid": (auc_mean, auc_std)
-        }
+        "ablation_results": {...},
+        "core_contributions": [...]
       }
     """
+    log.info("🔍 Starting comprehensive feature evaluation")
+
+    # --- NEW: harden against NaN / Inf in features ---
+    X = np.asarray(X, dtype=np.float64)
+
+    # Replace NaN/Inf with 0.0 (or you can choose column means if you want)
+    if not np.isfinite(X).all():
+        n_total = X.size
+        n_nan = np.isnan(X).sum()
+        n_posinf = np.isposinf(X).sum()
+        n_neginf = np.isneginf(X).sum()
+        log.warning(
+            "evaluate_all_features: replacing NaN/Inf in X "
+            "(nan=%d, +inf=%d, -inf=%d of %d values)",
+            n_nan,
+            n_posinf,
+            n_neginf,
+            n_total,
+        )
+        X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
+
+    # (Optional) ensure core_dim doesn’t exceed feature count
+    if core_dim > X.shape[1]:
+        log.warning(
+            "evaluate_all_features: core_dim=%d > n_features=%d; clamping",
+            core_dim,
+            X.shape[1],
+        )
+        core_dim = X.shape[1]
     log.info("🔍 Starting comprehensive feature evaluation")
     # 1. Evaluate ALL features together (core + dynamic)
     log.info("📊 Evaluating ALL features together")
@@ -289,7 +315,7 @@ def evaluate_all_features(
         names_subset = metric_names[core_dim:] + [name]
         auc_mean, auc_std = _eval_linear_model(X_subset, y, groups)
         # Baseline is dynamic features only
-        baseline_auc = ablation_results["dynamic_only_auc_std"]
+        baseline_auc = ablation_results["dynamic_only_auc_mean"]
         improvement = auc_mean - baseline_auc
         core_contributions.append({
             "name": name,
@@ -430,22 +456,53 @@ def _write_selected_feature_artifacts(
         log.error(f"❌ Failed to write JSON feature report: {e}")
 
     # 2. CSV (quick scan with core/dynamic labeling)
+    # 2. CSV (quick scan with core/dynamic labeling)
     csv_path = out_dir / "selected_features.csv"
     try:
-        cols = [
-            "name", "is_core", "mean_target", "mean_baseline", "std_target", "std_baseline",
-            "cohen_d", "abs_cohen_d", "ks_stat", "ks_pvalue", "auc", "direction"
-        ]
-        with csv_path.open("w", encoding="utf-8", newline="") as f:
-            w = csv.DictWriter(f, fieldnames=cols)
-            w.writeheader()
+        if not importance_rows:
+            log.warning("No importance rows provided; skipping CSV feature report.")
+        else:
+            # Discover all columns dynamically from the rows
+            all_keys: set[str] = set()
             for row in importance_rows:
-                # Convert None to empty string for CSV readability
-                safe_row = {k: ("" if v is None else v) for k, v in row.items()}
-                w.writerow(safe_row)
-        log.info(f"✅ Wrote CSV feature report to {csv_path}")
+                all_keys.update(row.keys())
+
+            # Prefer a nice ordering for common columns, then append any extras
+            preferred_order = [
+                "name",
+                "is_core",
+                "mean_target",
+                "mean_baseline",
+                "std_target",
+                "std_baseline",
+                "cohen_d",
+                "abs_cohen_d",
+                "ks_stat",
+                "ks_pvalue",
+                "auc",
+                "effective_auc",  # if present; ignored otherwise
+                "direction",
+            ]
+
+            cols = [c for c in preferred_order if c in all_keys]
+            extra_cols = sorted(k for k in all_keys if k not in cols)
+            cols.extend(extra_cols)
+
+            with csv_path.open("w", encoding="utf-8", newline="") as f:
+                w = csv.DictWriter(f, fieldnames=cols)
+                w.writeheader()
+                for row in importance_rows:
+                    # Emit *only* known columns, fill in blanks for missing
+                    safe_row = {}
+                    for c in cols:
+                        v = row.get(c)
+                        safe_row[c] = "" if v is None else v
+                    w.writerow(safe_row)
+
+            log.info(f"✅ Wrote CSV feature report to {csv_path}")
     except Exception as e:
         log.error(f"❌ Failed to write CSV feature report: {e}")
+
 
     # 3. Names only (handy for downstream)
     names_path = out_dir / "selected_feature_names.txt"
@@ -561,7 +618,22 @@ def _write_dataset_report_md(
     out_md.parent.mkdir(parents=True, exist_ok=True)
     targeted = int((y == 1).sum())
     baseline = int((y == 0).sum())
-    rank = int(np.linalg.matrix_rank(X))
+
+    # --- Robust rank estimation (SVD can fail on nasty matrices) ---
+    try:
+        rank_val = int(np.linalg.matrix_rank(X))
+        rank_text = str(rank_val)
+    except np.linalg.LinAlgError:
+        # Try again on a cleaned version (replace NaN/inf with 0)
+        try:
+            X_clean = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
+            rank_val = int(np.linalg.matrix_rank(X_clean))
+            rank_text = f"{rank_val} (on cleaned data)"
+        except Exception:
+            # If all else fails, just mark as unavailable
+            rank_val = None
+            rank_text = "N/A (SVD did not converge)"
+
     zero_var = int((X.std(axis=0) <= 1e-8).sum())
 
     # Rank top features
@@ -591,7 +663,7 @@ def _write_dataset_report_md(
     feature_density = 100 * np.mean(X != 0)
 
     md = f"""# Tiny Critic — Combined Dataset Audit
-**Samples:** {X.shape[0]}  **Features:** {X.shape[1]}  **Rank:** {rank}  **Zero-variance:** {zero_var}
+**Samples:** {X.shape[0]}  **Features:** {X.shape[1]}  **Rank:** {rank_text}  **Zero-variance:** {zero_var}
 **Class balance:** {imbalance_msg} — baseline: {baseline}  targeted: {targeted}  (ratio={imbalance_ratio:.2f})
 **Feature density:** {feature_density:.1f}% non-zero values
 **Metric columns:** {len(metric_names)}
@@ -618,6 +690,8 @@ def generate_dataset_report(
     save_plots: bool = False,
     dataset_info: Dict[str, Any] = None
 ) -> None:
+    X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
+
     """Generate comprehensive dataset report with statistics and visualizations."""
     if dataset_info is None:
         dataset_info = {
