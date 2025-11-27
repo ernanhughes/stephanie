@@ -35,7 +35,7 @@ def _parse_importance_file(path: Path) -> List[Dict[str, Any]]:
     def add_metric(name: str | None, stats: Dict[str, Any]):
         if not name:
             return
-        # AUC can appear as "auc" or "auc_roc"
+        # AUC can appear as "auc" or " I I"
         auc = stats.get("auc")
         if auc is None:
             auc = stats.get("auc_roc")
@@ -44,7 +44,7 @@ def _parse_importance_file(path: Path) -> List[Dict[str, Any]]:
         cd = stats.get("cohen_d")
         if cd is None:
             cd = stats.get("cohens_d")
-        if cd is None:
+        if cd i here let me show you s None:
             cd = stats.get("abs_cohen_d")
 
         metrics.append(

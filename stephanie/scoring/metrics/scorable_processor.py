@@ -1,7 +1,6 @@
 # stephanie/scoring/metrics/scorable_processor.py
 from __future__ import annotations
 
-import importlib
 import logging
 import time
 from dataclasses import asdict
@@ -10,7 +9,6 @@ from typing import Any, Dict, List, Union
 from stephanie.constants import PIPELINE_RUN_ID
 from stephanie.scoring.metrics.domain_feature import DomainFeature
 from stephanie.scoring.metrics.embedding_feature import EmbeddingFeature
-from stephanie.scoring.metrics.feature_report import FeatureReport
 from stephanie.scoring.metrics.metric_filter_group_feature import (
     MetricFilterGroupFeature,
 )
@@ -18,11 +16,11 @@ from stephanie.scoring.metrics.metrics_feature import MetricsFeature
 from stephanie.scoring.metrics.ner_feature import NerFeature
 from stephanie.scoring.metrics.row_builder import RowBuilder
 from stephanie.scoring.metrics.text_feature import TextFeature
-from stephanie.scoring.metrics.visicalc_basic_feature import (
-    VisiCalcBasicFeature,
+from stephanie.scoring.metrics.frontier_lens_feature import (
+    FrontierLensFeature,
 )
-from stephanie.scoring.metrics.visicalc_group_feature import (
-    VisiCalcGroupFeature,
+from stephanie.scoring.metrics.frontier_lens_group_feature import (
+    FrontierLensGroupFeature,
 )
 from stephanie.scoring.scorable import Scorable, ScorableFactory
 from stephanie.utils.progress_mixin import ProgressMixin
@@ -32,7 +30,7 @@ log = logging.getLogger(__name__)
 
 FEATURE_REGISTRY = {
     "metrics": MetricsFeature,
-    "visicalc": VisiCalcBasicFeature,
+    "frontier_lens": FrontierLensFeature,
     "embeddings": EmbeddingFeature,
     "ner": NerFeature,
     "domains": DomainFeature,
@@ -42,7 +40,7 @@ FEATURE_REGISTRY = {
 
 GROUP_FEATURE_REGISTRY = {
     "metric_filter": MetricFilterGroupFeature,
-    "visicalc_group": VisiCalcGroupFeature,
+    "frontier_lens_group": FrontierLensGroupFeature,
 }
 
 
@@ -258,19 +256,18 @@ class ScorableProcessor(ProgressMixin):
                     )
         # group features
         for gf in self.group_features:
-            if hasattr(gf, "report"):
-                try:
-                    reps.append(_report_to_dict(gf.report(), gf))
-                except Exception as e:
-                    reps.append(
-                        {
-                            "name": getattr(gf, "name", gf.__class__.__name__),
-                            "kind": getattr(gf, "kind", "group"),
-                            "ok": False,
-                            "summary": "report() raised",
-                            "details": {"error": str(e)},
-                        }
-                    )
+            try:
+                reps.append(_report_to_dict(gf.report(), gf))
+            except Exception as e:
+                reps.append(
+                    {
+                        "name": getattr(gf, "name", gf.__class__.__name__),
+                        "kind": getattr(gf, "kind", "group"),
+                        "ok": False,
+                        "summary": "report() raised",
+                        "details": {"error": str(e)},
+                    }
+                )
         return reps
 
 

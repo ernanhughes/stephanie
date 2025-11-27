@@ -1,4 +1,4 @@
-# stephanie/components/critic/agents/visicalc.py
+# stephanie/components/critic/agents/critic_cohort.py
 from __future__ import annotations
 
 import csv

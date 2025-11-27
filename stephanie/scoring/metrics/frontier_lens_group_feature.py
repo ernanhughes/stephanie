@@ -1,4 +1,4 @@
-# stephanie/scoring/metrics/visicalc_group_feature.py
+# stephanie/scoring/metrics/frontier_lens_group_feature.py
 from __future__ import annotations
 
 import logging
@@ -7,20 +7,34 @@ from typing import Any, Dict, List
 import numpy as np
 
 from stephanie.scoring.metrics.base_group_feature import BaseGroupFeature
-from stephanie.tools.visicalc_tool import VisiCalcTool
+from stephanie.tools.frontier_lens_tool import FrontierLensTool
 
 log = logging.getLogger(__name__)
 
-class VisiCalcGroupFeature(BaseGroupFeature):
-    name = "visicalc_group"
+
+class FrontierLensGroupFeature(BaseGroupFeature):
+    """
+    Batch FrontierLens feature.
+
+    - Consumes rows with metrics_columns / metrics_values
+    - Runs FrontierLensTool.apply_rows() once per batch
+    - Attaches a shared 'frontier_lens_report' and (optionally) the
+      global FrontierLens feature vector to each row.
+    """
+
+    name = "frontier_lens_group"
     requires = ["metric_filter"]  # keep the dependency ordering
 
     def __init__(self, cfg, memory, container, logger):
         super().__init__(cfg, memory, container, logger)
-        self.tool = VisiCalcTool(cfg, memory, container, logger)
+        self.tool = FrontierLensTool(cfg, memory, container, logger)
         self.enabled = bool(self.cfg.get("enabled", True))
-        self.episode_id = self.cfg.get("episode_id", "visicalc:default")
-        # init debug/telemetry fields so .report() never crashes
+        self.episode_id = self.cfg.get("episode_id", "frontier_lens:default")
+
+        # Optional: attach the same global features to each row
+        self.store_per_row_features = bool(self.cfg.get("store_per_row_features", False))
+
+        # debug/telemetry fields so .report() never crashes
         self._quality: float | None = None
         self._kept_cols: int = 0
         self._rows_in: int = 0
@@ -33,9 +47,16 @@ class VisiCalcGroupFeature(BaseGroupFeature):
 
         self._error = None
         self._rows_in = len(rows)
+
+        if not rows:
+            return rows
+
+        # Use pipeline_run_id when available, fall back to static
+        episode_id = context.get("pipeline_run_id") or self.episode_id
+
         try:
             out = self.tool.apply_rows(
-                episode_id=self.episode_id,
+                episode_id=episode_id,
                 rows=rows,
                 meta={"n_rows": len(rows)},
             )
@@ -45,7 +66,7 @@ class VisiCalcGroupFeature(BaseGroupFeature):
             self._kept_cols = 0
             self._rows_used = 0
             self._error = f"{type(e).__name__}: {e}"
-            log.warning("[VisiCalcGroupFeature] skipped: %s", self._error)
+            log.warning("[FrontierLensGroupFeature] skipped: %s", self._error)
             return rows
 
         report = out.get("report")
@@ -60,10 +81,21 @@ class VisiCalcGroupFeature(BaseGroupFeature):
 
         # attach per-row artifacts (lightweight)
         rep_dict = report.to_dict() if hasattr(report, "to_dict") else (report or {})
+
+        # If we decide to expose features, it’s one global vector (3M+3),
+        # not per-row. Attach as-is or leave None.
+        if isinstance(feats, np.ndarray):
+            global_feats = feats.astype(float).tolist()
+        else:
+            global_feats = None
+
         for r in rows:
-            r.setdefault("visicalc_report", rep_dict)
-            r.setdefault("visicalc_features", None)
-            r.setdefault("visicalc_feature_names", names)
+            r.setdefault("frontier_lens_report", rep_dict)
+            r.setdefault("frontier_lens_feature_names", names)
+            if self.store_per_row_features:
+                r.setdefault("frontier_lens_features", global_feats)
+            else:
+                r.setdefault("frontier_lens_features", None)
 
         return rows
 

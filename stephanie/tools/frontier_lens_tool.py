@@ -1,9 +1,8 @@
-# stephanie/tools/visicalc_tool.py
+# stephanie/tools/frontier_lens_tool.py
 from __future__ import annotations
 
 import logging
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 
@@ -14,52 +13,54 @@ from stephanie.tools.base_tool import BaseTool
 log = logging.getLogger(__name__)
 
 
-class VisiCalcTool(BaseTool):
+class FrontierLensTool(BaseTool):
     """
-    Row-compatible VisiCalc wrapper.
+    Row-compatible FrontierLens wrapper.
 
     Modes:
       - apply_row()    → per-row feature enrichment (light)
-      - apply_batch()  → real VisiCalc analysis (heavy)
+      - apply_batch()  → real FrontierLens analysis (heavy)
     """
 
-    name = "visicalc"
+    name = "FrontierLens"
 
     def __init__(self, cfg, memory, container, logger):
         super().__init__(cfg, memory, container, logger)
 
         # config
-        self.frontier_metric     = cfg.get("frontier_metric", "HRM.aggregate")
-        self.row_region_splits   = cfg.get("row_region_splits", 3)
-        self.frontier_low        = cfg.get("frontier_low", 0.25)
-        self.frontier_high       = cfg.get("frontier_high", 0.75)
+        self.frontier_metric = cfg.get("frontier_metric", "HRM.aggregate")
+        self.row_region_splits = cfg.get("row_region_splits", 3)
+        self.frontier_low = cfg.get("frontier_low", 0.25)
+        self.frontier_high = cfg.get("frontier_high", 0.75)
         self.per_metric_normalize = cfg.get("per_metric_normalize", True)
 
         # optional ordering
-        self.visicalc_metric_keys = cfg.get("metric_keys", [])
+        self.frontier_metric_keys = cfg.get("metric_keys", [])
 
         self.mapper = MetricMapper.from_config(cfg)
 
         # output settings
-        self.persist_png   = cfg.get("vpm_png", {}).get("enabled", False)
-        self.png_mode      = cfg.get("vpm_png", {}).get("mode", "L")
-        self.png_target    = cfg.get("vpm_png", {}).get("target_file")
-        self.png_baseline  = cfg.get("vpm_png", {}).get("baseline_file")
+        self.persist_png = cfg.get("vpm_png", {}).get("enabled", False)
+        self.png_mode = cfg.get("vpm_png", {}).get("mode", "L")
+        self.png_target = cfg.get("vpm_png", {}).get("target_file")
+        self.png_baseline = cfg.get("vpm_png", {}).get("baseline_file")
 
     # =====================================================================
     # 1) PER-ROW API  (called by ScorableProcessor Feature)
     # =====================================================================
-    async def apply(self, scorable, acc: Dict[str, Any], context: Dict[str, Any]):
+    async def apply(
+        self, scorable, acc: Dict[str, Any], context: Dict[str, Any]
+    ):
         """
         Lightweight per-row enrichment:
-            • attach visicalc_report (if metrics exist)
+            • attach FrontierLens_report (if metrics exist)
             • optionally save tiny per-row VPM preview
         """
         cols = acc.get("metrics_columns") or []
         vals = acc.get("metrics_values") or []
 
         if not cols or not vals:
-            log.debug("[VisiCalcTool] no metrics, skipping row-level visi")
+            log.debug("[FrontierLensTool] no metrics, skipping row-level visi")
             return acc
 
         # Build mapping for this row
@@ -73,7 +74,7 @@ class VisiCalcTool(BaseTool):
             "num_metrics": len(cols),
         }
 
-        acc["visicalc_report"] = report
+        acc["frontier_lens_report"] = report
         return acc
 
     # =====================================================================
@@ -87,7 +88,7 @@ class VisiCalcTool(BaseTool):
         meta: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
-        Full VisiCalc batch analysis.
+        Full FrontierLens batch analysis.
         Produces:
             - report
             - features
@@ -97,7 +98,9 @@ class VisiCalcTool(BaseTool):
         """
         vpm, metric_names, item_ids = self._matrix_for_rows(rows)
         if vpm.size == 0 or vpm.ndim != 2 or vpm.shape[1] == 0:
-            log.warning("VisiCalcTool.apply_rows: empty matrix after selection; skipping VisiCalc.")
+            log.warning(
+                "FrontierLensTool.apply_rows: empty matrix after selection; skipping FrontierLens."
+            )
             return {
                 "report": None,
                 "features": np.empty((len(rows), 0), dtype=float),
@@ -107,18 +110,20 @@ class VisiCalcTool(BaseTool):
             }
 
         vc = FrontierLens.from_matrix(
-            episode_id      = episode_id,
-            scores          = vpm,
-            metric_names    = metric_names,
-            item_ids        = item_ids,
-            frontier_metric = self.frontier_metric,
-            row_region_splits = self.row_region_splits,
-            frontier_low    = self.frontier_low,
-            frontier_high   = self.frontier_high,
-            meta            = meta,
+            episode_id=episode_id,
+            scores=vpm,
+            metric_names=metric_names,
+            item_ids=item_ids,
+            frontier_metric=self.frontier_metric,
+            row_region_splits=self.row_region_splits,
+            frontier_low=self.frontier_low,
+            frontier_high=self.frontier_high,
+            meta=meta,
         )
 
-        vpm_uint8 = vc.to_vpm_array(per_metric_normalize=self.per_metric_normalize)
+        vpm_uint8 = vc.to_vpm_array(
+            per_metric_normalize=self.per_metric_normalize
+        )
 
         return {
             "report": vc.report,
@@ -137,7 +142,7 @@ class VisiCalcTool(BaseTool):
         rows: List[Dict[str, Any]],
     ) -> tuple[np.ndarray, List[str], List[str]]:
         if not rows:
-            raise ValueError("VisiCalcTool: no rows given")
+            raise ValueError("FrontierLensTool: no rows given")
 
         # UNION of all metric columns across rows
         union_cols, seen = [], set()
@@ -152,12 +157,13 @@ class VisiCalcTool(BaseTool):
                     union_cols.append(c)
 
         if not union_cols:
-            raise ValueError("VisiCalcTool: no metric columns found on any row")
+            raise ValueError("FrontierLensTool: no metric columns found on any row")
 
         metric_names = self.mapper.select_columns(union_cols) or union_cols
 
-        if self.visicalc_metric_keys:
-            preferred = [k for k in self.visicalc_metric_keys if k in metric_names]
+        # Re-order so our preferred keys come first if configured
+        if self.frontier_metric_keys:
+            preferred = [k for k in self.frontier_metric_keys if k in metric_names]
             rest = [k for k in metric_names if k not in preferred]
             metric_names = preferred + rest
 
@@ -177,8 +183,9 @@ class VisiCalcTool(BaseTool):
 
         if not matrix_rows:
             raise ValueError(
-                "VisiCalcTool: no rows had usable metrics after mapping "
-                f"(non_empty_rows={non_empty}, union_cols={len(union_cols)}, kept={len(metric_names)}, skipped={skipped})"
+                "FrontierLensTool: no rows had usable metrics after mapping "
+                f"(non_empty_rows={non_empty}, union_cols={len(union_cols)}, "
+                f"kept={len(metric_names)}, skipped={skipped})"
             )
 
         vpm = np.asarray(matrix_rows, dtype=np.float32)

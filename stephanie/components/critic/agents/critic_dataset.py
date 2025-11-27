@@ -6,12 +6,11 @@ import logging
 from pathlib import Path
 from typing import Any, Dict
 
-import numpy as np
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.components.critic.model.dataset import (
-    CORE_FEATURE_COUNT, CORE_FEATURE_NAMES, canonicalize_metric_names,
-    collect_visicalc_samples, save_dataset)
+    canonicalize_metric_names,
+    collect_frontier_lens_samples, save_dataset)
 
 log = logging.getLogger(__name__)
 
@@ -53,7 +52,7 @@ class CriticDatasetAgent(BaseAgent):
         # 1) Collect full dataset
         kept_columns = self.memory.metrics.get_kept_columns(self.run_id)
         kept_columns = canonicalize_metric_names(kept_columns) 
-        X, y, metric_names, groups = collect_visicalc_samples(kept_columns, self.visicalc_root)
+        X, y, metric_names, groups = collect_frontier_lens_samples(kept_columns, self.visicalc_root)
 
         # 2) Project to DB-locked kept columns (order preserved)
         run_id = context.get("pipeline_run_id") or self.run_id

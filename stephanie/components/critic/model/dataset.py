@@ -106,26 +106,26 @@ def load_metrics_for_run(run_dir: Path, label: str) -> dict:
 
     return {}
 
-def load_visicalc_report(path: Path) -> dict:
-    """Load VisiCalc report with detailed error handling."""
-    log.info(f"📂 Loading VisiCalc report: {path}")
+def load_frontier_lens_report(path: Path) -> dict:
+    """Load FrontierLens report with detailed error handling."""
+    log.info(f"📂 Loading FrontierLens report: {path}")
     try:
         with path.open("r", encoding="utf-8") as f:
             data = json.load(f)
         # Validate expected structure
         required_keys = ['frontier', 'global', 'regions']
         if not all(k in data for k in required_keys):
-            log.warning(f"⚠️  VisiCalc report missing expected keys: {required_keys}")
+            log.warning(f"⚠️  FrontierLens report missing expected keys: {required_keys}")
         log.info(
-            f"✅ Successfully loaded VisiCalc report: {path.name} "
+            f"✅ Successfully loaded FrontierLens report: {path.name} "
             f"(keys: {list(data.keys()) if data else 'empty'})"
         )
         return data
     except Exception as e:
-        log.error(f"❌ Failed to load VisiCalc report {path}: {e}")
+        log.error(f"❌ Failed to load FrontierLens report {path}: {e}")
         raise
 
-def collect_visicalc_samples(metric_names: list[str], visicalc_root: str | Path) -> Tuple[np.ndarray, np.ndarray, List[str], List[str]]:
+def collect_frontier_lens_samples(metric_names: list[str], visicalc_root: str | Path) -> Tuple[np.ndarray, np.ndarray, List[str], List[str]]:
     """
     Collect VisiCalc samples with proper core/dynamic feature handling.
     Returns:
@@ -182,8 +182,8 @@ def collect_visicalc_samples(metric_names: list[str], visicalc_root: str | Path)
 
         try:
             log.info(f"📊 Loading reports for {run_dir.name}...")
-            targeted_report = load_visicalc_report(targeted_path)
-            baseline_report = load_visicalc_report(baseline_path)
+            targeted_report = load_frontier_lens_report(targeted_path)
+            baseline_report = load_frontier_lens_report(baseline_path)
 
             # Extract combined features for targeted (label=1)
             # IMPORTANT: Only pass dynamic metrics to build_dynamic_feature_vector
@@ -343,7 +343,7 @@ def main(args):
 
     try:
         # 1. Collect dataset
-        X, y, metric_names, groups = collect_visicalc_samples(root)
+        X, y, metric_names, groups = collect_frontier_lens_samples(root)
         # 1b. Canonicalize names once for consistency in saved file
         metric_names = canonicalize_metric_names(list(metric_names))
 
