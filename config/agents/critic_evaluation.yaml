@@ -11,7 +11,7 @@ critic_evaluation:
   candidate_path: "models/critic_candidate.joblib"  # optional; if missing, agent runs single-model eval
 
   # === Outputs ===
-  report_dir: "reports/full_evaluation"        # all subreports + summary.md go here
+  # report_dir: "reports/full_evaluation"        # all subreports + summary.md go here
 
   # === Evaluation controls ===
   run_history: 5                                # how many recent trainer runs to check for feature stability

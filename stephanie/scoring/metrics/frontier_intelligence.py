@@ -207,7 +207,7 @@ def compute_dynamic_bands(
     low_threshold = float(vals[low_idx])
     high_threshold = float(vals[high_idx])
 
-    # Compute actual achieved good ratio
+    # Compute actual achieved good ratio Currently it's distributed across these files
     mask_good = (vals >= low_threshold) & (vals <= high_threshold)
     actual_good_ratio = float(mask_good.mean())
 

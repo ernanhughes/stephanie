@@ -74,7 +74,7 @@ class CriticEvaluationAgent(BaseAgent):
         )
         self.report_dir = Path(
             self.cfg.get(
-                "report_dir", f"/runs/critic/{self.run_id}/full_evaluation"
+                "report_dir", f"runs/critic/{self.run_id}/full_evaluation"
             )
         )
         self.run_history = int(self.cfg.get("run_history", 5))

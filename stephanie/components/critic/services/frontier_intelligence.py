@@ -1,13 +1,11 @@
 # stephanie/components/critic/services/frontier_intelligence.py
 from __future__ import annotations
-import json
 import logging
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple, Any
 import numpy as np
 from scipy import stats
 import matplotlib.pyplot as plt
-import seaborn as sns
 from sklearn.linear_model import TheilSenRegressor
 from pathlib import Path
 
@@ -56,6 +54,12 @@ class FrontierIntelligence:
             "enabled": False,
             "temperature": 0.3,
             "max_tokens": 150
+        }
+
+        # In-process ephemeral state (not persisted in the DB)
+        # Used for things like "last_selected_metric" during a run.
+        self.state: Dict[str, Any] = {
+            "last_selected_metric": None,
         }
         
         log.info(f"Intialized FrontierIntelligence with policy config: "

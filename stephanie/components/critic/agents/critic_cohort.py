@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
@@ -25,7 +25,7 @@ from stephanie.components.critic.reports.frontier_lens_viz import (
 
 from stephanie.utils.vpm_utils import ensure_chw_u8
 
-from stephanie.components.critic.reports.cohort_report import (
+from stephanie.components.critic.reports.cohort_reporter import (
     CriticCohortReporter,
     normalize01,
     save_topleft_vpm_triptych,
@@ -216,7 +216,16 @@ class CriticCohortAgent(BaseAgent):
             container,
             logger,
         )
-        self.frontier_intelligence = FrontierIntelligence(self.cfg, self.memory, self.container, self.logger, self.run_id)
+        fi_cfg = cfg.get("frontier_intelligence", {})  # or whatever your hydra path is
+        if fi_cfg.get("enabled", True):
+            self.frontier_intel = FrontierIntelligence(
+                cfg=fi_cfg,
+                memory=self.memory,
+                container=self.container,
+                logger=self.logger,
+                run_id=self.run_id,
+            )
+
         self.selected_frontier_metric: Optional[str] = None
         self.reporter = FrontierReporter()
 
@@ -327,21 +336,6 @@ class CriticCohortAgent(BaseAgent):
             if r.get("scorable_id") is not None
         }
 
-        
-        first_row = rows[0]
-        all_metric_names = first_row.get("metrics_columns", [])
-        
-        # Initialize reporter for cohort context
-        self.reporter.set_context(self.run_id, "cohort")
-
-        # Select frontier metric using Frontier Intelligence
-        self.selected_frontier_metric = self.frontier_intelligence.select_frontier_metric(
-            all_metric_names,
-            fallback=self.visicalc_frontier_metric
-        )
-
-        log.info(f"CriticCohortAgent: selected frontier metric: {self.selected_frontier_metric}")
-        
 
         # Helper to slice rows by a cohort of scorables
         def _rows_for_cohort(scorables: List[Any]) -> List[dict]:
@@ -377,11 +371,35 @@ class CriticCohortAgent(BaseAgent):
                 rows_tgt = _rows_for_cohort(scorables_targeted)
                 rows_base = _rows_for_cohort(scorables_baseline)
 
+                frontier_metric = self.visicalc_frontier_metric  # default from config
+                if self.frontier_intel is not None and rows_tgt and rows_base:
+                    try:
+                        X, metric_names_fi, y = self._build_frontier_intel_dataset(
+                            rows_base=rows_base,
+                            rows_tgt=rows_tgt,
+                        )
+                        if len(np.unique(y)) >= 2 and X.shape[1] > 0:
+                            frontier_metric = self.frontier_intel.select_frontier_metric(
+                                metric_matrix=X,
+                                metric_names=metric_names_fi,
+                                y=y,
+                                run_id=self.run_id,
+                                fallback=frontier_metric or metric_names_fi[0],
+                            )
+                            self.logger.log(
+                                "FrontierMetricSelected",
+                                {"run_id": self.run_id, "frontier_metric": frontier_metric},
+                            )
+                    except Exception:
+                        log.exception("CriticCohortAgent: FrontierIntelligence selection failed; using configured frontier_metric")
+
+
                 # ---- Targeted cohort ----
                 if rows_tgt:
                     vc_tgt, metric_keys_tgt = self._compute_frontier_lens_for_rows(
                         rows_tgt,
                         cohort_label="targeted",
+                        frontier_metric=frontier_metric,
                     )
                     context["visicalc_targeted_report"] = vc_tgt.report.to_dict()
                     context["visicalc_targeted_metric_keys"] = metric_keys_tgt
@@ -406,6 +424,7 @@ class CriticCohortAgent(BaseAgent):
                     vc_base, metric_keys_base = self._compute_frontier_lens_for_rows(
                         rows_base,
                         cohort_label="baseline",
+                        frontier_metric=frontier_metric,
                     )
                     context["visicalc_baseline_report"] = vc_base.report.to_dict()
                     context["visicalc_baseline_metric_keys"] = metric_keys_base
@@ -562,7 +581,6 @@ class CriticCohortAgent(BaseAgent):
                             "CriticCohortAgent: _compute_metric_separability failed"
                         )
 
-
             # ------------------------------------------------------------------
             # Case B: single cohort only (no A/B comparison)
             # ------------------------------------------------------------------
@@ -613,6 +631,7 @@ class CriticCohortAgent(BaseAgent):
         self,
         rows: List[dict],
         cohort_label: str,
+        frontier_metric: Optional[str] = None,
     ):
         """
         Build a FrontierLens instance from canonical feature rows.
@@ -659,11 +678,7 @@ class CriticCohortAgent(BaseAgent):
             vpm = normalize_scores(vpm).astype(np.float32)
 
         # 3) Frontier metric
-        frontier_metric = self.visicalc_frontier_metric
-        self.selected_frontier_metric = self.frontier_intelligence.select_frontier_metric(
-            metric_names,
-            fallback=self.visicalc_frontier_metric
-        )
+        frontier_metric = frontier_metric or self.visicalc_frontier_metric
         if frontier_metric and frontier_metric not in metric_names:
             log.warning(
                 "FrontierLens: requested frontier_metric=%r not in metric_names; "
@@ -1203,3 +1218,60 @@ class CriticCohortAgent(BaseAgent):
         high = self.visicalc_frontier_high
         return frontier_metric, low, high
 
+    def _rows_to_matrix(
+        self,
+        rows: List[dict],
+        metric_names: List[str],
+    ) -> np.ndarray:
+        """Project canonical rows into a dense (N, M) matrix using metric_names order."""
+        matrix_rows: List[List[float]] = []
+
+        for row in rows:
+            vals = row.get("metrics_values")
+            if not vals:
+                continue
+
+            cols = row.get("metrics_columns") or metric_names
+            mapping = {k: float(v) for k, v in zip(cols, vals)}
+            vec = [float(mapping.get(name, 0.0)) for name in metric_names]
+            matrix_rows.append(vec)
+
+        if not matrix_rows:
+            raise ValueError("FrontierIntelligence: no valid rows with metrics_values")
+
+        return np.asarray(matrix_rows, dtype=np.float32)
+
+    def _build_frontier_intel_dataset(
+        self,
+        rows_base: List[dict],
+        rows_tgt: List[dict],
+    ) -> Tuple[np.ndarray, List[str], np.ndarray]:
+        """
+        Build (X, metric_names, y) for FrontierIntelligence:
+
+        - X: (N, M) scores for baseline + target
+        - metric_names: common metric ordering
+        - y: 0 for baseline, 1 for target
+        """
+        # 1) Infer global metric_names from both cohorts
+        names_set = set()
+        for r in rows_base + rows_tgt:
+            cols = r.get("metrics_columns") or []
+            names_set.update(cols)
+        if not names_set:
+            raise ValueError("FrontierIntelligence: no metric names found in rows")
+
+        metric_names = sorted(names_set)
+
+        # 2) Project into common matrix
+        X_base = self._rows_to_matrix(rows_base, metric_names)
+        X_tgt  = self._rows_to_matrix(rows_tgt, metric_names)
+
+        # 3) Build labels
+        y_base = np.zeros(X_base.shape[0], dtype=np.int8)
+        y_tgt  = np.ones(X_tgt.shape[0], dtype=np.int8)
+
+        X = np.vstack([X_base, X_tgt])
+        y = np.concatenate([y_base, y_tgt])
+
+        return X, metric_names, y
