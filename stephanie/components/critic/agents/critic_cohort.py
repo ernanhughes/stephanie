@@ -9,6 +9,8 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 
 from stephanie.agents.base_agent import BaseAgent
+from stephanie.components.critic.reports.frontier_reporter import FrontierReporter
+from stephanie.components.critic.services.frontier_intelligence import FrontierIntelligence
 from stephanie.scoring.metrics.metric_importance import (
     compute_metric_importance, save_metric_importance_json)
 from stephanie.scoring.metrics.metric_mapping import MetricMapper
@@ -214,6 +216,10 @@ class CriticCohortAgent(BaseAgent):
             container,
             logger,
         )
+        self.frontier_intelligence = FrontierIntelligence(self.cfg, self.memory, self.container, self.logger, self.run_id)
+        self.selected_frontier_metric: Optional[str] = None
+        self.reporter = FrontierReporter()
+
         self.metric_mapper = MetricMapper.from_config(vis_cfg)
         self.vpm_png_cfg: Dict[str, Any] = vis_cfg.get("vpm_png", {}) or {}
         self.vpm_png_enabled: bool = bool(self.vpm_png_cfg.get("enabled", True))
@@ -320,6 +326,22 @@ class CriticCohortAgent(BaseAgent):
             for r in rows
             if r.get("scorable_id") is not None
         }
+
+        
+        first_row = rows[0]
+        all_metric_names = first_row.get("metrics_columns", [])
+        
+        # Initialize reporter for cohort context
+        self.reporter.set_context(self.run_id, "cohort")
+
+        # Select frontier metric using Frontier Intelligence
+        self.selected_frontier_metric = self.frontier_intelligence.select_frontier_metric(
+            all_metric_names,
+            fallback=self.visicalc_frontier_metric
+        )
+
+        log.info(f"CriticCohortAgent: selected frontier metric: {self.selected_frontier_metric}")
+        
 
         # Helper to slice rows by a cohort of scorables
         def _rows_for_cohort(scorables: List[Any]) -> List[dict]:
@@ -638,6 +660,10 @@ class CriticCohortAgent(BaseAgent):
 
         # 3) Frontier metric
         frontier_metric = self.visicalc_frontier_metric
+        self.selected_frontier_metric = self.frontier_intelligence.select_frontier_metric(
+            metric_names,
+            fallback=self.visicalc_frontier_metric
+        )
         if frontier_metric and frontier_metric not in metric_names:
             log.warning(
                 "FrontierLens: requested frontier_metric=%r not in metric_names; "
@@ -1176,22 +1202,4 @@ class CriticCohortAgent(BaseAgent):
         low = self.visicalc_frontier_low
         high = self.visicalc_frontier_high
         return frontier_metric, low, high
-
-def project_to_kept(X, metric_names, kept):
-    """
-    Project matrix X (n, d_in) with columns 'metric_names' to the order in 'kept'.
-    Missing columns fill with 0.0; extra columns are dropped.
-    Returns: X_proj (n, len(kept)), kept (same list back for convenience)
-    """
-    import numpy as np
-    if not kept:
-        return X, metric_names
-    idx = {n: i for i, n in enumerate(metric_names)}
-    out = np.zeros((X.shape[0], len(kept)), dtype=X.dtype)
-    for j, name in enumerate(kept):
-        i = idx.get(name)
-        if i is not None:
-            out[:, j] = X[:, i]
-    return out, list(kept)
-
 

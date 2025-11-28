@@ -10,27 +10,6 @@ import numpy as np
 
 log = logging.getLogger(__name__)    
 
-def project_to_kept(
-    X: np.ndarray,
-    metric_names: List[str],
-    kept: List[str],
-) -> Tuple[np.ndarray, List[str], List[str]]:
-    """
-    Reorder/trim X to exactly the kept list (1:1 order with `kept`).
-    Missing columns are filled with zeros; returns (X_proj, used_names, missing).
-    """
-    name_to_idx = {n: i for i, n in enumerate(metric_names)}
-    Xp = np.zeros((X.shape[0], len(kept)), dtype=X.dtype)
-    missing: List[str] = []
-    for j, k in enumerate(kept):
-        i = name_to_idx.get(k)
-        if i is None:
-            missing.append(k)
-        else:
-            Xp[:, j] = X[:, i]
-    return Xp, list(kept), missing
-
-
 def save_shadow_pack(path: str | Path,
                      X: np.ndarray,
                      y: Optional[np.ndarray] = None,

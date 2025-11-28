@@ -11,19 +11,29 @@ import numpy as np
 
 # Evaluation utilities (assumed present in your tree)
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.components.critic.model.shadow import project_to_kept
 from stephanie.components.critic.utils.calibration import (
-    IsoCalibrator, PlattCalibrator, brier, expected_calibration_error,
-    reliability_bins)
-from stephanie.components.critic.utils.metrics import \
-    generate_evaluation_report
+    IsoCalibrator,
+    brier,
+    expected_calibration_error,
+    reliability_bins,
+)
+from stephanie.components.critic.utils.metrics import (
+    generate_evaluation_report,
+)
 from stephanie.components.critic.utils.downstream import (
-    compute_downstream_impact, generate_downstream_plot, generate_lift_curve,
-    run_downstream_experiment)
+    compute_downstream_impact,
+    generate_downstream_plot,
+    generate_lift_curve,
+    run_downstream_experiment,
+)
 from stephanie.components.critic.utils.stability_checker import (
-    check_feature_stability, label_shuffle_sanity_check, run_ablation_study)
-from stephanie.components.critic.utils.statistics import \
-    paired_bootstrap_auc_diff
+    check_feature_stability,
+    label_shuffle_sanity_check,
+    run_ablation_study,
+)
+from stephanie.components.critic.utils.statistics import (
+    paired_bootstrap_auc_diff,
+)
 
 from stephanie.components.critic.reports.validation import (
     CORE_FEATURE_COUNT,
@@ -53,10 +63,20 @@ class CriticEvaluationAgent(BaseAgent):
         super().__init__(cfg, memory, container, logger)
 
         # Paths / config
-        self.shadow_path = Path(self.cfg.get("shadow_path", "models/critic_shadow.npz"))
-        self.current_path = Path(self.cfg.get("current_path", "models/critic.joblib"))
-        self.candidate_path = Path(self.cfg.get("candidate_path", "models/critic_candidate.joblib"))
-        self.report_dir = Path(self.cfg.get("report_dir", f"/runs/critic/{self.run_id}/full_evaluation"))
+        self.shadow_path = Path(
+            self.cfg.get("shadow_path", "models/critic_shadow.npz")
+        )
+        self.current_path = Path(
+            self.cfg.get("current_path", "models/critic.joblib")
+        )
+        self.candidate_path = Path(
+            self.cfg.get("candidate_path", "models/critic_candidate.joblib")
+        )
+        self.report_dir = Path(
+            self.cfg.get(
+                "report_dir", f"/runs/critic/{self.run_id}/full_evaluation"
+            )
+        )
         self.run_history = int(self.cfg.get("run_history", 5))
         self.random_seed = int(self.cfg.get("seed", 42))
 
@@ -67,21 +87,33 @@ class CriticEvaluationAgent(BaseAgent):
 
     # ----------------------- IO helpers -----------------------
 
-    def _load_shadow(self) -> Tuple[np.ndarray, np.ndarray, List[str], Optional[np.ndarray], Dict[str, Any]]:
+    def _load_shadow(
+        self,
+    ) -> Tuple[
+        np.ndarray, np.ndarray, List[str], Optional[np.ndarray], Dict[str, Any]
+    ]:
         """Load shadow data with error handling."""
         if not self.shadow_path.exists():
-            raise FileNotFoundError(f"Shadow pack not found at {self.shadow_path}")
+            raise FileNotFoundError(
+                f"Shadow pack not found at {self.shadow_path}"
+            )
 
         with np.load(self.shadow_path, allow_pickle=True) as data:
             X = data["X"]
             y = data["y"]
             feature_names = data["feature_names"].tolist()
-            groups = data["groups"].tolist() if "groups" in data and data["groups"].size > 0 else None
+            groups = (
+                data["groups"].tolist()
+                if "groups" in data and data["groups"].size > 0
+                else None
+            )
             meta = data["meta"].item() if "meta" in data else {}
 
         return X, y, feature_names, groups, meta
 
-    def _load_model(self, model_path: Path) -> Tuple[Optional[Any], Dict[str, Any]]:
+    def _load_model(
+        self, model_path: Path
+    ) -> Tuple[Optional[Any], Dict[str, Any]]:
         """Load model + sidecar meta (if present)."""
         if not model_path.exists():
             log.warning("Model not found at %s", model_path)
@@ -94,7 +126,11 @@ class CriticEvaluationAgent(BaseAgent):
 
         meta_path = model_path.with_suffix(".meta.json")
         try:
-            meta = json.loads(meta_path.read_text(encoding="utf-8")) if meta_path.exists() else {}
+            meta = (
+                json.loads(meta_path.read_text(encoding="utf-8"))
+                if meta_path.exists()
+                else {}
+            )
         except Exception as e:
             log.warning("Failed to read meta %s: %s", meta_path, e)
             meta = {}
@@ -103,7 +139,9 @@ class CriticEvaluationAgent(BaseAgent):
     # ----------------------- Feature handling -----------------------
 
     @staticmethod
-    def _required_feature_names(model_meta: Dict[str, Any], fallback_names: List[str], model_obj: Any) -> List[str]:
+    def _required_feature_names(
+        model_meta: Dict[str, Any], fallback_names: List[str], model_obj: Any
+    ) -> List[str]:
         """
         Determine the exact feature list this model expects.
         Order matters. Prefer sidecar meta['feature_names'].
@@ -135,7 +173,9 @@ class CriticEvaluationAgent(BaseAgent):
 
     # ----------------------- Prediction -----------------------
 
-    def _predict_proba(self, model, X, have_names: List[str], required_names: List[str]) -> np.ndarray:
+    def _predict_proba(
+        self, model, X, have_names: List[str], required_names: List[str]
+    ) -> np.ndarray:
         """Project features and predict probabilities for the positive class."""
         X_proj, kept, missing = project_to_kept(X, have_names, required_names)
         if X_proj.shape[1] != len(required_names):
@@ -148,7 +188,9 @@ class CriticEvaluationAgent(BaseAgent):
         if hasattr(model, "decision_function"):
             scores = model.decision_function(X_proj)
             return 1.0 / (1.0 + np.exp(-scores))
-        raise RuntimeError("Model has neither predict_proba nor decision_function")
+        raise RuntimeError(
+            "Model has neither predict_proba nor decision_function"
+        )
 
     # ----------------------- Summary writer -----------------------
 
@@ -208,7 +250,9 @@ class CriticEvaluationAgent(BaseAgent):
         for grp, res in (ablation_report.get("results") or {}).items():
             if grp == "base":
                 continue
-            lines.append(f"| Without {grp} | {fmt(res.get('auroc'))} | {fmt(res.get('delta_auroc'))} |")
+            lines.append(
+                f"| Without {grp} | {fmt(res.get('auroc'))} | {fmt(res.get('delta_auroc'))} |"
+            )
 
         lines += [
             "",
@@ -240,49 +284,85 @@ class CriticEvaluationAgent(BaseAgent):
         try:
             # 1) Shadow
             X, y, feature_names, groups, shadow_meta = self._load_shadow()
-            log.info("Loaded shadow data: %d samples, %d features", X.shape[0], X.shape[1])
+            log.info(
+                "Loaded shadow data: %d samples, %d features",
+                X.shape[0],
+                X.shape[1],
+            )
 
             # 2) Models
             current_model, current_meta = self._load_model(self.current_path)
             if current_model is None:
-                raise ValueError("Current model not found—cannot run evaluation.")
+                raise ValueError(
+                    "Current model not found—cannot run evaluation."
+                )
 
-            candidate_model, candidate_meta = self._load_model(self.candidate_path)
+            candidate_model, candidate_meta = self._load_model(
+                self.candidate_path
+            )
 
             # Per-model required names
-            req_cur = self._required_feature_names(current_meta, feature_names, current_model)
-            req_cand = self._required_feature_names(candidate_meta, feature_names, candidate_model) if candidate_model else None
+            req_cur = self._required_feature_names(
+                current_meta, feature_names, current_model
+            )
+            req_cand = (
+                self._required_feature_names(
+                    candidate_meta, feature_names, candidate_model
+                )
+                if candidate_model
+                else None
+            )
 
             # 3) Core eval (side-by-side if candidate exists)
             core_dir = self.report_dir / "core"
             core_dir.mkdir(parents=True, exist_ok=True)
 
-            probs_current = self._predict_proba(current_model, X, feature_names, req_cur)
+            probs_current = self._predict_proba(
+                current_model, X, feature_names, req_cur
+            )
             if candidate_model:
-                log.info("Running side-by-side evaluation (current vs candidate).")
-                probs_candidate = self._predict_proba(candidate_model, X, feature_names, req_cand)
+                log.info(
+                    "Running side-by-side evaluation (current vs candidate)."
+                )
+                probs_candidate = self._predict_proba(
+                    candidate_model, X, feature_names, req_cand
+                )
             else:
-                log.info("Running single-model evaluation (no candidate found).")
+                log.info(
+                    "Running single-model evaluation (no candidate found)."
+                )
                 probs_candidate = np.full_like(probs_current, 0.5, dtype=float)
 
             # Bootstrap ΔAUC with CI/p-value (seeded, stratified)
             boot = paired_bootstrap_auc_diff(
-                y, probs_current, probs_candidate,
-                n_boot=5000, alpha=0.05, seed=42, stratified=True
+                y,
+                probs_current,
+                probs_candidate,
+                n_boot=5000,
+                alpha=0.05,
+                seed=42,
+                stratified=True,
             )
 
             # Calibration metrics
-            ece_cur  = expected_calibration_error(y, probs_current, n_bins=15, strategy="quantile")
-            ece_cand = expected_calibration_error(y, probs_candidate, n_bins=15, strategy="quantile")
-            brier_cur  = brier(y, probs_current)
+            ece_cur = expected_calibration_error(
+                y, probs_current, n_bins=15, strategy="quantile"
+            )
+            ece_cand = expected_calibration_error(
+                y, probs_candidate, n_bins=15, strategy="quantile"
+            )
+            brier_cur = brier(y, probs_current)
             brier_cand = brier(y, probs_candidate)
 
             iso = IsoCalibrator().fit(y, probs_candidate)
             probs_candidate_iso = iso.transform(probs_candidate)
-            ece_cand_iso = expected_calibration_error(y, probs_candidate_iso, n_bins=15, strategy="quantile")
+            ece_cand_iso = expected_calibration_error(
+                y, probs_candidate_iso, n_bins=15, strategy="quantile"
+            )
 
-
-            rel_c = reliability_bins(y, probs_candidate, n_bins=15, strategy="quantile")
+            rel_c = reliability_bins(
+                y, probs_candidate, n_bins=15, strategy="quantile"
+            )
 
             core_report = generate_evaluation_report(
                 y_true=y,
@@ -293,8 +373,12 @@ class CriticEvaluationAgent(BaseAgent):
             )
             core_report["reliability_candidate"] = {
                 "bin_edges": rel_c["bin_edges"].tolist(),
-                "bin_confidence": np.nan_to_num(rel_c["bin_confidence"], nan=-1).tolist(),
-                "bin_accuracy": np.nan_to_num(rel_c["bin_accuracy"], nan=-1).tolist(),
+                "bin_confidence": np.nan_to_num(
+                    rel_c["bin_confidence"], nan=-1
+                ).tolist(),
+                "bin_accuracy": np.nan_to_num(
+                    rel_c["bin_accuracy"], nan=-1
+                ).tolist(),
                 "bin_count": rel_c["bin_count"].tolist(),
             }
             core_report["bootstrap"] = boot
@@ -327,10 +411,17 @@ class CriticEvaluationAgent(BaseAgent):
             # 5) Stability (recent runs)
             log.info("Running feature stability check…")
             try:
-                recent_runs = self.memory.metrics.get_recent_run_ids(limit=self.run_history) or []
+                recent_runs = (
+                    self.memory.metrics.get_recent_run_ids(
+                        limit=self.run_history
+                    )
+                    or []
+                )
             except Exception:
                 recent_runs = []
-            stability_report = check_feature_stability(recent_runs, self.memory)
+            stability_report = check_feature_stability(
+                recent_runs, self.memory
+            )
 
             # 6) Ablation
             log.info("Running grouped ablation study…")
@@ -342,7 +433,9 @@ class CriticEvaluationAgent(BaseAgent):
                 "Tiny": [f for f in feature_names if "tiny" in f.lower()],
                 "HRM": [f for f in feature_names if "hrm" in f.lower()],
                 "SICQL": [f for f in feature_names if "sicql" in f.lower()],
-                "VisiCalc": [f for f in feature_names if "visicalc" in f.lower()],
+                "VisiCalc": [
+                    f for f in feature_names if "visicalc" in f.lower()
+                ],
             }
 
             def model_factory():
@@ -382,34 +475,34 @@ class CriticEvaluationAgent(BaseAgent):
             log.info("Computing downstream impact...")
             downstream_dir = self.report_dir / "downstream"
             downstream_dir.mkdir(parents=True, exist_ok=True)
+
             # Define accuracy function (for GSM8K, this is just the correctness)
             def accuracy_func(selected_idx):
                 return y[selected_idx].mean()
 
             # Compute impact
             downstream_results = compute_downstream_impact(
-                y, 
+                y,
                 probs_current,  # Use current model's scores for downstream impact
-                accuracy_func
+                accuracy_func,
             )
 
             # Generate plots
             generate_downstream_plot(
                 downstream_results,
                 str(downstream_dir / "downstream_impact.png"),
-                title="Downstream Impact on Task Accuracy"
+                title="Downstream Impact on Task Accuracy",
             )
             generate_lift_curve(
                 y,
                 probs_current,
                 str(downstream_dir / "lift_curve.png"),
-                title="Lift Curve: Critic vs Random Selection"
+                title="Lift Curve: Critic vs Random Selection",
             )
 
             # Save results
             with open(downstream_dir / "downstream_results.json", "w") as f:
                 json.dump(downstream_results, f, indent=2)
-
 
             # 9) Validation / VisiCalc-style reports
             log.info("Running Tiny Critic / VisiCalc validation reports...")
@@ -419,7 +512,6 @@ class CriticEvaluationAgent(BaseAgent):
                 feature_names=feature_names,
                 groups=groups,
             )
-
 
             # 10) Summary markdown (top-level overview)
             self._generate_summary_report(
@@ -441,7 +533,10 @@ class CriticEvaluationAgent(BaseAgent):
                 "validation": validation_summary,  # <- NEW: Tiny Critic / VisiCalc validation
             }
 
-            log.info("✅ Comprehensive evaluation complete. Full report at %s", self.report_dir)
+            log.info(
+                "✅ Comprehensive evaluation complete. Full report at %s",
+                self.report_dir,
+            )
             return context
 
         except Exception as e:
@@ -465,7 +560,9 @@ class CriticEvaluationAgent(BaseAgent):
         validation_dir = self.report_dir / "validation"
         validation_dir.mkdir(parents=True, exist_ok=True)
 
-        log.info("Running Tiny Critic / VisiCalc validation in %s", validation_dir)
+        log.info(
+            "Running Tiny Critic / VisiCalc validation in %s", validation_dir
+        )
 
         # --- 1) Dataset-level audit: stats + tiny_critic_report.md ---
         dataset_info = {
@@ -509,17 +606,20 @@ class CriticEvaluationAgent(BaseAgent):
 
         # --- 4) Core-aware feature selection + artifacts ---
         # (keeps all core features + top dynamic ones by importance)
-        selected_names, importance_rows = _select_features_via_importance_core_aware(
-            X=X,
-            y=y,
-            metric_names=feature_names,
-            core_dim=CORE_FEATURE_COUNT,
-            top_k_dynamic=30,   # you can make this a cfg knob later
-            min_effect=0.0,
+        selected_names, importance_rows = (
+            _select_features_via_importance_core_aware(
+                X=X,
+                y=y,
+                metric_names=feature_names,
+                core_dim=CORE_FEATURE_COUNT,
+                top_k_dynamic=30,  # you can make this a cfg knob later
+                min_effect=0.0,
+            )
         )
 
         dynamic_selected = [
-            name for name in selected_names
+            name
+            for name in selected_names
             if name not in feature_names[:CORE_FEATURE_COUNT]
         ]
         dataset_info["selected_dynamic"] = len(dynamic_selected)
@@ -535,7 +635,9 @@ class CriticEvaluationAgent(BaseAgent):
         # --- 5) (Optional) Write filtered NPZ of selected features ---
         try:
             name_to_idx = {n: i for i, n in enumerate(feature_names)}
-            sel_idx = [name_to_idx[n] for n in selected_names if n in name_to_idx]
+            sel_idx = [
+                name_to_idx[n] for n in selected_names if n in name_to_idx
+            ]
             if sel_idx:
                 X_sel = X[:, sel_idx].astype(X.dtype, copy=False)
                 filtered_path = validation_dir / (
@@ -557,17 +659,44 @@ class CriticEvaluationAgent(BaseAgent):
                     filtered_path,
                 )
             else:
-                log.warning("No features selected for filtered validation dataset; skipping NPZ export.")
+                log.warning(
+                    "No features selected for filtered validation dataset; skipping NPZ export."
+                )
         except Exception:
-            log.exception("Failed to write filtered validation NPZ; continuing without it.")
+            log.exception(
+                "Failed to write filtered validation NPZ; continuing without it."
+            )
 
         # Return a compact summary for the context dict
         return {
             "validation_dir": str(validation_dir),
             "hypothesis_validated": bool(hypothesis_validated),
             "evaluation_results": {
-                "ablation_results": evaluation_results.get("ablation_results", {}),
+                "ablation_results": evaluation_results.get(
+                    "ablation_results", {}
+                ),
                 "core_feature_count": CORE_FEATURE_COUNT,
             },
             "selected_features": selected_names,
         }
+
+def project_to_kept(
+    X: np.ndarray,
+    metric_names: List[str],
+    kept: List[str],
+) -> Tuple[np.ndarray, List[str], List[str]]:
+    """
+    Reorder/trim X to exactly the kept list (1:1 order with `kept`).
+    Missing columns are filled with zeros; returns (X_proj, used_names, missing).
+    """
+    name_to_idx = {n: i for i, n in enumerate(metric_names)}
+    Xp = np.zeros((X.shape[0], len(kept)), dtype=X.dtype)
+    missing: List[str] = []
+    for j, k in enumerate(kept):
+        i = name_to_idx.get(k)
+        if i is None:
+            missing.append(k)
+        else:
+            Xp[:, j] = X[:, i]
+    return Xp, list(kept), missing
+

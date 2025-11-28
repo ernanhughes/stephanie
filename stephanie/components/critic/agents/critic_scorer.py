@@ -10,6 +10,7 @@ from stephanie.components.critic.agents.critic_cohort import CriticCohortAgent
 from stephanie.components.critic.model.critic_model import CriticModel
 from stephanie.components.critic.reports.critic_reporter import \
     build_critic_report
+from stephanie.scoring.metrics.frontier_intelligence import FrontierIntelligence
 from stephanie.scoring.metrics.scorable_processor import ScorableProcessor
 
 log = logging.getLogger(__name__)
@@ -51,6 +52,7 @@ class CriticScorerAgent(BaseAgent):
             run_id=self.run_id,
         )
 
+        self.frontier_intelligence = FrontierIntelligence(self.cfg, self.memory, self.container, self.logger, self.run_id)
         self.report_dir = cfg.get("report_dir", f"runs/critic/{self.run_id}/reports")
         os.makedirs(self.report_dir, exist_ok=True)
         self.model: CriticModel | None = None
