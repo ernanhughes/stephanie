@@ -127,6 +127,9 @@ critic_cohort:
 
     per_metric_normalize: true   # per-metric [0,1] min-max
 
+  svm_validation:
+    enabled: true
+    C: 1.0
   # ──────────────────────────────────────────────────────────────────────────
   # Optional A/B “TopLeft” nudge (only used if both cohorts are present)
   # ──────────────────────────────────────────────────────────────────────────

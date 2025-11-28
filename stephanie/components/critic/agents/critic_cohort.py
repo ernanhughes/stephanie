@@ -390,6 +390,22 @@ class CriticCohortAgent(BaseAgent):
                                 "FrontierMetricSelected",
                                 {"run_id": self.run_id, "frontier_metric": frontier_metric},
                             )
+                            svm_val = None
+                            svm_cfg = self.cfg.get("svm_validation", {})
+                            if self.frontier_intel is not None and svm_cfg.get("enabled", False):
+                                try:
+                                    svm_val = self.frontier_intel.run_svm_frontier_validation(
+                                        metric_matrix=X,         # (N, M) baseline + target
+                                        y=y,                     # 0/1 labels
+                                        metric_names=metric_names_fi,
+                                        C=float(svm_cfg.get("C", 1.0)),
+                                    )
+                                # Stash under the same sub-context the reporter reads
+                                except Exception as e:
+                                    log.exception("CriticCohortAgent: SVM frontier validation failed %s", str(e))
+                                    svm_val = {"enabled": False, "reason": "exception"}
+                                context["svm_frontier_validation"] = svm_val
+
                     except Exception:
                         log.exception("CriticCohortAgent: FrontierIntelligence selection failed; using configured frontier_metric")
 
@@ -1275,3 +1291,5 @@ class CriticCohortAgent(BaseAgent):
         y = np.concatenate([y_base, y_tgt])
 
         return X, metric_names, y
+
+

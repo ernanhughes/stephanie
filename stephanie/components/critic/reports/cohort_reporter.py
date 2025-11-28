@@ -291,6 +291,102 @@ def save_ab_episode_features(vc_base, vc_tgt, out_path: Path) -> None:
     except Exception:
         log.exception("CriticCohortAgent: failed to save episode feature dataset")
 
+def save_svm_decision_hist_png(
+    decision: np.ndarray,
+    labels: np.ndarray,
+    out_dir: Path,
+    *,
+    prefix: str = "svm_decision_overlap",
+    bins: int = 20,
+) -> Path:
+    """
+    Save a 1D histogram comparing SVM decision values for
+    baseline (label=0) vs targeted (label=1) examples.
+
+    This shows how much the two cohorts overlap along the SVM frontier axis.
+    """
+    out_dir.mkdir(parents=True, exist_ok=True)
+    path = out_dir / f"{prefix}.png"
+
+    decision = np.asarray(decision, dtype=float)
+    labels = np.asarray(labels, dtype=int)
+
+    mask_base = labels == 0
+    mask_tgt = labels == 1
+
+    d_base = decision[mask_base]
+    d_tgt = decision[mask_tgt]
+
+    fig, ax = plt.subplots(figsize=(6, 4))
+
+    # Two overlaid histograms; we rely on default colors, just set alpha.
+    ax.hist(d_base, bins=bins, alpha=0.5, label="Baseline")
+    ax.hist(d_tgt, bins=bins, alpha=0.5, label="Targeted")
+
+    # Decision boundary at 0 in SVM space
+    ax.axvline(0.0, linestyle="--", linewidth=1.0)
+
+    ax.set_xlabel("SVM decision value")
+    ax.set_ylabel("Count")
+    ax.set_title("SVM frontier overlap: baseline vs targeted")
+    ax.legend()
+
+    fig.tight_layout()
+    fig.savefig(path, dpi=200)
+    plt.close(fig)
+
+    return path
+
+
+def save_svm_decision_strip_png(
+    decision: np.ndarray,
+    labels: np.ndarray,
+    out_dir: Path,
+    *,
+    prefix: str = "svm_decision_strip",
+) -> Path:
+    """
+    Save a strip plot of SVM decision values:
+
+        baseline dots on one row
+        targeted dots on another row
+        vertical line at 0 as the decision boundary
+    """
+    out_dir.mkdir(parents=True, exist_ok=True)
+    path = out_dir / f"{prefix}.png"
+
+    decision = np.asarray(decision, dtype=float)
+    labels = np.asarray(labels, dtype=int)
+
+    mask_base = labels == 0
+    mask_tgt = labels == 1
+
+    d_base = decision[mask_base]
+    d_tgt = decision[mask_tgt]
+
+    fig, ax = plt.subplots(figsize=(8, 3))
+
+    # jitter y slightly so points don't sit exactly on top of each other
+    y_base = np.zeros_like(d_base) + 0.3
+    y_tgt  = np.zeros_like(d_tgt) - 0.3
+
+    ax.scatter(d_base, y_base, alpha=0.8, label="Baseline")
+    ax.scatter(d_tgt,  y_tgt,  alpha=0.8, label="Targeted")
+
+    # decision boundary
+    ax.axvline(0.0, linestyle="--", linewidth=1.0)
+
+    ax.set_xlabel("SVM decision value")
+    ax.set_yticks([0.3, -0.3])
+    ax.set_yticklabels(["Baseline", "Targeted"])
+    ax.set_title("SVM frontier: per-episode separation")
+    ax.legend(loc="upper left")
+
+    fig.tight_layout()
+    fig.savefig(path, dpi=200)
+    plt.close(fig)
+
+    return path
 
 def compute_metric_separability(
     vpm_base: np.ndarray,
@@ -513,6 +609,7 @@ class CriticCohortReporter:
     def __call__(self, context: Dict[str, Any]) -> Dict[str, Any]:
         summary = self._build_summary(context)
         markdown = self._render_markdown(summary)
+        self._write_files(summary)
 
         # Ensure output dir exists
         self.out_dir.mkdir(parents=True, exist_ok=True)
@@ -583,6 +680,11 @@ class CriticCohortReporter:
         baseline_quality = context.get("visicalc_baseline_quality")
         single_quality = context.get("visicalc_quality")
 
+        vpm_tgt   = context.get("visicalc_targeted_vpm")
+        vpm_base  = context.get("visicalc_baseline_vpm")
+
+        svm_val   = context.get("svm_frontier_validation") or {}
+
         # Choose a frontier block for basic config
         frontier_block = (
             frontier_tgt or frontier_single or frontier_base or {}
@@ -590,6 +692,7 @@ class CriticCohortReporter:
 
         summary: Dict[str, Any] = {
             "run_id": self.run_id,
+            "svm_val": svm_val, 
             "generated_utc": now,
             "has_ab": bool(has_ab),
             # Cohort sizes
@@ -869,6 +972,64 @@ class CriticCohortReporter:
                 )
             lines.append("")
 
+
+        # ------------------------------------------------------------------
+        # SVM frontier validation
+        # ------------------------------------------------------------------
+        svm_val = s.get("svm_val") or {}
+        if svm_val.get("enabled"):
+            lines.append("## 4. SVM Frontier Validation")
+            lines.append("")
+            lines.append(
+                "As an additional check, we train a small linear SVM on the "
+                "per-row metric vectors (baseline vs targeted) to validate "
+                "that the frontier space is linearly separable."
+            )
+            lines.append("")
+
+            lines.append(f"- Model type: `{svm_val.get('type', 'LinearSVC')}`")
+            lines.append(f"- #samples: **{int(svm_val.get('n_samples'))}**")
+            lines.append(f"- #features: **{int(svm_val.get('n_features'))}**")
+            lines.append(f"- Train AUC: **{_format_float(svm_val.get('train_auc'))}**")
+            lines.append(f"- Hinge loss: **{_format_float(svm_val.get('hinge_loss'))}**")
+
+            margin = svm_val.get("margin") or {}
+            lines.append(
+                f"- Margin mean/std/min/max: "
+                f"**{_format_float(margin.get('mean'))}** / "
+                f"**{_format_float(margin.get('std'))}** / "
+                f"**{_format_float(margin.get('min'))}** / "
+                f"**{_format_float(margin.get('max'))}**"
+            )
+            lines.append(
+                f"- Support fraction (inside margin band): "
+                f"**{_format_float(svm_val.get('support_fraction'))}**"
+            )
+            lines.append("")
+
+            top_feats = svm_val.get("top_features") or []
+            if top_feats:
+                lines.append("Top SVM frontier features:")
+                lines.append("")
+                lines.append("| Rank | Metric | Weight | |w| |")
+                lines.append("| ---- | ------ | ------ | ---- |")
+                for i, row in enumerate(top_feats[:10], start=1):
+                    lines.append(
+                        f"| {i} | `{row.get('metric', '?')}` | "
+                        f"{_format_float(row.get('weight'))} | "
+                        f"{_format_float(row.get('abs_weight'))} |"
+                    )
+                lines.append("")
+        elif svm_val:
+            # Present but disabled / failed
+            lines.append("## 4. SVM Frontier Validation")
+            lines.append("")
+            lines.append(
+                f"SVM validation was requested but not run: "
+                f"reason=`{svm_val.get('reason', 'unknown')}`"
+            )
+            lines.append("")
+
         # Warnings / sanity
         lines.append("## Sanity checks")
         lines.append("")
@@ -881,3 +1042,41 @@ class CriticCohortReporter:
         lines.append("")
 
         return "\n".join(lines)
+    
+    def _write_files(self, summary: Dict[str, Any]) -> None:
+        svm_val = summary.get("svm_val") or {}
+        if svm_val.get("enabled"):
+            decision = svm_val.get("decision")
+            labels = svm_val.get("labels")
+            if decision is not None and labels is not None:
+                try:
+                    decision_arr = np.asarray(decision, dtype=float)
+                    labels_arr = np.asarray(labels, dtype=int)
+                    png_path = save_svm_decision_hist_png(
+                        decision=decision_arr,
+                        labels=labels_arr,
+                        out_dir=self.out_dir,
+                    )
+
+                    log.info("CohortSummarySVMDecisionPNGWritten"
+                        f" path={str(png_path)}"
+                    )
+
+                    png_path =  save_svm_decision_strip_png(
+                        decision=decision_arr,
+                        labels=labels_arr,
+                        out_dir=self.out_dir,
+                    )
+                    log.info("CohortSummarySVMDecisionStripPNGWritten"
+                        f" path={str(png_path)}"
+                    )
+                except Exception:
+                    log.exception(
+                        "CriticCohortReporter: failed to write SVM decision overlap PNG"
+                    )
+
+def _format_float(x: Optional[float], decimals: int = 3) -> str:
+    if x is None:
+        return "N/A"
+    return f"{x:.{decimals}f}"
+

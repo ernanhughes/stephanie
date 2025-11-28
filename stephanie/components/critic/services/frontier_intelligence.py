@@ -8,6 +8,8 @@ from scipy import stats
 import matplotlib.pyplot as plt
 from sklearn.linear_model import TheilSenRegressor
 from pathlib import Path
+from sklearn.svm import LinearSVC
+from sklearn.metrics import roc_auc_score
 
 log = logging.getLogger(__name__)
 
@@ -931,3 +933,136 @@ class FrontierIntelligence:
             }
         }
         self.metric_store.upsert_group_meta(run_id, meta_patch)
+
+
+    def run_svm_frontier_validation(
+        self,
+        metric_matrix: np.ndarray,
+        y: np.ndarray,
+        metric_names: Optional[List[str]] = None,
+        *,
+        C: float = 1.0,
+        class_weight: str = "balanced",
+        max_iter: int = 5000,
+        random_state: int = 42,
+    ) -> Dict[str, Any]:
+        """
+        Validation-only helper:
+        Train a linear SVM on per-example metric vectors and report how well
+        the frontier space separates baseline vs targeted examples.
+
+        Args:
+            metric_matrix: (N, M) matrix of metric values
+            y:            (N,) labels in {0, 1} (0=baseline, 1=target)
+            metric_names: optional list of length M for feature introspection
+
+        Returns:
+            Dict with:
+              - type: "LinearSVC"
+              - n_samples, n_features
+              - train_auc: AUC on the training set (decision_function vs y)
+              - hinge_loss: mean hinge loss on training set
+              - margin: {mean, std, min, max}
+              - support_fraction: fraction of points inside margin (|margin| <= 1)
+              - coef: list[float] (flattened weight vector)
+              - intercept: float
+              - top_features: List[{name, weight, abs_weight}] (if metric_names given)
+        """
+        # Defensive: need at least 2 classes
+        metric_matrix = np.asarray(metric_matrix)
+        y = np.asarray(y).astype(int)
+
+        unique = np.unique(y)
+        if unique.size < 2:
+            log.warning(
+                "[FrontierIntelligence] SVM validation skipped: only one class present "
+                "(labels=%r)", unique.tolist()
+            )
+            return {
+                "enabled": False,
+                "reason": "single_class",
+                "n_samples": int(metric_matrix.shape[0]),
+                "n_features": int(metric_matrix.shape[1]),
+            }
+
+        # Train a simple linear SVM (no persistence)
+        svm = LinearSVC(
+            C=C,
+            class_weight=class_weight,
+            max_iter=max_iter,
+            dual=False,              # usually better when n_samples > n_features
+            random_state=random_state,
+        )
+        svm.fit(metric_matrix, y)
+
+        # Decision values (larger → more likely class 1)
+        decision = svm.decision_function(metric_matrix)
+
+        # AUC on training set (just for sanity)
+        try:
+            train_auc = float(roc_auc_score(y, decision))
+        except Exception:
+            train_auc = float("nan")
+
+        # Margins: y ∈ {-1, +1}, margin = y * decision
+        y_signed = np.where(y == 1, 1.0, -1.0)
+        margins = y_signed * decision
+
+        margin_stats = {
+            "mean": float(np.mean(margins)),
+            "std": float(np.std(margins)),
+            "min": float(np.min(margins)),
+            "max": float(np.max(margins)),
+        }
+
+        # Hinge loss = max(0, 1 - margin)
+        hinge_losses = np.maximum(0.0, 1.0 - margins)
+        hinge_loss = float(np.mean(hinge_losses))
+
+        # Approx "support fraction": fraction of points inside margin band
+        support_fraction = float(np.mean(margins <= 1.0))
+
+        coef = svm.coef_.ravel()
+        intercept = float(svm.intercept_[0])
+
+        top_features: List[Dict[str, Any]] = []
+        if metric_names is not None and len(metric_names) == coef.shape[0]:
+            abs_coef = np.abs(coef)
+            order = np.argsort(-abs_coef)  # descending
+            for idx in order[: min(20, coef.shape[0])]:
+                top_features.append(
+                    {
+                        "metric": metric_names[idx],
+                        "weight": float(coef[idx]),
+                        "abs_weight": float(abs_coef[idx]),
+                    }
+                )
+
+        result: Dict[str, Any] = {
+            "enabled": True,
+            "type": "LinearSVC",
+            "n_samples": int(metric_matrix.shape[0]),
+            "n_features": int(metric_matrix.shape[1]),
+            "train_auc": train_auc,
+            "hinge_loss": hinge_loss,
+            "margin": margin_stats,
+            "support_fraction": support_fraction,
+            "coef": coef.tolist(),
+           "intercept": intercept,
+            "decision": decision.tolist(),       # shape (N,)
+            "labels": y.tolist(),                # 0 = baseline, 1 = targeted
+        }
+        if top_features:
+            result["top_features"] = top_features
+
+        log.info(
+            "[FrontierIntelligence] SVM frontier validation: "
+            "n=%d d=%d AUC=%.4f hinge=%.4f margin_mean=%.4f",
+            result["n_samples"],
+            result["n_features"],
+            train_auc,
+            hinge_loss,
+            margin_stats["mean"],
+        )
+
+        return result
