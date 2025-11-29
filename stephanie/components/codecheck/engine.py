@@ -90,12 +90,12 @@ def _detect_repo_context(repo_root: str) -> Tuple[Optional[str], Optional[str]]:
 
     def _run_git(args: List[str]) -> Optional[str]:
         try:
-            out = subprocess.checkoutput(  # noqa: S603, S607
-                ["git"] + args,
+            out = subprocess.check_output(  # noqa: S603, S607
+                ["git", *args],
                 cwd=repo_root,
                 stderr=subprocess.DEVNULL,
             )
-            return out.decode("utf-8").strip()
+            return out.decode("utf-8", "ignore").strip()
         except Exception:  # noqa: BLE001
             return None
 
@@ -174,7 +174,7 @@ class CodeCheckEngine:
         run_id = str(uuid.uuid4())
         branch, commit_hash = _detect_repo_context(self.repo_root)
 
-        self.logger.info(
+        log.info(
             "Starting CodeCheck run %s on %s (branch=%s, commit=%s)",
             run_id,
             self.repo_root,
@@ -210,7 +210,7 @@ class CodeCheckEngine:
                 self.cfg.file_extensions,
                 self.cfg.exclude_paths,
             )
-            self.logger.info(
+            log.info(
                 "CodeCheck run %s: found %d files to process", run_id, len(file_paths)
             )
 
@@ -222,7 +222,7 @@ class CodeCheckEngine:
                 try:
                     metric_vector = self._process_file_episode(run_id, rel_path, abs_path)
                 except Exception as file_err:  # noqa: BLE001
-                    self.logger.error(
+                    log.error(
                         "Error processing file %s in run %s: %s",
                         rel_path,
                         run_id,
@@ -261,11 +261,11 @@ class CodeCheckEngine:
                 finished=True,
             )
 
-            self.logger.info("CodeCheck run %s finished successfully", run_id)
+            log.info("CodeCheck run %s finished successfully", run_id)
             return run_id
 
         except Exception as e:  # noqa: BLE001
-            self.logger.error("CodeCheck run %s failed: %s", run_id, e, exc_info=True)
+            log.error("CodeCheck run %s failed: %s", run_id, e, exc_info=True)
             self.store.update_run_status(
                 run_id,
                 status="failed",
@@ -292,7 +292,7 @@ class CodeCheckEngine:
             with open(file_path_abs, "r", encoding="utf-8", errors="ignore") as f:
                 content = f.read()
         except OSError as e:
-            self.logger.warning("Unable to read file %s: %s", file_path_abs, e)
+            log.warning("Unable to read file %s: %s", file_path_abs, e)
             return None
 
         loc = len(content.splitlines()) if content else 0
