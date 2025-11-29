@@ -14,6 +14,8 @@ from stephanie.components.codecheck.agents.improver import (
     CodeCheckImproverAgent,
     CodeCheckImproverConfig,
 )
+import logging
+log = logging.getLogger(__name__)
 
 
 router = APIRouter()
@@ -267,9 +269,12 @@ async def improve_codecheck_run(request: Request, run_id: str):
     agent = CodeCheckImproverAgent(cfg=cfg, memory=memory, container=container, logger=logger)
 
     # NOTE: your agent.run is currently async; call it with await.
-    result = await agent.run(run_id=run_id)
+    context = {
+        "pipeline_run_id": run_id,
+    }   
+    result = await agent.run(context=context)
 
-    logger.info(
+    log.info(
         "CodeCheckImproverAgent finished for run %s: %s",
         run_id,
         result,

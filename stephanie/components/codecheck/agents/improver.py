@@ -1,182 +1,184 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field, asdict
-from pathlib import Path
+from dataclasses import asdict, dataclass, field, fields
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import os
-import time
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.memory.codecheck_store import CodeCheckStore
 from stephanie.models.base_config import BaseConfig
 
-
-# ---------------------------------------------------------------------------
-# Config loading (brain-dead YAML → dataclass)
-# ---------------------------------------------------------------------------
-
-# repo_root / config / agents / codecheck_improver.yaml
-DEFAULT_CONFIG_PATH = (
-    Path(__file__).resolve().parents[3] / "config" / "agents" / "codecheck_improver.yaml"
-)
-
+import logging
+log = logging.getLogger(__name__)
 
 @dataclass
 class CodeCheckImproverConfig(BaseConfig):
     """
-    Thin wrapper around the YAML config for the improver.
+    Lightweight, typed config for the CodeCheckImproverAgent.
 
-    We only materialise the pieces the agent actually needs. The full
-    raw YAML node is kept in `raw` so you can inspect / log later.
+    This sits on top of your normal Hydra/agent config or a plain YAML dict.
+    You can either:
+      * Construct it directly in SIS (CodeCheckImproverConfig(run_id=...)), or
+      * Build it from a Hydra/OmegaConf object / YAML dict via from_source().
     """
 
     run_id: Optional[str] = None
-
-    # File selection
-    max_files: int = 32
+    max_files: int = 10
     max_suggestions_per_file: int = 5
-    recency_weight: float = 0.7
-    dirty_metrics: List[str] = field(default_factory=list)
 
-    # Optional: keep the whole YAML subtree for later use
-    raw: Dict[str, Any] = field(default_factory=dict)
+    # how to rank files (weights over existing metrics)
+    file_priority_weights: Dict[str, float] = field(
+        default_factory=lambda: {
+            "security.bandit_high": 2.0,
+            "readability.ruff_style": 1.0,
+            "vibe.instruction_compliance": -1.0,
+        }
+    )
+
+    # how much recency vs severity matters (0..1)
+    recency_weight: float = 0.5  # "50% should be the data added to the system"
+
+    critic_model_name: str = "llama-3.1-8b-code-instruct"
+    critic_temperature: float = 0.2
 
     @classmethod
-    def from_yaml(
+    def from_source(
         cls,
-        run_id: str,
-        path: Optional[os.PathLike[str] | str] = None,
+        src: Any,
+        overrides: Optional[Dict[str, Any]] = None,
     ) -> "CodeCheckImproverConfig":
         """
-        Load `config/agents/codecheck_improver.yaml` and build a config.
+        Build a typed config from:
+          - Hydra/OmegaConf dict-like object
+          - A plain dict (e.g. loaded from YAML)
+          - Any object with attributes matching our field names
 
-        SIS can just do:
-
-            cfg = CodeCheckImproverConfig.from_yaml(run_id)
-            agent = CodeCheckImproverAgent(cfg, memory, container, logger)
-
-        No Hydra required.
+        Also understands nested blocks like:
+          selection.recent_weight      → recency_weight
+          selection.dirty_metrics      → file_priority_weights (uniform)
+          model.model_name             → critic_model_name
+          model.temperature            → critic_temperature
         """
-        import yaml  # local import to avoid hard dependency at module import
+        overrides = overrides or {}
+        data: Dict[str, Any] = {}
 
-        cfg_path = Path(path) if path is not None else DEFAULT_CONFIG_PATH
-        with cfg_path.open("r", encoding="utf-8") as f:
-            data = yaml.safe_load(f) or {}
+        def get_nested(obj: Any, path: Sequence[str]) -> Any:
+            cur = obj
+            for key in path:
+                if cur is None:
+                    return None
+                # Attribute-style (DictConfig, simple objects)
+                if hasattr(cur, key):
+                    cur = getattr(cur, key)
+                    continue
+                # Mapping-style (dict, OmegaConf mapping)
+                if isinstance(cur, dict) and key in cur:
+                    cur = cur[key]
+                    continue
+                return None
+            return cur
 
-        node = data.get("codecheck_improver", data) or {}
+        # First pass: top-level fields + overrides
+        for f in fields(cls):
+            name = f.name
+            if name in overrides:
+                data[name] = overrides[name]
+                continue
 
-        selection = node.get("selection") or {}
-        dirty_metrics = list(selection.get("dirty_metrics") or [])
-        recency_weight = float(selection.get("recent_weight", 0.7))
+            # Prefer attribute-style access
+            if hasattr(src, name):
+                data[name] = getattr(src, name)
+            # Fallback to mapping-style access
+            elif isinstance(src, dict) and name in src:
+                data[name] = src[name]
 
-        return cls(
-            run_id=run_id,
-            max_files=int(node.get("max_files", 32)),
-            max_suggestions_per_file=int(node.get("max_suggestions_per_file", 5)),
-            recency_weight=recency_weight,
-            dirty_metrics=dirty_metrics,
-            raw=node,
-        )
+        # Second pass: fill from nested 'selection' and 'model' if not already set
+        if "recency_weight" not in data or data["recency_weight"] is None:
+            val = get_nested(src, ("selection", "recent_weight"))
+            if val is not None:
+                data["recency_weight"] = float(val)
 
+        if "file_priority_weights" not in data or data["file_priority_weights"] is None:
+            dm = get_nested(src, ("selection", "dirty_metrics"))
+            if dm:
+                # Uniform weights over listed dirty metrics
+                data["file_priority_weights"] = {str(name): 1.0 for name in dm}
 
-# ---------------------------------------------------------------------------
-# Agent
-# ---------------------------------------------------------------------------
+        if "critic_model_name" not in data or data["critic_model_name"] is None:
+            val = get_nested(src, ("model", "model_name"))
+            if val is not None:
+                data["critic_model_name"] = str(val)
+
+        if "critic_temperature" not in data or data["critic_temperature"] is None:
+            val = get_nested(src, ("model", "temperature"))
+            if val is not None:
+                data["critic_temperature"] = float(val)
+
+        return cls(**data)
 
 
 class CodeCheckImproverAgent(BaseAgent):
     """
-    Given a CodeCheck run, pick the worst recent files and propose fixes.
+    Takes a CodeCheck run, selects the worst files, and uses a code critic
+    (local model or heuristic) to generate concrete, small improvement suggestions.
 
-    This is deliberately simple for now:
-
-      * file selection: “recent then dirty” using the metrics in the run
-      * suggestions: cheap heuristic bullets (no local model yet)
-      * storage: writes rows into CodeCheckSuggestionORM via CodeCheckStore
-
-    Once you're happy with the plumbing you can replace
-    `_heuristic_suggestions_for_file` with a call out to your local SLM.
+    The agent config comes from:
+      * YAML / dict (e.g. config/agents/codecheck_improver.yaml), OR
+      * Hydra (cfg.agents.codecheck_improver), OR
+      * A direct CodeCheckImproverConfig instance.
     """
 
-    def __init__(
-        self,
-        cfg: CodeCheckImproverConfig | Dict[str, Any],
-        memory: Any,
-        container: Any,
-        logger: Any,
-    ) -> None:
-        # Normalise cfg into a CodeCheckImproverConfig instance
+    def __init__(self, cfg: Any, memory, container, logger):
+        # Preserve the original config (Hydra dict, DictConfig, dataclass, or YAML dict)
+        self._raw_cfg = cfg
+
+        # Build the typed overlay we use inside the agent
         if isinstance(cfg, CodeCheckImproverConfig):
             self.cfg = cfg
-            base_cfg = cfg.to_dict() if hasattr(cfg, "to_dict") else asdict(cfg)
+            cfg_dict: Dict[str, Any] = asdict(cfg)
         else:
-            # Allow passing the raw YAML node; we only pull out what we need
-            node = cfg.get("codecheck_improver", cfg) if isinstance(cfg, dict) else {}
-            selection = (node or {}).get("selection") or {}
-            self.cfg = CodeCheckImproverConfig(
-                run_id=node.get("run_id"),
-                max_files=int(node.get("max_files", 32)),
-                max_suggestions_per_file=int(node.get("max_suggestions_per_file", 5)),
-                recency_weight=float(selection.get("recent_weight", 0.7)),
-                dirty_metrics=list(selection.get("dirty_metrics") or []),
-                raw=node or {},
-            )
-            base_cfg = node
+            # Derive the typed view from whatever we were given
+            self.cfg = CodeCheckImproverConfig.from_source(cfg)
+            # For BaseAgent we still want a flat dict so generic features work
+            if isinstance(cfg, dict):
+                cfg_dict = dict(cfg)
+            else:
+                cfg_dict = asdict(self.cfg)
 
-        super().__init__(base_cfg, memory, container, logger)
-        self.memory = memory
-        self.container = container
-        self.logger = logger
-
-        # CodeCheckStore hangs off memory in the usual way (self.memory.codecheck)
+        super().__init__(cfg_dict, memory, container, logger)
         self.store: CodeCheckStore = getattr(self.memory, "codecheck")
 
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
+    # ------------------------------------------------------------------ public API
 
-    def run(
-        self,
-        context: Optional[Dict[str, Any]] = None,
-        **kwargs: Any,
-    ) -> Dict[str, Any]:
+    async def run(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Main entrypoint used by SIS / Supervisor.
+        Main entrypoint (kept synchronous so SIS can call it from a threadpool).
 
-        Args:
-            context: optional pipeline context (ignored for now)
-            kwargs: can contain an explicit `run_id`
-
-        Returns:
-            Summary dict with counts etc. (also returned to SIS).
+        `run_id` resolution priority:
+          1. Explicit cfg.run_id
+          2. context["codecheck_run_id"] / context["run_id"] / context["pipeline_run_id"]
+          3. kwargs["run_id"]
         """
-        context = context or {}
-        run_id = (
-            kwargs.get("run_id")
-            or context.get("codecheck_run_id")
-            or self.cfg.run_id
-        )
+        run_id = context.get("pipeline_run_id")
+
+        run = self.store.get_run(run_id)
+        repo_root = run.repo_root
+
+
         if not run_id:
-            raise ValueError("CodeCheckImproverAgent.run() requires a `run_id`.")
+            raise ValueError("CodeCheckImproverAgent requires `run_id` in cfg or context.")
 
-        self.cfg.run_id = run_id
-
-        # 1. Select priority files for this run
-        files = self._select_priority_files(run_id, self.cfg.max_files)
-        self.logger.info(
-            "CodeCheckImprover: selected %d priority files for run %s",
-            len(files),
-            run_id,
+        # 1. Select top-N problematic files for this run
+        files = self._select_priority_files(run_id, self.cfg.get("max_files", 10))
+        log.info(
+            "Improver: selected %d priority files for run %s", len(files), run_id
         )
 
         total_suggestions = 0
         per_file_counts: Dict[int, int] = {}
 
-        # 2. For each file, generate and persist suggestions
-        run_orm = self.store.get_run(run_id)
-        repo_root = run_orm.repo_root if run_orm is not None else "."
-
+        # 2. For each file, call critic and store suggestions
         for f in files:
             file_id = f.id
             abs_path = os.path.join(repo_root, f.path)
@@ -185,31 +187,32 @@ class CodeCheckImproverAgent(BaseAgent):
                 with open(abs_path, "r", encoding="utf-8", errors="ignore") as fh:
                     content = fh.read()
             except OSError as e:
-                self.logger.warning("Improver: unable to read %s: %s", abs_path, e)
+                log.warning("Improver: unable to read %s: %s", abs_path, e)
                 continue
 
-            suggestions = self._generate_suggestions_for_file(run_id, f, content)
+            metrics = (
+                f.metrics.vector if getattr(f, "metrics", None) and f.metrics.vector else {}
+            )  # type: ignore[attr-defined]
+            issues = self.store.list_issues_for_file(file_id)
 
+            suggestions = self._generate_suggestions_for_file(
+                file_path=f.path,
+                content=content,
+                metrics=metrics,
+                issues=issues,
+                max_suggestions=self.cfg.get("max_suggestions_per_file", 5),
+            )
             if not suggestions:
                 continue
 
-            # truncate per config
-            suggestions = suggestions[: self.cfg.max_suggestions_per_file]
-
-            created = self.store.add_suggestions(
+            self.store.add_suggestions(
                 run_id=run_id,
                 file_id=file_id,
                 suggestions=suggestions,
             )
-            count = len(created)
-            total_suggestions += count
-            per_file_counts[file_id] = count
 
-        self.logger.info(
-            "CodeCheckImprover: created %d suggestions across %d files",
-            total_suggestions,
-            len(per_file_counts),
-        )
+            per_file_counts[file_id] = len(suggestions)
+            total_suggestions += len(suggestions)
 
         return {
             "run_id": run_id,
@@ -218,242 +221,208 @@ class CodeCheckImproverAgent(BaseAgent):
             "per_file_counts": per_file_counts,
         }
 
-    # ------------------------------------------------------------------
-    # Selection
-    # ------------------------------------------------------------------
+    # ------------------------------------------------------------------ internals
 
     def _select_priority_files(self, run_id: str, limit: int) -> List[Any]:
         """
-        Select top-N files for a run using “recent then dirty”.
+        Select top-N files by a blend of:
+          - severity (from metrics)
+          - recency (from filesystem mtime)
 
-        "Recent" = filesystem mtime
-        "Dirty"  = sum of metrics in cfg.dirty_metrics (default: empty ⇒ 0)
+        priority = recency_weight * recency_score + (1 - recency_weight) * severity_score
 
-        The priority score is:
-
-            score = alpha * recency + (1 - alpha) * severity
-
-        where alpha = cfg.recency_weight in [0, 1].
+        Where:
+          - recency_score is in [0, 1], 1 = most recently modified.
+          - severity_score is a weighted sum of metrics.
         """
-        files = self.store.list_files_for_run(run_id, limit=None) or []
-        if not files:
-            return []
+        # 1) Get run so we know repo_root
+        run = self.store.get_run(run_id)
+        repo_root = run.repo_root
 
-        # 1) Pre-fetch metrics for all files
-        metrics_by_file: Dict[int, Dict[str, float]] = {}
-        for f in files:
-            m = getattr(f, "metrics", None)
-            if m is not None and getattr(m, "vector", None):
-                try:
-                    metrics_by_file[f.id] = {
-                        k: float(v) for k, v in (m.vector or {}).items()
-                    }
-                except Exception:
-                    metrics_by_file[f.id] = {}
-            else:
-                metrics_by_file[f.id] = {}
+        # 2) Load files (with metrics eager-loaded in the store)
+        files = self.store.list_files_for_run(run_id, limit=100000)
 
-        # 2) Compute severity from dirty metrics
-        dirty_names = self.cfg.dirty_metrics or [
-            "security.bandit_high",
-            "readability.ruff_style",
-            "semantic.risk",
-        ]
-
-        severity_scores: Dict[int, float] = {}
-        for f in files:
-            vec = metrics_by_file.get(f.id, {})
-            sev = 0.0
-            for name in dirty_names:
-                sev += float(vec.get(name, 0.0))
-            severity_scores[f.id] = sev
-
-        # 3) Compute recency from filesystem mtime
-        run_orm = self.store.get_run(run_id)
-        repo_root = run_orm.repo_root if run_orm is not None else "."
-
+        # We'll compute severity first, collect mtimes, then normalize.
         mtimes: Dict[int, float] = {}
-        now = time.time()
+        severity_scores: Dict[int, float] = {}
+
+        # 3) First pass: compute severity and mtime
         for f in files:
+            file_id = f.id
+
+            # --- severity score from metrics
+            m = f.metrics.vector if getattr(f, "metrics", None) and f.metrics.vector else {}
+            severity = 0.0
+            for name, weight in self.cfg.get("file_priority_weights", {}).items():
+                severity += float(m.get(name, 0.0)) * float(weight)
+            severity_scores[file_id] = severity
+
+            # --- recency from filesystem mtime
             abs_path = os.path.join(repo_root, f.path)
             try:
                 mt = os.path.getmtime(abs_path)
             except OSError:
-                mt = now  # treat unreadable files as “now” to not penalise too much
-            mtimes[f.id] = mt
+                # If the file is missing (deleted, moved), treat as very old
+                mt = 0.0
+            mtimes[file_id] = mt
 
+        if not files:
+            return []
+
+        # 4) Normalize recency to [0, 1]  (1 = most recent)
         max_mtime = max(mtimes.values())
         min_mtime = min(mtimes.values())
 
         recency_scores: Dict[int, float] = {}
         if max_mtime == min_mtime:
+            # all the same age; recency doesn't differentiate
             for file_id in mtimes:
                 recency_scores[file_id] = 0.5
         else:
             span = max_mtime - min_mtime
             for file_id, mt in mtimes.items():
-                recency_scores[file_id] = (mt - min_mtime) / span
+                recency_scores[file_id] = (mt - min_mtime) / span  # 0..1
 
-        # 4) Combine into final priority
-        alpha = max(0.0, min(1.0, float(self.cfg.recency_weight)))
+        # 5) Combine into final priority
+        alpha = float(self.cfg.get("recency_weight", 0.5))
+        alpha = max(0.0, min(1.0, alpha))  # clamp just in case
+
         scored: List[Tuple[float, Any]] = []
-
         for f in files:
-            sev = severity_scores.get(f.id, 0.0)
-            rec = recency_scores.get(f.id, 0.5)
-            score = alpha * rec + (1.0 - alpha) * sev
-            scored.append((score, f))
+            file_id = f.id
+            severity = severity_scores[file_id]
+            recency = recency_scores[file_id]
 
-        scored.sort(key=lambda x: x[0], reverse=True)
-        top = [f for _, f in scored[:limit]]
-        return top
+            # NOTE: severity can be positive or negative depending on weights;
+            # sorting still works because we just want "largest priority first".
+            priority = alpha * recency + (1.0 - alpha) * severity
+            scored.append((priority, f))
 
-    # ------------------------------------------------------------------
-    # Suggestion generation
-    # ------------------------------------------------------------------
+        # 6) Sort descending: highest priority (new + severe) first
+        scored.sort(key=lambda t: t[0], reverse=True)
+
+        return [f for (_, f) in scored[:limit]]
 
     def _generate_suggestions_for_file(
         self,
-        run_id: str,
-        file_orm: Any,
+        file_path: str,
         content: str,
+        metrics: Dict[str, float],
+        issues: Sequence[Any],
+        max_suggestions: int,
     ) -> List[Dict[str, Any]]:
         """
-        Return a list of suggestion dicts for a single file.
-
-        Shape matches CodeCheckSuggestionORM fields (minus ids / timestamps).
+        Use heuristics + (optional) local model to generate small, concrete suggestions.
         """
-        # 1) Look up metrics + issues for context
-        metrics = getattr(file_orm, "metrics", None)
-        issues = self.store.list_issues_for_file(file_orm.id) or []
-
-        metric_vector = metrics.vector if metrics is not None else {}
-
-        # 2) Start with cheap heuristic suggestions
-        suggestions: List[Dict[str, Any]] = self._heuristic_suggestions_for_file(
-            file_orm=file_orm,
+        # 1) Start with a couple of deterministic heuristics (fast, no model)
+        suggestions: List[Dict[str, Any]] = self._heuristic_suggestions(
+            file_path=file_path,
             content=content,
-            metrics=metric_vector,
+            metrics=metrics,
             issues=issues,
         )
 
-        # (Later) model-based suggestions can be added here
+        # 2) Optionally augment with model-based suggestions
+        if len(suggestions) < max_suggestions:
+            ai_suggestions = self._model_based_suggestions(
+                file_path=file_path,
+                content=content,
+                metrics=metrics,
+                issues=issues,
+                remaining=max_suggestions - len(suggestions),
+            )
+            suggestions.extend(ai_suggestions)
 
-        # Attach a tiny bit of debugging meta
-        for s in suggestions:
-            meta = s.setdefault("meta", {})
-            meta.setdefault("metric_snapshot", metric_vector)
-            meta.setdefault("issue_count", len(issues))
+        # Cap to max_suggestions
+        return suggestions[:max_suggestions]
 
-        return suggestions
-
-    def _heuristic_suggestions_for_file(
+    def _heuristic_suggestions(
         self,
-        file_orm: Any,
+        file_path: str,
         content: str,
         metrics: Dict[str, float],
         issues: Sequence[Any],
     ) -> List[Dict[str, Any]]:
-        """Rule-of-thumb suggestions that are always safe to compute."""
-        suggestions: List[Dict[str, Any]] = []
-
-        path = getattr(file_orm, "path", "<unknown>")
+        """
+        Very cheap, deterministic things we know are always good:
+          - split mega-files
+          - add docstrings to public functions
+          - surface top lint issues as todos
+        """
+        out: List[Dict[str, Any]] = []
 
         loc = len(content.splitlines())
-        if loc > 500:
-            suggestions.append(
+        num_defs = content.count("def ")
+        num_classes = content.count("class ")
+
+        if loc > 800 or num_defs > 40:
+            out.append(
                 {
                     "kind": "refactor",
-                    "title": "File is very long – consider splitting",
-                    "summary": f"{path} has {loc} lines; consider extracting helpers or submodules.",
-                    "detail": (
-                        "Extremely long files are hard to reason about. "
-                        "Identify natural boundaries (independent classes, utility functions, "
-                        "or unrelated concerns) and move them into separate modules."
-                    ),
-                    "patch_type": "unified_diff",
-                    "patch_text": None,
-                    "status": "pending",
+                    "title": "Split oversized module",
+                    "summary": f"{file_path} is {loc} lines with {num_defs} functions; "
+                    "consider splitting into smaller modules.",
+                    "detail": "Identify cohesive groups of functions/classes and move them "
+                    "into dedicated modules, keeping public API surface stable.",
+                    "patch": None,
+                    "patch_type": None,
+                    "meta": {"loc": loc, "num_defs": num_defs, "num_classes": num_classes},
                 }
             )
 
-        # Docstring / comments hint
-        if "def " in content and '"""' not in content:
-            suggestions.append(
-                {
-                    "kind": "documentation",
-                    "title": "Functions without docstrings",
-                    "summary": f"{path} defines functions but no obvious docstrings.",
-                    "detail": (
-                        "Add short docstrings to public functions and classes explaining "
-                        "what they do, their main arguments, and key side-effects."
-                    ),
-                    "patch_type": "unified_diff",
-                    "patch_text": None,
-                    "status": "pending",
-                }
-            )
-
-        # Metric-driven hints
-        bandit_high = float(metrics.get("security.bandit_high", 0.0))
-        if bandit_high > 0:
-            suggestions.append(
-                {
-                    "kind": "security",
-                    "title": "Security issues detected by Bandit",
-                    "summary": f"Bandit reported {int(bandit_high)} high-severity findings in {path}.",
-                    "detail": (
-                        "Run Bandit locally on this file and address the reported issues. "
-                        "Focus first on high and medium severity findings."
-                    ),
-                    "patch_type": "unified_diff",
-                    "patch_text": None,
-                    "status": "pending",
-                }
-            )
-
-        ruff_style = float(metrics.get("readability.ruff_style", 0.0))
-        if ruff_style > 0:
-            suggestions.append(
+        # Example: docstring heuristic (very rough)
+        if "def " in content and ('"""' not in content and "'''" not in content):
+            out.append(
                 {
                     "kind": "style",
-                    "title": "Style / lint issues",
-                    "summary": f"Ruff reported {int(ruff_style)} style issues in {path}.",
-                    "detail": (
-                        "Run Ruff on this file and fix the reported issues. "
-                        "This usually results in clearer, more consistent code."
-                    ),
-                    "patch_type": "unified_diff",
-                    "patch_text": None,
-                    "status": "pending",
+                    "title": "Add docstrings to public functions",
+                    "summary": "Public functions/classes are missing docstrings.",
+                    "detail": "Add short, precise docstrings explaining inputs, outputs, and side effects.",
+                    "patch": None,
+                    "patch_type": None,
+                    "meta": {},
                 }
             )
 
-        # Existing issues from the static tools
-        for issue in issues:
-            issue_summary = getattr(issue, "summary", None) or getattr(issue, "message", "")
-            issue_source = getattr(issue, "source", "tool")
-            issue_severity = getattr(issue, "severity", "info")
-
-            suggestions.append(
+        # You can also surface top 1–2 existing issues as explicit tasks
+        for issue in list(issues)[:2]:
+            out.append(
                 {
-                    "kind": "issue",
-                    "title": f"{issue_source} reported issue ({issue_severity})",
-                    "summary": issue_summary,
-                    "detail": getattr(issue, "detail", issue_summary),
-                    "patch_type": "unified_diff",
-                    "patch_text": None,
-                    "status": "pending",
+                    "kind": "lint",
+                    "title": f"Fix {issue.source} issue {issue.code or ''}".strip(),
+                    "summary": issue.message,
+                    "detail": f"At line {issue.line}, column {issue.col}",
+                    "patch": None,
+                    "patch_type": None,
+                    "meta": {
+                        "issue_id": issue.id,
+                        "source": issue.source,
+                        "code": issue.code,
+                    },
                 }
             )
 
-        return suggestions
+        return out
 
-    def _model_suggestions_for_file(
+    def _model_based_suggestions(
         self,
-        file_orm: Any,
+        file_path: str,
         content: str,
         metrics: Dict[str, float],
         issues: Sequence[Any],
         remaining: int,
-    ) -> List[Dict[str]()]()
+    ) -> List[Dict[str, Any]]:
+        """
+        Placeholder for local model integration.
+
+        You'd route this through your local inference stack (Ollama, HF, etc.).
+        For now it returns [] so nothing breaks.
+        """
+        # TODO: integrate with your local model runner via container or a service client.
+        # The model prompt would include:
+        #   - file path
+        #   - snippet(s) of content (or whole file if small)
+        #   - metrics summary
+        #   - top few issues
+        # And ask for `remaining` bullet-point suggestions with optional patch hints.
+        return []
