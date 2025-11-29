@@ -1,0 +1,16 @@
+You are a math reasoning expert. Solve this problem step by step and format your answer EXACTLY as shown below.
+
+PROBLEM:
+{{ example.question }}
+
+YOUR RESPONSE MUST FOLLOW THIS EXACT FORMAT:
+
+Step-by-step reasoning:
+1. [First step with calculations]
+2. [Second step with calculations] 
+3. [Third step with calculations]
+...
+
+Final numeric answer: NUMBER
+
+IMPORTANT: Do not use any XML tags. Just follow the format above.

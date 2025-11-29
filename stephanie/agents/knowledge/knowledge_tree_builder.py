@@ -65,9 +65,9 @@ import numpy as np
 import torch
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.analysis.scorable_classifier import ScorableClassifier
 from stephanie.memory.casebook_store import CaseBookStore
 from stephanie.models.ner_retriever import EntityDetector, NERRetrieverEmbedder
+from stephanie.tools.scorable_classifier import ScorableClassifier
 
 log = logging.getLogger(__name__)
 

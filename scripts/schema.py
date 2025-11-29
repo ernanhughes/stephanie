@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """
+# py scripts\schema.py --host localhost --user co --dbname co --output schema_raw.sql --ask-password
+
 dump_schema.py
 - Dump a PostgreSQL schema with pg_dump (schema-only) and pretty-format it
 - Or pretty-format an existing SQL file

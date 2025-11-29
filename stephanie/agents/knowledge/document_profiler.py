@@ -44,7 +44,7 @@ from __future__ import annotations
 import re
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.analysis.scorable_classifier import ScorableClassifier
+from stephanie.tools.scorable_classifier import ScorableClassifier
 from stephanie.utils.document_section_parser import DocumentSectionParser
 
 # Default sections to extract from documents

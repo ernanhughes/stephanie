@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List
 
 from stephanie.scoring.scorable import Scorable, ScorableType
+from stephanie.utils.hash_utils import hash_text
 
 
 @dataclass
@@ -49,7 +50,7 @@ class KnowledgeUnit:
         Convert this KnowledgeUnit into a Scorable object
         so it can enter the standard scoring pipeline.
         """
-        scorable_id = self.provenance.get("scorable_id", f"ku:{self._hash_text()}")
+        scorable_id = self.provenance.get("scorable_id", hash_text(self.text)[:16])
 
         return Scorable(
             id=scorable_id,
@@ -66,6 +67,4 @@ class KnowledgeUnit:
             }
         )
 
-    def _hash_text(self) -> str:
-        return hashlib.sha256(self.text.encode()).hexdigest()[:16]
 

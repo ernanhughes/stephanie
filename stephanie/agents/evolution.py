@@ -8,7 +8,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.constants import EVOLVED, HYPOTHESES, RANKING
-from stephanie.tools.embedding_tool import get_embedding
+from stephanie.tools.ollama_embedding import get_embedding
 
 
 class EvolutionAgent(BaseAgent):

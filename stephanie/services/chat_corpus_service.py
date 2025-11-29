@@ -4,12 +4,12 @@ from __future__ import annotations
 import logging
 import time
 from typing import Any, Callable, Dict, List, Optional
-from stephanie.utils.time_utils import now_ms
 
 # 🔑 Embedding search target enum (adjust import if your path differs)
 from stephanie.scoring.scorable import \
     ScorableType  # expects CONVERSATION_TURN
 from stephanie.services.service_protocol import Service
+from stephanie.utils.time_utils import now_ms
 
 EmbedFn = Callable[[List[str]], List[List[float]]]
 log = logging.getLogger(__name__)

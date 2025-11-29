@@ -8,7 +8,8 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
 from stephanie.components.vibe.agents.writing_scorer import WritingScorerAgent
-from stephanie.components.vibe.datasets.writing_example_types import WritingDatasetRow
+from stephanie.components.vibe.datasets.writing_example_types import \
+    WritingDatasetRow
 
 # You’ll need to adapt these bootstrap imports to your stack:
 # from stephanie.runtime.bootstrap import bootstrap_container_and_memory

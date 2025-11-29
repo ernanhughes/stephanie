@@ -1,0 +1,38 @@
+# stephanie/config/agents/critic_evaluation.yaml
+critic_evaluation:
+  name: critic_evaluation
+  description: "Comprehensive, publication-ready evaluation of Tiny Critic (core, downstream, stability, ablation, sanity)."
+  cls: stephanie.components.critic.agents.critic_evaluation.CriticEvaluationAgent
+  enabled: true
+
+  # === Required artifacts ===
+  shadow_path: "models/critic_shadow.npz"      # fixed benchmark pack (X, y, feature_names, groups?, meta?)
+  current_path: "models/critic.joblib"         # current promoted model
+  candidate_path: "models/critic_candidate.joblib"  # optional; if missing, agent runs single-model eval
+
+  # === Outputs ===
+  # report_dir: "reports/full_evaluation"        # all subreports + summary.md go here
+
+  # === Evaluation controls ===
+  run_history: 5                                # how many recent trainer runs to check for feature stability
+  seed: 42                                      # stable randomness for metrics/bootstraps in utils (if supported)
+
+  # --- Optional knobs (documented for future use) ---
+  # downstream:
+  #   policy: "candidate"     # or "current" — which probability vector to treat as the selector policy
+  #   budgets: [0.05, 0.10, 0.20, 0.50]  # evaluation cutoffs (fractions of dataset)
+  #
+  # ablation:
+  #   # If set, agent can read these to override default name-based groups (Tiny/HRM/SICQL/VisiCalc)
+  #   groups:
+  #     Tiny:    ["tiny"]
+  #     HRM:     ["hrm"]
+  #     SICQL:   ["sicql"]
+  #     VisiCalc: ["visicalc", "stability", "entropy", "sparsity", "trend", "frontier"]
+  #
+  # stability:
+  #   # e.g., minimum Jaccard to flag instability (for your checker util, if you expose thresholds)
+  #   min_jaccard_warn: 0.50
+  #
+  # sanity:
+  #   n_shuffles: 200        # label-shuffle repetitions (if your utility accepts it)

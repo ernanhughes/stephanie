@@ -3,8 +3,8 @@ from __future__ import annotations
 
 import asyncio
 import functools
+import logging
 import random
-from stephanie.utils.time_utils import now_ms
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from contextlib import contextmanager
@@ -23,7 +23,9 @@ from stephanie.models.prompt import PromptORM
 from stephanie.prompts.prompt_loader import PromptLoader
 from stephanie.services.scoring_service import ScoringService
 from stephanie.utils.llm_utils import remove_think_blocks
+from stephanie.utils.time_utils import now_ms
 
+log = logging.getLogger(__name__)
 
 class BaseAgent(ABC):
     def __init__(self, cfg, memory, container, logger):
@@ -34,7 +36,7 @@ class BaseAgent(ABC):
         self.memory = memory
         self.container = container
         self.logger = logger
-        self.run_id = None # set by supervisor
+        self.run_id = cfg.get(PIPELINE_RUN_ID) 
         self.enabled_scorers = self.cfg.get("enabled_scorers", ["sicql"])
 
         self.device = torch.device(cfg.get("device", "cpu") if torch.cuda.is_available() else "cpu")
@@ -100,7 +102,7 @@ class BaseAgent(ABC):
                 agent_name=self.name,
                 prompt_key=self.cfg.get(PROMPT_PATH, ""),
                 prompt_text=prompt_text,
-                strategy=self.cfg.get(STRATEGY, ""),
+                strategy=self.cfg.get(STRATEGY, ""), 
                 pipeline_run_id=context.get("pipeline_run_id"),
                 version=self.cfg.get("version", 1),
             )
@@ -113,18 +115,18 @@ class BaseAgent(ABC):
         return prompt
 
 
-    def call_llm(self, prompt: str, context: dict, llm_cfg: dict = None) -> str:
+    def call_llm(self, prompt: str, context: dict, llm_cfg: dict = None, params: dict = None) -> str:
         """Synchronous call (blocking)"""
-        return self._call_llm_internal(prompt, context, llm_cfg)
+        return self._call_llm_internal(prompt, context, llm_cfg, params)
 
-    async def async_call_llm(self, prompt: str, context: dict, llm_cfg: dict = None) -> str:
+    async def async_call_llm(self, prompt: str, context: dict, llm_cfg: dict = None, params: dict = None) -> str:
         """Async wrapper — runs blocking litellm in a thread executor"""
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(
-            None, functools.partial(self._call_llm_internal, prompt, context, llm_cfg)
+            None, functools.partial(self._call_llm_internal, prompt, context, llm_cfg, params)
         )
 
-    def _call_llm_internal(self, prompt: str, context: dict, llm_cfg: dict = None) -> str:
+    def _call_llm_internal(self, prompt: str, context: dict, llm_cfg: dict = None, params: dict = None) -> str:
         updated_cfg = self.rule_applier.apply_to_prompt(self.cfg, context)
         if self.llm is None:
             # 🔁 Apply rules here (now that goal is known)
@@ -167,14 +169,45 @@ class BaseAgent(ABC):
                 return cached_response
 
         messages = [{"role": "user", "content": prompt}]
+        
         try:
-            response = litellm.completion(
-                model=props[NAME],
-                messages=messages,
-                api_base=props[API_BASE],
-                api_key=props.get(API_KEY, ""),
-            )
+            # Build the base parameters for LiteLLM
+            base_params = {
+                "model": props[NAME],
+                "messages": messages,
+                "api_base": props[API_BASE],
+                "api_key": props.get(API_KEY, ""),
+            }
+            
+            # Add any additional parameters if provided
+            if params:
+                log.info(f"⚙️  Adding custom LLM parameters: {params}")
+                
+                # Validate and merge parameters
+                valid_params = {}
+                for key, value in params.items():
+                    if key in ['temperature', 'max_tokens', 'top_p', 'top_k', 'frequency_penalty', 
+                            'presence_penalty', 'stop', 'stream', 'n', 'logprobs', 'echo']:
+                        valid_params[key] = value
+                    else:
+                        log.warning(f"⚠️  Skipping invalid LLM parameter: {key}")
+                
+                # Merge base parameters with valid custom parameters
+                call_params = {**base_params, **valid_params}
+                
+                log.debug(f"🔧 Final LLM call parameters: { {k: v for k, v in call_params.items() if k != 'api_key'} }")
+            else:
+                call_params = base_params
+                log.debug("🔧 Using default LLM parameters")
+
+            # Make the LLM call with the combined parameters
+            response = litellm.completion(**call_params)
             output = response["choices"][0]["message"]["content"]
+
+            # Log the response details
+            log.info(f"✅ LLM call completed (response length: {len(output)} chars)")
+            if params and 'temperature' in params:
+                log.debug(f"🌡️  Used temperature: {params['temperature']}")
 
             # Save prompt and response if enabled
             if updated_cfg.get(SAVE_PROMPT, False) and self.memory:
@@ -214,10 +247,12 @@ class BaseAgent(ABC):
             return response_cleaned
 
         except Exception as e:
-            print(f"❌ Exception: {type(e).__name__}: {e}")
+            log.error(f"❌ LLM call failed: {type(e).__name__}: {e}")
+            if params:
+                log.error(f"🔧 Parameters used: { {k: v for k, v in params.items() if k != 'api_key'} }")
             self.logger.log("LLMCallError", {"exception": str(e)})
             raise
-
+        
     @abstractmethod
     async def run(self, context: dict) -> dict:
         pass

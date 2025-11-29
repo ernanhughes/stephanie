@@ -1,0 +1,42 @@
+metric_mapping:
+  include_unmatched: true         # keep extra metrics at the end
+  normalize_unmatched: true       # still scale them to [0, 1]
+
+  rules:
+    # 1) Put top-level aggregate scores first (most important visually)
+    - name: "HRM.aggregate"
+      patterns: ["HRM.aggregate", "hrm.aggregate"]
+      normalize: true
+      allow_missing: true
+
+    - name: "SICQL.aggregate"
+      patterns: ["SICQL.aggregate", "sicql.aggregate"]
+      normalize: true
+      allow_missing: true
+
+    - name: "TINY.aggregate"
+      patterns: ["TINY.aggregate", "tiny.aggregate"]
+      normalize: true
+      allow_missing: true
+
+    # 2) Then key per-dimension scores
+    - name: "HRM.*.score"
+      patterns: ["HRM.*.score", "hrm.*.score"]
+      normalize: true
+      allow_missing: true
+
+    - name: "SICQL.*.score"
+      patterns: ["SICQL.*.score", "sicql.*.score"]
+      normalize: true
+      allow_missing: true
+
+    # 3) Then energy / advantage / uncertainty style attributes
+    - name: "SICQL.*.advantage"
+      patterns: ["SICQL.*.advantage", "sicql.*.advantage"]
+      normalize: true
+      allow_missing: true
+
+    - name: "HRM.*.uncertainty"
+      patterns: ["HRM.*.uncertainty", "hrm.*.uncertainty"]
+      normalize: true
+      allow_missing: true

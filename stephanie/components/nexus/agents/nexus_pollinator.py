@@ -23,8 +23,8 @@ from stephanie.components.nexus.graph.graph import (GraphScore, NexusGraph,
                                                     NexusViewManifest)
 from stephanie.components.nexus.graph.knowledge_index import \
     compute_knowledge_index_from_files
+from stephanie.scoring.metrics.scorable_processor import ScorableProcessor
 from stephanie.scoring.scorable import Scorable
-from stephanie.scoring.scorable_processor import ScorableProcessor
 from stephanie.services.bus.events.prompt_job import Priority
 from stephanie.services.bus.prompt_client import PromptClient
 from stephanie.services.bus.prompt_worker import PromptDispatcherWorker

@@ -8,15 +8,9 @@ from pathlib import Path
 import yaml
 from fuzzywuzzy import process
 
-from stephanie.utils.string_utils import (
-    clean_heading as util_clean_heading,
-    normalize_key,
-    trunc,
-)
-from stephanie.utils.text_utils import (
-    is_high_quality_section,
-    section_quality,
-)
+from stephanie.utils.string_utils import clean_heading as util_clean_heading
+from stephanie.utils.string_utils import normalize_key, trunc
+from stephanie.utils.text_utils import is_high_quality_section, section_quality
 
 
 class DocumentSectionParser:

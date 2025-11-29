@@ -401,7 +401,7 @@ class ScorableFactory:
         in_text = data.get("text", "")
         text = ScorableFactory.get_text(title, summary, in_text, mode)
         return Scorable(
-            id=str(data.get("id", "")), text=text, target_type=target_type
+            id=str(data.get("scorable_id", data.get("id", ""))), text=text, target_type=target_type
         )
 
     @staticmethod

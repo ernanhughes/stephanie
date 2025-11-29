@@ -53,11 +53,11 @@ import requests
 from tqdm import tqdm
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.analysis.scorable_classifier import ScorableClassifier
 from stephanie.constants import GOAL
 from stephanie.scoring.scorable import Scorable, ScorableType
 from stephanie.tools.arxiv_tool import fetch_arxiv_metadata
 from stephanie.tools.pdf_tools import PDFConverter
+from stephanie.tools.scorable_classifier import ScorableClassifier
 
 
 def guess_title_from_text(text: str) -> str:

@@ -175,8 +175,7 @@ class HRMScorer(BaseScorer):
 
                 raw01 = float(max(0.0, min(1.0, y_pred.squeeze().item())))
 
-                hrm_score100 = round(raw01 * 100.0, 4)
-
+ 
                 # Pull a few useful magnitudes if present (robust to None / non-tensors)
                 zL_mag = _safe_norm(intermediate.get("zL_final"))
                 zH_mag = _safe_norm(intermediate.get("zH_final"))
@@ -189,8 +188,6 @@ class HRMScorer(BaseScorer):
                 # Native attrs (kept for drill-down)
                 attributes: Dict[str, Any] = {
                     "raw_score": raw_score,
-                    "hrm.score01": raw01,
-                    "hrm.score100": hrm_score100,
                     "zL_magnitude": zL_mag,
                     "zH_magnitude": zH_mag,
                     # historical keys used in your blog glossary
@@ -207,13 +204,6 @@ class HRMScorer(BaseScorer):
                 scm = _build_scm_from_hrm(attrs=attributes, intermediate=intermediate)
                 attributes.update(scm)
 
-                # Mirror the five core scores under hrm.* for PHOS rows
-                for dname in ("reasoning", "knowledge", "clarity", "faithfulness", "coverage"):
-                    k01 = f"scm.{dname}.score01"
-                    if k01 in scm:
-                        v01 = float(scm[k01])
-                        attributes[f"hrm.{dname}.score01"]  = v01
-                        attributes[f"hrm.{dname}.score100"] = round(v01 * 100.0, 4)
 
                 results[dimension] = ScoreResult(
                     dimension=dimension,

@@ -1,6 +1,7 @@
 # stephanie/components/nexus/graph/graph.py
 from __future__ import annotations
 
+import json
 import logging
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -8,11 +9,11 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import numpy as np
 
+from stephanie.data.scorable_row import ScorableRow
 from stephanie.memory.nexus_store import NexusStore
 from stephanie.models.nexus import (NexusEdgeORM, NexusMetricsORM,
                                     NexusScorableORM)
-from stephanie.data.scorable_row import ScorableRow
-import json
+
 log = logging.getLogger(__name__)
 
 
@@ -20,6 +21,71 @@ log = logging.getLogger(__name__)
 # Core types                                                                  #
 # --------------------------------------------------------------------------- #
 
+from dataclasses import dataclass
+from typing import Any, Dict, Optional
+
+
+@dataclass(slots=True)
+class GraphValue:
+    """
+    Represents the multi-dimensional 'value' of a Nexus graph state with respect to a goal.
+
+    This is the output of V(G, g) — a scalar total + breakdown by cognitive dimensions.
+    Designed for:
+      - Comparing graph states (before/after edits)
+      - Driving agent decisions (e.g., which Scorable to expand next)
+      - Visualizing progress in blogs/UIs ("filmstrip" of value evolution)
+
+    The total score is a weighted combination; components allow introspection.
+    """
+    solve: float = 0.0          # Quality of direct answer generation
+    schema_align: float = 0.0   # Alignment with expected reasoning/schema structure
+    retention: float = 0.0      # Connectedness / integration into existing knowledge
+    redundancy: float = 0.0     # Overlap/duplication penalty (negative contributor)
+    volume: float = 0.0         # Cognitive reach / depth of exploration
+
+    total: float = 0.0          # Final aggregated score: V(G, g)
+
+    details: Optional[Dict[str, Any]] = None  # Optional debug/metadata (e.g., episodic hits)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "solve": self.solve,
+            "schema_align": self.schema_align,
+            "retention": self.retention,
+            "redundancy": self.redundancy,
+            "volume": self.volume,
+            "total": self.total,
+            "details": self.details or {},
+        }
+
+    def __add__(self, other: "GraphValue") -> "GraphValue":
+        return GraphValue(
+            solve=self.solve + other.solve,
+            schema_align=self.schema_align + other.schema_align,
+            retention=self.retention + other.retention,
+            redundancy=self.redundancy + other.redundancy,
+            volume=self.volume + other.volume,
+            total=self.total + other.total,
+            details={
+                "components": {
+                    k: [getattr(self, k), getattr(other, k)]
+                    for k in ("solve", "schema_align", "retention", "redundancy", "volume")
+                }
+            },
+        )
+
+    def __mul__(self, scalar: float) -> "GraphValue":
+        return GraphValue(
+            solve=self.solve * scalar,
+            schema_align=self.schema_align * scalar,
+            retention=self.retention * scalar,
+            redundancy=self.redundancy * scalar,
+            volume=self.volume * scalar,
+            total=self.total * scalar,
+            details=self.details,
+        )
+    
 @dataclass(slots=True)
 class NexusNode:
     """
@@ -524,8 +590,8 @@ class NexusGraph:
 
     # ---- SA-ICL schema pipeline --------------------------------------------
 
-    def build_activated_schema(self, goal: Goal) -> Dict[str, Any]:
-        Sx = self.schema_build(goal.text)          # R(x)
+    def build_activated_schema(self, goal: Dict[str, Any]) -> Dict[str, Any]:
+        Sx = self.schema_build(goal.get("goal_text"))          # R(x)
         S_hat = self.schema_retrieve(Sx)           # Ŝ
         episodic = self._select_episodic(S_hat)    # Ê_τ (decay-aware)
         S_new = self.schema_activate(Sx, S_hat, episodic)  # f(Sx, Ŝ, Ê_τ)
@@ -549,12 +615,12 @@ class NexusGraph:
 
     # ---- Value function -----------------------------------------------------
 
-    def value(self, goal: Goal, *, schema_pack: Optional[Dict[str, Any]] = None) -> GraphValue:
+    def value(self, goal: Dict[str, Any], *, schema_pack: Optional[Dict[str, Any]] = None) -> GraphValue:
         """
         Compute V(G, g) using current DB graph. 'solve' delegates to your agent stack via `solve()`.
         """
         # 1) Solve quality from your agent stack (pass run_id so agents can read graph)
-        solve_metrics = self.solve(goal.text, {"run_id": self.run_id, "goal_id": goal.id})
+        solve_metrics = self.solve(goal.get("goal_text"), {"run_id": self.run_id, "goal_id": goal.get("goal_id")})
         solve_score = float(solve_metrics.get("solve_score", 0.0))
 
         # 2) Schema alignment (e.g., cosine or KL vs an expected schema template)
@@ -630,7 +696,7 @@ class NexusGraph:
     def delta_value_for_addition(
         self,
         candidate: Dict[str, Any],
-        goal: Goal,
+        goal: Dict[str, Any],
         *,
         shapley_samples: int = 0,
         record_pulse: bool = True

@@ -1,12 +1,12 @@
 # stephanie/memory/memcubes/rubric.py
 from __future__ import annotations
 
-from dataclasses import dataclass, field, asdict
-from enum import Enum
-from typing import Any, Dict, List, Optional, Sequence
 import datetime as _dt
 import json
 import logging
+from dataclasses import asdict, dataclass, field
+from enum import Enum
+from typing import Any, Dict, List, Optional, Sequence
 
 log = logging.getLogger(__name__)
 

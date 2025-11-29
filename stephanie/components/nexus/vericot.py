@@ -46,7 +46,8 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 VERICOT_IMPORT_PATH = "stephanie.components.vericot.vericot_verifier"
 
 try:
-    from stephanie.components.vericot.vericot_verifier import VeriCoTVerifier  # type: ignore
+    from stephanie.components.vericot.vericot_verifier import \
+        VeriCoTVerifier  # type: ignore
     HAS_VERIFIER = True
 except Exception as e:  # pragma: no cover
     HAS_VERIFIER = False

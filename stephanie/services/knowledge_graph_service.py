@@ -15,10 +15,10 @@ from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 import torch
 
-from stephanie.analysis.scorable_classifier import ScorableClassifier
 from stephanie.models.hnsw_index import HNSWIndex
 from stephanie.models.ner_retriever import EntityDetector, NERRetrieverEmbedder
 from stephanie.services.service_protocol import Service
+from stephanie.tools.scorable_classifier import ScorableClassifier
 
 log = logging.getLogger(__name__)
 

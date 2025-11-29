@@ -7,7 +7,7 @@ from stephanie.agents.base_agent import BaseAgent
 
 
 class GenericAgent(BaseAgent):
-    def __init__(self, cfg: dict, memory, logger):
+    def __init__(self, cfg: dict, memory, container, logger):
         super().__init__(cfg, memory, container, logger)
         self.name = cfg.get("name")
         self.cfg = cfg

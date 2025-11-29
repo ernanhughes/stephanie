@@ -6,8 +6,8 @@ scorable_loader:
   include_ner: false        # keep strict in final selection; we’ll relax in preload
   ab_select:
     enabled: false
-    n_targeted: 20
-    n_baseline: 20
+    n_targeted: 400
+    n_baseline: 400
     targeted_min_sim: 0.55
     baseline_max_sim: 0.25
     relax_steps: 8

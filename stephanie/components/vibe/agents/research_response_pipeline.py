@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from typing import Any, Dict
-
 import logging
+from typing import Any, Dict
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.components.vibe.agents.research_draft import ResearchDraftAgent
-from stephanie.components.vibe.agents.research_refine import ResearchRefineAgent
+from stephanie.components.vibe.agents.research_refine import \
+    ResearchRefineAgent
 from stephanie.components.vibe.agents.writing_scorer import WritingScorerAgent
 
 log = logging.getLogger(__name__)

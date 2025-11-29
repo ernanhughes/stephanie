@@ -13,15 +13,13 @@ import numpy as np
 import torch
 from sentence_transformers import SentenceTransformer, util
 
+from stephanie.utils.hash_utils import hash_text
+
 try:
     import nltk  # optional for sentence split
     _HAS_NLTK = True
 except Exception:
     _HAS_NLTK = False
-
-
-def _hash_text(s: str) -> str:
-    return hashlib.sha256(s.encode("utf-8")).hexdigest()[:16]
 
 
 class FaithfulnessBot:
@@ -101,7 +99,7 @@ class FaithfulnessBot:
         if not paper_text:
             raise ValueError("Paper text is empty.")
 
-        self.paper_hash = _hash_text(paper_text) + "-" + _hash_text(self.model_name)
+        self.paper_hash = hash_text(paper_text) + "-" + hash_text(self.model_name)
         cache_emb = self.cache_dir / f"{self.paper_hash}.pt"
         cache_txt = self.cache_dir / f"{self.paper_hash}.json"
 
@@ -160,7 +158,7 @@ class FaithfulnessBot:
         out: List[str] = []
         seen = set()
         for c in chunks:
-            h = _hash_text(c[:400])
+            h = hash_text(c[:400])
             if h not in seen:
                 out.append(c)
                 seen.add(h)

@@ -4,8 +4,8 @@ import logging
 from typing import Any, Dict, Optional
 
 from stephanie.constants import SCORABLE_PROCESS, SCORABLE_SUBMIT
+from stephanie.scoring.metrics.scorable_processor import ScorableProcessor
 from stephanie.scoring.scorable import ScorableFactory
-from stephanie.scoring.scorable_processor import ScorableProcessor
 
 log = logging.getLogger(__name__)
 

@@ -1,0 +1,1208 @@
+{
+  "num_runs": 7,
+  "num_files": 7,
+  "num_metrics": 170,
+  "num_core_metrics": 150,
+  "metrics": [
+    {
+      "name": "sicql.faithfulness.attr.advantage",
+      "count": 2,
+      "auc_mean": 0.7018,
+      "auc_std": 0.017000000000000015,
+      "cohen_d_mean": 0.7138480542631184,
+      "cohen_d_abs_mean": 0.7138480542631184
+    },
+    {
+      "name": "sicql.coverage.attr.advantage",
+      "count": 2,
+      "auc_mean": 0.6876,
+      "auc_std": 0.0252,
+      "cohen_d_mean": 0.6847814751239001,
+      "cohen_d_abs_mean": 0.6847814751239001
+    },
+    {
+      "name": "sicql.coverage.attr.policy_logits[2]",
+      "count": 2,
+      "auc_mean": 0.6874,
+      "auc_std": 0.03700000000000003,
+      "cohen_d_mean": 0.6917017034999682,
+      "cohen_d_abs_mean": 0.6917017034999682
+    },
+    {
+      "name": "sicql.coverage.attr.policy_logits[1]",
+      "count": 2,
+      "auc_mean": 0.6786000000000001,
+      "auc_std": 0.019799999999999984,
+      "cohen_d_mean": 0.6576962336126854,
+      "cohen_d_abs_mean": 0.6576962336126854
+    },
+    {
+      "name": "sicql.knowledge.attr.policy_logits[0]",
+      "count": 1,
+      "auc_mean": 0.6512,
+      "auc_std": 0.0,
+      "cohen_d_mean": 0.5680754414505736,
+      "cohen_d_abs_mean": 0.5680754414505736
+    },
+    {
+      "name": "Tiny.coverage.attr.consistency_hat",
+      "count": 2,
+      "auc_mean": 0.6275999999999999,
+      "auc_std": 0.011999999999999955,
+      "cohen_d_mean": 0.4566082145302849,
+      "cohen_d_abs_mean": 0.4566082145302849
+    },
+    {
+      "name": "Tiny.coverage.attr.scm.consistency01",
+      "count": 2,
+      "auc_mean": 0.6275999999999999,
+      "auc_std": 0.011999999999999955,
+      "cohen_d_mean": 0.4566082145302849,
+      "cohen_d_abs_mean": 0.4566082145302849
+    },
+    {
+      "name": "Tiny.coverage.attr.values[13]",
+      "count": 2,
+      "auc_mean": 0.6275999999999999,
+      "auc_std": 0.011999999999999955,
+      "cohen_d_mean": 0.4566082145302849,
+      "cohen_d_abs_mean": 0.4566082145302849
+    },
+    {
+      "name": "Tiny.coverage.attr.vector.scm.consistency01",
+      "count": 2,
+      "auc_mean": 0.6275999999999999,
+      "auc_std": 0.011999999999999955,
+      "cohen_d_mean": 0.4566082145302849,
+      "cohen_d_abs_mean": 0.4566082145302849
+    },
+    {
+      "name": "Tiny.coverage.attr.sens01",
+      "count": 1,
+      "auc_mean": 0.6212,
+      "auc_std": 0.0,
+      "cohen_d_mean": 0.3529559199929825,
+      "cohen_d_abs_mean": 0.3529559199929825
+    },
+    {
+      "name": "Tiny.coverage.attr.scm.reasoning.score01",
+      "count": 2,
+      "auc_mean": 0.6124,
+      "auc_std": 0.026400000000000035,
+      "cohen_d_mean": 0.44132094441499997,
+      "cohen_d_abs_mean": 0.44132094441499997
+    },
+    {
+      "name": "Tiny.coverage.attr.tiny.reasoning",
+      "count": 2,
+      "auc_mean": 0.6124,
+      "auc_std": 0.026400000000000035,
+      "cohen_d_mean": 0.44132094441499997,
+      "cohen_d_abs_mean": 0.44132094441499997
+    },
+    {
+      "name": "Tiny.coverage.attr.tiny.reasoning.score01",
+      "count": 2,
+      "auc_mean": 0.6124,
+      "auc_std": 0.026400000000000035,
+      "cohen_d_mean": 0.44132094441499997,
+      "cohen_d_abs_mean": 0.44132094441499997
+    },
+    {
+      "name": "Tiny.coverage.attr.values[5]",
+      "count": 2,
+      "auc_mean": 0.6124,
+      "auc_std": 0.026400000000000035,
+      "cohen_d_mean": 0.44132094441499997,
+      "cohen_d_abs_mean": 0.44132094441499997
+    },
+    {
+      "name": "Tiny.coverage.attr.vector.scm.reasoning.score01",
+      "count": 2,
+      "auc_mean": 0.6124,
+      "auc_std": 0.026400000000000035,
+      "cohen_d_mean": 0.44132094441499997,
+      "cohen_d_abs_mean": 0.44132094441499997
+    },
+    {
+      "name": "Tiny.coverage.attr.vector.tiny.reasoning",
+      "count": 2,
+      "auc_mean": 0.6124,
+      "auc_std": 0.026400000000000035,
+      "cohen_d_mean": 0.44132094441499997,
+      "cohen_d_abs_mean": 0.44132094441499997
+    },
+    {
+      "name": "Tiny.coverage.attr.vector.tiny.reasoning.score01",
+      "count": 2,
+      "auc_mean": 0.6124,
+      "auc_std": 0.026400000000000035,
+      "cohen_d_mean": 0.44132094441499997,
+      "cohen_d_abs_mean": 0.44132094441499997
+    },
+    {
+      "name": "Tiny.coverage.attr.tiny.reasoning.score100",
+      "count": 2,
+      "auc_mean": 0.6124,
+      "auc_std": 0.026400000000000035,
+      "cohen_d_mean": 0.44131814616464227,
+      "cohen_d_abs_mean": 0.44131814616464227
+    },
+    {
+      "name": "Tiny.coverage.attr.vector.tiny.reasoning.score100",
+      "count": 2,
+      "auc_mean": 0.6124,
+      "auc_std": 0.026400000000000035,
+      "cohen_d_mean": 0.44131814616464227,
+      "cohen_d_abs_mean": 0.44131814616464227
+    },
+    {
+      "name": "Tiny.coverage.attr.aux3_p_good",
+      "count": 1,
+      "auc_mean": 0.6116,
+      "auc_std": 0.0,
+      "cohen_d_mean": 0.35403944147182503,
+      "cohen_d_abs_mean": 0.35403944147182503
+    },
+    {
+      "name": "Tiny.coverage.attr.raw01",
+      "count": 1,
+      "auc_mean": 0.606,
+      "auc_std": 0.0,
+      "cohen_d_mean": 0.36352972564813213,
+      "cohen_d_abs_mean": 0.36352972564813213
+    },
+    {
+      "name": "Tiny.coverage.attr.tiny.score01",
+      "count": 1,
+      "auc_mean": 0.606,
+      "auc_std": 0.0,
+      "cohen_d_mean": 0.36352972564813213,
+      "cohen_d_abs_mean": 0.36352972564813213
+    },
+    {
+      "name": "Tiny.coverage.attr.values[0]",
+      "count": 1,
+      "auc_mean": 0.606,
+      "auc_std": 0.0,
+      "cohen_d_mean": 0.36352972564813213,
+      "cohen_d_abs_mean": 0.36352972564813213
+    },
+    {
+      "name": "Tiny.coverage.attr.vector.tiny.score01",
+      "count": 1,
+      "auc_mean": 0.606,
+      "auc_std": 0.0,
+      "cohen_d_mean": 0.36352972564813213,
+      "cohen_d_abs_mean": 0.36352972564813213
+    },
+    {
+      "name": "Tiny.coverage.score",
+      "count": 1,
+      "auc_mean": 0.606,
+      "auc_std": 0.0,
+      "cohen_d_mean": 0.36352972564813213,
+      "cohen_d_abs_mean": 0.36352972564813213
+    },
+    {
+      "name": "Tiny.coverage.attr.tiny.score100",
+      "count": 1,
+      "auc_mean": 0.606,
+      "auc_std": 0.0,
+      "cohen_d_mean": 0.36352958245666783,
+      "cohen_d_abs_mean": 0.36352958245666783
+    },
+    {
+      "name": "Tiny.coverage.attr.values[1]",
+      "count": 1,
+      "auc_mean": 0.606,
+      "auc_std": 0.0,
+      "cohen_d_mean": 0.36352958245666783,
+      "cohen_d_abs_mean": 0.36352958245666783
+    },
+    {
+      "name": "Tiny.coverage.attr.vector.tiny.score100",
+      "count": 1,
+      "auc_mean": 0.606,
+      "auc_std": 0.0,
+      "cohen_d_mean": 0.36352958245666783,
+      "cohen_d_abs_mean": 0.36352958245666783
+    },
+    {
+      "name": "Tiny.coverage.attr.scm.aggregate01",
+      "count": 1,
+      "auc_mean": 0.6008,
+      "auc_std": 0.0,
+      "cohen_d_mean": 0.36484368526900557,
+      "cohen_d_abs_mean": 0.36484368526900557
+    },
+    {
+      "name": "Tiny.coverage.attr.values[10]",
+      "count": 1,
+      "auc_mean": 0.6008,
+      "auc_std": 0.0,
+      "cohen_d_mean": 0.36484368526900557,
+      "cohen_d_abs_mean": 0.36484368526900557
+    },
+    {
+      "name": "Tiny.coverage.attr.vector.scm.aggregate01",
+      "count": 1,
+      "auc_mean": 0.6008,
+      "auc_std": 0.0,
+      "cohen_d_mean": 0.36484368526900557,
+      "cohen_d_abs_mean": 0.36484368526900557
+    },
+    {
+      "name": "Tiny.coverage.attr.scm.clarity.score01",
+      "count": 1,
+      "auc_mean": 0.5988,
+      "auc_std": 0.0,
+      "cohen_d_mean": 0.38954139781910396,
+      "cohen_d_abs_mean": 0.38954139781910396
+    },
+    {
+      "name": "Tiny.coverage.attr.tiny.clarity",
+      "count": 1,
+      "auc_mean": 0.5988,
+      "auc_std": 0.0,
+      "cohen_d_mean": 0.38954139781910396,
+      "cohen_d_abs_mean": 0.38954139781910396
+    },
+    {
+      "name": "Tiny.coverage.attr.tiny.clarity.score01",
+      "count": 1,
+      "auc_mean": 0.5988,
+      "auc_std": 0.0,
+      "cohen_d_mean": 0.38954139781910396,
+      "cohen_d_abs_mean": 0.38954139781910396
+    },
+    {
+      "name": "Tiny.coverage.attr.values[7]",
+      "count": 1,
+      "auc_mean": 0.5988,
+      "auc_std": 0.0,
+      "cohen_d_mean": 0.38954139781910396,
+      "cohen_d_abs_mean": 0.38954139781910396
+    },
+    {
+      "name": "Tiny.coverage.attr.vector.scm.clarity.score01",
+      "count": 1,
+      "auc_mean": 0.5988,
+      "auc_std": 0.0,
+      "cohen_d_mean": 0.38954139781910396,
+      "cohen_d_abs_mean": 0.38954139781910396
+    },
+    {
+      "name": "Tiny.coverage.attr.vector.tiny.clarity",
+      "count": 1,
+      "auc_mean": 0.5988,
+      "auc_std": 0.0,
+      "cohen_d_mean": 0.38954139781910396,
+      "cohen_d_abs_mean": 0.38954139781910396
+    },
+    {
+      "name": "Tiny.coverage.attr.vector.tiny.clarity.score01",
+      "count": 1,
+      "auc_mean": 0.5988,
+      "auc_std": 0.0,
+      "cohen_d_mean": 0.38954139781910396,
+      "cohen_d_abs_mean": 0.38954139781910396
+    },
+    {
+      "name": "Tiny.coverage.attr.tiny.clarity.score100",
+      "count": 1,
+      "auc_mean": 0.5988,
+      "auc_std": 0.0,
+      "cohen_d_mean": 0.3895412143639079,
+      "cohen_d_abs_mean": 0.3895412143639079
+    },
+    {
+      "name": "Tiny.coverage.attr.vector.tiny.clarity.score100",
+      "count": 1,
+      "auc_mean": 0.5988,
+      "auc_std": 0.0,
+      "cohen_d_mean": 0.3895412143639079,
+      "cohen_d_abs_mean": 0.3895412143639079
+    },
+    {
+      "name": "Tiny.knowledge.attr.concept_sparsity",
+      "count": 1,
+      "auc_mean": 0.5824,
+      "auc_std": 0.0,
+      "cohen_d_mean": -0.4358087298243838,
+      "cohen_d_abs_mean": 0.4358087298243838
+    },
+    {
+      "name": "sicql.reasoning.attr.advantage",
+      "count": 1,
+      "auc_mean": 0.4464,
+      "auc_std": 0.0,
+      "cohen_d_mean": -0.3091828000350207,
+      "cohen_d_abs_mean": 0.3091828000350207
+    },
+    {
+      "name": "sicql.reasoning.attr.policy_logits[2]",
+      "count": 1,
+      "auc_mean": 0.4308,
+      "auc_std": 0.0,
+      "cohen_d_mean": -0.39276006290493876,
+      "cohen_d_abs_mean": 0.39276006290493876
+    },
+    {
+      "name": "Tiny.reasoning.attr.aux3_p_mid",
+      "count": 1,
+      "auc_mean": 0.4272,
+      "auc_std": 0.0,
+      "cohen_d_mean": -0.331155742778453,
+      "cohen_d_abs_mean": 0.331155742778453
+    },
+    {
+      "name": "sicql.reasoning.attr.policy_logits[1]",
+      "count": 1,
+      "auc_mean": 0.4232,
+      "auc_std": 0.0,
+      "cohen_d_mean": -0.3332543187847349,
+      "cohen_d_abs_mean": 0.3332543187847349
+    },
+    {
+      "name": "sicql.reasoning.attr.state_value",
+      "count": 1,
+      "auc_mean": 0.4108,
+      "auc_std": 0.0,
+      "cohen_d_mean": -0.40635210146575024,
+      "cohen_d_abs_mean": 0.40635210146575024
+    },
+    {
+      "name": "sicql.reasoning.attr.energy",
+      "count": 1,
+      "auc_mean": 0.4096,
+      "auc_std": 0.0,
+      "cohen_d_mean": -0.40540090597954676,
+      "cohen_d_abs_mean": 0.40540090597954676
+    },
+    {
+      "name": "sicql.reasoning.attr.q_value",
+      "count": 1,
+      "auc_mean": 0.4096,
+      "auc_std": 0.0,
+      "cohen_d_mean": -0.40540090597954676,
+      "cohen_d_abs_mean": 0.40540090597954676
+    },
+    {
+      "name": "Tiny.coverage.attr.aux3_p_bad",
+      "count": 1,
+      "auc_mean": 0.406,
+      "auc_std": 0.0,
+      "cohen_d_mean": -0.38926881659687596,
+      "cohen_d_abs_mean": 0.38926881659687596
+    },
+    {
+      "name": "Tiny.reasoning.attr.agree01",
+      "count": 2,
+      "auc_mean": 0.4,
+      "auc_std": 0.026800000000000018,
+      "cohen_d_mean": -0.3720516476334169,
+      "cohen_d_abs_mean": 0.3720516476334169
+    },
+    {
+      "name": "Tiny.reasoning.attr.scm.agree_hat01",
+      "count": 2,
+      "auc_mean": 0.4,
+      "auc_std": 0.026800000000000018,
+      "cohen_d_mean": -0.3720516476334169,
+      "cohen_d_abs_mean": 0.3720516476334169
+    },
+    {
+      "name": "Tiny.reasoning.attr.vector.scm.agree_hat01",
+      "count": 2,
+      "auc_mean": 0.4,
+      "auc_std": 0.026800000000000018,
+      "cohen_d_mean": -0.3720516476334169,
+      "cohen_d_abs_mean": 0.3720516476334169
+    },
+    {
+      "name": "Tiny.reasoning.attr.consistency_hat",
+      "count": 2,
+      "auc_mean": 0.3964,
+      "auc_std": 0.0436,
+      "cohen_d_mean": -0.387795474103472,
+      "cohen_d_abs_mean": 0.387795474103472
+    },
+    {
+      "name": "Tiny.coverage.attr.disagree_hat",
+      "count": 1,
+      "auc_mean": 0.3944,
+      "auc_std": 0.0,
+      "cohen_d_mean": -0.36939273934752703,
+      "cohen_d_abs_mean": 0.36939273934752703
+    },
+    {
+      "name": "sicql.reasoning.attr.policy_logits[0]",
+      "count": 1,
+      "auc_mean": 0.3928,
+      "auc_std": 0.0,
+      "cohen_d_mean": -0.4349288122573067,
+      "cohen_d_abs_mean": 0.4349288122573067
+    },
+    {
+      "name": "Tiny.coverage.attr.aux3_p_mid",
+      "count": 1,
+      "auc_mean": 0.3872,
+      "auc_std": 0.0,
+      "cohen_d_mean": -0.433469783562612,
+      "cohen_d_abs_mean": 0.433469783562612
+    },
+    {
+      "name": "HRM.clarity.attr.hrm.clarity.score100",
+      "count": 1,
+      "auc_mean": 0.384,
+      "auc_std": 0.0,
+      "cohen_d_mean": -0.4824787545671474,
+      "cohen_d_abs_mean": 0.4824787545671474
+    },
+    {
+      "name": "HRM.clarity.attr.hrm.faithfulness.score100",
+      "count": 1,
+      "auc_mean": 0.384,
+      "auc_std": 0.0,
+      "cohen_d_mean": -0.4824779931461557,
+      "cohen_d_abs_mean": 0.4824779931461557
+    },
+    {
+      "name": "HRM.clarity.attr.hrm.clarity.score01",
+      "count": 1,
+      "auc_mean": 0.384,
+      "auc_std": 0.0,
+      "cohen_d_mean": -0.48247220157434756,
+      "cohen_d_abs_mean": 0.48247220157434756
+    },
+    {
+      "name": "HRM.clarity.attr.scm.clarity.score01",
+      "count": 1,
+      "auc_mean": 0.384,
+      "auc_std": 0.0,
+      "cohen_d_mean": -0.48247220157434756,
+      "cohen_d_abs_mean": 0.48247220157434756
+    },
+    {
+      "name": "HRM.clarity.attr.hrm.faithfulness.score01",
+      "count": 1,
+      "auc_mean": 0.384,
+      "auc_std": 0.0,
+      "cohen_d_mean": -0.48247216994856656,
+      "cohen_d_abs_mean": 0.48247216994856656
+    },
+    {
+      "name": "HRM.clarity.attr.scm.faithfulness.score01",
+      "count": 1,
+      "auc_mean": 0.384,
+      "auc_std": 0.0,
+      "cohen_d_mean": -0.48247216994856656,
+      "cohen_d_abs_mean": 0.48247216994856656
+    },
+    {
+      "name": "HRM.clarity.attr.hrm.reasoning.score01",
+      "count": 1,
+      "auc_mean": 0.384,
+      "auc_std": 0.0,
+      "cohen_d_mean": -0.48237663689033916,
+      "cohen_d_abs_mean": 0.48237663689033916
+    },
+    {
+      "name": "HRM.clarity.attr.scm.reasoning.score01",
+      "count": 1,
+      "auc_mean": 0.384,
+      "auc_std": 0.0,
+      "cohen_d_mean": -0.48237663689033916,
+      "cohen_d_abs_mean": 0.48237663689033916
+    },
+    {
+      "name": "HRM.clarity.attr.hrm.reasoning.score100",
+      "count": 1,
+      "auc_mean": 0.384,
+      "auc_std": 0.0,
+      "cohen_d_mean": -0.4823713757819013,
+      "cohen_d_abs_mean": 0.4823713757819013
+    },
+    {
+      "name": "Tiny.reasoning.attr.scm.knowledge.score01",
+      "count": 2,
+      "auc_mean": 0.3558,
+      "auc_std": 0.02300000000000002,
+      "cohen_d_mean": -0.5150118484621284,
+      "cohen_d_abs_mean": 0.5150118484621284
+    },
+    {
+      "name": "Tiny.reasoning.attr.tiny.knowledge",
+      "count": 2,
+      "auc_mean": 0.3558,
+      "auc_std": 0.02300000000000002,
+      "cohen_d_mean": -0.5150118484621284,
+      "cohen_d_abs_mean": 0.5150118484621284
+    },
+    {
+      "name": "Tiny.reasoning.attr.tiny.knowledge.score01",
+      "count": 2,
+      "auc_mean": 0.3558,
+      "auc_std": 0.02300000000000002,
+      "cohen_d_mean": -0.5150118484621284,
+      "cohen_d_abs_mean": 0.5150118484621284
+    },
+    {
+      "name": "Tiny.reasoning.attr.values[6]",
+      "count": 2,
+      "auc_mean": 0.3558,
+      "auc_std": 0.02300000000000002,
+      "cohen_d_mean": -0.5150118484621284,
+      "cohen_d_abs_mean": 0.5150118484621284
+    },
+    {
+      "name": "Tiny.reasoning.attr.vector.scm.knowledge.score01",
+      "count": 2,
+      "auc_mean": 0.3558,
+      "auc_std": 0.02300000000000002,
+      "cohen_d_mean": -0.5150118484621284,
+      "cohen_d_abs_mean": 0.5150118484621284
+    },
+    {
+      "name": "Tiny.reasoning.attr.vector.tiny.knowledge",
+      "count": 2,
+      "auc_mean": 0.3558,
+      "auc_std": 0.02300000000000002,
+      "cohen_d_mean": -0.5150118484621284,
+      "cohen_d_abs_mean": 0.5150118484621284
+    },
+    {
+      "name": "Tiny.reasoning.attr.vector.tiny.knowledge.score01",
+      "count": 2,
+      "auc_mean": 0.3558,
+      "auc_std": 0.02300000000000002,
+      "cohen_d_mean": -0.5150118484621284,
+      "cohen_d_abs_mean": 0.5150118484621284
+    },
+    {
+      "name": "Tiny.reasoning.attr.tiny.knowledge.score100",
+      "count": 2,
+      "auc_mean": 0.3558,
+      "auc_std": 0.02300000000000002,
+      "cohen_d_mean": -0.5150116764604307,
+      "cohen_d_abs_mean": 0.5150116764604307
+    },
+    {
+      "name": "Tiny.reasoning.attr.vector.tiny.knowledge.score100",
+      "count": 2,
+      "auc_mean": 0.3558,
+      "auc_std": 0.02300000000000002,
+      "cohen_d_mean": -0.5150116764604307,
+      "cohen_d_abs_mean": 0.5150116764604307
+    },
+    {
+      "name": "Tiny.reasoning.attr.tiny.faithfulness.score100",
+      "count": 2,
+      "auc_mean": 0.3494,
+      "auc_std": 0.02579999999999999,
+      "cohen_d_mean": -0.5290077717958007,
+      "cohen_d_abs_mean": 0.5290077717958007
+    },
+    {
+      "name": "Tiny.reasoning.attr.vector.tiny.faithfulness.score100",
+      "count": 2,
+      "auc_mean": 0.3494,
+      "auc_std": 0.02579999999999999,
+      "cohen_d_mean": -0.5290077717958007,
+      "cohen_d_abs_mean": 0.5290077717958007
+    },
+    {
+      "name": "Tiny.reasoning.attr.scm.faithfulness.score01",
+      "count": 2,
+      "auc_mean": 0.3494,
+      "auc_std": 0.02579999999999999,
+      "cohen_d_mean": -0.5290071297311465,
+      "cohen_d_abs_mean": 0.5290071297311465
+    },
+    {
+      "name": "Tiny.reasoning.attr.tiny.faithfulness",
+      "count": 2,
+      "auc_mean": 0.3494,
+      "auc_std": 0.02579999999999999,
+      "cohen_d_mean": -0.5290071297311465,
+      "cohen_d_abs_mean": 0.5290071297311465
+    },
+    {
+      "name": "Tiny.reasoning.attr.tiny.faithfulness.score01",
+      "count": 2,
+      "auc_mean": 0.3494,
+      "auc_std": 0.02579999999999999,
+      "cohen_d_mean": -0.5290071297311465,
+      "cohen_d_abs_mean": 0.5290071297311465
+    },
+    {
+      "name": "Tiny.reasoning.attr.values[8]",
+      "count": 2,
+      "auc_mean": 0.3494,
+      "auc_std": 0.02579999999999999,
+      "cohen_d_mean": -0.5290071297311465,
+      "cohen_d_abs_mean": 0.5290071297311465
+    },
+    {
+      "name": "Tiny.reasoning.attr.vector.scm.faithfulness.score01",
+      "count": 2,
+      "auc_mean": 0.3494,
+      "auc_std": 0.02579999999999999,
+      "cohen_d_mean": -0.5290071297311465,
+      "cohen_d_abs_mean": 0.5290071297311465
+    },
+    {
+      "name": "Tiny.reasoning.attr.vector.tiny.faithfulness",
+      "count": 2,
+      "auc_mean": 0.3494,
+      "auc_std": 0.02579999999999999,
+      "cohen_d_mean": -0.5290071297311465,
+      "cohen_d_abs_mean": 0.5290071297311465
+    },
+    {
+      "name": "Tiny.reasoning.attr.vector.tiny.faithfulness.score01",
+      "count": 2,
+      "auc_mean": 0.3494,
+      "auc_std": 0.02579999999999999,
+      "cohen_d_mean": -0.5290071297311465,
+      "cohen_d_abs_mean": 0.5290071297311465
+    },
+    {
+      "name": "Tiny.faithfulness.attr.vector.tiny.faithfulness.score100",
+      "count": 1,
+      "auc_mean": 0.3464,
+      "auc_std": 0.0,
+      "cohen_d_mean": -0.5335485062748051,
+      "cohen_d_abs_mean": 0.5335485062748051
+    },
+    {
+      "name": "Tiny.coverage.attr.ood_hat01",
+      "count": 1,
+      "auc_mean": 0.3392,
+      "auc_std": 0.0,
+      "cohen_d_mean": -0.5607636971244762,
+      "cohen_d_abs_mean": 0.5607636971244762
+    },
+    {
+      "name": "sicql.coverage.attr.entropy",
+      "count": 1,
+      "auc_mean": 0.3364,
+      "auc_std": 0.0,
+      "cohen_d_mean": -0.5631600384482616,
+      "cohen_d_abs_mean": 0.5631600384482616
+    },
+    {
+      "name": "Tiny.faithfulness.attr.scm.faithfulness.score01",
+      "count": 3,
+      "auc_mean": 0.32653333333333334,
+      "auc_std": 0.0520638923716705,
+      "cohen_d_mean": -0.6171434290806048,
+      "cohen_d_abs_mean": 0.6171434290806048
+    },
+    {
+      "name": "Tiny.faithfulness.attr.tiny.faithfulness",
+      "count": 3,
+      "auc_mean": 0.32653333333333334,
+      "auc_std": 0.0520638923716705,
+      "cohen_d_mean": -0.6171434290806048,
+      "cohen_d_abs_mean": 0.6171434290806048
+    },
+    {
+      "name": "Tiny.faithfulness.attr.tiny.faithfulness.score01",
+      "count": 3,
+      "auc_mean": 0.32653333333333334,
+      "auc_std": 0.0520638923716705,
+      "cohen_d_mean": -0.6171434290806048,
+      "cohen_d_abs_mean": 0.6171434290806048
+    },
+    {
+      "name": "Tiny.faithfulness.attr.values[8]",
+      "count": 2,
+      "auc_mean": 0.3166,
+      "auc_std": 0.06140000000000001,
+      "cohen_d_mean": -0.6589435017992299,
+      "cohen_d_abs_mean": 0.6589435017992299
+    },
+    {
+      "name": "Tiny.faithfulness.attr.vector.scm.faithfulness.score01",
+      "count": 2,
+      "auc_mean": 0.3166,
+      "auc_std": 0.06140000000000001,
+      "cohen_d_mean": -0.6589435017992299,
+      "cohen_d_abs_mean": 0.6589435017992299
+    },
+    {
+      "name": "Tiny.faithfulness.attr.vector.tiny.faithfulness",
+      "count": 2,
+      "auc_mean": 0.3166,
+      "auc_std": 0.06140000000000001,
+      "cohen_d_mean": -0.6589435017992299,
+      "cohen_d_abs_mean": 0.6589435017992299
+    },
+    {
+      "name": "Tiny.faithfulness.attr.vector.tiny.faithfulness.score01",
+      "count": 2,
+      "auc_mean": 0.3166,
+      "auc_std": 0.06140000000000001,
+      "cohen_d_mean": -0.6589435017992299,
+      "cohen_d_abs_mean": 0.6589435017992299
+    },
+    {
+      "name": "Tiny.knowledge.attr.tiny.knowledge.score100",
+      "count": 6,
+      "auc_mean": 0.31393333333333334,
+      "auc_std": 0.04909550782799674,
+      "cohen_d_mean": -0.6872290420318381,
+      "cohen_d_abs_mean": 0.6872290420318381
+    },
+    {
+      "name": "Tiny.knowledge.attr.vector.tiny.knowledge.score100",
+      "count": 6,
+      "auc_mean": 0.31393333333333334,
+      "auc_std": 0.04909550782799674,
+      "cohen_d_mean": -0.6872290420318381,
+      "cohen_d_abs_mean": 0.6872290420318381
+    },
+    {
+      "name": "Tiny.knowledge.attr.scm.knowledge.score01",
+      "count": 6,
+      "auc_mean": 0.31393333333333334,
+      "auc_std": 0.04909550782799674,
+      "cohen_d_mean": -0.6872242175076457,
+      "cohen_d_abs_mean": 0.6872242175076457
+    },
+    {
+      "name": "Tiny.knowledge.attr.tiny.knowledge",
+      "count": 6,
+      "auc_mean": 0.31393333333333334,
+      "auc_std": 0.04909550782799674,
+      "cohen_d_mean": -0.6872242175076457,
+      "cohen_d_abs_mean": 0.6872242175076457
+    },
+    {
+      "name": "sicql.coverage.attr.energy",
+      "count": 2,
+      "auc_mean": 0.3136,
+      "auc_std": 0.021199999999999997,
+      "cohen_d_mean": -0.6768027110777954,
+      "cohen_d_abs_mean": 0.6768027110777954
+    },
+    {
+      "name": "sicql.coverage.attr.q_value",
+      "count": 2,
+      "auc_mean": 0.3136,
+      "auc_std": 0.021199999999999997,
+      "cohen_d_mean": -0.6768027110777954,
+      "cohen_d_abs_mean": 0.6768027110777954
+    },
+    {
+      "name": "sicql.coverage.attr.state_value",
+      "count": 2,
+      "auc_mean": 0.31320000000000003,
+      "auc_std": 0.02159999999999998,
+      "cohen_d_mean": -0.6770705338901352,
+      "cohen_d_abs_mean": 0.6770705338901352
+    },
+    {
+      "name": "sicql.coverage.attr.uncertainty",
+      "count": 2,
+      "auc_mean": 0.313,
+      "auc_std": 0.02460000000000001,
+      "cohen_d_mean": -0.6847814751239001,
+      "cohen_d_abs_mean": 0.6847814751239001
+    },
+    {
+      "name": "sicql.faithfulness.attr.state_value",
+      "count": 2,
+      "auc_mean": 0.3054,
+      "auc_std": 0.007000000000000006,
+      "cohen_d_mean": -0.6990536775079865,
+      "cohen_d_abs_mean": 0.6990536775079865
+    },
+    {
+      "name": "sicql.faithfulness.attr.energy",
+      "count": 2,
+      "auc_mean": 0.3048,
+      "auc_std": 0.007599999999999996,
+      "cohen_d_mean": -0.6984417575465678,
+      "cohen_d_abs_mean": 0.6984417575465678
+    },
+    {
+      "name": "sicql.faithfulness.attr.q_value",
+      "count": 2,
+      "auc_mean": 0.3048,
+      "auc_std": 0.007599999999999996,
+      "cohen_d_mean": -0.6984417575465678,
+      "cohen_d_abs_mean": 0.6984417575465678
+    },
+    {
+      "name": "Tiny.clarity.attr.tiny.knowledge",
+      "count": 2,
+      "auc_mean": 0.30100000000000005,
+      "auc_std": 0.011800000000000005,
+      "cohen_d_mean": -0.7346814488317315,
+      "cohen_d_abs_mean": 0.7346814488317315
+    },
+    {
+      "name": "Tiny.clarity.attr.tiny.knowledge.score01",
+      "count": 2,
+      "auc_mean": 0.30100000000000005,
+      "auc_std": 0.011800000000000005,
+      "cohen_d_mean": -0.7346814488317315,
+      "cohen_d_abs_mean": 0.7346814488317315
+    },
+    {
+      "name": "Tiny.clarity.attr.values[6]",
+      "count": 2,
+      "auc_mean": 0.30100000000000005,
+      "auc_std": 0.011800000000000005,
+      "cohen_d_mean": -0.7346814488317315,
+      "cohen_d_abs_mean": 0.7346814488317315
+    },
+    {
+      "name": "Tiny.clarity.attr.vector.scm.knowledge.score01",
+      "count": 2,
+      "auc_mean": 0.30100000000000005,
+      "auc_std": 0.011800000000000005,
+      "cohen_d_mean": -0.7346814488317315,
+      "cohen_d_abs_mean": 0.7346814488317315
+    },
+    {
+      "name": "Tiny.clarity.attr.vector.tiny.knowledge",
+      "count": 2,
+      "auc_mean": 0.30100000000000005,
+      "auc_std": 0.011800000000000005,
+      "cohen_d_mean": -0.7346814488317315,
+      "cohen_d_abs_mean": 0.7346814488317315
+    },
+    {
+      "name": "Tiny.clarity.attr.vector.tiny.knowledge.score01",
+      "count": 2,
+      "auc_mean": 0.30100000000000005,
+      "auc_std": 0.011800000000000005,
+      "cohen_d_mean": -0.7346814488317315,
+      "cohen_d_abs_mean": 0.7346814488317315
+    },
+    {
+      "name": "Tiny.faithfulness.attr.tiny.faithfulness.score100",
+      "count": 2,
+      "auc_mean": 0.30079999999999996,
+      "auc_std": 0.0456,
+      "cohen_d_mean": -0.7112013647961313,
+      "cohen_d_abs_mean": 0.7112013647961313
+    },
+    {
+      "name": "Tiny.clarity.attr.tiny.knowledge.score100",
+      "count": 2,
+      "auc_mean": 0.3004,
+      "auc_std": 0.012400000000000022,
+      "cohen_d_mean": -0.7346873310391568,
+      "cohen_d_abs_mean": 0.7346873310391568
+    },
+    {
+      "name": "Tiny.clarity.attr.vector.tiny.knowledge.score100",
+      "count": 2,
+      "auc_mean": 0.3004,
+      "auc_std": 0.012400000000000022,
+      "cohen_d_mean": -0.7346873310391568,
+      "cohen_d_abs_mean": 0.7346873310391568
+    },
+    {
+      "name": "sicql.faithfulness.attr.uncertainty",
+      "count": 2,
+      "auc_mean": 0.3002,
+      "auc_std": 0.01620000000000002,
+      "cohen_d_mean": -0.7138480542631184,
+      "cohen_d_abs_mean": 0.7138480542631184
+    },
+    {
+      "name": "Tiny.knowledge.attr.tiny.knowledge.score01",
+      "count": 5,
+      "auc_mean": 0.29944,
+      "auc_std": 0.04039928712242333,
+      "cohen_d_mean": -0.7434686382142459,
+      "cohen_d_abs_mean": 0.7434686382142459
+    },
+    {
+      "name": "Tiny.knowledge.attr.values[6]",
+      "count": 5,
+      "auc_mean": 0.29944,
+      "auc_std": 0.04039928712242333,
+      "cohen_d_mean": -0.7434686382142459,
+      "cohen_d_abs_mean": 0.7434686382142459
+    },
+    {
+      "name": "Tiny.knowledge.attr.vector.scm.knowledge.score01",
+      "count": 5,
+      "auc_mean": 0.29944,
+      "auc_std": 0.04039928712242333,
+      "cohen_d_mean": -0.7434686382142459,
+      "cohen_d_abs_mean": 0.7434686382142459
+    },
+    {
+      "name": "Tiny.knowledge.attr.vector.tiny.knowledge",
+      "count": 5,
+      "auc_mean": 0.29944,
+      "auc_std": 0.04039928712242333,
+      "cohen_d_mean": -0.7434686382142459,
+      "cohen_d_abs_mean": 0.7434686382142459
+    },
+    {
+      "name": "Tiny.knowledge.attr.vector.tiny.knowledge.score01",
+      "count": 5,
+      "auc_mean": 0.29944,
+      "auc_std": 0.04039928712242333,
+      "cohen_d_mean": -0.7434686382142459,
+      "cohen_d_abs_mean": 0.7434686382142459
+    },
+    {
+      "name": "Tiny.knowledge.attr.scm.aggregate01",
+      "count": 6,
+      "auc_mean": 0.2994,
+      "auc_std": 0.05309099107507161,
+      "cohen_d_mean": -0.7171813576759358,
+      "cohen_d_abs_mean": 0.7171813576759358
+    },
+    {
+      "name": "Tiny.knowledge.attr.values[10]",
+      "count": 6,
+      "auc_mean": 0.2994,
+      "auc_std": 0.05309099107507161,
+      "cohen_d_mean": -0.7171813576759358,
+      "cohen_d_abs_mean": 0.7171813576759358
+    },
+    {
+      "name": "Tiny.knowledge.attr.vector.scm.aggregate01",
+      "count": 6,
+      "auc_mean": 0.2994,
+      "auc_std": 0.05309099107507161,
+      "cohen_d_mean": -0.7171813576759358,
+      "cohen_d_abs_mean": 0.7171813576759358
+    },
+    {
+      "name": "Tiny.faithfulness.attr.tiny.coverage.score100",
+      "count": 1,
+      "auc_mean": 0.2988,
+      "auc_std": 0.0,
+      "cohen_d_mean": -0.7424419617053709,
+      "cohen_d_abs_mean": 0.7424419617053709
+    },
+    {
+      "name": "Tiny.faithfulness.attr.vector.tiny.coverage.score100",
+      "count": 1,
+      "auc_mean": 0.2988,
+      "auc_std": 0.0,
+      "cohen_d_mean": -0.7424419617053709,
+      "cohen_d_abs_mean": 0.7424419617053709
+    },
+    {
+      "name": "Tiny.faithfulness.attr.scm.coverage.score01",
+      "count": 1,
+      "auc_mean": 0.2988,
+      "auc_std": 0.0,
+      "cohen_d_mean": -0.7424300866625533,
+      "cohen_d_abs_mean": 0.7424300866625533
+    },
+    {
+      "name": "Tiny.faithfulness.attr.tiny.coverage",
+      "count": 1,
+      "auc_mean": 0.2988,
+      "auc_std": 0.0,
+      "cohen_d_mean": -0.7424300866625533,
+      "cohen_d_abs_mean": 0.7424300866625533
+    },
+    {
+      "name": "Tiny.faithfulness.attr.tiny.coverage.score01",
+      "count": 1,
+      "auc_mean": 0.2988,
+      "auc_std": 0.0,
+      "cohen_d_mean": -0.7424300866625533,
+      "cohen_d_abs_mean": 0.7424300866625533
+    },
+    {
+      "name": "Tiny.faithfulness.attr.values[9]",
+      "count": 1,
+      "auc_mean": 0.2988,
+      "auc_std": 0.0,
+      "cohen_d_mean": -0.7424300866625533,
+      "cohen_d_abs_mean": 0.7424300866625533
+    },
+    {
+      "name": "Tiny.faithfulness.attr.vector.scm.coverage.score01",
+      "count": 1,
+      "auc_mean": 0.2988,
+      "auc_std": 0.0,
+      "cohen_d_mean": -0.7424300866625533,
+      "cohen_d_abs_mean": 0.7424300866625533
+    },
+    {
+      "name": "Tiny.faithfulness.attr.vector.tiny.coverage",
+      "count": 1,
+      "auc_mean": 0.2988,
+      "auc_std": 0.0,
+      "cohen_d_mean": -0.7424300866625533,
+      "cohen_d_abs_mean": 0.7424300866625533
+    },
+    {
+      "name": "Tiny.faithfulness.attr.vector.tiny.coverage.score01",
+      "count": 1,
+      "auc_mean": 0.2988,
+      "auc_std": 0.0,
+      "cohen_d_mean": -0.7424300866625533,
+      "cohen_d_abs_mean": 0.7424300866625533
+    },
+    {
+      "name": "Tiny.faithfulness.attr.concept_sparsity",
+      "count": 1,
+      "auc_mean": 0.2988,
+      "auc_std": 0.0,
+      "cohen_d_mean": -0.742429837646585,
+      "cohen_d_abs_mean": 0.742429837646585
+    },
+    {
+      "name": "Tiny.clarity.attr.scm.knowledge.score01",
+      "count": 3,
+      "auc_mean": 0.29746666666666666,
+      "auc_std": 0.010853366093316661,
+      "cohen_d_mean": -0.7363820419828013,
+      "cohen_d_abs_mean": 0.7363820419828013
+    },
+    {
+      "name": "Tiny.faithfulness.attr.recon_sim",
+      "count": 3,
+      "auc_mean": 0.2941333333333333,
+      "auc_std": 0.03268652457648089,
+      "cohen_d_mean": -0.7287896144714847,
+      "cohen_d_abs_mean": 0.7287896144714847
+    },
+    {
+      "name": "Tiny.faithfulness.attr.scm.knowledge.score01",
+      "count": 3,
+      "auc_mean": 0.2941333333333333,
+      "auc_std": 0.03268652457648089,
+      "cohen_d_mean": -0.728789136852618,
+      "cohen_d_abs_mean": 0.728789136852618
+    },
+    {
+      "name": "Tiny.faithfulness.attr.tiny.knowledge",
+      "count": 3,
+      "auc_mean": 0.2941333333333333,
+      "auc_std": 0.03268652457648089,
+      "cohen_d_mean": -0.728789136852618,
+      "cohen_d_abs_mean": 0.728789136852618
+    },
+    {
+      "name": "Tiny.faithfulness.attr.tiny.knowledge.score01",
+      "count": 3,
+      "auc_mean": 0.2941333333333333,
+      "auc_std": 0.03268652457648089,
+      "cohen_d_mean": -0.728789136852618,
+      "cohen_d_abs_mean": 0.728789136852618
+    },
+    {
+      "name": "Tiny.faithfulness.attr.values[6]",
+      "count": 2,
+      "auc_mean": 0.2932,
+      "auc_std": 0.04000000000000001,
+      "cohen_d_mean": -0.7451014045985205,
+      "cohen_d_abs_mean": 0.7451014045985205
+    },
+    {
+      "name": "Tiny.faithfulness.attr.vector.scm.knowledge.score01",
+      "count": 2,
+      "auc_mean": 0.2932,
+      "auc_std": 0.04000000000000001,
+      "cohen_d_mean": -0.7451014045985205,
+      "cohen_d_abs_mean": 0.7451014045985205
+    },
+    {
+      "name": "Tiny.faithfulness.attr.vector.tiny.knowledge",
+      "count": 2,
+      "auc_mean": 0.2932,
+      "auc_std": 0.04000000000000001,
+      "cohen_d_mean": -0.7451014045985205,
+      "cohen_d_abs_mean": 0.7451014045985205
+    },
+    {
+      "name": "Tiny.faithfulness.attr.vector.tiny.knowledge.score01",
+      "count": 2,
+      "auc_mean": 0.2932,
+      "auc_std": 0.04000000000000001,
+      "cohen_d_mean": -0.7451014045985205,
+      "cohen_d_abs_mean": 0.7451014045985205
+    },
+    {
+      "name": "Tiny.faithfulness.attr.tiny.knowledge.score100",
+      "count": 2,
+      "auc_mean": 0.2932,
+      "auc_std": 0.04000000000000001,
+      "cohen_d_mean": -0.745086602232474,
+      "cohen_d_abs_mean": 0.745086602232474
+    },
+    {
+      "name": "Tiny.faithfulness.attr.vector.tiny.knowledge.score100",
+      "count": 2,
+      "auc_mean": 0.2932,
+      "auc_std": 0.04000000000000001,
+      "cohen_d_mean": -0.745086602232474,
+      "cohen_d_abs_mean": 0.745086602232474
+    },
+    {
+      "name": "Tiny.knowledge.attr.recon_sim",
+      "count": 4,
+      "auc_mean": 0.2831,
+      "auc_std": 0.024580276646124215,
+      "cohen_d_mean": -0.790809964070547,
+      "cohen_d_abs_mean": 0.790809964070547
+    },
+    {
+      "name": "Tiny.knowledge.attr.scm.faithfulness.score01",
+      "count": 4,
+      "auc_mean": 0.2816,
+      "auc_std": 0.03176664917802946,
+      "cohen_d_mean": -0.7861393276116714,
+      "cohen_d_abs_mean": 0.7861393276116714
+    },
+    {
+      "name": "Tiny.knowledge.attr.tiny.faithfulness",
+      "count": 4,
+      "auc_mean": 0.2816,
+      "auc_std": 0.03176664917802946,
+      "cohen_d_mean": -0.7861393276116714,
+      "cohen_d_abs_mean": 0.7861393276116714
+    },
+    {
+      "name": "Tiny.knowledge.attr.tiny.faithfulness.score01",
+      "count": 4,
+      "auc_mean": 0.2816,
+      "auc_std": 0.03176664917802946,
+      "cohen_d_mean": -0.7861393276116714,
+      "cohen_d_abs_mean": 0.7861393276116714
+    },
+    {
+      "name": "Tiny.knowledge.attr.values[8]",
+      "count": 4,
+      "auc_mean": 0.2816,
+      "auc_std": 0.03176664917802946,
+      "cohen_d_mean": -0.7861393276116714,
+      "cohen_d_abs_mean": 0.7861393276116714
+    },
+    {
+      "name": "Tiny.knowledge.attr.vector.scm.faithfulness.score01",
+      "count": 4,
+      "auc_mean": 0.2816,
+      "auc_std": 0.03176664917802946,
+      "cohen_d_mean": -0.7861393276116714,
+      "cohen_d_abs_mean": 0.7861393276116714
+    },
+    {
+      "name": "Tiny.knowledge.attr.vector.tiny.faithfulness",
+      "count": 4,
+      "auc_mean": 0.2816,
+      "auc_std": 0.03176664917802946,
+      "cohen_d_mean": -0.7861393276116714,
+      "cohen_d_abs_mean": 0.7861393276116714
+    }
+  ]
+}

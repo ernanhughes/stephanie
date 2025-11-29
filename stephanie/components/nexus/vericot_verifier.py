@@ -1,15 +1,14 @@
 # stephanie/components/vericot/vericot_verifier.py
 from __future__ import annotations
 
-from enum import Enum
 import hashlib
 import logging
 import time
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass, field
+from enum import Enum
 from typing import Any, Dict, List, Literal, Optional, Tuple
 
 import z3  # pip install z3-solver
-
 
 Status = Literal["valid", "contradiction", "ungrounded", "untranslatable"]
 UngroundedDetail = Literal[

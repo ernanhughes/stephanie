@@ -11,11 +11,11 @@ from sqlite3 import IntegrityError
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
-from stephanie.models.scorable_embedding import ScorableEmbeddingORM
-from stephanie.scoring.scorable import Scorable
 import torch
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
+from stephanie.models.scorable_embedding import ScorableEmbeddingORM
+from stephanie.scoring.scorable import Scorable
 from stephanie.utils.lru_cache import SimpleLRUCache
 
 log = logging.getLogger(__name__)
@@ -586,8 +586,7 @@ class BaseEmbeddingStore(BaseSQLAlchemyStore):
 
     def _get_current_domain(self, query: str) -> str:
         if not hasattr(self, "_domain_classifier"):
-            from stephanie.analysis.scorable_classifier import \
-                ScorableClassifier
+            from stephanie.tools.scorable_classifier import ScorableClassifier
             self._domain_classifier = ScorableClassifier(
                 memory=self.memory,
                 logger=self.logger,

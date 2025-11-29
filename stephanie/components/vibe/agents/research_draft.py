@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from typing import Any, Dict
-
 import logging
+from typing import Any, Dict
 
 from stephanie.agents.base_agent import BaseAgent
 

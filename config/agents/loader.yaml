@@ -1,0 +1,22 @@
+# config/agents/gsm8k_log_loader.yaml
+
+loader:
+  _target_: stephanie.agents.loader.LoaderAgent
+  name: loader
+  enabled: true
+
+  input_key: "unused"          # we ignore context input
+  output_key: "scorables"      # matches what CriticCohortAgent expects
+
+  save_prompt: false
+  save_context: false
+
+  # Where your JSONL logs live (you can add multiple dirs)
+  log_dirs:
+    - "runs/critic_data"
+  log_glob: "*.jsonl"
+
+  shuffle: true
+  max_records: 0               # 0 → use all records
+  max_good: 50
+  max_bad: 50

@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.analysis.rubric_classifier import RubricClassifierMixin
+from stephanie.agents.mixins.rubric_classifier import RubricClassifierMixin
 from stephanie.constants import GOAL
 from stephanie.evaluator.llm_judge_evaluator import LLMJudgeEvaluator
 from stephanie.scoring.scorable import ScorableFactory, ScorableType

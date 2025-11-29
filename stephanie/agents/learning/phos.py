@@ -17,8 +17,6 @@ from tqdm import tqdm
 from stephanie.agents.agentic_tree_search import \
     SolutionNode  # assuming you have this
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.analysis.vpm_differential_analyzer import \
-    VPMDifferentialAnalyzer
 from stephanie.constants import PIPELINE_RUN_ID
 from stephanie.scoring.scorable import Scorable, ScorableFactory, ScorableType
 from stephanie.services.scoring_service import ScoringService
@@ -26,6 +24,8 @@ from stephanie.services.workers.metrics_worker import MetricsWorker
 from stephanie.services.workers.vpm_worker import VPMWorker
 from stephanie.services.zeromodel_service import ZeroModelService
 from stephanie.utils.emit_broadcaster import EmitBroadcaster
+from stephanie.zeromodel.vpm_differential_analyzer import \
+    VPMDifferentialAnalyzer
 
 log = logging.getLogger(__name__)
 

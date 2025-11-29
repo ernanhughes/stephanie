@@ -1,12 +1,14 @@
 # stephanie/components/vibe/vibe.py
 from __future__ import annotations
 
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass, field
 from typing import Any, Dict, List
+
 from stephanie.components.vibe.artifact_snapshot import ArtifactSnapshot
+from stephanie.components.vibe.concept_transform import ConceptTransform
 from stephanie.components.vibe.test_probe import TestProbe
 from stephanie.memcube.rubric import RubricMemCube
-from stephanie.components.vibe.concept_transform import ConceptTransform
+
 
 @dataclass
 class VibeScore:

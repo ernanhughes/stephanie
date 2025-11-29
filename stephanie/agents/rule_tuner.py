@@ -4,11 +4,11 @@ from __future__ import annotations
 from tabulate import tabulate
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.analysis.rule_effect_analyzer import RuleEffectAnalyzer
 from stephanie.constants import GOAL, PIPELINE_RUN_ID
 from stephanie.memory.symbolic_rule_store import SymbolicRuleStore
 from stephanie.models import SymbolicRuleORM
 from stephanie.rules import RuleTuner
+from stephanie.rules.rule_effect_analyzer import RuleEffectAnalyzer
 from stephanie.utils.high_score_selector import get_high_scoring_runs
 
 

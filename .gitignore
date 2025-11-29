@@ -17,6 +17,7 @@ __pycache__/
 *$py.class
 
 merged_code.md
+codebase_context.txt
 *.zip
 
 # C extensions

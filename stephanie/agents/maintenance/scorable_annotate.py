@@ -16,13 +16,12 @@ Key improvements:
 
 from __future__ import annotations
 
-from dataclasses import asdict
 import logging
+from dataclasses import asdict
 from typing import List, Optional
 
-
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.scoring.scorable_processor import ScorableProcessor
+from stephanie.scoring.metrics.scorable_processor import ScorableProcessor
 
 log = logging.getLogger(__name__)
 

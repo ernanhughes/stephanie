@@ -322,16 +322,9 @@ class TinyScorer(BaseScorer):
 
                 # Apply scaling and metadata adjustments
                 meta = self.model_meta.get(dim, {})
-                tiny_score01 = raw01
-                tiny_score100 = round(_safe_scale_0_100(tiny_score01, meta), 4)
-                log.debug(f"Scaled scores - 01: {tiny_score01:.3f}, 100: {tiny_score100}")
-
                 # Step 4: Build base attributes dictionary
                 log.debug("Building base attributes dictionary")
                 attrs: Dict[str, Any] = {
-                    "tiny.score01": tiny_score01,
-                    "tiny.score100": tiny_score100,
-                    "raw01": tiny_score01,  # backward-compatibility alias
                     "entropy": float(entropy),
                     "certainty01": float(certainty01),
                     "halt_prob": float(halt_prob) if halt_prob is not None else None,
@@ -371,17 +364,6 @@ class TinyScorer(BaseScorer):
                 attrs.update(scm)
                 log.debug(f"SCM conversion complete - aggregate: {scm.get('scm.aggregate01', 0):.3f}")
 
-                # Step 7: Mirror dimension scores for PHOS compatibility
-                log.debug("Mirroring dimension scores for PHOS alignment")
-                for dname in ("reasoning", "knowledge", "clarity", "faithfulness", "coverage"):
-                    key = f"scm.{dname}.score01"
-                    if key in scm:
-                        v01 = float(scm[key])
-                        attrs[f"tiny.{dname}.score01"]  = v01
-                        attrs[f"tiny.{dname}.score100"] = round(v01 * 100.0, 4)
-                        attrs[f"tiny.{dname}"] = float(scm[key])
-                log.debug("Dimension score mirroring complete")
-
                 # Step 8: Generate scoring rationale
                 rationale = (
                     f"tiny[{dim}] raw01={float(raw01):.4f}, "
@@ -397,7 +379,7 @@ class TinyScorer(BaseScorer):
                 # Step 10: Create final ScoreResult
                 results[dim] = ScoreResult(
                     dimension=dim,
-                    score=tiny_score01,
+                    score=raw01,
                     source=self.model_type,
                     rationale=rationale,
                     weight=1.0,
@@ -441,23 +423,6 @@ class TinyScorer(BaseScorer):
         """String representation showing loaded models."""
         loaded = {k: (v is not None) for k, v in self.models.items()}
         return f"<TinyScorer(model_type={self.model_type}, loaded={loaded})>"
-
-
-def _take_scalar(t):
-    """
-    Extract scalar value from tensor or return float directly.
-    
-    Args:
-        t: Input tensor or scalar
-        
-    Returns:
-        Extracted scalar value as float
-    """
-    # works with tensor or float
-    if isinstance(t, torch.Tensor):
-        return float(t.detach().mean().cpu().item())
-    return float(t)
-
 
 # -------------------------
 # Helper Functions
@@ -514,32 +479,6 @@ def _sigmoid_mean(v):
     log.debug(f"Returning float value: {result}")
     return result
 
-
-def _safe_scale_0_100(raw: float, meta: dict | None) -> float:
-    """
-    Scale raw [0,1] score to [0,100] range with metadata awareness.
-    
-    Uses metadata min/max values if available, otherwise uses default 0-100 scaling.
-    
-    Args:
-        raw: Raw score in [0,1] range
-        meta: Model metadata containing scaling parameters
-        
-    Returns:
-        Scaled score in appropriate range
-    """
-    if not meta:
-        result = float(max(0.0, min(1.0, raw)) * 100.0)
-        log.debug(f"Scaled without meta: {raw} -> {result}")
-        return result
-    
-    lo = float(meta.get("min_value", 0.0))
-    hi = float(meta.get("max_value", 100.0))
-    result = float(max(lo, min(hi, lo + (hi - lo) * max(0.0, min(1.0, raw)))))
-    log.debug(f"Scaled with meta: {raw} -> {result} (range: {lo}-{hi})")
-    return result
-
-
 def _tiny_build_vector(attrs: Dict[str, Any]) -> Dict[str, Any]:
     """
     Build aligned vector representation for GAP analysis.
@@ -557,12 +496,7 @@ def _tiny_build_vector(attrs: Dict[str, Any]) -> Dict[str, Any]:
     log.debug("Building aligned vector from attributes")
     vec: Dict[str, float] = {}
     
-    # Core TRM statistics for direct access
-    vec["tiny.score01"]        = float(attrs.get("tiny.score01", 0.0))
-    vec["tiny.score100"]       = float(attrs.get("tiny.score100", 0.0))
-    vec["tiny.certainty01"]    = float(attrs.get("certainty01", 0.5))
-    vec["tiny.entropy_mean"]   = float(attrs.get("entropy", 0.0))
-    
+   
     if "halt_prob" in attrs and attrs["halt_prob"] is not None:
         vec["tiny.halt_prob"] = float(attrs["halt_prob"])
     
@@ -583,19 +517,6 @@ def _tiny_build_vector(attrs: Dict[str, Any]) -> Dict[str, Any]:
             scm_count += 1
     
     log.debug(f"Added {scm_count} SCM metrics to vector")
-
-    # Mirror dimension scores for PHOS visualization compatibility
-    mirror_count = 0
-    for d in ("reasoning", "knowledge", "clarity", "faithfulness", "coverage"):
-        k = f"scm.{d}.score01"
-        if k in attrs:
-            v01 = float(attrs[k])
-            vec[f"tiny.{d}.score01"]  = v01
-            vec[f"tiny.{d}.score100"] = round(v01 * 100.0, 4)
-            vec[f"tiny.{d}"]          = v01
-            mirror_count += 1
-    
-    log.debug(f"Mirrored {mirror_count} dimension scores")
 
     # Create final aligned structure
     cols = list(vec.keys())

@@ -1,0 +1,138 @@
+# config/agents/critic_scorer.yaml
+critic_scorer:
+  _target_: stephanie.components.critic.agents.critic_cohort.CriticCohortAgent
+  name: critic_scorer
+  input_key: scorables
+  output_key: critic_results
+  enabled: true
+
+  model_path: "models/critic.joblib"
+  meta_path:  "models/critic.meta.json"
+
+
+
+  # General
+  save_prompt: false
+  save_context: false
+  progress: true
+  filter_role: false
+  scorable_role: "assistant"
+
+  batch_size: 64
+  max_concurrency: 8
+  progress_log_every: 25
+  progress_leave: true
+  progress_position: 0
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # ScorableProcessor — keep this aligned with critic_scorer
+  # ──────────────────────────────────────────────────────────────────────────
+  processor:
+    _target_: stephanie.scoring.metrics.scorable_processor.ScorableProcessor
+
+    # Inline is simplest; you can flip to async/rpc later
+    offload_mode: inline
+    enable_manifest: false
+    enable_item_progress: false
+
+    # IMPORTANT: for cohort building we want fresh scores on each row so that
+    # metrics_columns/values are populated even if source scorables were bare.
+    attach_scores: true
+    require_metrics_for_vpm: false
+
+    # ---- per-row features (run on each scorable) ----
+    features:
+      - metrics
+      - frontier_lens  # light per-row summary; the heavy lift happens in visicalc_group
+
+    feature_configs:
+      metrics:
+        enabled: true
+        # Keep all four so we don't accidentally drop Tiny again
+        scorers: ["hrm", "sicql", "tiny", "ebt"]
+        dimensions: [coverage, reasoning, knowledge, clarity, faithfulness]
+        persist: false          # compute on the fly; DB persistence optional
+        attach_scores: true
+
+      frontier_lens All the time I don't think there's really Mother Day it doesn't only mean is only me or All right it's probably OK:
+        enabled: true
+        # Preferred metric ordering (optional)
+        metric_keys:
+          - "HRM.coverage.score"
+          - "sicql.coverage.score"
+          - "tiny.coverage.score"
+          - "svm.coverage.score"
+        frontier_metric: "HRM.aggregate"
+        row_region_splits: 4
+        frontier_low: 0.25
+        frontier_high: 0.75
+
+        # Case-insensitive mapping (MetricMapper: ignore_case=True by default in your code)
+        metric_mapping:
+          include: ["HRM.*", "sicql.*", "tiny.*", "ebt Hello.*"]
+          exclude: ["*.raw", "*.debug"]
+
+        # Optional tiny previews (heavy VPM happens in group feature)
+        vpm_png:
+          enabled: true
+          mode: "L"
+          per_metric_normalize: true
+          target_file: "visicalc_targeted_vpm.png"
+          baseline_file: "visicalc_baseline_vpm.png"
+
+        # Row-level hints only (cohort selection done in group step)
+        top_k_metrics: 50
+        min_effect: 0.25
+        importance_filter:
+          enabled: true
+          path: "config/core_metrics.json"
+          top_k: 100
+          min_effect: 0.1
+
+    # ---- group features (run once after all rows are built) ----
+    group_feature_configs:
+      metric_filter:
+        enabled: true
+        top_k: 100
+        normalize: true
+        include: ["HRM.*", "sicql.*", "Tiny.*"]
+        exclude: ["*.raw", "*.debug"]
+        alias_strip: true
+        short_circuit_if_locked: true
+        include_visicalc_core: false
+        visicalc_core_names:
+        always_include:
+          - "tiny.aggregate"
+          - "svm.aggregate"
+          - "Tiny.faithfulness.attr.scm.aggregate01"
+
+      # 2) Cohort VisiCalc (heavy batch) + feature lock
+      frontier_lens_group:
+        enabled: true
+        # Runs cohort analysis on the filtered metric matrix; attaches per-row
+        # visicalc_features / visicalc_feature_names / visicalc_report / visicalc_quality
+        episode_id: "critic:${hydra:runtime.run_dir}"  # any unique tag is fine
+        frontier_metric: "Tiny.faithfulness.attr.scm.aggregate01"
+        row_region_splits: 4
+        frontier_low: 0.25
+        frontier_high: 0.75
+        per_metric_normalize: true
+        metric_mapping:
+          include: ["HRM.*", "sicql.*", "tiny.*", "svm.*"]
+          exclude: ["*.raw", "*.debug"]
+        # files written under runs/visicalc/<run_id> by your tool
+        out_dir: "runs/critic/scorer"
+        json_file: "visicalc_report.json"
+        csv_file: "visicalc_report.csv"
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Optional A/B “TopLeft” nudge (only used if both cohorts are present)
+  # ──────────────────────────────────────────────────────────────────────────
+  ab_topleft:
+    enabled: true
+    metric_mode: "luminance"
+    iterations: 5
+    push_corner: "tl"
+    monotone_push: true
+    stretch: true
+    clip_percent: 0.01
