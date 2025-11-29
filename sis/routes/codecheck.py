@@ -6,11 +6,39 @@ from fastapi import APIRouter, Request, Query
 from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
 
 import os
+import yaml
+from pathlib import Path
 
 from stephanie.components.codecheck.engine import CodeCheckConfig, CodeCheckEngine
+from stephanie.components.codecheck.agents.improver import (
+    CodeCheckImproverAgent,
+    CodeCheckImproverConfig,
+)
 
 
 router = APIRouter()
+
+IMPROVER_YAML_PATH = Path("config") / "agents" / "codecheck_improver.yaml"
+
+
+def _load_improver_yaml() -> dict:
+    """
+    Brain-dead loader for config/agents/codecheck_improver.yaml.
+
+    Returns the inner dict under 'codecheck_improver' or {} if missing.
+    """
+    if not IMPROVER_YAML_PATH.exists():
+        return {}
+
+    with IMPROVER_YAML_PATH.open("r", encoding="utf-8") as f:
+        raw = yaml.safe_load(f) or {}
+
+    # support both:
+    #  - top-level `codecheck_improver: { ... }`
+    #  - or just the bare config at root
+    if "codecheck_improver" in raw:
+        return raw["codecheck_improver"]
+    return raw
 
 
 # -----------------
@@ -184,4 +212,68 @@ def start_codecheck_run(request: Request):
     run_id = engine.run_analysis()
 
     # Redirect to the new run's detail page
+    return RedirectResponse(url=f"/codecheck/runs/{run_id}", status_code=303)
+
+@router.post("/codecheck/runs/{run_id}/improve", response_class=HTMLResponse)
+async def improve_codecheck_run(request: Request, run_id: str):
+    """
+    Trigger the CodeCheckImproverAgent for a given run, using
+    config/agents/codecheck_improver.yaml as the source of truth.
+    """
+    app = request.app
+    memory = app.state.memory
+    container = app.state.container
+    logger = app.state.logger
+
+    # 1) Load YAML config
+    yaml_cfg = _load_improver_yaml()
+
+    # 2) Map YAML → CodeCheckImproverConfig fields (brain-dead mapping)
+    selection = yaml_cfg.get("selection") or {}
+    model_cfg = yaml_cfg.get("model") or {}
+
+    max_files = int(yaml_cfg.get("max_files", 10))
+    max_suggestions_per_file = int(yaml_cfg.get("max_suggestions_per_file", 5))
+
+    # recency_weight == YAML selection.recent_weight
+    recency_weight = float(selection.get("recent_weight", 0.5))
+
+    # Build simple weights from dirty_metrics list: each metric gets weight 1.0
+    dirty_metrics = selection.get("dirty_metrics") or []
+    if dirty_metrics:
+        file_priority_weights = {name: 1.0 for name in dirty_metrics}
+    else:
+        # fallback to defaults from your dataclass
+        file_priority_weights = {
+            "security.bandit_high": 2.0,
+            "readability.ruff_style": 1.0,
+            "vibe.instruction_compliance": -1.0,
+        }
+
+    critic_model_name = model_cfg.get("model_name", "local-7b-code-critic")
+    critic_temperature = float(model_cfg.get("temperature", 0.0))
+
+    cfg = CodeCheckImproverConfig(
+        run_id=run_id,
+        max_files=max_files,
+        max_suggestions_per_file=max_suggestions_per_file,
+        file_priority_weights=file_priority_weights,
+        recency_weight=recency_weight,
+        critic_model_name=critic_model_name,
+        critic_temperature=critic_temperature,
+    )
+
+    # 3) Run the agent
+    agent = CodeCheckImproverAgent(cfg=cfg, memory=memory, container=container, logger=logger)
+
+    # NOTE: your agent.run is currently async; call it with await.
+    result = await agent.run(run_id=run_id)
+
+    logger.info(
+        "CodeCheckImproverAgent finished for run %s: %s",
+        run_id,
+        result,
+    )
+
+    # 4) Redirect back to the run detail page to see new suggestions
     return RedirectResponse(url=f"/codecheck/runs/{run_id}", status_code=303)

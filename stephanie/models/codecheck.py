@@ -33,28 +33,34 @@ JSONType = JSONB if JSONB else JSON
 class CodeCheckRunORM(Base):
     __tablename__ = "codecheck_run"
 
-    id = Column(String, primary_key=True)  # e.g. UUID or run_id
+    id = Column(String, primary_key=True)
     created_ts = Column(DateTime, default=datetime.utcnow, index=True)
     finished_ts = Column(DateTime, nullable=True, index=True)
 
-    status = Column(String, nullable=False, default="pending")  # pending|running|success|failed
+    status = Column(String, nullable=False, default="pending")
     status_message = Column(Text, nullable=True)
 
-    # What we scanned
-    repo_root = Column(Text, nullable=False)     # absolute or canonical path
-    rel_root = Column(Text, nullable=True)       # optional: root relative to some workspace
+    repo_root = Column(Text, nullable=False)
+    rel_root = Column(Text, nullable=True)
     branch = Column(String, nullable=True, index=True)
     commit_hash = Column(String, nullable=True, index=True)
-    language = Column(String, nullable=True, index=True)  # "python", "typescript", etc.
+    language = Column(String, nullable=True, index=True)
 
-    # Configuration snapshot (weights, thresholds, rules, tool versions, etc.)
     config = Column(JSONType, nullable=True)
-
-    # Optional aggregate metrics for the whole run
-    summary_metrics = Column(JSONType, nullable=True)  # {"ai_smell_score": ..., "security_issues": ..., ...}
+    summary_metrics = Column(JSONType, nullable=True)
 
     # Relationships
-    files = relationship("CodeCheckFileORM", back_populates="run", cascade="all, delete-orphan")
+    files = relationship(
+        "CodeCheckFileORM",
+        back_populates="run",
+        cascade="all, delete-orphan",
+    )
+    suggestions = relationship(
+        "CodeCheckSuggestionORM",
+        back_populates="run",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
 
     def to_dict(self, include_files: bool = False) -> Dict[str, Any]:
         d: Dict[str, Any] = {
@@ -84,13 +90,11 @@ class CodeCheckFileORM(Base):
     __tablename__ = "codecheck_file"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-
     run_id = Column(String, ForeignKey("codecheck_run.id", ondelete="CASCADE"), index=True)
-    path = Column(Text, nullable=False, index=True)          # repo-relative path
+    path = Column(Text, nullable=False, index=True)
     language = Column(String, nullable=True, index=True)
-    module_name = Column(String, nullable=True, index=True)  # optional logical name
+    module_name = Column(String, nullable=True, index=True)
 
-    # Basic stats
     loc = Column(Integer, nullable=True)
     num_classes = Column(Integer, nullable=True)
     num_functions = Column(Integer, nullable=True)
@@ -98,17 +102,29 @@ class CodeCheckFileORM(Base):
     num_inner_functions = Column(Integer, nullable=True)
 
     is_test = Column(Boolean, nullable=False, default=False, index=True)
-    content_hash = Column(String, nullable=True, index=True)  # for cache / change detection
+    content_hash = Column(String, nullable=True, index=True)
 
-    # Qualitative labels like "god_class", "ai_generated_suspected", etc.
     labels = Column(JSONType, nullable=True)
-
-    # Arbitrary metadata (e.g. owning subsystem, Nexus node id, etc.)
     meta = Column(JSONType, nullable=True)
 
     run = relationship("CodeCheckRunORM", back_populates="files")
-    metrics = relationship("CodeCheckFileMetricsORM", back_populates="file", uselist=False, cascade="all, delete-orphan")
-    issues = relationship("CodeCheckIssueORM", back_populates="file", cascade="all, delete-orphan")
+    metrics = relationship(
+        "CodeCheckFileMetricsORM",
+        back_populates="file",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
+    issues = relationship(
+        "CodeCheckIssueORM",
+        back_populates="file",
+        cascade="all, delete-orphan",
+    )
+    suggestions = relationship(
+        "CodeCheckSuggestionORM",
+        back_populates="file",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
 
     __table_args__ = (
         Index("idx_codecheck_file_run_path", "run_id", "path"),

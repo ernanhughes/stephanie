@@ -1,0 +1,86 @@
+# config/agents/codecheck_improver.yaml
+codecheck_improver:
+  _target_: stephanie.components.codecheck.improver.CodeCheckImproverAgent
+  name: codecheck_improver
+  enabled: true
+
+  # Pipeline I/O
+  input_key: "codecheck_run_id"       # Supervisor can pass this in; SIS can override via POST
+  output_key: "codecheck_suggestions" # e.g. list of suggestion IDs or a summary
+
+  save_prompt: true
+  save_context: true
+  progress: true
+  progress_log_every: 10
+  progress_leave: false
+  progress_position: 1
+
+  # ──────────────────────────────────────────────
+  # File selection – “recent files first”
+  # ──────────────────────────────────────────────
+  max_files: 32                        # cap per improvement pass
+  max_suggestions_per_file: 5
+
+  selection:
+    # Strategy: bias towards files you touched recently AND that look “dirty”
+    strategy: "recent_then_dirty"     # you’ll implement this in the agent
+    recent_weight: 0.7                # how much recency matters
+    dirty_weight: 0.3                 # how much bad metrics matter
+    max_age_days: 7                   # ignore files older than this unless very dirty
+
+    # Metric names should match columns in CodeCheckFileMetricsORM.columns
+    dirty_metrics:
+      - "security.bandit_high"
+      - "readability.ruff_style"
+      - "semantic.risk"
+      - "vibe.instruction_compliance"
+
+    # Optional: normalize metrics before scoring
+    normalize_metrics: true
+
+  # ──────────────────────────────────────────────
+  # Suggestion generation (local model)
+  # ──────────────────────────────────────────────
+  model:
+    provider: "local"                 # you’ll route via your ModelManager
+    model_name: "local-7b-code-critic"
+    temperature: 0.0
+    max_tokens: 768
+    top_p: 1.0
+
+    # You can later split into two prompts (analysis + patch).
+    mode: "analysis_and_patch"
+
+    system_prompt: |
+      You are a code improver helping a human developer keep a large Python codebase healthy.
+      For each file, you MUST:
+      - Focus on changes that can be done in under ~5 minutes.
+      - Avoid big-bang rewrites or architectural changes.
+      - Prefer small, surgical refactors: extract functions, rename, split huge classes, remove dead code.
+      - Make tests easier to write and maintain.
+
+      Your output will be stored as structured suggestions (kind, title, summary, detail, optional patch).
+
+  # ──────────────────────────────────────────────
+  # Patch encoding
+  # ──────────────────────────────────────────────
+  patch:
+    default_type: "unified_diff"      # how you fill `patch_type`
+    allow_full_file: true             # optional ‘full_file’ replacement for small files
+    max_patch_chars: 8000             # guardrail against runaway patches
+
+  # ──────────────────────────────────────────────
+  # Safety / guardrails
+  # ──────────────────────────────────────────────
+  safety:
+    require_parseable_python: true    # only patch files that still parse after change
+    dry_run_only: false               # set true if you want to only write suggestions, not apply
+    backup_original: true             # if you later add an “auto-apply” mode
+
+  # ──────────────────────────────────────────────
+  # Telemetry / logging
+  # ──────────────────────────────────────────────
+  telemetry:
+    log_to_datalog: true              # feed your datalog/logger for other AIs
+    log_suggestions_summary: true
+    log_failed_patches: true

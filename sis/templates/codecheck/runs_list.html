@@ -7,12 +7,20 @@
     <div class="d-flex gap-2">
       <!-- Filter form (GET) -->
       <form class="d-flex gap-2" method="get" action="/codecheck/runs">
-        <input class="form-control form-control-sm" name="status" placeholder="status" value="{{ filters.status or '' }}">
-        <input class="form-control form-control-sm" name="branch" placeholder="branch" value="{{ filters.branch or '' }}">
-        <button class="btn btn-sm btn-outline-primary" type="submit">Filter</button>
+        <input class="form-control form-control-sm"
+               name="status"
+               placeholder="status"
+               value="{{ filters.status or '' }}">
+        <input class="form-control form-control-sm"
+               name="branch"
+               placeholder="branch"
+               value="{{ filters.branch or '' }}">
+        <button class="btn btn-sm btn-outline-primary" type="submit">
+          Filter
+        </button>
       </form>
 
-      <!-- New run button (POST) -->
+      <!-- Start new run (POST) -->
       <form method="post" action="/codecheck/runs">
         <button class="btn btn-sm btn-success" type="submit">
           Start new run
@@ -31,10 +39,10 @@
           <th>Commit</th>
           <th>Created</th>
           <th>Files</th>
-          <th>Vibe</th>
+          <th>Mean Vibe</th>
           <th>Security</th>
           <th>Readability</th>
-          <th></th>
+          <th class="text-end">Actions</th>
         </tr>
       </thead>
       <tbody>
@@ -43,24 +51,54 @@
         <tr>
           <td><code>{{ r.id }}</code></td>
           <td>
-            <span class="badge {% if r.status == 'success' %}bg-success{% elif r.status == 'failed' %}bg-danger{% else %}bg-secondary{% endif %}">
+            <span class="badge
+              {% if r.status == 'success' %}bg-success
+              {% elif r.status == 'failed' %}bg-danger
+              {% else %}bg-secondary{% endif %}">
               {{ r.status or '—' }}
             </span>
           </td>
-          <td><span class="badge bg-info text-dark">{{ r.branch or '—' }}</span></td>
+          <td>
+            <span class="badge bg-info text-dark">
+              {{ r.branch or '—' }}
+            </span>
+          </td>
           <td><code>{{ (r.commit_hash or '')[:8] or '—' }}</code></td>
           <td class="text-muted">{{ r.created_ts or '—' }}</td>
           <td>{{ s['files.count'] or '—' }}</td>
-          <td>{{ "%.2f"|format(s['vibe.mean']) if 'vibe.mean' in s else '—' }}</td>
+          <td>
+            {% if 'vibe.mean' in s %}
+              {{ "%.2f"|format(s['vibe.mean']) }}
+            {% else %}
+              —
+            {% endif %}
+          </td>
           <td>{{ s['security.total'] or '—' }}</td>
           <td>{{ s['readability.total'] or '—' }}</td>
-          <td>
-            <a class="btn btn-sm btn-outline-secondary" href="/codecheck/runs/{{ r.id }}">Open</a>
+          <td class="text-end">
+            <div class="btn-group btn-group-sm" role="group">
+              <a class="btn btn-outline-secondary"
+                 href="/codecheck/runs/{{ r.id }}">
+                Open
+              </a>
+              <form method="post"
+                    action="/codecheck/runs/{{ r.id }}/improve"
+                    class="d-inline">
+                <button type="submit"
+                        class="btn btn-outline-warning">
+                  Improve
+                </button>
+              </form>
+            </div>
           </td>
         </tr>
         {% endfor %}
         {% if not runs %}
-        <tr><td colspan="10" class="text-muted">No runs yet.</td></tr>
+        <tr>
+          <td colspan="10" class="text-muted">
+            No runs yet.
+          </td>
+        </tr>
         {% endif %}
       </tbody>
     </table>
