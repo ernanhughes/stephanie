@@ -16,6 +16,8 @@ from sis.routes import ssp
 from sis.utils.date_utls import short_dt, datetimeformat
 from stephanie.services.service_container import ServiceContainer
 from stephanie.services.registry_loader import load_services_profile
+from sis.routes import codecheck as codecheck_routes
+
 from hydra import initialize, compose
 
 def load_sis_cfg(overrides: list[str] | None = None):
@@ -28,7 +30,7 @@ app = FastAPI(title="Stephanie Insight System (SIS)")
 app.state.cfg = load_sis_cfg()
 app.state.logger = JSONLogger("logs/sis.jsonl")
 app.state.memory = MemoryTool(cfg=app.state.cfg, logger=app.state.logger)
-app.state.container = ServiceContainer(cfg=app.state.cfg, logger=app.state.logger)
+app.state.container = ServiceContainer(cfg=app.state.cfg, memory=app.state.memory, logger=app.state.logger)
 
 # Put into app.state so routers can access without importing main
 app.state.templates = Jinja2Templates(directory="sis/templates")
@@ -75,6 +77,7 @@ app.include_router(learning.router)
 app.include_router(explore_ui.router)
 app.include_router(overnight_ui.router)
 app.include_router(nexus.router)
+app.include_router(codecheck_routes.router)
 
 # # After app = FastAPI(...)
 # class SISContainer:

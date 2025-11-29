@@ -40,7 +40,7 @@ class CriticConsumerAgent(BaseAgent):
         
         try:
             # Train from teachpack
-            results = train_from_teachpack(I
+            results = train_from_teachpack(
                 str(self.teachpack_path),
                 str(self.output_model_path),
                 str(self.output_meta_path)
