@@ -6,11 +6,9 @@ import logging
 from pathlib import Path
 from typing import Any, Dict
 
-
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.components.critic.model.dataset import (
-    canonicalize_metric_names,
-    collect_frontier_lens_samples, save_dataset)
+    canonicalize_metric_names, collect_frontier_lens_samples, save_dataset)
 
 log = logging.getLogger(__name__)
 

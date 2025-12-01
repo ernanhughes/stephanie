@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import csv
 import json
+import logging
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -11,7 +12,6 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 import joblib
 import numpy as np
 from sklearn.pipeline import Pipeline
-import logging
 
 log = logging.getLogger(__name__)
 

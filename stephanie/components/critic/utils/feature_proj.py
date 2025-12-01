@@ -1,8 +1,10 @@
 # stephanie/components/critic/utils/feature_proj.py
 from __future__ import annotations
-import numpy as np
+
 import logging
 from typing import List, Tuple
+
+import numpy as np
 
 log = logging.getLogger(__name__)
 

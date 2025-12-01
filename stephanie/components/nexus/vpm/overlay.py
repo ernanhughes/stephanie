@@ -1,10 +1,7 @@
 # stephanie/components/nexus/vpm/overlay.py
 from __future__ import annotations
 
-from pathlib import Path
-
 import numpy as np
-from PIL import Image
 
 
 def overlay_heat(base_hwc_u8: np.ndarray, heat: np.ndarray) -> np.ndarray:

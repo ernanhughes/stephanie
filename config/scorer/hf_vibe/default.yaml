@@ -1,0 +1,43 @@
+# config/scorer/hf_vibe/default.yaml
+name: hf_vibe
+model_type: hf
+
+model_version: v1
+evaluator: hf
+target_type: code
+dimensions:
+  - reasoning
+  - knowledge
+  - clarity
+  - faithfulness
+  - coverage
+
+model_alias: vibe
+# display_name: SmolLM3-3B
+# ----
+model_name: WeiboAI/VibeThinker-1.5B
+# model_alias: Phi-3-mini
+display_name: VibeThinker-1.5B
+
+# Runtime
+# device_map: auto
+device_map: cuda
+torch_dtype: float16
+max_seq_len: 4096
+
+# (Optional) scoring helpers
+ppl_range: [3.0, 30.0]
+
+local_files_only: false
+offline: true
+low_cpu_mem_usage: true
+use_compile: false
+
+plugins:
+  - scm:
+      # optional: if your SCM service is registered under a nonstandard name
+      service_name: scm_service      # default resolution tries "scm" then "scm_service"
+      # optional: override ppl_range just for this scorer
+      ppl_range: [2.5, 28.0]
+      # optional: request token top-k payload inside the service (if implemented)
+      expose_token_dists_topk: 5

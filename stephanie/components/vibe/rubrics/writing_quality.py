@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List
+from typing import List
 
 from stephanie.memcube.rubric import (AntiHackingCriterion, CriterionScope,
                                       CriterionType, RubricCriterion,

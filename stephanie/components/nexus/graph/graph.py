@@ -3,13 +3,12 @@ from __future__ import annotations
 
 import json
 import logging
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, field
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Iterable, List, Tuple
 
 import numpy as np
 
-from stephanie.data.scorable_row import ScorableRow
 from stephanie.memory.nexus_store import NexusStore
 from stephanie.models.nexus import (NexusEdgeORM, NexusMetricsORM,
                                     NexusScorableORM)

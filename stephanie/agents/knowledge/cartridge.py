@@ -187,6 +187,7 @@ class CartridgeAgent(BaseAgent):
                         }
                     )
 
+                    triples = []
                     for subj, pred, obj in triplets:
                         triple_orm = self.memory.cartridge_triples.insert(
                             {
@@ -196,6 +197,7 @@ class CartridgeAgent(BaseAgent):
                                 "object": obj,
                             }
                         )
+                        triples.append(triple_orm)
                         if self.score_triplets:
                             scorable = ScorableFactory.from_text(
                                 f"({subj}, {pred}, {obj})", ScorableType.TRIPLE
@@ -209,6 +211,14 @@ class CartridgeAgent(BaseAgent):
                                 score
                             )
 
+                self.report(
+                    {
+                        "event": "triplet_processing_done",
+                        "step": "CartridgeAgent",
+                        "cartridge_id": cartridge.id,
+                        "triples": [t.id for t in triples],
+                    }
+                )    
                 # 3. Extract Theorems
                 theorems = self.theorem_extractor.extract(
                     cartridge.sections, context

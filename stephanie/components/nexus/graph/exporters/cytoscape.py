@@ -7,8 +7,7 @@ from typing import TYPE_CHECKING, Any, Dict, List
 from .base import BaseGraphExporter
 
 if TYPE_CHECKING:
-    from stephanie.components.nexus.graph.graph import NexusGraph, NexusNode
-    from stephanie.models.nexus import NexusEdgeORM
+    from stephanie.components.nexus.graph.graph import NexusGraph
 
 
 # --------------------------------------------------------------------------- #

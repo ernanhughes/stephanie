@@ -4,10 +4,10 @@ import fnmatch
 import logging
 from typing import Any, Dict, List, Optional
 
-from stephanie.scoring.metrics.metric_filter import MetricFilter
-from stephanie.utils.hash_utils import hash_list
 from stephanie.constants import PIPELINE_RUN_ID
 from stephanie.scoring.metrics.core_metrics import CORE_METRIC_MAPPING
+from stephanie.scoring.metrics.metric_filter import MetricFilter
+from stephanie.utils.hash_utils import hash_list
 
 log = logging.getLogger(__name__)
 

@@ -11,8 +11,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-from matplotlib.ticker import MaxNLocator
 from sklearn.metrics import accuracy_score, brier_score_loss, roc_auc_score
 from torch.utils.data import DataLoader, Dataset, Subset
 from torchvision.models import resnet18

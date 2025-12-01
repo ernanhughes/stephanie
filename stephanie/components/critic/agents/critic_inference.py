@@ -12,13 +12,13 @@ import numpy as np
 from sklearn.pipeline import Pipeline
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.components.critic.utils.self_eval import (
-    self_evaluate, update_competence_ema)
-from stephanie.components.critic.utils.teachpack import (export_teachpack,
-                                                          teachpack_meta)
 # Add our new metrics module
-from stephanie.components.critic.utils.metrics import (
-    compute_ece, generate_evaluation_report, lift_at_k)
+from stephanie.components.critic.utils.metrics import \
+    generate_evaluation_report
+from stephanie.components.critic.utils.self_eval import (self_evaluate,
+                                                         update_competence_ema)
+from stephanie.components.critic.utils.teachpack import (export_teachpack,
+                                                         teachpack_meta)
 
 log = logging.getLogger(__name__)
 

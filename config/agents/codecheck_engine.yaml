@@ -1,0 +1,86 @@
+# config/agents/codecheck_engine.yaml
+codecheck_engine:
+  _target_: stephanie.components.codecheck.engine.CodeCheckEngine
+  name: codecheck_engine
+  enabled: true
+
+  # For when you later wire this into Supervisor / pipelines
+  input_key: null                # not used yet – engine pulls from repo_root
+  output_key: "codecheck_run_id" # we return the run_id into context
+
+  # Base-agent style flags
+  save_prompt: false
+  save_context: true
+  progress: true
+  progress_log_every: 50
+  progress_leave: true
+  progress_position: 0
+
+  # ──────────────────────────────────────────────
+  # Repository scope
+  # ──────────────────────────────────────────────
+  repo_root: ${oc.env:CODECHECK_REPO_ROOT,.}
+  language: "python"
+
+  file_extensions:
+    - ".py"
+
+  exclude_paths:
+    - ".git"
+    - "__pycache__"
+    - "venv"
+    - "dist"
+    - "build"
+    - ".idea"
+    - ".vscode"
+    - "node_modules"
+
+  follow_gitignore: true         # you can wire this into your scanner later
+  max_files_per_run: 5000        # hard guardrail for massive repos
+  skip_large_files_bytes: 262144 # 256 KB – skip giant generated blobs
+
+  # ──────────────────────────────────────────────
+  # Metric swarm / Q-score settings (Phase 0)
+  # ──────────────────────────────────────────────
+  metric_weights:
+    vibe.instruction_compliance: 0.25
+    security.bandit_high:        0.35
+    readability.ruff_style:      0.25
+    semantic.risk:               0.15
+
+  swarm:
+    # Static tools – these line up with your _run_metric_swarm stub
+    tools:
+      bandit:
+        enabled: true
+        path: "bandit"
+        args: ["-q", "-r"]       # you can ignore until Phase 1
+      ruff:
+        enabled: true
+        path: "ruff"
+        args: ["check"]
+      mypy:
+        enabled: false
+        path: "mypy"
+        args: []
+
+    # “AI smell” / local SLM critic hook (not required in Phase 0)
+    ai_smell:
+      enabled: false            # flip true once you have the local model
+      model_name: "local-7b-code-critic"
+      max_tokens: 512
+      temperature: 0.0
+      top_p: 1.0
+      system_prompt: |
+        You are a code quality critic. Identify AI-like patterns:
+        - giant god classes
+        - excessive nesting
+        - copy-paste duplication
+        - defensive boilerplate everywhere
+        Return a small set of numeric scores and tags.
+
+  # ──────────────────────────────────────────────
+  # Run metadata enrichment
+  # ──────────────────────────────────────────────
+  attach_git_metadata: true       # branch / commit; you already have stubs
+  store_config_snapshot: true     # persist cfg dict on CodeCheckRunORM.config

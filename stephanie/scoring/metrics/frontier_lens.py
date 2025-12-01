@@ -28,7 +28,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
-import matplotlib.pyplot as plt  # kept for potential future plotting
 import numpy as np
 from PIL import Image
 

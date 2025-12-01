@@ -4,7 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import numpy as np
-from zeromodel.vpm.logic import vpm_and, vpm_not, vpm_or, vpm_subtract
+from zeromodel.vpm.logic import vpm_and, vpm_not, vpm_or
 
 
 @dataclass

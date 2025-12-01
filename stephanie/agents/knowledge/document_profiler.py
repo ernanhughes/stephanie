@@ -318,7 +318,6 @@ class DocumentProfilerAgent(BaseAgent):
 
             # Both methods found this section - select the better one
             p_len = len(p_txt)
-            f_len = len(f_txt)
 
             # Check if primary meets minimum length requirement
             if p_len >= self.min_chars_per_sec:

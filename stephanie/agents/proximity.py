@@ -1,13 +1,10 @@
 # stephanie/agents/proximity.py
 from __future__ import annotations
 
-import numpy as np
-
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.constants import DATABASE_MATCHES, GOAL, GOAL_TEXT
 from stephanie.scoring.scorable import ScorableFactory, ScorableType
 from stephanie.scoring.scorer.proximity_scorer import ProximityScorer
-from stephanie.utils.similarity_utils import cosine
 
 
 class ProximityAgent(BaseAgent):

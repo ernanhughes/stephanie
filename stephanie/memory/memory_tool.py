@@ -21,6 +21,7 @@ from stephanie.memory.cartridge_store import CartridgeStore
 from stephanie.memory.cartridge_triple_store import CartridgeTripleStore
 from stephanie.memory.casebook_store import CaseBookStore
 from stephanie.memory.chat_store import ChatStore
+from stephanie.memory.codecheck_store import CodeCheckStore
 from stephanie.memory.context_store import ContextStore
 from stephanie.memory.document_domain_section_store import \
     DocumentSectionDomainStore
@@ -218,6 +219,7 @@ class MemoryTool:
         self.register_store(NexusStore(self.session_maker, logger))
         self.register_store(CacheStore(self.session_maker, logger))
         self.register_store(MetricStore(self.session_maker, logger))
+        self.register_store(CodeCheckStore(self.session_maker, logger))
 
         if cfg.get("extra_stores"):
             for store_class in cfg.get("extra_stores", []):

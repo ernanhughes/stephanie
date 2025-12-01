@@ -1,0 +1,177 @@
+defaults:
+  - _self_
+  - db: postgres
+  - bus: disabled
+  - plan_monitor: disabled
+  - logging: json_logger
+  - services: all
+  - scorer: all
+
+  # Critic pipeline agents
+  - agents/codecheck_improver
+  - agents/critic_data
+  - agents/critic_dataset
+  - agents/critic_trainer
+  - agents/critic_scorer
+  - agents/critic_inference
+  - agents/critic_loader
+  - agents/critic_improver
+  - agents/critic_evaluation
+
+
+embeddings:
+  backend: hnet
+
+
+# ---------------------------------------------------------------------
+# High-level goal conditioning: why we are running this pipeline
+# ---------------------------------------------------------------------
+goal:
+  source: "driver"
+  goal_type: "tactical"
+  goal_category: "visual_graph_memory"
+
+  # ✦ NEW: Cleaner narrative explaining why this pipeline exists ✦
+  goal_text: >
+    Evaluate and refine Stephanie’s internal critic by constructing a
+    VisiCalc-based cohort analysis across chat turns, identifying stable
+    high-signal behavioral features, training a compact critic model, and
+    validating its predictive power via HRM/SICQL/EBT agreement. Produce a
+    full lifecycle artifact set (raw → metrics → VPM → cohort summaries →
+    critic model → improvement deltas) that together form a self-improving
+    feedback loop.
+
+  strategy:
+    - "cohort_metric_analysis"        # VisiCalc → baseline → targeted
+    - "critic_training"               # Train TinyCritic on extracted features
+    - "model_evaluation"              # HRM + SICQL + EBT cross-checks
+    - "visual_reasoning"              # VPM and color-normalized A/B frames
+    - "feedback_integration"          # Update scorer configs & calibration
+
+  expected_formats:
+    - "visicalc_report_json"
+    - "visicalc_feature_matrix"
+    - "critic_dataset_csv"
+    - "critic_model_joblib"
+    - "critic_cross_validation_md"
+    - "ab_vpm_filmstrip"
+    - "model_quality_metrics_json"
+
+  success_criteria:
+    min_goal_alignment_improvement: 0.05
+    min_signal_lift_p80: 0.05
+    require_cross_model_agreement: true
+    prefer_low_variance_visicalc_features: true
+
+  scorer_signals:
+    - "SICQL"
+    - "EBT"
+    - "HRM"
+
+  calibration:
+    color_scale: "global_full_pipeline"
+    winsorize_pct: 1.0
+
+
+paths:
+  prompts: ${hydra:runtime.cwd}/prompts
+
+report:
+  generate_report: true
+  path: ${hydra:runtime.cwd}/reports
+
+
+# ---------------------------------------------------------------------
+# Pipeline execution graph (linear, but goals-aware)
+# ---------------------------------------------------------------------
+pipeline:
+  name: critic_training
+  tag: critic_training
+  description: >
+    Extract, diagnose, train, validate, and apply a Critic model using
+    Frontier-derived structural metrics to understand how Stephanie evaluates
+    knowledge, alignment, and reasoning quality in chat turns.
+
+  stages:
+
+    # ---------------------------------------------------------------
+    - name: critic_data
+      description: >
+        Pull raw signal data from Huggingface or other sources. This builds
+        the foundational corpus of scorables used by VisiCalc.
+      cls: stephanie.components.critic.agents.critic_data.CriticDataAgent
+      enabled: false
+      iterations: 1
+
+    # ---------------------------------------------------------------
+    - name: critic_loader
+      description: >
+        Load fully Scorable data from disk.
+      cls: stephanie.agents.loader.LoaderAgent
+      enabled: true
+      iterations: 1
+
+    # ---------------------------------------------------------------
+    - name: critic_scorer
+      description: >
+        Apply the trained TinyCritic to generate scores for each scorable.
+        Writes scores back to memory, enabling cross-model diagnostics.
+      cls: stephanie.components.critic.agents.critic_scorer.CriticScorerAgent
+      enabled: true
+      iterations: 1
+
+    - name: critic_cohort
+      description: >
+        Convert VisiCalc features into a supervised dataset. Includes
+        alignment with HRM/SICQL/EBT signals, filtering, normalization,
+        and auto-balanced sampling.
+      cls: stephanie.components.critic.agents.critic_cohort.CriticCohortAgent
+      enabled: true
+      iterations: 1
+
+
+    # ---------------------------------------------------------------
+    - name: critic_dataset
+      description: >
+        Convert VisiCalc features into a supervised dataset. Includes
+        alignment with HRM/SICQL/EBT signals, filtering, normalization,
+        and auto-balanced sampling.
+      cls: stephanie.components.critic.agents.critic_dataset.CriticDatasetAgent
+      enabled: true
+      iterations: 1
+
+    # ---------------------------------------------------------------
+    - name: critic_trainer
+      description: >
+        Train the Tiny Critic (LogReg or small MLP) on the VisiCalc-derived
+        feature dataset. Produces a calibrated model + meta file.
+      cls: stephanie.components.critic.agents.critic_trainer.CriticTrainerAgent
+      enabled: true
+      iterations: 1
+
+    - name: critic_improver
+      description: >
+        Evaluate the newly-trained Tiny Critic against the current promoted
+        model, promoting it only if it passes all gates.
+      cls: stephanie.components.critic.agents.critic_improver.CriticSelfImproverAgent
+      enabled: true
+      iterations: 1
+
+    # ---------------------------------------------------------------
+    - name: critic_inference
+      description: >
+        Evaluate generalization of the critic on fresh chat turns.
+        Disabled by default, but can be turned on for live experimentation.
+      cls: stephanie.components.critic.agents.critic_inference.CriticInferenceAgent
+      enabled: true
+      iterations: 1
+
+    # ---------------------------------------------------------------
+    - name: critic_evaluation
+      description: >
+        Perform a comprehensive evaluation of the Tiny Critic model,
+        including core metrics, downstream performance, stability,
+        ablation, and sanity checks.
+      cls: stephanie.components.critic.agents.critic_evaluation.CriticEvaluationAgent
+      enabled: true
+      iterations: 1

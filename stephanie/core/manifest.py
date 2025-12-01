@@ -109,31 +109,31 @@ class ManifestManager:
             (base / sub).mkdir(parents=True, exist_ok=True)
 
         m = Manifest(run_id=run_id, dataset=dataset, models=models)
-        self._save_manifest(m)
+        self.save_manifest(m)
         return m
 
     def attach_dimensions(self, run_id: str, dims: list[str]) -> None:
-        m = self._load_manifest(run_id)
+        m = self.load_manifest(run_id)
         m.extras.setdefault("dimensions", dims)
-        self._save_manifest(m)
+        self.save_manifest(m)
 
     def add_stage(self, run_id: str, name: str, payload: Dict[str, Any]) -> None:
-        m = self._load_manifest(run_id)
+        m = self.load_manifest(run_id)
         m.stage_start(name, **payload)
-        self._save_manifest(m)
+        self.save_manifest(m)
 
     def finish_run(self, run_id: str, result: Dict[str, Any]) -> None:
-        m = self._load_manifest(run_id)
+        m = self.load_manifest(run_id)
         m.finished_at = now_iso()
         m.extras["result_keys"] = list(result.keys())
-        self._save_manifest(m)
+        self.save_manifest(m)
 
     # --- internals
-    def _save_manifest(self, m: Manifest) -> None:
+    def save_manifest(self, m: Manifest) -> None:
         p = self.manifest_path(m.run_id)
         p.write_text(dumps_safe(m.to_dict(), indent=2), encoding="utf-8")
 
-    def _load_manifest(self, run_id: str) -> Manifest:
+    def load_manifest(self, run_id: str) -> Manifest:
         p = self.manifest_path(run_id)
         if p.exists():
             return Manifest(**json.loads(p.read_text(encoding="utf-8")))

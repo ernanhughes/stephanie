@@ -10,9 +10,8 @@ from typing import List, Tuple
 
 import numpy as np
 
-from stephanie.scoring.metrics.feature.dynamic_features import (
-    build_dynamic_feature_vector,
-)
+from stephanie.scoring.metrics.feature.dynamic_features import \
+    build_dynamic_feature_vector
 
 log = logging.getLogger(__name__)
 

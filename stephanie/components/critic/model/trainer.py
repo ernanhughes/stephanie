@@ -17,8 +17,6 @@ from sklearn.model_selection import (GridSearchCV, GroupKFold,
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 
-
-
 # -------------------------------------------------------------------
 # Paths / constants
 # -------------------------------------------------------------------

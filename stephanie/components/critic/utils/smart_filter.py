@@ -1,9 +1,10 @@
 # stephanie/components/critic/utils/smart_filter.py
 from __future__ import annotations
 
-from typing import List
-import numpy as np
 import logging
+from typing import List
+
+import numpy as np
 
 log = logging.getLogger(__name__)
 

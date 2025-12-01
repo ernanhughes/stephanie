@@ -1,0 +1,238 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container my-4">
+
+  <!-- Run header -->
+  <div class="card shadow-sm mb-4">
+    <div class="card-body">
+      <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
+        <div>
+          <h2 class="mb-2">
+            CodeCheck Run <code>{{ run.id }}</code>
+          </h2>
+          <div class="text-muted small">
+            Status:
+            <span class="badge
+              {% if run.status == 'success' %}bg-success
+              {% elif run.status == 'failed' %}bg-danger
+              {% else %}bg-secondary{% endif %}">
+              {{ run.status or '—' }}
+            </span>
+            <span class="mx-2">|</span>
+            Branch:
+            <span class="badge bg-info text-dark">
+              {{ run.branch or '—' }}
+            </span>
+            <span class="mx-2">|</span>
+            Commit:
+            <code>{{ (run.commit_hash or '')[:8] or '—' }}</code>
+            <span class="mx-2">|</span>
+            Created: {{ run.created_ts or '—' }}
+          </div>
+        </div>
+
+        <div class="d-flex gap-2">
+          <a href="/codecheck/runs"
+             class="btn btn-sm btn-outline-secondary">
+            ← Back to runs
+          </a>
+
+          <!-- Improve this run -->
+          <form method="post"
+                action="/codecheck/runs/{{ run.id }}/improve">
+            <button type="submit"
+                    class="btn btn-sm btn-warning">
+              ⚙️ Improve this run
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Summary metrics -->
+  <div class="card shadow-sm mb-4">
+    <div class="card-body">
+      <h5 class="mb-2">Summary Metrics</h5>
+      {% set s = run.summary_metrics or {} %}
+      <div class="row">
+        <div class="col-md-3 col-6 mb-2">
+          <div class="text-muted small">Files</div>
+          <div class="fs-5">{{ s['files.count'] or '—' }}</div>
+        </div>
+        <div class="col-md-3 col-6 mb-2">
+          <div class="text-muted small">Mean Vibe</div>
+          <div class="fs-5">
+            {% if 'vibe.mean' in s %}
+              {{ "%.2f"|format(s['vibe.mean']) }}
+            {% else %}
+              —
+            {% endif %}
+          </div>
+        </div>
+        <div class="col-md-3 col-6 mb-2">
+          <div class="text-muted small">Security Issues (total)</div>
+          <div class="fs-5">{{ s['security.total'] or 0 }}</div>
+        </div>
+        <div class="col-md-3 col-6 mb-2">
+          <div class="text-muted small">Readability Issues (total)</div>
+          <div class="fs-5">{{ s['readability.total'] or 0 }}</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Files with metrics + suggestions -->
+  <div class="card shadow-sm mb-4">
+    <div class="card-body">
+      <h5 class="mb-2">Files in Run</h5>
+      <div class="table-responsive">
+        <table class="table table-hover table-sm align-middle">
+          <thead class="table-light">
+            <tr>
+              <th>Path</th>
+              <th>LOC</th>
+              <th>Test?</th>
+              {% for col in metric_columns %}
+                <th>{{ col }}</th>
+              {% endfor %}
+              <th>Issues</th>
+              <th>Suggestions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for f in files %}
+            <tr>
+              <td><code>{{ f.path }}</code></td>
+              <td class="text-muted">{{ f.loc or 0 }}</td>
+              <td>
+                {% if f.is_test %}
+                  <span class="badge bg-secondary">test</span>
+                {% else %}
+                  <span class="badge bg-light text-muted">src</span>
+                {% endif %}
+              </td>
+
+              {% set vec = f.metrics_vector or {} %}
+              {% for col in metric_columns %}
+                <td>
+                  {% if col in vec %}
+                    {% if vec[col] is number %}
+                      {{ "%.2f"|format(vec[col]) }}
+                    {% else %}
+                      {{ vec[col] }}
+                    {% endif %}
+                  {% else %}
+                    —
+                  {% endif %}
+                </td>
+              {% endfor %}
+
+              <td>
+                {% if f.issue_count %}
+                  <span class="badge bg-danger">{{ f.issue_count }}</span>
+                {% else %}
+                  <span class="badge bg-success">0</span>
+                {% endif %}
+              </td>
+
+              <td>
+                {% if f.suggestions %}
+                  <ul class="list-unstyled mb-0 small">
+                    {% for s in f.suggestions[:3] %}
+                    <li class="mb-1">
+                      <span class="badge bg-secondary me-1">
+                        {{ s.kind }}
+                      </span>
+                      <strong>{{ s.title }}</strong><br>
+                      <span class="text-muted">
+                        {{ s.summary }}
+                      </span>
+                    </li>
+                    {% endfor %}
+                    {% if f.suggestions|length > 3 %}
+                    <li class="small text-muted">
+                      + {{ f.suggestions|length - 3 }} more&hellip;
+                    </li>
+                    {% endif %}
+                  </ul>
+                {% else %}
+                  <span class="text-muted small">
+                    No suggestions yet.
+                  </span>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+            {% if not files %}
+            <tr>
+              <td colspan="{{ 6 + metric_columns|length }}"
+                  class="text-muted">
+                No files recorded.
+              </td>
+            </tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Issues (flat list) -->
+  <div class="card shadow-sm">
+    <div class="card-body">
+      <h5 class="mb-2">Issues</h5>
+      <div class="table-responsive">
+        <table class="table table-sm align-middle">
+          <thead class="table-light">
+            <tr>
+              <th>ID</th>
+              <th>File ID</th>
+              <th>Line</th>
+              <th>Source</th>
+              <th>Code</th>
+              <th>Type</th>
+              <th>Severity</th>
+              <th>Message</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for iss in issues %}
+            <tr>
+              <td>{{ iss.id }}</td>
+              <td>{{ iss.file_id }}</td>
+              <td>{{ iss.line or '—' }}</td>
+              <td>
+                <span class="badge bg-secondary">
+                  {{ iss.source or '—' }}
+                </span>
+              </td>
+              <td><code>{{ iss.code or '—' }}</code></td>
+              <td>{{ iss.type or '—' }}</td>
+              <td>
+                <span class="badge
+                  {% if iss.severity in ['high', 'critical'] %}bg-danger
+                  {% elif iss.severity == 'medium' %}bg-warning text-dark
+                  {% elif iss.severity == 'low' %}bg-info text-dark
+                  {% else %}bg-light text-muted{% endif %}">
+                  {{ iss.severity or 'info' }}
+                </span>
+              </td>
+              <td class="small">{{ iss.message or '' }}</td>
+            </tr>
+            {% endfor %}
+            {% if not issues %}
+            <tr>
+              <td colspan="8" class="text-muted">
+                No issues recorded for this run.
+              </td>
+            </tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</div>
+{% endblock %}

@@ -1,15 +1,17 @@
 # stephanie/components/critic/services/frontier_intelligence.py
 from __future__ import annotations
+
 import logging
 from datetime import datetime
-from typing import Dict, List, Optional, Tuple, Any
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
+import matplotlib.pyplot as plt
 import numpy as np
 from scipy import stats
-import matplotlib.pyplot as plt
 from sklearn.linear_model import TheilSenRegressor
-from pathlib import Path
-from sklearn.svm import LinearSVC
 from sklearn.metrics import roc_auc_score
+from sklearn.svm import LinearSVC
 
 log = logging.getLogger(__name__)
 
@@ -867,7 +869,7 @@ class FrontierIntelligence:
     def _calculate_auc(self, metric_values: np.ndarray, y: np.ndarray) -> float:
         """Calculate AUC for a single metric"""
         from sklearn.metrics import roc_auc_score
-        
+
         # Handle edge cases
         if len(np.unique(y)) < 2:
             return 0.5

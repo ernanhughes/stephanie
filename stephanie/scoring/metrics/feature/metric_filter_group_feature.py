@@ -8,14 +8,15 @@ from typing import Any, Dict, List
 
 import numpy as np
 
-from stephanie.scoring.metrics.feature.base_group_feature import BaseGroupFeature
+from stephanie.constants import PIPELINE_RUN_ID
 from stephanie.scoring.metrics.core_metrics import CORE_METRIC_MAPPING
+from stephanie.scoring.metrics.feature.base_group_feature import \
+    BaseGroupFeature
 from stephanie.scoring.metrics.feature.feature_report import FeatureReport
 from stephanie.scoring.metrics.metric_filter import MetricFilter
 from stephanie.scoring.metrics.metric_filter_explain import \
     write_metric_filter_explain
 from stephanie.utils.hash_utils import hash_list
-from stephanie.constants import PIPELINE_RUN_ID
 
 log = logging.getLogger(__name__)
 

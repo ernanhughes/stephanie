@@ -103,7 +103,7 @@ class ArxivSearchAgent(BaseAgent):
         """Extract keywords using prompt-based approach with regex parsing"""
         response = self.execute_prompt(merged_context)
         # Match lines separated by newlines
-        pattern = r"(?:\n|\r|\r\n)([^\n\r]+?)(?=(?:\n|\r|\r\n|$))"
+        pattern = r"(?:\n|\r|\r\n)([^\n\r]+)(?=(?:\n|\r|\r\n|$))"
         lines = re.findall(pattern, response.strip())
         # Clean numbering/bullets from lines
         keywords = [re.sub(r"^[-•\d\.\s]+", "", line).strip() for line in lines]
