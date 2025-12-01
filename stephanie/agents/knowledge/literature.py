@@ -5,7 +5,7 @@ import re
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.constants import GOAL
-from stephanie.tools import WebSearchTool
+from stephanie.tools.web_search import WebSearchTool
 
 
 class LiteratureAgent(BaseAgent):

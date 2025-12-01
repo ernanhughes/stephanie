@@ -678,3 +678,6 @@ class CodeCheckImproverAgent(BaseAgent):
         if device != "cuda":
             self._model.to(device)
         self._device = device
+
+    def _format_issues_for_prompt(self, issues):
+        pass

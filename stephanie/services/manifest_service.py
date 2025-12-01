@@ -93,7 +93,7 @@ class ManifestService:
 
         mf: Manifest = run["manifest"]
         mf.stage_start(name, **payload)
-        self.manager._save_manifest(mf)
+        self.manager.save_manifest(mf)
 
     # --------------------------------------------------------------
     def end_stage(self, run_id: str, name: str, **payload):
@@ -103,7 +103,7 @@ class ManifestService:
 
         mf: Manifest = run["manifest"]
         mf.stage_end(name, **payload)
-        self.manager._save_manifest(mf)
+        self.manager.save_manifest(mf)
 
     # --------------------------------------------------------------
     def finish(self, run_id: str, result: Dict[str, Any]):

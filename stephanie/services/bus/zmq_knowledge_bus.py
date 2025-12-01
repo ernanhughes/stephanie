@@ -34,6 +34,7 @@ class ZmqKnowledgeBus:
         be_addr: str = "tcp://127.0.0.1:5556",
         logger: Optional[logging.Logger] = None,
     ):
+        self.request = None
         self.logger = logger or log
         self.ctx = azmq.Context.instance()
         self.fe_addr, self.be_addr = fe_addr, be_addr

@@ -10,7 +10,7 @@ arxiv_search:
   year_start: 2024
   year_end: 2025
   category: cs.AI
-  max_results: 100
+  max_results: 10
   top_n: 25
 
   model:

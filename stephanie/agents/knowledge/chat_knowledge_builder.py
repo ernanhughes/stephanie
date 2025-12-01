@@ -6,7 +6,6 @@ import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-import torch
 
 from stephanie.data.knowledge_unit import KnowledgeUnit
 from stephanie.memory.chat_store import ChatStore
@@ -50,9 +49,7 @@ class ChatKnowledgeBuilder:
             log.error(f"Failed to initialize ScorableClassifier: {e}")
 
         try:
-            self.entity_detector = EntityDetector(
-                device=cfg.get("device", "cuda" if hasattr(torch, "cuda") and torch.cuda.is_available() else "cpu")
-            )
+            self.entity_detector = EntityDetector()
             self.logger.info("NER detector loaded.")
         except Exception as e:
             self.entity_detector = None
@@ -299,10 +296,10 @@ class ChatKnowledgeBuilder:
             if not combined:
                 return KnowledgeUnit(text="", stats={"error": "no_content_in_context"})
 
+            scorable = Scorable(text=combined, id=f"context:{conversation_id}")
             return self._process_with_ai(
-                text=combined,
                 source=f"context:{conversation_id}",
-                scorable_id=f"context:{conversation_id}:{hash(combined)}"
+                scorable=scorable
             )
         except Exception as e:
             log.error(f"Context enrichment failed for conv={conversation_id}: {e}")
