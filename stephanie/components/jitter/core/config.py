@@ -22,13 +22,11 @@ class JitterConfig(BaseModel):
     homeostasis: Dict[str, Any] = Field(default_factory=dict)
     production: Dict[str, Any] = Field(default_factory=dict)
     
-    @validator('tick_interval')
     def validate_tick_interval(cls, v):
         if v > 10.0:
             raise ValueError('tick_interval should be less than 10 seconds for responsiveness')
         return v
     
-    @root_validator
     def validate_component_configs(cls, values):
         # Validate production config if present
         if 'production' in values:

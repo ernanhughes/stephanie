@@ -10,6 +10,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional, Protocol, Union
 
+from stephanie.utils.date_utils import iso_now
 from stephanie.utils.json_sanitize import dumps_safe, sanitize
 
 # If you have a canonical PlanTrace dataclass you can keep this import;
@@ -49,7 +50,7 @@ def _trace_to_dict(trace: Union[_PlanTraceLike, Dict[str, Any]]) -> Dict[str, An
                 "artifacts": getattr(trace, "artifacts", {}) or {},
             }
 
-    d.setdefault("ts", datetime.utcnow().isoformat() + "Z")
+    d.setdefault("ts", iso_now())
     d.setdefault("kind", "plan_trace")
     d.setdefault("trace_id", f"trace-{int(time.time()*1000)}")
     d.setdefault("role", "system")

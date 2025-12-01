@@ -24,6 +24,7 @@ from typing import Any, Dict, Optional
 from stephanie.services.knowledge_graph_service import KnowledgeGraphService
 from stephanie.utils.retry import retry_with_backoff
 
+log = logging.getLogger(__name__)
 
 class KnowledgeGraphIndexerWorker:
     """
@@ -115,15 +116,15 @@ class KnowledgeGraphIndexerWorker:
 
             # Add entities
             for ent in payload["entities"]:
-                self._add_entity_with_retry(scorable_id, ent, domains)
+                await self._add_entity_with_retry(scorable_id, ent, domains)
 
             # Add relationships
             for rel in payload["relationships"]:
-                self._add_relationship_with_retry(rel)
+                await self._add_relationship_with_retry(rel)
 
             # Log success
             duration = time.time() - start_time
-            self.logger.log("KnowledgeGraphIndexSuccess", {
+            log.info("KnowledgeGraphIndexSuccess", {
                 "scorable_id": scorable_id,
                 "entity_count": len(payload["entities"]),
                 "relationship_count": len(payload["relationships"]),
@@ -133,11 +134,9 @@ class KnowledgeGraphIndexerWorker:
             self.stats["last_event_time"] = datetime.now(timezone.utc).isoformat()
 
         except Exception as e:
-            self.logger.log("KnowledgeGraphIndexFailed", {
-                "scorable_id": scorable_id,
-                "error": str(e),
-                "traceback": traceback.format_exc()
-            })
+            log.warning("KnowledgeGraphIndexFailed scorable_id %s %s %s", scorable_id,
+                str(e), traceback.format_exc()
+            )
             self.stats["failed"] += 1
             # Optionally publish dead-letter event
             await self._publish_failure_event(event, str(e))

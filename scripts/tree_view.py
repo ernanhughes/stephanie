@@ -107,5 +107,3 @@ if __name__ == "__main__":
             print(f"✅ Directory tree successfully written to '{output_filename}' from root: '{base_dir}'")
         except Exception as e:
             sys.exit(1)
-            sys.exit(1)
-            print(f"An unexpected error occurred: {e}", file=sys.stderr)

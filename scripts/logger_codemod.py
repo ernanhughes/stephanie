@@ -79,6 +79,7 @@ class _StripLoggerFromSuper(cst.CSTTransformer):
 
 class LoggerTransformer(cst.CSTTransformer):
     def __init__(self) -> None:
+        super().__init__()
         self.modified = False
 
     def leave_Module(self, original_node: cst.Module, updated_node: cst.Module) -> cst.Module:

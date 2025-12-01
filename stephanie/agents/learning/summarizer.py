@@ -189,48 +189,6 @@ class Summarizer:
         nb = (sum(x*x for x in b))**0.5 or 1.0
         return max(0.0, min(1.0, num/(na*nb)))
 
-    def _attribute_claims(self, claims: List[str], sources: List[Dict[str, Any]], threshold: float) -> List[Dict[str, Any]]:
-        emb = getattr(self.memory, "embedding", None) if self.cfg.get("applied_knowledge",{}).get("use_embeddings", True) else None
-        out = []
-
-        if emb:
-            # pre-embed sources (cap for speed)
-            S = [{"meta": s, "v": emb.get_or_create(s["text"][:2000])} for s in (sources[:50] if sources else [])]
-        else:
-            S = sources[:50] if sources else []
-
-        import re
-        for c in claims:
-            if not c:
-                continue
-            best, best_sim = None, 0.0
-            if emb and S:
-                cv = emb.get_or_create(c)
-                for s in S:
-                    sim = self._cos_sim(cv, s["v"])
-                    if sim > best_sim:
-                        best_sim, best = sim, s["meta"]
-            else:
-                # fallback: token overlap
-                ctoks = set(re.findall(r"\b\w+\b", c.lower()))
-                for s in S:
-                    stoks = set(re.findall(r"\b\w+\b", s["text"].lower()))
-                    denom = float(max(1, max(len(ctoks), len(stoks))))  # ← fix
-                    sim = len(ctoks & stoks) / denom
-                    if sim > best_sim:
-                        best_sim, best = sim, s
-
-            if best and best_sim >= threshold:
-                out.append({
-                    "claim": c,
-                    "support": {
-                        "text": (best.get("text") or "")[:220],
-                        "origin": best.get("origin"),
-                        "variant": best.get("variant")
-                    },
-                    "similarity": round(best_sim, 3)
-                })
-        return out
 
     async def verify_and_improve(self, baseline: str, paper: Dict[str, Any], section: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
         """Fixed implementation with proper async handling"""

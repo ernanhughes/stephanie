@@ -10,7 +10,7 @@ class LordAttackModule:
     def __init__(
         self,
         cfg: dict[str, Any],
-        memory: callable,
+        memory,
         log: Optional[logging.Logger] = None,
     ):
         """

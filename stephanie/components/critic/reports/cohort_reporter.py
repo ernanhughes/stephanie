@@ -12,6 +12,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from scipy.stats import differential_entropy
 
+from stephanie.utils.date_utils import iso_now
 from stephanie.utils.json_sanitize import dumps_safe
 from stephanie.utils.vpm_utils import ensure_chw_u8
 
@@ -640,7 +641,7 @@ class CriticCohortReporter:
     # Summary extraction
     # ------------------------------------------------------------------ #
     def _build_summary(self, context: Dict[str, Any]) -> Dict[str, Any]:
-        now = datetime.utcnow().isoformat()
+        now = iso_now()
 
         scorables_all = context.get(self.input_key) or []
         rows_all = context.get(self.output_key) or []

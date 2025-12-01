@@ -72,6 +72,7 @@ def _self_logger_assign_stmt() -> cst.SimpleStatementLine:
 
 class LoggerRefactor(cst.CSTTransformer):
     def __init__(self, mode: str = "keep-self", drop_positional_callsites: bool = False):
+        super.__init__()
         assert mode in ("keep-self", "module")
         self.mode = mode
         self.drop_positional_callsites = drop_positional_callsites

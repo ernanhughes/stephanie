@@ -58,7 +58,6 @@ class TriuneConfig(BaseModel):
     max_state_history: int = Field(1000, ge=100, le=10000, description="Maximum state history length")
     energy_gain_factor: float = Field(1.0, ge=0.5, le=1.5, description="Factor for cognitive energy extraction")
     
-    @validator('reptilian_weight', 'mammalian_weight', 'primate_weight')
     def validate_weights_sum_to_one(cls, v, values):
         weights = [
             values.get('reptilian_weight', 0.3),

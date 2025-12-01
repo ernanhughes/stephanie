@@ -11,13 +11,12 @@ import torch.nn.functional as F
 from torch import nn
 
 from stephanie.agents.base_agent import BaseAgent
-# ✅ Use the dataclass layer (same as new SSP Trainer)
 from stephanie.data.plan_trace import ExecutionStep, PlanTrace
 from stephanie.memory.execution_step_store import \
     ExecutionStepStore as _FallbackExecStore  # optional
-# Optional: fallback stores if memory.plan_traces repo missing
 from stephanie.memory.plan_trace_store import \
     PlanTraceStore as _FallbackPlanTraceStore  # optional
+from stephanie.utils.date_utils import iso_now
 
 
 class _TraceRepoAdapter:
@@ -107,10 +106,10 @@ class GILDTraceAgent(BaseAgent):
             execution_steps=[],
             final_output_text="",
             status="in_progress",
-            created_at=datetime.utcnow().isoformat() + "Z",
+            created_at=iso_now(),
             meta={
                 "agent_name": self.__class__.__name__,
-                "started_at": datetime.utcnow().isoformat() + "Z",
+                "started_at": iso_now(),
             },
         )
         plan_trace = self._repo.upsert_trace(plan_trace)
@@ -293,7 +292,7 @@ class GILDTraceAgent(BaseAgent):
         )
         plan_trace.meta = dict(plan_trace.meta or {})
         plan_trace.meta.update({
-            "completed_at": datetime.utcnow().isoformat() + "Z",
+            "completed_at": iso_now(),
             "final_metrics": {
                 "final_avg_loss": final_avg_loss,
                 "proxy_epistemic_quality": normalized_loss_quality,
@@ -354,7 +353,7 @@ class GILDTraceAgent(BaseAgent):
             plan_trace.final_output_text = str(reason)
             plan_trace.status = "failed"
             plan_trace.meta = dict(plan_trace.meta or {})
-            plan_trace.meta["completed_at"] = datetime.utcnow().isoformat() + "Z"
+            plan_trace.meta["completed_at"] = iso_now()
             self._repo.upsert_trace(plan_trace)
         except Exception as e:
             self.logger.log("GILDTraceFailPersistError", {"error": str(e)})

@@ -23,7 +23,6 @@ session = Session()
 
 
 Session = sessionmaker(bind=engine)
-session = Session()
 
 fix_count = 0
 

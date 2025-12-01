@@ -202,9 +202,6 @@ def is_compressed(data: bytes) -> bool:
     except Exception:
         return True
 
-    return False
-
-
 def to_serializable(obj: Any) -> Any:
     """
     Convert objects to JSON-serializable format, especially handling OmegaConf objects.

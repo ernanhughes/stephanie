@@ -9,6 +9,7 @@ APP_PARAM = cst.Param(name=cst.Name("app"), annotation=APPCTX_ANNOT)
 
 class CtorTransform(cst.CSTTransformer):
     def __init__(self):
+        super().__init__()
         self.in_agent = False
 
     def visit_ClassDef(self, node: cst.ClassDef) -> bool:

@@ -21,7 +21,7 @@ import time
 from dataclasses import dataclass, field
 from enum import Enum
 from functools import wraps
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Callable
 
 import numpy as np
 from pydantic import BaseModel, Field, validator
@@ -38,6 +38,13 @@ class MaintenanceProtocol(str, Enum):
     REPAIR = "repair"
     IDENTITY_MAINTENANCE = "identity_maintenance"
 
+
+def validate_thresholds(v, values):
+    if 'crisis_response_threshold' in values and v >= values['crisis_response_threshold']:
+        raise ValueError('stress_response_threshold must be less than crisis_response_threshold')
+    return v
+
+
 class BoundaryMaintenanceConfig(BaseModel):
     """Validated configuration for BoundaryMaintenance"""
     routine_check_interval: int = Field(10, ge=5, le=50, description="Interval for routine checks")
@@ -46,12 +53,7 @@ class BoundaryMaintenanceConfig(BaseModel):
     max_history: int = Field(1000, ge=100, le=10000, description="Maximum history length")
     production_rate: float = Field(0.1, ge=0.05, le=0.2, description="Base production rate for boundary components")
     repair_priority: float = Field(0.7, ge=0.5, le=0.9, description="Priority for repair operations")
-    
-    @validator('stress_response_threshold')
-    def validate_thresholds(cls, v, values):
-        if 'crisis_response_threshold' in values and v >= values['crisis_response_threshold']:
-            raise ValueError('stress_response_threshold must be less than crisis_response_threshold')
-        return v
+
 
 class CircuitBreakerState:
     """States for circuit breaker pattern"""
@@ -87,7 +89,7 @@ class CircuitBreaker:
         self.half_open_successes = 0
         self.logger = logging.getLogger(f"{__name__}.circuit_breaker")
     
-    def __call__(self, func: callable) -> callable:
+    def __call__(self, func: Callable) -> Callable:
         """Decorator implementation"""
         
         @wraps(func)

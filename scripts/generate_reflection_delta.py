@@ -38,6 +38,5 @@ ORDER BY created_at DESC;
 with psycopg2.connect(**DB_CONFIG) as conn:
     df = pd.read_sql_query(query, conn)
 
-df = pd.read_sql_query(query, conn)
 df.to_json("reflection_deltas.jsonl", orient="records", lines=True)
 conn.close()

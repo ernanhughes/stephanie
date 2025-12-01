@@ -1,12 +1,10 @@
 ### `vibe_console.py`
 
-import os
 import argparse
 import textwrap
 from typing import List, Dict, Any, Tuple
 
 import torch
-from transformers import AutoTokenizer, AutoModelForCausalLM
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from transformers import GenerationConfig
 import os

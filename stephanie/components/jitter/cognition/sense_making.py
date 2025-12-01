@@ -50,7 +50,6 @@ class SenseMakingConfig(BaseModel):
     familiarity_weight: float = Field(0.4, ge=0.2, le=0.6, description="Weight for familiarity")
     outcome_weight: float = Field(0.6, ge=0.4, le=0.8, description="Weight for outcome quality")
     
-    @validator('min_interaction_similarity')
     def validate_min_max_similarity(cls, v, values):
         if 'meaning_threshold' in values and v >= values['meaning_threshold']:
             raise ValueError('min_interaction_similarity must be less than meaning_threshold')

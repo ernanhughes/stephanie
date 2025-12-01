@@ -1,6 +1,5 @@
 import psycopg2
 import os
-from psycopg2 import sql
 import shutil
 
 def get_terminal_width():

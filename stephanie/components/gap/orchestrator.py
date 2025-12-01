@@ -231,57 +231,6 @@ class GapAnalysisOrchestrator(ProgressMixin):
         man = _safe_json_load(run_dir / "manifest.json") or {}
         return man
 
-    # ---------- table extraction helpers (from manifests) ----------
-    def _extract_metrics_matrix(
-        self, manifest: Dict[str, Any]
-    ) -> Tuple[List[str], List[List[float]], List[str]]:
-        """
-        Returns (columns, matrix, item_ids)
-        - columns: list[str] from the first item with metrics_columns
-        - matrix: list[list[float]] row per item (aligned to columns where possible, zeros if missing)
-        - item_ids: the item_id sequence used
-        """
-        items = manifest.get("items", []) or []
-        # establish canonical columns order
-        cols: List[str] = []
-        for it in items:
-            c = it.get("metrics_columns") or []
-            if c:
-                cols = list(c)
-                break
-
-        # index mapping for each item (tolerate per-item ordering)
-        def row_for(it: Dict[str, Any], cols_ref: List[str]) -> List[float]:
-            c = it.get("metrics_columns") or []
-            v = it.get("metrics_values") or []
-            if not cols_ref:
-                # no columns anywhere → empty row
-                return []
-            if c and list(c) == cols_ref:
-                try:
-                    return [float(x) for x in v]
-                except Exception:
-                    return [0.0 for _ in cols_ref]
-            # remap using position map
-            pos = {k: i for i, k in enumerate(c)}
-            out = []
-            for k in cols_ref:
-                if k in pos and pos[k] < len(v):
-                    try:
-                        out.append(float(v[pos[k]]))
-                    except Exception:
-                        out.append(0.0)
-                else:
-                    out.append(0.0)
-            return out
-
-        mat: List[List[float]] = []
-        ids: List[str] = []
-        for it in items:
-            ids.append(str(it.get("item_id") or it.get("scorable_id") or ""))
-            mat.append(row_for(it, cols))
-        return cols, mat, ids
-
     # ---------- main entry ----------
     async def execute_analysis(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """

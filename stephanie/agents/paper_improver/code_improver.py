@@ -35,7 +35,7 @@ class CodeImprover:
         backend: str = "torch",
         timeout: int = 300,
         max_edits: int = 5,
-        kb: KnowledgeBus | None = None,
+        kb: Any = None,
         casebooks: CaseBookStore | None = None,
     ):
         self.workdir = Path(workdir)

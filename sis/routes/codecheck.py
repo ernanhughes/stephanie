@@ -5,7 +5,6 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Request, Query
 from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
 
-import os
 import yaml
 from pathlib import Path
 

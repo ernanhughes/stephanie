@@ -209,11 +209,6 @@ class EpistemicGuard:
             return "MEDIUM"
         return "HIGH"
 
-    def _route(self, level: str) -> str:
-        """Map badge level to route: ok->FAST, warn->MEDIUM, risk->HIGH"""
-        mapping = {"ok": "FAST", "warn": "MEDIUM", "risk": "HIGH"}
-        return mapping.get(level.lower(), "MEDIUM")
-
     def _save_vpm_tensor(self, trace_id: str, vpm_channels: Dict[str, np.ndarray]) -> str:
         """Save VPM channels as a compressed .npz file for Jitter to load."""
         path = os.path.join(self.vpm_dir, f"{trace_id}_vpm.npz")

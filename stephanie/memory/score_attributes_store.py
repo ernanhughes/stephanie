@@ -258,8 +258,8 @@ class ScoreAttributeStore(BaseSQLAlchemyStore):
                         vals1.append(metrics_dict[m1])
                         vals2.append(metrics_dict[m2])
                 if len(vals1) > 1:
+                    from scipy import stats
                     try:
-                        from scipy import stats
                         corr, _ = stats.pearsonr(vals1, vals2)
                         correlations[(m1, m2)] = corr
                     except ImportError:

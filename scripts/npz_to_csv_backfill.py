@@ -15,7 +15,7 @@ import argparse
 import csv
 import json
 from pathlib import Path
-from typing import List, Tuple, Optional, Dict, Any
+from typing import List, Optional, Dict, Any
 import numpy as np
 
 

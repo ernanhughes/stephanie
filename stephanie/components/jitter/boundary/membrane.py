@@ -62,7 +62,6 @@ class MembraneConfig(BaseModel):
     critical_threshold: float = Field(0.85, ge=0.7, le=0.95, description="Threshold for critical state")
     permeability_decay: float = Field(0.95, ge=0.8, le=0.99, description="Decay factor for permeability")
 
-    @validator('min_integrity')
     def validate_min_max_integrity(cls, v, values):
         if 'initial_integrity' in values and v >= values['initial_integrity']:
             raise ValueError('min_integrity must be less than initial_integrity')

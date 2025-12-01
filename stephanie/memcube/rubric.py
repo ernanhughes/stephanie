@@ -8,6 +8,8 @@ from dataclasses import asdict, dataclass, field
 from enum import Enum
 from typing import Any, Dict, List, Optional, Sequence
 
+from stephanie.utils.date_utils import iso_now
+
 log = logging.getLogger(__name__)
 
 
@@ -235,7 +237,7 @@ class RubricMemCube:
             ],
             meta=data.get("meta") or {},
             created_at=_dt.datetime.fromisoformat(
-                data.get("created_at", _dt.datetime.utcnow().isoformat())
+                data.get("created_at", iso_now())
             ),
         )
 
