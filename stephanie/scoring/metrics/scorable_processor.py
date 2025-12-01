@@ -8,16 +8,14 @@ from typing import Any, Dict, List, Union
 
 from stephanie.constants import PIPELINE_RUN_ID
 from stephanie.scoring.metrics.feature.domain_feature import DomainFeature
-from stephanie.scoring.metrics.feature.embedding_feature import EmbeddingFeature
-from stephanie.scoring.metrics.feature.frontier_lens_feature import (
-    FrontierLensFeature,
-)
-from stephanie.scoring.metrics.feature.frontier_lens_group_feature import (
-    FrontierLensGroupFeature,
-)
-from stephanie.scoring.metrics.feature.metric_filter_group_feature import (
-    MetricFilterGroupFeature,
-)
+from stephanie.scoring.metrics.feature.embedding_feature import \
+    EmbeddingFeature
+from stephanie.scoring.metrics.feature.frontier_lens_feature import \
+    FrontierLensFeature
+from stephanie.scoring.metrics.feature.frontier_lens_group_feature import \
+    FrontierLensGroupFeature
+from stephanie.scoring.metrics.feature.metric_filter_group_feature import \
+    MetricFilterGroupFeature
 from stephanie.scoring.metrics.feature.metrics_feature import MetricsFeature
 from stephanie.scoring.metrics.feature.ner_feature import NerFeature
 from stephanie.scoring.metrics.feature.text_feature import TextFeature
@@ -274,9 +272,8 @@ class ScorableProcessor(ProgressMixin):
 def _report_to_dict(rep, feature):
     # 1) FeatureReport dataclass → dict
     try:
-        from stephanie.scoring.metrics.feature.feature_report import (
-            FeatureReport,
-        )  # adjust import if needed
+        from stephanie.scoring.metrics.feature.feature_report import \
+            FeatureReport  # adjust import if needed
 
         if isinstance(rep, FeatureReport):
             d = asdict(rep)

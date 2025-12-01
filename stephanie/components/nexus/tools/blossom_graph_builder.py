@@ -28,7 +28,6 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
-
 # ----------------------------- IO helpers -----------------------------
 
 def read_jsonl(path: Path) -> List[dict]:

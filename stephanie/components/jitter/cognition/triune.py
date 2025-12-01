@@ -36,9 +36,9 @@ import numpy as np
 import torch
 from pydantic import BaseModel, Field, validator
 
-from .sense_making import SenseMakingEngine
 from ...coupling.structural_coupling import StructuralCoupling
 from ...production.closed_production import ProductionNetwork
+from .sense_making import SenseMakingEngine
 
 log = logging.getLogger("stephanie.jitter.cognition.triune")
 

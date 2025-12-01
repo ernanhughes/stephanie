@@ -15,7 +15,6 @@ from sklearn.metrics import accuracy_score, brier_score_loss, roc_auc_score
 from torch.utils.data import DataLoader, Dataset, Subset
 from torchvision.models import resnet18
 
-
 # ----------------------------
 #  Dataset
 # ----------------------------

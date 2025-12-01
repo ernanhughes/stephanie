@@ -18,8 +18,8 @@ from sklearn.model_selection import (GroupKFold, StratifiedKFold,
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 
-from stephanie.scoring.metrics.metric_importance import (
-    compute_metric_importance)
+from stephanie.scoring.metrics.metric_importance import \
+    compute_metric_importance
 
 log = logging.getLogger(__name__)
 

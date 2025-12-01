@@ -16,7 +16,6 @@ from stephanie.components.risk.signals import HallucinationContext
 from stephanie.components.risk.signals import collect as collect_hall
 from stephanie.services.service_protocol import Service
 
-
 # ------------------- Contracts -------------------
 # These are your real hallucination components — must be provided by container
 # - sampler: async def sample(prompt: str, n: int) -> List[str]

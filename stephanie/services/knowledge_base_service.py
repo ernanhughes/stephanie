@@ -13,7 +13,6 @@ from typing import Any, Dict, List, Optional
 
 from stephanie.services.service_protocol import Service
 
-
 # --------------------------- Datamodel ---------------------------
 
 @dataclass

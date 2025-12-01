@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
-from typing import Dict, Any, List, Union
+from typing import Any, Dict, List, Union
 
 import matplotlib.pyplot as plt
 import numpy as np

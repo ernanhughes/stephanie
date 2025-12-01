@@ -11,7 +11,6 @@ from stephanie.components.nexus.app.types import NexusEdge, NexusNode
 from stephanie.components.nexus.graph.exporters.base import BaseGraphExporter
 from stephanie.utils.json_sanitize import dumps_safe
 
-
 # =============================================================================
 # Safe helpers
 # =============================================================================

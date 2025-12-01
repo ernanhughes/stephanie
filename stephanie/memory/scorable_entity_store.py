@@ -9,7 +9,6 @@ from stephanie.memory.base_store import BaseSQLAlchemyStore
 from stephanie.models.ner_retriever import NERRetrieverEmbedder
 from stephanie.models.scorable_entity import ScorableEntityORM
 
-
 # Key changes only — not a full file replacement.
 
 class ScorableEntityStore(BaseSQLAlchemyStore):

@@ -2,9 +2,9 @@
 from __future__ import annotations
 
 from sqlalchemy.orm import Session
-from stephanie.models.cartridge import CartridgeORM
 
 from stephanie.models.belief import BeliefORM
+from stephanie.models.cartridge import CartridgeORM
 from stephanie.scoring.scorer.svm_scorer import SVMScorer
 
 

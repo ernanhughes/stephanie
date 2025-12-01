@@ -2,10 +2,10 @@
 from __future__ import annotations
 
 import torch
-from stephanie.agents.inference.llm_inference import LLMInferenceAgent
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.inference.ebt_inference import EBTInferenceAgent
+from stephanie.agents.inference.llm_inference import LLMInferenceAgent
 from stephanie.agents.inference.mrq_inference import MRQInferenceAgent
 from stephanie.memcube.memcube_factory import MemCubeFactory
 from stephanie.scoring.scorable import ScorableFactory, ScorableType

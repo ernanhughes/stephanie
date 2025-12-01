@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Any, Dict, List, Optional, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -869,7 +869,7 @@ class FrontierIntelligence:
     def _calculate_auc(self, metric_values: np.ndarray, y: np.ndarray) -> float:
         """Calculate AUC for a single metric"""
         from sklearn.metrics import roc_auc_score
-        
+
         # Handle edge cases
         if len(np.unique(y)) < 2:
             return 0.5

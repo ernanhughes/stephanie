@@ -8,7 +8,6 @@ from pydantic import BaseModel, Field
 
 from .orchestrator import RiskOrchestrator
 
-
 # ------------------------- Pydantic Models ----------------------------------
 
 class AnalyzeReq(BaseModel):

@@ -6,7 +6,8 @@ from typing import Any, Dict, List
 
 import numpy as np
 
-from stephanie.scoring.metrics.feature.base_group_feature import BaseGroupFeature
+from stephanie.scoring.metrics.feature.base_group_feature import \
+    BaseGroupFeature
 from stephanie.tools.frontier_lens_tool import FrontierLensTool
 
 log = logging.getLogger(__name__)

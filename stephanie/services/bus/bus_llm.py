@@ -6,7 +6,6 @@ import uuid
 from stephanie.prompts.dispatcher import PromptDispatcher
 from stephanie.prompts.result_listener import ResultListener
 from stephanie.prompts.targets_bootstrap import build_default_registry
-
 from stephanie.services.bus.events.prompt_job import PromptJob
 
 

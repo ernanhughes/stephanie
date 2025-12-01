@@ -9,7 +9,6 @@ from typing import Dict, List, Optional, Tuple
 from stephanie.components.nexus.plan_prompts import \
     build_thought_prompt  # tiny helpers (see below)
 
-
 # If you prefer a very small, self-contained runner without GRPO, this file does that.
 # It returns the exact shape that BlossomToScorableAgent expects.
 

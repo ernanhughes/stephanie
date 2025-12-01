@@ -11,12 +11,11 @@ import traceback
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
+# ----- External deps from your codebase -----
+from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.summary.paper_summarizer import SimplePaperBlogAgent
 from stephanie.knowledge.anti_hallucination import AntiHallucination
 from stephanie.knowledge.figure_grounding import FigureGrounding
-
-# ----- External deps from your codebase -----
-from stephanie.agents.base_agent import BaseAgent
 from stephanie.models.strategy import StrategyProfile
 from stephanie.scoring.scorable import ScorableFactory, ScorableType
 from stephanie.utils.casebook_utils import generate_casebook_name

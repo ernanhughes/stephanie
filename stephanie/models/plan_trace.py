@@ -17,7 +17,6 @@ from stephanie.models.goal import GoalORM
 from stephanie.models.pipeline_run import PipelineRunORM
 from stephanie.models.plan_trace_revision import PlanTraceRevisionORM
 
-
 # If EmbeddingORM is not directly importable or you just need the ID:
 # You can define a foreign key without the full ORM relationship if not needed for navigation here.
 

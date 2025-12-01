@@ -10,24 +10,19 @@ import numpy as np
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.components.critic.reports.cohort_reporter import (
-    CriticCohortReporter,
-    normalize01,
-    save_topleft_vpm_triptych,
-    top_left_order_pair,
-    save_vpm_matrix_csv,
-    save_ab_npz_dataset,
-    save_ab_episode_features,
-    save_vpm_heatmap,
-    render_ab_topleft_heatmaps,
-    compute_metric_separability,
-)
-from stephanie.components.critic.reports.frontier_lens_viz import (
-    render_frontier_lens_figure,
-)
-from stephanie.components.critic.reports.frontier_reporter import FrontierReporter
-from stephanie.components.critic.services.frontier_intelligence import FrontierIntelligence
-from stephanie.scoring.metrics.frontier_lens import (FrontierLens, normalize_scores,
-                                                     graph_quality_from_report)
+    CriticCohortReporter, compute_metric_separability, normalize01,
+    render_ab_topleft_heatmaps, save_ab_episode_features, save_ab_npz_dataset,
+    save_topleft_vpm_triptych, save_vpm_heatmap, save_vpm_matrix_csv,
+    top_left_order_pair)
+from stephanie.components.critic.reports.frontier_lens_viz import \
+    render_frontier_lens_figure
+from stephanie.components.critic.reports.frontier_reporter import \
+    FrontierReporter
+from stephanie.components.critic.services.frontier_intelligence import \
+    FrontierIntelligence
+from stephanie.scoring.metrics.frontier_lens import (FrontierLens,
+                                                     graph_quality_from_report,
+                                                     normalize_scores)
 from stephanie.scoring.metrics.metric_importance import (
     compute_metric_importance, save_metric_importance_json)
 from stephanie.scoring.metrics.metric_mapping import MetricMapper

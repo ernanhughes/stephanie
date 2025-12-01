@@ -1,12 +1,11 @@
 # stephanie/agents/automind.py
 from __future__ import annotations
 
+from stephanie.agents.base_agent import BaseAgent
+from stephanie.agents.judge import JudgeAgent
 from stephanie.components.coding_strategy import SelfAdaptiveCoder
 from stephanie.components.search_policy import TreeSearchPolicy
 from stephanie.components.solution_tree import SolutionNode, SolutionTree
-
-from stephanie.agents.base_agent import BaseAgent
-from stephanie.agents.judge import JudgeAgent
 from stephanie.memory.embedding_store import EmbeddingStore
 
 

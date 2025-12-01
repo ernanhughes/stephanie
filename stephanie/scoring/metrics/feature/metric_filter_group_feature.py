@@ -10,7 +10,8 @@ import numpy as np
 
 from stephanie.constants import PIPELINE_RUN_ID
 from stephanie.scoring.metrics.core_metrics import CORE_METRIC_MAPPING
-from stephanie.scoring.metrics.feature.base_group_feature import BaseGroupFeature
+from stephanie.scoring.metrics.feature.base_group_feature import \
+    BaseGroupFeature
 from stephanie.scoring.metrics.feature.feature_report import FeatureReport
 from stephanie.scoring.metrics.metric_filter import MetricFilter
 from stephanie.scoring.metrics.metric_filter_explain import \

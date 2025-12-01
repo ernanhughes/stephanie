@@ -10,7 +10,6 @@ from zeromodel.pipeline.organizer.top_left import TopLeft
 from stephanie.scoring.metrics.frontier_lens import (FrontierLensEpisode,
                                                      episode_features)
 
-
 # If you’ve moved VisiCalcReport into Stephanie core, you can also
 # import the report-level gauge from there. For now, assume a pure
 # numpy/episode-based path inside ZeroModel.

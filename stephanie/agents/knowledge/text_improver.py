@@ -16,11 +16,10 @@ import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from stephanie.knowledge.casebook_store import CaseBookStore
-from stephanie.knowledge.knowledge_bus import KnowledgeBus
-
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.paper_improver.goals import GoalScorer
+from stephanie.knowledge.casebook_store import CaseBookStore
+from stephanie.knowledge.knowledge_bus import KnowledgeBus
 from stephanie.scoring.calibration_manager import CalibrationManager
 from stephanie.scoring.scorable import ScorableType
 from stephanie.utils.json_sanitize import safe_json

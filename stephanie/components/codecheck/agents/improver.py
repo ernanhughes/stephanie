@@ -1,18 +1,19 @@
 from __future__ import annotations
 
+import logging
 import os
+import textwrap
 import time
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
+import torch
+from transformers import AutoModelForCausalLM, AutoTokenizer
+
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.memory.codecheck_store import CodeCheckStore
 from stephanie.models.base_config import BaseConfig
-from transformers import AutoTokenizer, AutoModelForCausalLM
-import torch
-import textwrap
 
-import logging
 log = logging.getLogger(__name__)
 
 

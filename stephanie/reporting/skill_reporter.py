@@ -6,6 +6,7 @@ from typing import Any, Dict
 
 import numpy as np
 from jinja2 import Template
+
 from stephanie.zero.vpm_builder import CaseBookVPMBuilder
 
 

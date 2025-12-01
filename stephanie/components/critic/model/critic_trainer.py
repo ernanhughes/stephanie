@@ -12,14 +12,15 @@ import joblib
 import numpy as np
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import (accuracy_score, roc_auc_score)
+from sklearn.metrics import accuracy_score, roc_auc_score
 from sklearn.model_selection import (GridSearchCV, GroupKFold,
                                      GroupShuffleSplit, StratifiedKFold)
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
 from stephanie.components.critic.model.trainer import load_dataset
-from stephanie.components.critic.reports.training_report import generate_training_reports
+from stephanie.components.critic.reports.training_report import \
+    generate_training_reports
 
 log = logging.getLogger(__name__)
 

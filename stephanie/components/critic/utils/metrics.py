@@ -4,7 +4,7 @@ from typing import Dict, List, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
-from sklearn.metrics import (brier_score_loss, roc_auc_score, roc_curve)
+from sklearn.metrics import brier_score_loss, roc_auc_score, roc_curve
 
 
 def compute_ece(probs: np.ndarray, y_true: np.ndarray, n_bins: int = 10) -> float:

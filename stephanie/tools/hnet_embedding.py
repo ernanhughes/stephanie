@@ -61,6 +61,7 @@ from __future__ import annotations
 
 import logging
 import re
+import unicodedata
 from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Any, List, Optional, Sequence, Tuple
@@ -68,7 +69,6 @@ from typing import Any, List, Optional, Sequence, Tuple
 import numpy as np
 import torch
 import torch.nn as nn
-import unicodedata
 
 from stephanie.tools.ollama_embedding import MXBAIEmbedder
 

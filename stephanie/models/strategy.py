@@ -6,8 +6,8 @@ from dataclasses import asdict, dataclass
 from datetime import datetime
 from typing import Any, Dict, Optional
 
-from sqlalchemy import Column, DateTime, Float, Integer, String
 from sqlalchemy import JSON as SA_JSON
+from sqlalchemy import Column, DateTime, Float, Integer, String
 
 from stephanie.models.base import Base
 

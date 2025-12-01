@@ -1,9 +1,8 @@
 # stephanie/agents/knowledge/idea_extractor.py
 from __future__ import annotations
 
-from stephanie.builders.belief_cartridge_builder import BeliefCartridgeBuilder
-
 from stephanie.agents.base_agent import BaseAgent
+from stephanie.builders.belief_cartridge_builder import BeliefCartridgeBuilder
 from stephanie.scoring.scorable import ScorableFactory
 from stephanie.scoring.scorer.mrq_scorer import \
     MRQScorer  # or wherever your scorer lives

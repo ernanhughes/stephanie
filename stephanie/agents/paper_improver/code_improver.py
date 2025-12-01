@@ -13,9 +13,9 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from stephanie.knowledge.casebook_store import CaseBookStore
 from stephanie.knowledge.knowledge_bus import KnowledgeBus
-
 from stephanie.scoring.scorable import ScorableType
 from stephanie.utils.json_sanitize import safe_json
+
 from .bandit_router import ExemplarBandit
 
 # Optional mutation testing (graceful if absent)

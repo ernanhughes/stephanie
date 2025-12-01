@@ -6,13 +6,10 @@ from typing import Any, Dict, Iterable, List, Optional
 from sqlalchemy.orm import Session, selectinload
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
-from stephanie.models.codecheck import (
-    CodeCheckRunORM,
-    CodeCheckFileORM,
-    CodeCheckFileMetricsORM,
-    CodeCheckIssueORM,
-    CodeCheckSuggestionORM,
-)
+from stephanie.models.codecheck import (CodeCheckFileMetricsORM,
+                                        CodeCheckFileORM, CodeCheckIssueORM,
+                                        CodeCheckRunORM,
+                                        CodeCheckSuggestionORM)
 
 
 class CodeCheckStore(BaseSQLAlchemyStore):

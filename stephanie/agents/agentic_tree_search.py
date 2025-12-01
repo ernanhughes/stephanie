@@ -34,7 +34,6 @@ from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
 
 from stephanie.agents.base_agent import BaseAgent
 
-
 # ----------------------------- Data structures ----------------------------- #
 
 

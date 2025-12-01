@@ -2,17 +2,13 @@
 from __future__ import annotations
 
 import datetime
-from typing import List, Optional, Dict, Any
+from typing import Any, Dict, List, Optional
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
-from stephanie.models.metrics import (
-    MetricDeltaORM,
-    MetricGroupORM,
-    MetricVectorORM,
-    MetricVPMORM,
-    CriticRunORM,  # NEW
-    CriticModelORM  # NEW
-)
+from stephanie.models.metrics import CriticModelORM  # NEW
+from stephanie.models.metrics import CriticRunORM  # NEW
+from stephanie.models.metrics import (MetricDeltaORM, MetricGroupORM,
+                                      MetricVectorORM, MetricVPMORM)
 
 
 class MetricStore(BaseSQLAlchemyStore):

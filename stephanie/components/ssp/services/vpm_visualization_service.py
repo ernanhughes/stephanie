@@ -27,11 +27,11 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-import PIL.Image as Image
 import imageio.v2 as imageio
 import matplotlib
 import numpy as np
 import pandas as pd
+import PIL.Image as Image
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
