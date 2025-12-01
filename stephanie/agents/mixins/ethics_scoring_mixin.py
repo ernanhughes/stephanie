@@ -4,6 +4,7 @@ from __future__ import annotations
 from textwrap import wrap
 
 from stephanie.analysis.paper_score_evaluator import PaperScoreEvaluator
+
 from stephanie.data.score_bundle import ScoreBundle
 from stephanie.scoring.scorable import Scorable, ScorableFactory, ScorableType
 

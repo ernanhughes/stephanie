@@ -1,15 +1,17 @@
 # stephanie/components/critic/services/frontier_intelligence.py
 from __future__ import annotations
+
 import logging
 from datetime import datetime
+from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Any
+
+import matplotlib.pyplot as plt
 import numpy as np
 from scipy import stats
-import matplotlib.pyplot as plt
 from sklearn.linear_model import TheilSenRegressor
-from pathlib import Path
-from sklearn.svm import LinearSVC
 from sklearn.metrics import roc_auc_score
+from sklearn.svm import LinearSVC
 
 log = logging.getLogger(__name__)
 

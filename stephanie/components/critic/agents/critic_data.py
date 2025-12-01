@@ -242,8 +242,7 @@ IMPORTANT: Do not use any XML tags. Just follow the format above."""
         import matplotlib.pyplot as plt
         import numpy as np
         import seaborn as sns
-        from scipy import stats
-        
+
         log.info("📊 Creating feature visualizations for Tiny Critic training...")
         
         # Extract features from scorables

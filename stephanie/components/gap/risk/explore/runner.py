@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import Any, Dict, List
 
 from stephanie.components.gap.risk.orchestrator import GapRiskOrchestrator
-
 from .triggers import apply_triggers
 
 

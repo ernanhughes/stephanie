@@ -14,14 +14,14 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from omegaconf import DictConfig, OmegaConf
+from stephanie.utils.visual_thought import VisualThoughtOp, VisualThoughtType
+from stephanie.vpm.state_machine import (Thought, ThoughtExecutor, VPMGoal,
+                                         VPMState, compute_phi)
 from torch.utils.data import DataLoader, IterableDataset
 from tqdm import tqdm
 
 from stephanie.components.nexus.graph.graph_layout import \
     render_multi_layout_vpm
-from stephanie.utils.visual_thought import VisualThoughtOp, VisualThoughtType
-from stephanie.vpm.state_machine import (Thought, ThoughtExecutor, VPMGoal,
-                                         VPMState, compute_phi)
 
 DEFAULT_CONFIG = {
     "model": {

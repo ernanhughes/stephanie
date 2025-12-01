@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, fields, is_dataclass
-from typing import Any, Dict, Mapping, Type, TypeVar, cast
+from typing import Any, Dict, Mapping, TypeVar, cast
 
 # you already have something like:
 # from sqlalchemy.orm import declarative_base

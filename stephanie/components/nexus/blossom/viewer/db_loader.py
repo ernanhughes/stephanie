@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional
 
 import psycopg  # psycopg 3
 
+
 # If you prefer SQLAlchemy, swap this for your Session and .execute() calls.
 
 @dataclass

@@ -9,22 +9,6 @@ from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.components.critic.reports.frontier_reporter import FrontierReporter
-from stephanie.components.critic.services.frontier_intelligence import FrontierIntelligence
-from stephanie.scoring.metrics.metric_importance import (
-    compute_metric_importance, save_metric_importance_json)
-from stephanie.scoring.metrics.metric_mapping import MetricMapper
-from stephanie.scoring.metrics.scorable_processor import ScorableProcessor
-from stephanie.scoring.metrics.frontier_lens import (FrontierLens, normalize_scores,
-                                                graph_quality_from_report)
-
-from stephanie.utils.json_sanitize import dumps_safe
-from stephanie.components.critic.reports.frontier_lens_viz import (
-    render_frontier_lens_figure,
-)
-
-from stephanie.utils.vpm_utils import ensure_chw_u8
-
 from stephanie.components.critic.reports.cohort_reporter import (
     CriticCohortReporter,
     normalize01,
@@ -37,6 +21,19 @@ from stephanie.components.critic.reports.cohort_reporter import (
     render_ab_topleft_heatmaps,
     compute_metric_separability,
 )
+from stephanie.components.critic.reports.frontier_lens_viz import (
+    render_frontier_lens_figure,
+)
+from stephanie.components.critic.reports.frontier_reporter import FrontierReporter
+from stephanie.components.critic.services.frontier_intelligence import FrontierIntelligence
+from stephanie.scoring.metrics.frontier_lens import (FrontierLens, normalize_scores,
+                                                     graph_quality_from_report)
+from stephanie.scoring.metrics.metric_importance import (
+    compute_metric_importance, save_metric_importance_json)
+from stephanie.scoring.metrics.metric_mapping import MetricMapper
+from stephanie.scoring.metrics.scorable_processor import ScorableProcessor
+from stephanie.utils.json_sanitize import dumps_safe
+from stephanie.utils.vpm_utils import ensure_chw_u8
 
 log = logging.getLogger(__name__)
 

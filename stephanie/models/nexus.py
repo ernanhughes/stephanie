@@ -11,6 +11,7 @@ from sqlalchemy.orm import relationship
 
 from stephanie.models.base import Base
 
+
 # --- Scorable ---------------------------------------------------------------
 
 class NexusScorableORM(Base):

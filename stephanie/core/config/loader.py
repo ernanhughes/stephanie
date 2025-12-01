@@ -7,7 +7,6 @@ import os
 from typing import List
 
 from omegaconf import OmegaConf
-
 from stephanie.config.schema import AppConfig
 
 

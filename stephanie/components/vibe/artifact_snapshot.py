@@ -6,7 +6,7 @@ import json
 import logging
 from dataclasses import asdict, dataclass, field
 from enum import Enum
-from typing import Any, Dict, Iterable, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 log = logging.getLogger(__name__)
 

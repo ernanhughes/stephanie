@@ -12,6 +12,7 @@ from sqlalchemy import asc, desc
 from stephanie.memory.base_store import BaseSQLAlchemyStore
 from stephanie.models.memcube import MemCubeORM
 
+
 # ---------- helpers ----------------------------------------------------------
 
 

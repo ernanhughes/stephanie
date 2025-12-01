@@ -11,20 +11,28 @@ import numpy as np
 
 # Evaluation utilities (assumed present in your tree)
 from stephanie.agents.base_agent import BaseAgent
+from stephanie.components.critic.reports.validation import (
+    CORE_FEATURE_COUNT,
+    generate_dataset_report,
+    evaluate_all_features,
+    generate_visicalc_hypothesis_report,
+    _select_features_via_importance_core_aware,
+    _write_selected_feature_artifacts,
+)
 from stephanie.components.critic.utils.calibration import (
     IsoCalibrator,
     brier,
     expected_calibration_error,
     reliability_bins,
 )
-from stephanie.components.critic.utils.metrics import (
-    generate_evaluation_report,
-)
 from stephanie.components.critic.utils.downstream import (
     compute_downstream_impact,
     generate_downstream_plot,
     generate_lift_curve,
     run_downstream_experiment,
+)
+from stephanie.components.critic.utils.metrics import (
+    generate_evaluation_report,
 )
 from stephanie.components.critic.utils.stability_checker import (
     check_feature_stability,
@@ -33,15 +41,6 @@ from stephanie.components.critic.utils.stability_checker import (
 )
 from stephanie.components.critic.utils.statistics import (
     paired_bootstrap_auc_diff,
-)
-
-from stephanie.components.critic.reports.validation import (
-    CORE_FEATURE_COUNT,
-    generate_dataset_report,
-    evaluate_all_features,
-    generate_visicalc_hypothesis_report,
-    _select_features_via_importance_core_aware,
-    _write_selected_feature_artifacts,
 )
 
 log = logging.getLogger(__name__)

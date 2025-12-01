@@ -1,31 +1,25 @@
 # stephanie/components/critic/agents/critic_trainer.py
 from __future__ import annotations
 
-import datetime
 import hashlib
 import json
 import logging
-import math
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import joblib
-import matplotlib.pyplot as plt
 import numpy as np
-import seaborn as sns
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import (RocCurveDisplay, accuracy_score, confusion_matrix,
-                             roc_auc_score)
+from sklearn.metrics import (accuracy_score, roc_auc_score)
 from sklearn.model_selection import (GridSearchCV, GroupKFold,
                                      GroupShuffleSplit, StratifiedKFold)
-from sklearn.pipeline import Pipeline, make_pipeline
+from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
 from stephanie.components.critic.model.trainer import load_dataset
 from stephanie.components.critic.reports.training_report import generate_training_reports
-from stephanie.utils.hash_utils import hash_list
 
 log = logging.getLogger(__name__)
 

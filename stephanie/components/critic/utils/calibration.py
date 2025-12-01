@@ -1,7 +1,7 @@
 # stephanie/components/critic/utils/calibration.py
 from __future__ import annotations
 
-from typing import Dict, Literal, Optional, Tuple
+from typing import Dict, Literal
 
 import numpy as np
 from sklearn.isotonic import IsotonicRegression

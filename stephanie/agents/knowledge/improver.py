@@ -20,7 +20,6 @@ from stephanie.scoring.calibration_manager import CalibrationManager
 from stephanie.scoring.scorable import ScorableType
 from stephanie.services.bus.knowledge_bus import KnowledgeBus
 from stephanie.utils.json_sanitize import safe_json
-
 from ..paper_improver.faithfulness import FaithfulnessBot
 
 log = logging.getLogger(__name__)

@@ -4,11 +4,11 @@ from __future__ import annotations
 from datetime import datetime
 
 from sqlalchemy.orm import Session
+from stephanie.utils.summarizer import summarize_text
 
 from stephanie.models.belief import BeliefORM
 from stephanie.models.goal import GoalORM
 from stephanie.scoring.scorer.svm_scorer import SVMScorer
-from stephanie.utils.summarizer import summarize_text
 
 
 class BeliefIngestAgent:

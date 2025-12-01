@@ -2,14 +2,13 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 from sqlalchemy import (
     JSON,
     Boolean,
     Column,
     DateTime,
-    Float,
     ForeignKey,
     Index,
     Integer,
@@ -21,7 +20,6 @@ from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
 from stephanie.models.base import Base
-
 
 JSONType = JSONB if JSONB else JSON
 

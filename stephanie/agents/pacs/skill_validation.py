@@ -4,11 +4,11 @@ from __future__ import annotations
 from typing import Any, Dict
 
 import numpy as np
+from stephanie.zero.casebook_residual_extractor import \
+    CaseBookResidualExtractor
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.constants import GOAL, PIPELINE
-from stephanie.zero.casebook_residual_extractor import \
-    CaseBookResidualExtractor
 
 
 class SkillValidationAgent(BaseAgent):

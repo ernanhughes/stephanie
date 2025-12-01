@@ -42,8 +42,9 @@ codecheck_improver:
   # Suggestion generation (local model)
   # ──────────────────────────────────────────────
   model:
-    provider: "local"                 # you’ll route via your ModelManager
-    model_name: "local-7b-code-critic"
+    name: ollama/MaziyarPanahi/VibeThinker-1.5B-GGUF
+    api_base: http://localhost:11434
+    api_key: null
     temperature: 0.0
     max_tokens: 768
     top_p: 1.0

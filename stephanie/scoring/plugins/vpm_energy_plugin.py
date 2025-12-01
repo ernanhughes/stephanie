@@ -7,7 +7,6 @@ from typing import Any, Dict, Optional
 import numpy as np
 
 from stephanie.utils.similarity_utils import cosine
-
 from .registry import register
 
 

@@ -4,8 +4,9 @@ import time
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
-from stephanie.agents.base_agent import BaseAgent
 from stephanie.components.vericot.vericot_verifier import VericotVerifier
+
+from stephanie.agents.base_agent import BaseAgent
 from stephanie.core.manifest import ManifestManager
 from stephanie.memory.memcube_store import MemCubeStore
 from stephanie.scoring.metrics.scorable_processor import ScorableProcessor

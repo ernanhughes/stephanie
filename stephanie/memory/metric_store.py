@@ -2,15 +2,13 @@
 from __future__ import annotations
 
 import datetime
-from typing import List, Optional, Dict, Any, Tuple
-
-from sqlalchemy import desc, func
+from typing import List, Optional, Dict, Any
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
 from stephanie.models.metrics import (
-    MetricDeltaORM, 
+    MetricDeltaORM,
     MetricGroupORM,
-    MetricVectorORM, 
+    MetricVectorORM,
     MetricVPMORM,
     CriticRunORM,  # NEW
     CriticModelORM  # NEW

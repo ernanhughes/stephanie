@@ -1,7 +1,7 @@
 # stephanie/components/critic/utils/statistics.py
 from __future__ import annotations
 
-from typing import Callable, Dict, Optional, Tuple
+from typing import Callable, Dict, Optional
 
 import matplotlib.pyplot as plt
 import numpy as np

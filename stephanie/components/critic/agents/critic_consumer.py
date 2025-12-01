@@ -1,5 +1,4 @@
 # stephanie/components/critic/agents/teachpack_consumer.py
-import json
 import logging
 from pathlib import Path
 from typing import Any, Dict

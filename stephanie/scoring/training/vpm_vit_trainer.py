@@ -9,8 +9,8 @@ from typing import Any, Dict, Tuple
 import numpy as np
 import torch
 import torch.nn as nn
-from omegaconf import DictConfig
 from PIL import Image
+from omegaconf import DictConfig
 from torch.utils.data import DataLoader, Dataset
 
 from stephanie.agents.base_agent import BaseAgent

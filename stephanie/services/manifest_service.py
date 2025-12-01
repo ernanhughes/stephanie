@@ -4,8 +4,7 @@ from __future__ import annotations
 import asyncio
 import uuid
 from datetime import datetime
-from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 from stephanie.core.manifest import Manifest, ManifestManager
 from stephanie.utils.json_sanitize import dumps_safe

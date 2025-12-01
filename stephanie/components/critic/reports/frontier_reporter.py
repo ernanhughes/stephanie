@@ -1,11 +1,14 @@
 # stephanie/components/critic/reporting/frontier_reporter.py
 from __future__ import annotations
+
 import json
 import logging
 from pathlib import Path
-from typing import Dict, Any, List, Optional, Union
+from typing import Dict, Any, List, Union
+
 import matplotlib.pyplot as plt
 import numpy as np
+
 from stephanie.scoring.metrics.frontier_lens import FrontierLensReport
 
 log = logging.getLogger(__name__)

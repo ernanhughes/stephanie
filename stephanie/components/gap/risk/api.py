@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 
 from .orchestrator import GapRiskOrchestrator
 
+
 # ------------------------- Pydantic Models ----------------------------------
 
 class AnalyzeReq(BaseModel):

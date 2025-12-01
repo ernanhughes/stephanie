@@ -1,0 +1,4 @@
+# config/scorer/hf_gap.yaml
+defaults:
+  - hf_vibe/default
+  - hf_mistral/default

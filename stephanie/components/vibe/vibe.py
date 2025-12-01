@@ -1,7 +1,7 @@
 # stephanie/components/vibe/vibe.py
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from typing import Any, Dict, List
 
 from stephanie.components.vibe.artifact_snapshot import ArtifactSnapshot

@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import JSON as SA_JSON
 from sqlalchemy import (Boolean, Column, DateTime, Float, ForeignKey, Integer,
                         String, Text)
+from sqlalchemy import JSON as SA_JSON
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 

@@ -1,9 +1,8 @@
 # stephanie/models/cache_entry.py
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
-import sqlalchemy as sa
 from sqlalchemy import JSON, Column, Float, Index, Integer, LargeBinary, String
 
 from stephanie.models.base import Base

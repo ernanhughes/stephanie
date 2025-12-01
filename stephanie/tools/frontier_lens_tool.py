@@ -6,8 +6,8 @@ from typing import Any, Dict, List, Optional
 
 import numpy as np
 
-from stephanie.scoring.metrics.metric_mapping import MetricMapper
 from stephanie.scoring.metrics.frontier_lens import FrontierLens
+from stephanie.scoring.metrics.metric_mapping import MetricMapper
 from stephanie.tools.base_tool import BaseTool
 
 log = logging.getLogger(__name__)

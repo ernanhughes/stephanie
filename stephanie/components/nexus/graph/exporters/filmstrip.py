@@ -12,6 +12,7 @@ import numpy as np
 
 from stephanie.components.nexus.graph.exporters.base import BaseGraphExporter
 
+
 # --------------------------------------------------------------------------- #
 # Frame + filmstrip core                                                     #
 # --------------------------------------------------------------------------- #

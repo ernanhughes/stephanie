@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List
 
 from stephanie.scoring.metrics.metric_observer import MetricObserver
 from stephanie.scoring.scorable import Scorable

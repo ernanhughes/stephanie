@@ -11,12 +11,12 @@ from typing import Any, Dict, List, Tuple
 import matplotlib.pyplot as plt
 import numpy as np
 from sklearn.decomposition import PCA
+from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import (GroupKFold, StratifiedKFold,
                                      cross_val_score)
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
-from sklearn.impute import SimpleImputer
 
 from stephanie.scoring.metrics.metric_importance import (
     compute_metric_importance)

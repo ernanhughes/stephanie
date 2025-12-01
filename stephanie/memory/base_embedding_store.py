@@ -7,15 +7,12 @@ import logging
 import os
 import re
 from datetime import datetime
-from sqlite3 import IntegrityError
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import torch
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
-from stephanie.models.scorable_embedding import ScorableEmbeddingORM
-from stephanie.scoring.scorable import Scorable
 from stephanie.utils.lru_cache import SimpleLRUCache
 
 log = logging.getLogger(__name__)
