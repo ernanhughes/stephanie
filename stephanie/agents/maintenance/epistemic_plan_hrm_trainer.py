@@ -12,12 +12,15 @@ from torch.utils.data import DataLoader, TensorDataset
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.data.plan_trace import PlanTrace
-from stephanie.scoring.model.epistemic_trace_encoder import \
-    EpistemicTraceEncoder
+from stephanie.scoring.model.epistemic_trace_encoder import (
+    EpistemicTraceEncoder,
+)
 from stephanie.scoring.model.hrm_model import HRMModel
 from stephanie.scoring.model.model_locator_mixin import ModelLocatorMixin
-from stephanie.utils.trace_utils import (get_trace_score_stats,
-                                         load_plan_traces_from_export_dir)
+from stephanie.utils.trace_utils import (
+    get_trace_score_stats,
+    load_plan_traces_from_export_dir,
+)
 
 
 class EpistemicPlanHRMTrainerAgent(ModelLocatorMixin, BaseAgent):
@@ -30,7 +33,11 @@ class EpistemicPlanHRMTrainerAgent(ModelLocatorMixin, BaseAgent):
     """
 
     def __init__(
-        self, cfg: Dict[str, Any], memory: Any = None, container: Any = None, logger: Any = None
+        self,
+        cfg: Dict[str, Any],
+        memory: Any = None,
+        container: Any = None,
+        logger: Any = None,
     ):
         super().__init__(cfg, memory, container, logger)
         self.model_type = "epistemic_hrm"
@@ -42,10 +49,9 @@ class EpistemicPlanHRMTrainerAgent(ModelLocatorMixin, BaseAgent):
         # --- Configuration specific to Epistemic Plan HRM ---
         self.dim = self.memory.embedding.dim
         self.hrm_cfg = cfg.get("hrm", {})
-        self.encoder_cfg= cfg.get("encoder", {})
+        self.encoder_cfg = cfg.get("encoder", {})
         self.encoder_cfg["embedding_dim"] = self.dim  # For goal + final output
 
-        
         self.dimensions = cfg.get("dimensions", [])
         self.dim = self.memory.embedding.dim
         self.export_dir = cfg.get(
@@ -60,9 +66,9 @@ class EpistemicPlanHRMTrainerAgent(ModelLocatorMixin, BaseAgent):
 
         # --- Instantiate the HRM Model ---
         try:
-            self.hrm_model = HRMModel(
-                self.hrm_cfg, logger=self.logger
-            ).to(self.device)
+            self.hrm_model = HRMModel(self.hrm_cfg, logger=self.logger).to(
+                self.device
+            )
             self.logger.log(
                 "EpistemicPlanHRMModelInitialized",
                 {
@@ -89,7 +95,9 @@ class EpistemicPlanHRMTrainerAgent(ModelLocatorMixin, BaseAgent):
         try:
             # Use AdamW as recommended by HRM paper
             self.optimizer = torch.optim.AdamW(
-                self.hrm_model.parameters(), lr=self.hrm_cfg["lr"]
+                self.hrm_model.parameters(),
+                lr=self.hrm_cfg["lr"],
+                weight_decay=1e-4,
             )
             self.logger.log(
                 "EpistemicPlanHRMOptimizerInitialized",
@@ -134,8 +142,8 @@ class EpistemicPlanHRMTrainerAgent(ModelLocatorMixin, BaseAgent):
                 {
                     "message": "No plan traces found in context['plan_traces']. Attempting to load from export directory.",
                     "export_dir": self.export_dir,
-                }, 
-            ) 
+                },
+            )
             raw_traces_data = load_plan_traces_from_export_dir(self.export_dir)
 
         if not raw_traces_data:
@@ -147,8 +155,8 @@ class EpistemicPlanHRMTrainerAgent(ModelLocatorMixin, BaseAgent):
             )
             context[self.output_key] = {
                 "status": "failed",
-                "message": error_msg
-            }   
+                "message": error_msg,
+            }
             return context
 
         # Filter traces with valid targets
@@ -171,8 +179,8 @@ class EpistemicPlanHRMTrainerAgent(ModelLocatorMixin, BaseAgent):
             )
             context[self.output_key] = {
                 "status": "failed",
-                "message": error_msg
-            }   
+                "message": error_msg,
+            }
             return context
 
         # --- 2. Encode Traces and Prepare Tensors ---
@@ -209,6 +217,7 @@ class EpistemicPlanHRMTrainerAgent(ModelLocatorMixin, BaseAgent):
                 dataset,
                 batch_size=self.hrm_cfg["batch_size"],
                 shuffle=True,
+                num_workers=0,
             )
 
             self.logger.log(
@@ -232,8 +241,8 @@ class EpistemicPlanHRMTrainerAgent(ModelLocatorMixin, BaseAgent):
             )
             context[self.output_key] = {
                 "status": "failed",
-                "message": error_msg
-            }   
+                "message": error_msg,
+            }
             return context
 
         # --- 3. Training Loop ---
@@ -309,8 +318,8 @@ class EpistemicPlanHRMTrainerAgent(ModelLocatorMixin, BaseAgent):
             )
             context[self.output_key] = {
                 "status": "failed",
-                "message": error_msg
-            }   
+                "message": error_msg,
+            }
             return context
 
         # --- 4. Save Model ---
@@ -354,9 +363,9 @@ class EpistemicPlanHRMTrainerAgent(ModelLocatorMixin, BaseAgent):
     def _encode_traces_and_extract_targets(
         self, traces: list[PlanTrace]
     ) -> Tuple[List[torch.Tensor], List[float]]:
-        self.trace_encoder = EpistemicTraceEncoder(
-            self.encoder_cfg
-        ).to(self.device)
+        self.trace_encoder = EpistemicTraceEncoder(self.encoder_cfg).to(
+            self.device
+        )
 
         encoded_inputs = []
         target_scores = []
@@ -366,7 +375,7 @@ class EpistemicPlanHRMTrainerAgent(ModelLocatorMixin, BaseAgent):
                 z = self.trace_encoder(
                     trace=trace,
                     embedding_lookup_fn=self.memory.embedding.get_or_create,
-                    score_stats_fn=self.get_trace_score_stats, 
+                    score_stats_fn=self.get_trace_score_stats,
                     dimensions=self.dimensions,
                 )
                 encoded_inputs.append(z.detach())
@@ -385,8 +394,9 @@ class EpistemicPlanHRMTrainerAgent(ModelLocatorMixin, BaseAgent):
 
     def _save_model(self):
         """Saves the trained HRM model components using the Locator."""
-        from stephanie.utils.file_utils import \
-            save_json  # Assuming this utility exists
+        from stephanie.utils.file_utils import (
+            save_json,
+        )  # Assuming this utility exists
 
         for dimension in self.dimensions:
             locator = self.get_locator(
@@ -402,7 +412,7 @@ class EpistemicPlanHRMTrainerAgent(ModelLocatorMixin, BaseAgent):
                 "model_type": self.model_type,
                 "dimension": dimension,
                 "trainer_agent": self.__class__.__name__,
-                "training_completed_at": datetime.now().isoformat()+ "Z",
+                "training_completed_at": datetime.now().isoformat() + "Z",
                 # Explicit model architecture config
                 "input_dim": self.hrm_cfg["input_dim"],
                 "h_dim": self.hrm_cfg["h_dim"],
@@ -410,11 +420,10 @@ class EpistemicPlanHRMTrainerAgent(ModelLocatorMixin, BaseAgent):
                 "output_dim": self.hrm_cfg["output_dim"],
                 "n_cycles": self.hrm_cfg["n_cycles"],
                 "t_steps": self.hrm_cfg["t_steps"],
-
                 # Training-specific metadata
                 "lr": self.hrm_cfg["lr"],
                 "epochs": self.hrm_cfg["epochs"],
-                "batch_size": self.hrm_cfg["batch_size"]
+                "batch_size": self.hrm_cfg["batch_size"],
             }
             meta_save_path = locator.meta_file()
             # Ensure directory exists

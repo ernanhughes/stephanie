@@ -9,8 +9,11 @@ from stephanie.agents.base_agent import BaseAgent
 from stephanie.data.text_item import TextItem
 from stephanie.scoring.scorable import ScorableType
 from stephanie.services.scoring_service import ScoringService
-from stephanie.utils.embed_utils import (as_list_floats, cos_safe,
-                                         farthest_point_sample)
+from stephanie.utils.embed_utils import (
+    as_list_floats,
+    cos_safe,
+    farthest_point_sample,
+)
 from stephanie.utils.progress_mixin import ProgressMixin
 
 
@@ -20,11 +23,14 @@ class ScorableLoaderAgent(BaseAgent, ProgressMixin):
       - scorables_targeted: high similarity to goal
       - scorables_baseline: low similarity to goal, diverse among themselves
     """
+
     def __init__(self, cfg, memory, container, logger):
         super().__init__(cfg, memory, container, logger)
         self.top_k = cfg.get("top_k", 10)
         self.include_full_text = cfg.get("include_full_text", True)
-        self.target_type = cfg.get("target_type", ScorableType.CONVERSATION_TURN)
+        self.target_type = cfg.get(
+            "target_type", ScorableType.CONVERSATION_TURN
+        )
         self.include_ner = cfg.get("include_ner", False)
         self.save_pipeline_refs = cfg.get("save_pipeline_refs", False)
         self.doc_ids_scoring = cfg.get("doc_ids_scoring", False)
@@ -42,16 +48,24 @@ class ScorableLoaderAgent(BaseAgent, ProgressMixin):
         self.ab_targeted_min_sim = float(ab.get("targeted_min_sim", 0.60))
         self.ab_baseline_max_sim = float(ab.get("baseline_max_sim", 0.20))
         self.ab_ensure_diversity = bool(ab.get("ensure_diversity", True))
-        self.ab_goal_source = str(ab.get("goal_source", "goal_text")).lower()  # "goal_text" | "user_text_title"
-        self.ab_relax_steps = int(ab.get("relax_steps", 5))  # auto-relax thresholds if too few matches
+        self.ab_goal_source = str(
+            ab.get("goal_source", "goal_text")
+        ).lower()  # "goal_text" | "user_text_title"
+        self.ab_relax_steps = int(
+            ab.get("relax_steps", 5)
+        )  # auto-relax thresholds if too few matches
 
         # --- Preload knobs (oversample then filter) ---
         pre = cfg.get("preload", {}) or {}
         self.preload_enabled = bool(pre.get("enabled", self.ab_enabled))
-        self.preload_total = int(pre.get("total_limit", max(self.limit * 10, 1000)))
+        self.preload_total = int(
+            pre.get("total_limit", max(self.limit * 10, 1000))
+        )
         self.preload_include_texts = bool(pre.get("include_texts", True))
         self.preload_require_ner = bool(pre.get("require_nonempty_ner", False))
-        self.preload_require_assistant = bool(pre.get("require_assistant_text", False))
+        self.preload_require_assistant = bool(
+            pre.get("require_assistant_text", False)
+        )
         self.preload_min_len = int(pre.get("min_assistant_len", 0))
         self.preload_order_desc = bool(pre.get("order_desc", True))
 
@@ -62,12 +76,28 @@ class ScorableLoaderAgent(BaseAgent, ProgressMixin):
 
         if self.target_type == ScorableType.CONVERSATION_TURN:
             # Choose fetch profile: oversample if enabled, otherwise use the tight/defaults
-            fetch_total = self.preload_total if self.preload_enabled else self.limit
-            fetch_include_texts = self.preload_include_texts if self.preload_enabled else self.include_full_text
-            fetch_require_nonempty_ner = self.preload_require_ner if self.preload_enabled else self.include_ner
-            fetch_require_assistant = self.preload_require_assistant if self.preload_enabled else True
+            fetch_total = (
+                self.preload_total if self.preload_enabled else self.limit
+            )
+            fetch_include_texts = (
+                self.preload_include_texts
+                if self.preload_enabled
+                else self.include_full_text
+            )
+            fetch_require_nonempty_ner = (
+                self.preload_require_ner
+                if self.preload_enabled
+                else self.include_ner
+            )
+            fetch_require_assistant = (
+                self.preload_require_assistant
+                if self.preload_enabled
+                else True
+            )
             fetch_min_len = self.preload_min_len if self.preload_enabled else 1
-            fetch_order_desc = self.preload_order_desc if self.preload_enabled else True
+            fetch_order_desc = (
+                self.preload_order_desc if self.preload_enabled else True
+            )
 
             self.pstart(
                 task=task,
@@ -107,11 +137,14 @@ class ScorableLoaderAgent(BaseAgent, ProgressMixin):
 
             # If still empty, exit gracefully (prevents ZeroModel finalize crash)
             if not scorables:
-                self.logger.log("ScorableLoadEmpty", {
-                    "preload_enabled": self.preload_enabled,
-                    "fetch_total": fetch_total,
-                    "hint": "DB may be empty or filters too strict. Try preload.require_* = false."
-                })
+                self.logger.log(
+                    "ScorableLoadEmpty",
+                    {
+                        "preload_enabled": self.preload_enabled,
+                        "fetch_total": fetch_total,
+                        "hint": "DB may be empty or filters too strict. Try preload.require_* = false.",
+                    },
+                )
                 context[self.output_key] = []
                 context["retrieved_ids"] = []
                 return context
@@ -121,13 +154,15 @@ class ScorableLoaderAgent(BaseAgent, ProgressMixin):
         # ---------------------------------------
         if self.ab_enabled:
             goal_text = self._resolve_goal_text(context, scorables)
-            goal_vec = as_list_floats(self.memory.embedding.get_or_create(goal_text))
+            goal_vec = as_list_floats(
+                self.memory.embedding.get_or_create(goal_text)
+            )
 
             # build embeddings + similarity to goal once
             vecs: List[List[float]] = []
             sims: List[float] = []
             n_items = len(scorables)
-            task2 = f"Embeddings:{context.get('pipeline_run_id','na')}"
+            task2 = f"Embeddings:{context.get('pipeline_run_id', 'na')}"
             # start a dedicated progress task for this slow phase
             self.pstart(
                 task=task2,
@@ -143,11 +178,12 @@ class ScorableLoaderAgent(BaseAgent, ProgressMixin):
             tick_every = max(1, n_items // 50)
             done = 0
 
-
             for i, s in enumerate(scorables, 1):
                 txt = (s.get("text") or s.get("user_text") or "").strip()
                 # NOTE: keep as a single call; DB conn likely not thread-safe, so avoid threading here.
-                v = self.memory.embedding.get_or_create(txt[:4096] if txt else " ")
+                v = self.memory.embedding.get_or_create(
+                    txt[:4096] if txt else " "
+                )
                 s.setdefault("embeddings", {})["global"] = v
 
                 sim = cos_safe(v, goal_vec)
@@ -173,7 +209,9 @@ class ScorableLoaderAgent(BaseAgent, ProgressMixin):
             tgt_idxs = [i for i, s in enumerate(sims) if s >= tgt_thr_init]
             tgt_thr_final = tgt_thr_init
             if len(tgt_idxs) < self.ab_n_targeted:
-                step = max(0.02, (tgt_thr_init - 0.20) / max(1, self.ab_relax_steps))
+                step = max(
+                    0.02, (tgt_thr_init - 0.20) / max(1, self.ab_relax_steps)
+                )
                 thr = tgt_thr_init
                 for _ in range(self.ab_relax_steps):
                     thr = max(0.20, thr - step)
@@ -181,19 +219,31 @@ class ScorableLoaderAgent(BaseAgent, ProgressMixin):
                     if len(tgt_idxs) >= self.ab_n_targeted:
                         tgt_thr_final = thr
                         break
-            tgt_idxs = sorted(tgt_idxs, key=lambda i: sims[i], reverse=True)[: self.ab_n_targeted]
+            tgt_idxs = sorted(tgt_idxs, key=lambda i: sims[i], reverse=True)[
+                : self.ab_n_targeted
+            ]
             tgt_set = set(tgt_idxs)
 
             # BASELINE (low sim + diverse) — exclude targeted up-front
             base_thr_init = float(self.ab_baseline_max_sim)
-            base_pool = [i for i, s in enumerate(sims) if s <= base_thr_init and i not in tgt_set]
+            base_pool = [
+                i
+                for i, s in enumerate(sims)
+                if s <= base_thr_init and i not in tgt_set
+            ]
             base_thr_final = base_thr_init
             if len(base_pool) < self.ab_n_baseline:
-                step = max(0.02, (0.80 - base_thr_init) / max(1, self.ab_relax_steps))
+                step = max(
+                    0.02, (0.80 - base_thr_init) / max(1, self.ab_relax_steps)
+                )
                 thr = base_thr_init
                 for _ in range(self.ab_relax_steps):
                     thr = min(0.80, thr + step)
-                    base_pool = [i for i, s in enumerate(sims) if s <= thr and i not in tgt_set]
+                    base_pool = [
+                        i
+                        for i, s in enumerate(sims)
+                        if s <= thr and i not in tgt_set
+                    ]
                     if len(base_pool) >= self.ab_n_baseline:
                         base_thr_final = thr
                         break
@@ -203,18 +253,30 @@ class ScorableLoaderAgent(BaseAgent, ProgressMixin):
                 # use the globally lowest-sim items (excluding targeted)
                 remain = [i for i in idx_all if i not in tgt_set]
                 remain_sorted = sorted(remain, key=lambda i: sims[i])
-                base_pool = remain_sorted[: max(self.ab_n_baseline, len(remain_sorted))]
+                base_pool = remain_sorted[
+                    : max(self.ab_n_baseline, len(remain_sorted))
+                ]
 
             # Select baseline with diversity if enabled
             if self.ab_ensure_diversity and base_pool:
                 task = "FPS-SelectBaseline"
                 k_baseline = min(self.ab_n_baseline, len(base_pool))
-                self.pstart(task=task, total=k_baseline, meta={"candidates": len(base_pool)})
+                self.pstart(
+                    task=task,
+                    total=k_baseline,
+                    meta={"candidates": len(base_pool)},
+                )
 
                 def _tick(step, total):
                     self.ptick(task=task, done=step, total=total)
 
-                base_idxs = farthest_point_sample(base_pool, vecs, k_baseline, seed=self.ab_seed, progress=_tick)
+                base_idxs = farthest_point_sample(
+                    base_pool,
+                    vecs,
+                    k_baseline,
+                    seed=self.ab_seed,
+                    progress=_tick,
+                )
                 self.pdone(task=task)
             else:
                 rng = random.Random(self.ab_seed)
@@ -225,64 +287,96 @@ class ScorableLoaderAgent(BaseAgent, ProgressMixin):
             # Paranoid disjointness guard + final top-up
             base_idxs = [i for i in base_idxs if i not in tgt_set]
             if len(base_idxs) < self.ab_n_baseline:
-                extra = [i for i in idx_all if i not in tgt_set and i not in set(base_idxs)]
-                base_idxs.extend(extra[: (self.ab_n_baseline - len(base_idxs))])
+                extra = [
+                    i
+                    for i in idx_all
+                    if i not in tgt_set and i not in set(base_idxs)
+                ]
+                base_idxs.extend(
+                    extra[: (self.ab_n_baseline - len(base_idxs))]
+                )
 
             # Diagnostics
             overlap = set(tgt_idxs) & set(base_idxs)
-            def _stats(idxs):
-                if not idxs: return {"n":0,"mean":0.0,"p50":0.0,"p90":0.0}
-                vals = sorted(float(sims[i]) for i in idxs)
-                n = len(vals); p50 = vals[n//2]; p90 = vals[min(n-1, int(round(0.90*(n-1))))]
-                return {"n": n, "mean": sum(vals)/n, "p50": p50, "p90": p90}
-            st_t, st_b = _stats(tgt_idxs), _stats(base_idxs)
-            jaccard = (len(overlap) / max(1, len(set(tgt_idxs) | set(base_idxs)))) if (tgt_idxs or base_idxs) else 0.0
 
-            self.logger.log("ABSplitSummary", {
-                "targeted_thr_init": tgt_thr_init, "targeted_thr_final": tgt_thr_final,
-                "baseline_thr_init": base_thr_init, "baseline_thr_final": base_thr_final,
-                "targeted_stats": st_t, "baseline_stats": st_b,
-                "overlap_count": len(overlap), "jaccard": jaccard,
-            })
+            def _stats(idxs):
+                if not idxs:
+                    return {"n": 0, "mean": 0.0, "p50": 0.0, "p90": 0.0}
+                vals = sorted(float(sims[i]) for i in idxs)
+                n = len(vals)
+                p50 = vals[n // 2]
+                p90 = vals[min(n - 1, int(round(0.90 * (n - 1))))]
+                return {"n": n, "mean": sum(vals) / n, "p50": p50, "p90": p90}
+
+            st_t, st_b = _stats(tgt_idxs), _stats(base_idxs)
+            jaccard = (
+                (len(overlap) / max(1, len(set(tgt_idxs) | set(base_idxs))))
+                if (tgt_idxs or base_idxs)
+                else 0.0
+            )
+
+            self.logger.log(
+                "ABSplitSummary",
+                {
+                    "targeted_thr_init": tgt_thr_init,
+                    "targeted_thr_final": tgt_thr_final,
+                    "baseline_thr_init": base_thr_init,
+                    "baseline_thr_final": base_thr_final,
+                    "targeted_stats": st_t,
+                    "baseline_stats": st_b,
+                    "overlap_count": len(overlap),
+                    "jaccard": jaccard,
+                },
+            )
 
             # materialize sets
             scorables_targeted = [scorables[i] for i in tgt_idxs]
             scorables_baseline = [scorables[i] for i in base_idxs]
 
-
             # expose both sets; keep the union in 'scorables' for backward-compat
             context["scorables_targeted"] = scorables_targeted
             context["scorables_baseline"] = scorables_baseline
             context[self.output_key] = scorables_targeted + scorables_baseline
-            context["retrieved_ids"] = [d.get("scorable_id") for d in (scorables_targeted + scorables_baseline)]
+            context["retrieved_ids"] = [
+                d.get("scorable_id")
+                for d in (scorables_targeted + scorables_baseline)
+            ]
 
-            self.logger.log("ABSelectCompleted", {
-                "n_total": len(scorables),
-                "goal_text": (goal_text or "")[:120],
-                "targeted_min_sim": self.ab_targeted_min_sim,
-                "baseline_max_sim": self.ab_baseline_max_sim,
-                "n_targeted": len(scorables_targeted),
-                "n_baseline": len(scorables_baseline),
-                "relaxed": (len(tgt_idxs) < self.ab_n_targeted) or (len(base_idxs) < self.ab_n_baseline),
-            })
+            self.logger.log(
+                "ABSelectCompleted",
+                {
+                    "n_total": len(scorables),
+                    "goal_text": (goal_text or "")[:120],
+                    "targeted_min_sim": self.ab_targeted_min_sim,
+                    "baseline_max_sim": self.ab_baseline_max_sim,
+                    "n_targeted": len(scorables_targeted),
+                    "n_baseline": len(scorables_baseline),
+                    "relaxed": (len(tgt_idxs) < self.ab_n_targeted)
+                    or (len(base_idxs) < self.ab_n_baseline),
+                },
+            )
 
             if self.save_pipeline_refs:
                 for d in scorables_targeted:
-                    self.memory.pipeline_references.insert({
-                        "pipeline_run_id": context.get("pipeline_run_id"),
-                        "scorable_type": d["scorable_type"],
-                        "scorable_id": d["scorable_id"],
-                        "relation_type": "retrieved_targeted",
-                        "source": self.name,
-                    })
+                    self.memory.pipeline_references.insert(
+                        {
+                            "pipeline_run_id": context.get("pipeline_run_id"),
+                            "scorable_type": d["scorable_type"],
+                            "scorable_id": d["scorable_id"],
+                            "relation_type": "retrieved_targeted",
+                            "source": self.name,
+                        }
+                    )
                 for d in scorables_baseline:
-                    self.memory.pipeline_references.insert({
-                        "pipeline_run_id": context.get("pipeline_run_id"),
-                        "scorable_type": d["scorable_type"],
-                        "scorable_id": d["scorable_id"],
-                        "relation_type": "retrieved_baseline",
-                        "source": self.name,
-                    })
+                    self.memory.pipeline_references.insert(
+                        {
+                            "pipeline_run_id": context.get("pipeline_run_id"),
+                            "scorable_type": d["scorable_type"],
+                            "scorable_id": d["scorable_id"],
+                            "relation_type": "retrieved_baseline",
+                            "source": self.name,
+                        }
+                    )
 
             return context
 
@@ -314,7 +408,9 @@ class ScorableLoaderAgent(BaseAgent, ProgressMixin):
         return context
 
     # ------------- internals -------------
-    def _resolve_goal_text(self, context: dict, scorables: List[Dict[str, Any]]) -> str:
+    def _resolve_goal_text(
+        self, context: dict, scorables: List[Dict[str, Any]]
+    ) -> str:
         # 1) explicit goal
         gx = context.get("goal") or {}
         gtxt = (gx.get("goal_text") or "").strip()
@@ -332,4 +428,3 @@ class ScorableLoaderAgent(BaseAgent, ProgressMixin):
             if ut:
                 return ut
         return "default target"
-

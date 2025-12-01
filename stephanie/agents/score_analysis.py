@@ -13,10 +13,8 @@ class ScoreAnalysisAgent(BaseAgent):
         self.logger.log("AgentInit", {"agent": "ScoreAnalysisAgent"})
 
     async def run(self, context: dict) -> dict:
-        # pipeline_run_id = 1061
         pipeline_run_id = context.get("pipeline_run_id")
-        self.logger.log("ScoreAnalysisStarted", {"pipeline_run_id": pipeline_run_id})
-
+ 
         # Fetch all EvaluationORM entries
         raw_scores = self.memory.evaluations.get_by_pipeline_run_id(pipeline_run_id)
         if not raw_scores:

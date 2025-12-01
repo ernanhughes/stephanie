@@ -24,7 +24,7 @@ from functools import wraps
 from typing import Any, Dict, List, Callable
 
 import numpy as np
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field
 
 from .membrane import BoundaryState, Membrane, MembraneSnapshot
 

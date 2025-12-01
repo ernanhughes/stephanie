@@ -43,7 +43,7 @@ class SRFTRefinementTrainer(BaseAgent, EBTMixin):
         """
         model = EBTModel().to(self.device)
         model.train()
-        optimizer = optim.Adam(model.parameters(), lr=self.lr)
+        optimizer = optim.Adam(model.parameters(), lr=self.lr, weight_decay=1e-5)
 
         # Prepare dataset and dataloader
         dataset = SRFTRefinementDataset(examples, min_value, max_value)
@@ -51,7 +51,8 @@ class SRFTRefinementTrainer(BaseAgent, EBTMixin):
             dataset,
             batch_size=self.batch_size,
             shuffle=True,
-            collate_fn=lambda b: dataset.collate_fn(b, self.memory.embedding, self.device)
+            collate_fn=lambda b: dataset.collate_fn(b, self.memory.embedding, self.device),
+            num_workers=2,
         )
 
         sft_weight = 0.7

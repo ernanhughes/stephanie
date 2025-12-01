@@ -216,7 +216,7 @@ async def api_rescore(request: Request, case_id: str):
         
 
         # Trigger rescoring (this would call your UniversalScorerAgent or similar)
-        from stephanie.agents.scorable_loader_agent import ScorableLoaderAgent
+        from stephanie.agents.scorable_loader import ScorableLoaderAgent
         
         # Create agent instance
         agent = ScorableLoaderAgent(
