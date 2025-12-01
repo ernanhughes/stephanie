@@ -6,6 +6,7 @@ from typing import List
 from stephanie.memcube.world_model import WorldModel
 from stephanie.models.belief import BeliefORM
 
+import networkx as nx
 
 class GoalDirectedPlanner:
     def __init__(self, world_model: WorldModel):

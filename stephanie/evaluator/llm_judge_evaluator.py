@@ -6,6 +6,8 @@ import re
 from stephanie.evaluator.base import BaseEvaluator
 from stephanie.prompts import PromptLoader
 
+from stephanie.utils.llm_utils import remove_think_blocks
+
 
 class LLMJudgeEvaluator(BaseEvaluator):
     def __init__(self, cfg, llm_cfg, prompt_file, llm, logger):
@@ -147,6 +149,3 @@ def parse_response(response: str):
         "score_b": int(score_b_match.group(1)) if score_b_match else 0,
     }
 
-
-def remove_think_blocks(text: str) -> str:
-    return re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()

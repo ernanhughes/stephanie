@@ -11,10 +11,7 @@ from stephanie.constants import (API_BASE, API_KEY, NAME, PROMPT_PATH,
                                  SAVE_PROMPT, STRATEGY)
 from stephanie.services.service_protocol import Service
 
-
-def _remove_think_blocks(text: str) -> str:
-    return re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
-
+from stephanie.utils.llm_utils import remove_think_blocks
 
 class LLMService(Service):
     """
@@ -97,7 +94,7 @@ class LLMService(Service):
             agent_cfg=resolved_cfg,
         )
         if cached_text is not None:
-            out = _remove_think_blocks(cached_text) if remove_think else cached_text
+            out = remove_think_blocks(cached_text) if remove_think else cached_text
             if add_to_history:
                 self._append_prompt_history(context, agent_name, prompt, {"response": out}, preferences)
             return {"text": out, "model_name": props.get(NAME), "cached": True}
@@ -112,7 +109,7 @@ class LLMService(Service):
                 api_key=props.get(API_KEY, ""),
             )
             output = resp["choices"][0]["message"]["content"]
-            text = _remove_think_blocks(output) if remove_think else output
+            text = remove_think_blocks(output) if remove_think else output
 
             # Persist prompt/response if enabled
             self._maybe_persist_prompt(
@@ -159,7 +156,7 @@ class LLMService(Service):
                 api_key=props.get(API_KEY, ""),
             )
             output = resp["choices"][0]["message"]["content"]
-            text = _remove_think_blocks(output) if remove_think else output
+            text = remove_think_blocks(output) if remove_think else output
 
             if add_to_history:
                 # Store only the last user prompt + output pair

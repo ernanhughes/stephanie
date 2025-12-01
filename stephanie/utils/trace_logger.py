@@ -6,19 +6,13 @@ import sys
 import threading
 import time
 from contextlib import contextmanager
-from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional, Protocol, Union
 
 from stephanie.utils.date_utils import iso_now
 from stephanie.utils.json_sanitize import dumps_safe, sanitize
 
-# If you have a canonical PlanTrace dataclass you can keep this import;
-# the logger works fine even without it (structural typing below).
-try:
-    from stephanie.data.plan_trace import PlanTrace  # noqa: F401
-except Exception:
-    PlanTrace = None  # type: ignore
+from stephanie.data.plan_trace import PlanTrace  # noqa: F401
 
 
 class _PlanTraceLike(Protocol):
@@ -349,6 +343,3 @@ def attach_to_app(app, *, jsonl_path: Optional[str] = None, enable_stdout: Optio
     )
     setattr(app.state, "trace_logger", tl)
     return tl
-
-
-__all__ = ["TraceLogger", "trace_logger", "get_trace_logger", "attach_to_app"]
