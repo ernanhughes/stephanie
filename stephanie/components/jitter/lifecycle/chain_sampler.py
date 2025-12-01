@@ -11,17 +11,6 @@ from PIL import Image
 from stephanie.components.nexus.utils.visual_thought import (VisualThoughtOp,
                                                              VisualThoughtType)
 
-__all__ = [
-    "ChainStep",
-    "ChainResult",
-    "ChainCandidate",
-    "VISUAL_TRIGGER_WORDS",
-    "default_visual_bootstrap_ops",
-    "detect_visual_triggers",
-    "diversified_samples",
-    "basic_selector_sicql_hrm_mars",
-]
-
 # ---------- Types you adapt/bridge ----------
 @dataclass
 class ChainStep:
@@ -157,3 +146,40 @@ def basic_selector_sicql_hrm_mars(cands: List[ChainCandidate]) -> ChainCandidate
         return sum(vals) / max(1, len(vals))
 
     return max(cands, key=lambda c: fused_score(c.result))
+
+def run_chain_with_visual_injection(
+    underlying_runner: Callable[[str, Optional[Image.Image], int], ChainResult],
+    question: str,
+    image: Optional[Image.Image],
+    force_visual: bool,
+    seed: int,
+) -> ChainResult:
+    """
+    If force_visual, prepend a step with a deterministic visual op set.
+    Assumes underlying_runner accepts (question, image, seed) and returns ChainResult.
+    """
+    res = underlying_runner(question, image, seed)
+    if not force_visual or image is None:
+        return res
+
+    # Inject a bootstrap step if first step has no visual ops
+    if not res.steps or (res.steps and not res.steps[0].visual_ops):
+        ops: list[VisualThoughtOp] = default_visual_bootstrap_ops(image)
+        injected = ChainStep(text="(visual-thought bootstrap)", visual_ops=ops)
+        res.steps = [injected] + res.steps
+        # Optional: adjust scores/metadata to reflect interleaving
+        res.meta = {**res.meta, "forced_visual_bootstrap": True}
+    return res
+
+
+def make_run_chain_fn(underlying_runner: Callable[[str, Optional[Image.Image], int], ChainResult]):
+    def run_chain_fn(question: str, image: Optional[Image.Image], force_visual: bool, seed: int) -> ChainResult:
+        res = underlying_runner(question, image, seed)
+        if force_visual and image is not None:
+            if not res.steps or not res.steps[0].visual_ops:
+                ops: list[VisualThoughtOp] = default_visual_bootstrap_ops(image)
+                injected = ChainStep(text="(visual-thought bootstrap)", visual_ops=ops)
+                res.steps = [injected] + res.steps
+                res.meta = {**(res.meta or {}), "forced_visual_bootstrap": True}
+        return res
+    return run_chain_fn

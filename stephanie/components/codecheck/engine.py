@@ -14,6 +14,7 @@ from stephanie.models.base_config import BaseConfig
 
 log = logging.getLogger(__name__)
 
+VIBE_INSTRUCTION_COMPLIANCE = "vibe.instruction_compliance"
 
 @dataclass
 class CodeCheckConfig(BaseConfig):
@@ -39,7 +40,7 @@ class CodeCheckConfig(BaseConfig):
             "security.bandit": 0.4,
             "readability.ruff": 0.3,
             "test_coverage": 0.2,
-            "vibe.instruction_compliance": 0.1,
+            VIBE_INSTRUCTION_COMPLIANCE: 0.1,
         },
         metadata={"help": "Weights for combining individual metrics into a composite score."},
     )
@@ -130,9 +131,6 @@ class CodeCheckEngine:
     """
 
     def __init__(self, cfg: CodeCheckConfig, memory, container, logger):
-        # BaseAgent will typically stash cfg/memory/container/logger for you
-
-        # Keep explicit typed handles for clarity
         self.cfg: CodeCheckConfig = cfg
         self.memory = memory
         self.container = container
@@ -148,7 +146,7 @@ class CodeCheckEngine:
         # Placeholder for CodeGraph (Phase 1)
         self.code_graph: Optional[Any] = None
 
-    # ------------------------------------------------------------------ public API
+    #  public API
 
     async def run(self, *args, **kwargs) -> str:
         """
@@ -231,7 +229,7 @@ class CodeCheckEngine:
                     continue
 
                 files_with_metrics += 1
-                vibe_sum += float(metric_vector.get("vibe.instruction_compliance", 0.0))
+                vibe_sum += float(metric_vector.get(VIBE_INSTRUCTION_COMPLIANCE, 0.0))
                 security_sum += float(metric_vector.get("security.bandit_high", 0.0))
                 readability_sum += float(metric_vector.get("readability.ruff_style", 0.0))
 
@@ -333,7 +331,7 @@ class CodeCheckEngine:
         semantic_risk = 0.0
 
         return {
-            "vibe.instruction_compliance": vibe_score,
+            VIBE_INSTRUCTION_COMPLIANCE: vibe_score,
             "security.bandit_high": security_issues,
             "readability.ruff_style": readability_issues,
             "semantic.risk": semantic_risk,
