@@ -5,7 +5,6 @@ import re
 
 from stephanie.evaluator.base import BaseEvaluator
 from stephanie.prompts import PromptLoader
-
 from stephanie.utils.llm_utils import remove_think_blocks
 
 

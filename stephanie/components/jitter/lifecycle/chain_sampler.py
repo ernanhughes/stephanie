@@ -11,6 +11,7 @@ from PIL import Image
 from stephanie.components.nexus.utils.visual_thought import (VisualThoughtOp,
                                                              VisualThoughtType)
 
+
 # ---------- Types you adapt/bridge ----------
 @dataclass
 class ChainStep:

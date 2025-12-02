@@ -1,6 +1,8 @@
 # stephanie/scoring/scorer/knowledge_relevance_scorer.py
 from __future__ import annotations
+
 import re
+
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.data.score_result import ScoreResult
 from stephanie.scoring.scorable import Scorable, ScorableFactory

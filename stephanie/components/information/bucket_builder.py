@@ -4,12 +4,13 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
-from stephanie.components.information.models import Bucket, BucketEdge, BucketNode
+from stephanie.components.information.models import (Bucket, BucketEdge,
+                                                     BucketNode)
 from stephanie.components.information.source_profile import SourceProfile
 from stephanie.memory.memcube_store import MemCubeStore
 from stephanie.tools.arxiv_tool import search_arxiv
-from stephanie.tools.wikipedia_tool import WikipediaTool
 from stephanie.tools.web_search import WebSearchTool
+from stephanie.tools.wikipedia_tool import WikipediaTool
 from stephanie.utils.date_utils import iso_now
 
 

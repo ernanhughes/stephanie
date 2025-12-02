@@ -5,7 +5,6 @@ from typing import Any, Dict
 
 from stephanie.models.memcube import MemCubeORM
 
-
 CORE_INFO_METRICS = {
     # adjust to match your actual metric names from ScorableProcessor
     "clarity",

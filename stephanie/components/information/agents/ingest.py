@@ -1,5 +1,7 @@
 # stephanie/agents/information_ingest.py
 from __future__ import annotations
+from stephanie.components.information.graph_builder import InformationGraphBuilder
+from stephanie.components.information.quality import InformationQualityPass
 
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
@@ -75,6 +77,13 @@ class InformationIngestAgent(BaseAgent):
             container=container,
             logger=logger,
         )
+
+        kg = self.container.get("knowledge_graph") 
+        self.graph_builder = InformationGraphBuilder(
+            knowledge_graph_service=kg,  # or however you access it
+            logger=logger,
+        )
+
 
     # ------------------------------------------------------------------
     # Public entry
@@ -216,9 +225,26 @@ class InformationIngestAgent(BaseAgent):
             info_request
         )
 
-        log.info("markdown_path: %s", info_result.markdown_path)
+        print(info_result.markdown_path)
         
-        # 6) Assemble compact summary for the caller
+        # 6) Build knowledge graph entries
+        try:
+            self.graph_builder.build_from_information(info_request, info_result)
+        except Exception as e:
+            self.logger.log(
+                "InformationIngest_GraphBuilderError",
+                {"error": repr(e)},
+            )
+
+        quality_pass = InformationQualityPass(memcube_store=self.memory.memcubes, logger=self.logger)
+
+        # For a single cube
+        quality_pass.run_for_memcube_id(info_result.memcube_id)
+
+ 
+
+
+        # 7) Assemble compact summary for the caller
         result_summary = {
             "document_id": doc_id,
             "title": title,

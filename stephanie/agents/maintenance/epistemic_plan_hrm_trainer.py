@@ -12,15 +12,12 @@ from torch.utils.data import DataLoader, TensorDataset
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.data.plan_trace import PlanTrace
-from stephanie.scoring.model.epistemic_trace_encoder import (
-    EpistemicTraceEncoder,
-)
+from stephanie.scoring.model.epistemic_trace_encoder import \
+    EpistemicTraceEncoder
 from stephanie.scoring.model.hrm_model import HRMModel
 from stephanie.scoring.model.model_locator_mixin import ModelLocatorMixin
-from stephanie.utils.trace_utils import (
-    get_trace_score_stats,
-    load_plan_traces_from_export_dir,
-)
+from stephanie.utils.trace_utils import (get_trace_score_stats,
+                                         load_plan_traces_from_export_dir)
 
 
 class EpistemicPlanHRMTrainerAgent(ModelLocatorMixin, BaseAgent):
@@ -394,9 +391,8 @@ class EpistemicPlanHRMTrainerAgent(ModelLocatorMixin, BaseAgent):
 
     def _save_model(self):
         """Saves the trained HRM model components using the Locator."""
-        from stephanie.utils.file_utils import (
-            save_json,
-        )  # Assuming this utility exists
+        from stephanie.utils.file_utils import \
+            save_json  # Assuming this utility exists
 
         for dimension in self.dimensions:
             locator = self.get_locator(

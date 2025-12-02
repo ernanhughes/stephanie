@@ -3,10 +3,11 @@ from __future__ import annotations
 
 from typing import List
 
+import networkx as nx
+
 from stephanie.memcube.world_model import WorldModel
 from stephanie.models.belief import BeliefORM
 
-import networkx as nx
 
 class GoalDirectedPlanner:
     def __init__(self, world_model: WorldModel):

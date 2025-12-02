@@ -184,8 +184,6 @@ class MemCubeStore(BaseSQLAlchemyStore):
     ) -> MemCubeORM:
         # composite uniqueness: (scorable_id, scorable_type, dimension, version)
         def op(s):
-            if not data.get("version"):
-                data["version"] = "v1"
             existing = (
                 s.query(MemCubeORM)
                 .filter_by(

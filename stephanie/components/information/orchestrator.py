@@ -5,15 +5,14 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
 from stephanie.components.information.bucket_builder import BucketBuilder
-from stephanie.components.information.info_casebook_adapter import (
-    InfoCaseBookAdapter,
-)
-from stephanie.components.information.info_scorable_adapter import (
-    score_memcube_and_attach_attributes,
-)
+from stephanie.components.information.info_casebook_adapter import \
+    InfoCaseBookAdapter
+from stephanie.components.information.info_scorable_adapter import \
+    score_memcube_and_attach_attributes
 from stephanie.components.information.memcube_builder import MemCubeBuilder
 from stephanie.components.information.models import InformationBuildResult
 from stephanie.components.information.source_profile import SourceProfile
+
 
 @dataclass
 class InformationOrchestratorConfig:
