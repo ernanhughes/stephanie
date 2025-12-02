@@ -678,9 +678,8 @@ class CaseBookStore(BaseSQLAlchemyStore):
         casebook_id: int,
         goal_id: str,
         agent_name: str,
-        goal_text: Optional[str] = None,
-        mars_summary: Optional[str] = None,
-        scores: Optional[dict] = None,
+        name: Optional[str] = None,          # NEW
+        description: Optional[str] = None,  
         scorables: Optional[list[dict]] = None,
         prompt_text: Optional[str] = None,
         meta: Optional[dict] = None,
@@ -691,6 +690,8 @@ class CaseBookStore(BaseSQLAlchemyStore):
                 casebook_id=casebook_id,
                 goal_id=goal_id,
                 agent_name=agent_name,
+                name=name,
+                description=description, 
                 prompt_text=prompt_text,
                 meta=meta or {},
             )

@@ -1,0 +1,105 @@
+defaults:
+  - _self_
+  - db: postgres
+  - bus: disabled
+  - plan_monitor: disabled
+  - logging: json_logger
+  - services: all
+  - scorer: all
+
+  # Critic pipeline agents
+  - agents/ingest
+  - agents/critic_data
+  - agents/critic_dataset
+  - agents/critic_trainer
+  - agents/critic_scorer
+  - agents/critic_inference
+  - agents/critic_loader
+  - agents/critic_improver
+  - agents/critic_evaluation
+
+
+embeddings:
+  backend: hnet
+
+
+# ---------------------------------------------------------------------
+# High-level goal conditioning: why we are running this pipeline
+# ---------------------------------------------------------------------
+goal:
+  source: "driver"
+  goal_type: "tactical"
+  goal_category: "visual_graph_memory"
+
+  # ✦ NEW: Cleaner narrative explaining why this pipeline exists ✦
+  goal_text: >
+    Evaluate and refine Stephanie’s internal critic by constructing a
+    VisiCalc-based cohort analysis across chat turns, identifying stable
+    high-signal behavioral features, training a compact critic model, and
+    validating its predictive power via HRM/SICQL/EBT agreement. Produce a
+    full lifecycle artifact set (raw → metrics → VPM → cohort summaries →
+    critic model → improvement deltas) that together form a self-improving
+    feedback loop.
+
+  strategy:
+    - "cohort_metric_analysis"        # VisiCalc → baseline → targeted
+    - "critic_training"               # Train TinyCritic on extracted features
+    - "model_evaluation"              # HRM + SICQL + EBT cross-checks
+    - "visual_reasoning"              # VPM and color-normalized A/B frames
+    - "feedback_integration"          # Update scorer configs & calibration
+
+  expected_formats:
+    - "visicalc_report_json"
+    - "visicalc_feature_matrix"
+    - "critic_dataset_csv"
+    - "critic_model_joblib"
+    - "critic_cross_validation_md"
+    - "ab_vpm_filmstrip"
+    - "model_quality_metrics_json"
+
+  success_criteria:
+    min_goal_alignment_improvement: 0.05
+    min_signal_lift_p80: 0.05
+    require_cross_model_agreement: true
+    prefer_low_variance_visicalc_features: true
+
+  scorer_signals:
+    - "SICQL"
+    - "EBT"
+    - "HRM"
+
+  calibration:
+    color_scale: "global_full_pipeline"
+    winsorize_pct: 1.0
+
+
+paths:
+  prompts: ${hydra:runtime.cwd}/prompts
+
+report:
+  generate_report: true
+  path: ${hydra:runtime.cwd}/reports
+
+
+# ---------------------------------------------------------------------
+# Pipeline execution graph (linear, but goals-aware)
+# ---------------------------------------------------------------------
+pipeline:
+  name: critic_training
+  tag: critic_training
+  description: >
+    Extract, diagnose, train, validate, and apply a Critic model using
+    Frontier-derived structural metrics to understand how Stephanie evaluates
+    knowledge, alignment, and reasoning quality in chat turns.
+
+  stages:
+
+    # ---------------------------------------------------------------
+    - name: ingest
+      description: >
+        Pull raw signal data from Huggingface or other sources. This builds
+        the foundational corpus of scorables used by VisiCalc.
+      cls: stephanie.components.information.agents.ingest.InformationIngestAgent
+      enabled: true
+      iterations: 1
+
