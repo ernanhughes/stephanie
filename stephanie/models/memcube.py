@@ -52,8 +52,6 @@ class MemCubeORM(Base):
             "sensitivity": self.sensitivity,
             "ttl": self.ttl,
             "usage_count": self.usage_count,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-            "last_modified": self.last_modified.isoformat() if self.last_modified else None,
         }
         if include_extra:
             data["extra_data"] = self.extra_data or {}

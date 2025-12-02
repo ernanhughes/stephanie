@@ -85,7 +85,11 @@ class InformationQualityPass:
 
         updated_extra = self._score_sources_for_cube(cube)
         cube.extra_data = updated_extra
-        self.memcubes.upsert(cube)
+        data = cube.to_dict(include_extra=True)
+        data["extra_data"] = updated_extra
+
+        self.memcubes.upsert(data, merge_extra=False)
+
 
         log.info("updated memcube_id %s %s ", memcube_id, updated_extra.get("info_blog_ready_level")           )
 
