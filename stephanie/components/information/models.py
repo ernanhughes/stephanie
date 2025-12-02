@@ -82,6 +82,7 @@ class InformationResult:
 
     goal_id: Optional[int] = None
     casebook_id: Optional[int] = None
+    markdown_path: Optional[str] = None
 
     extra: Dict[str, Any] = field(default_factory=dict)
 

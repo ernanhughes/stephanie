@@ -5,13 +5,17 @@ from dataclasses import asdict
 from datetime import datetime
 from typing import Any, Dict, Optional
 
+from stephanie.utils.date_utils import iso_now
+import os
+
 from .models import (
     InformationSource,
     InformationTargetConfig,
     InformationRequest,
     InformationResult,
 )
-
+import re
+from pathlib import Path
 
 class InformationProcessor:
     """
@@ -89,7 +93,15 @@ class InformationProcessor:
         if self.memcubes is not None and target.kind.lower() == "memcube":
             memcube_id = self._upsert_memcube(topic, primary, blog_markdown, request)
 
-        # 3) Construct result
+        # 3) Export markdown to file (optional)
+        markdown_path = self._export_markdown_file(
+            topic=topic,
+            blog_markdown=blog_markdown,
+            primary=primary,
+            request=request,
+        )
+
+        # 4) Construct result
         result = InformationResult(
             memcube_id=memcube_id,
             bucket_id=None,  # placeholder for future bucket / Nexus integration
@@ -97,10 +109,11 @@ class InformationProcessor:
             topic=topic,
             goal_id=goal_id,
             casebook_id=casebook_id,
+            markdown_path=markdown_path,
             extra={
                 "source_meta": primary.meta,
                 "target_meta": target.meta,
-                "created_at": datetime.utcnow().isoformat() + "Z",
+                "created_at":  iso_now(),
             },
         )
 
@@ -119,6 +132,104 @@ class InformationProcessor:
     # ------------------------------------------------------------------
     # Markdown builder
     # ------------------------------------------------------------------
+
+    def _slugify(self, text: str) -> str:
+        text = text.strip().lower()
+        text = re.sub(r"[^a-z0-9]+", "-", text)
+        text = re.sub(r"-+", "-", text).strip("-")
+        return text or "post"
+
+    def _build_front_matter(
+        self,
+        topic: str,
+        primary: InformationSource,
+        request: InformationRequest,
+    ) -> str:
+        """
+        Build Hugo-style TOML front matter, matching your existing posts.
+
+        Example:
+
+        +++
+        date = '2025-08-11T22:41:43+01:00'
+        draft = false
+        title = "ZeroModel: Visual AI you can scrutinize"
+        thumbnail = '/img/zeromodel.png'
+        categories = [...]
+        tags = [...]
+        +++
+        """
+        now_iso = datetime.utcnow().isoformat() + "Z"
+        target = request.target
+        meta = target.meta or {}
+
+        # fallback fields
+        title = topic
+        thumbnail = meta.get("thumbnail", "/img/default.png")
+        categories = meta.get("categories", ["Information", "Stephanie"])
+        tags = meta.get("tags", meta.get("domains", [])) or ["information_ingest"]
+
+        # TOML front matter
+        lines = [
+            "+++",
+            f"date = '{now_iso}'",
+            "draft = true",  # first version is always a draft
+            f"title = '{title}'",
+            f"thumbnail = '{thumbnail}'",
+            "+++",
+        ]
+
+        if categories:
+            cat_items = ", ".join(f'"{c}"' for c in categories)
+            lines.append(f"categories = [{cat_items}]")
+
+        if tags:
+            tag_items = ", ".join(f'"{t}"' for t in tags)
+            lines.append(f"tags = [{tag_items}]")
+
+        lines.append("+++")
+        return "\n".join(lines)
+
+    def _export_markdown_file(
+        self,
+        topic: str,
+        blog_markdown: str,
+        primary: InformationSource,
+        request: InformationRequest,
+    ) -> Optional[str]:
+        """
+        If enabled in cfg, write a Hugo-friendly .md file to disk and return its path.
+
+        Config keys used:
+          - export_markdown: bool
+          - export_dir: str (directory for generated posts)
+        """
+        if not self.cfg.get("export_markdown", False):
+            return None
+
+        export_dir = self.cfg.get("export_dir", "blog_drafts")
+        out_dir = Path(export_dir)
+        out_dir.mkdir(parents=True, exist_ok=True)
+
+        slug = self._slugify(topic)
+        date_prefix = datetime.utcnow().strftime("%Y-%m-%d")
+        filename = f"{date_prefix}-{slug}.md"
+        path = out_dir / filename
+
+        front_matter = self._build_front_matter(topic, primary, request)
+        full_text = f"{front_matter}\n\n{blog_markdown}"
+
+        os.makedirs(out_dir, exist_ok=True)
+        path.write_text(full_text, encoding="utf-8")
+        print(f"Exported markdown to {path}")
+
+        if self.logger:
+            self.logger.log(
+                "InformationProcessor_MarkdownExported",
+                {"topic": topic, "path": str(path)},
+            )
+
+        return str(path)
 
     def _build_markdown(
         self,

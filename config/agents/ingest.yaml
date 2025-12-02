@@ -28,6 +28,9 @@ ingest:
     # Which source profile to use (maps to SourceProfile.for_name)
     source_profile: research_web_mixed   # internal_only | web_light | research_web_mixed
 
+    export_markdown: true
+    export_dir: "runs/post/generated"   # or "blog_drafts"
+
     # Target for the build (MemCube with blog-view enabled)
     target: memcube_blog_post
 

@@ -22,7 +22,9 @@ from stephanie.components.information.models import (
     InformationResult,
 )
 from stephanie.components.information.processor import InformationProcessor
+import logging
 
+log = logging.getLogger(__name__)
 
 @dataclass
 class InformationIngestConfig:
@@ -214,6 +216,8 @@ class InformationIngestAgent(BaseAgent):
             info_request
         )
 
+        log.info("markdown_path: %s", info_result.markdown_path)
+        
         # 6) Assemble compact summary for the caller
         result_summary = {
             "document_id": doc_id,
@@ -224,6 +228,7 @@ class InformationIngestAgent(BaseAgent):
             "blog_markdown": info_result.blog_markdown,
             "bucket_id": info_result.bucket_id,
             "section_count": len(section_cases),
+            "markdown_path": info_result.markdown_path,
         }
 
         self.logger.log(
