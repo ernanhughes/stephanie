@@ -47,7 +47,8 @@ class InformationProcessor:
         # Enrichment config (what "similar data" to pull in).
         enrich = self.cfg.get("enrich", {})
         self.enrich_arxiv: bool = bool(enrich.get("enable_arxiv", True))
-        self.enrich_wiki: bool = bool(enrich.get("enable_wikipedia", True))
+        # Wikipedia enrichment is off by default to reduce API load and generally poor results.
+        self.enrich_wiki: bool = bool(enrich.get("enable_wikipedia", False))
         self.enrich_web: bool = bool(enrich.get("enable_web", True))
 
         self.max_results_arxiv: int = int(enrich.get("max_results_arxiv", 3))

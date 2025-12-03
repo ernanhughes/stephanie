@@ -623,16 +623,15 @@ class MementoAgent(MCTSReasoningAgent):
             case = self.memory.casebooks.add_case(
                 casebook_id=home_casebook_id,
                 goal_id=goal["id"],
-                goal_text=goal["goal_text"],
-                agent_name=self.__class__.__name__,
-                mars_summary=mars_results,
-                scores=scores_payload,
+                agent_name=self.name,
+                scorables=scorables_payload,
                 meta={
                     "pipeline_run_id": context.get(PIPELINE_RUN_ID),
                     "casebook_tag": self._casebook_tag_runtime,
                     "hypothesis_count": len(ranked),
+                    "mars_summary": mars_results,
+                    "scores": scores_payload,
                 },
-                scorables=scorables_payload,
             )
             self.logger.log(
                 "CBRRetain", {"case_id": case.id, "goal_id": goal["id"]}

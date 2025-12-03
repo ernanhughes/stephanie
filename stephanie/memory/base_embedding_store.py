@@ -33,7 +33,7 @@ def _build_ner_retriever(cfg, memory, logger):
         model_name=model_name,
         layer=cfg.get("ner_layer", 17),
         device=device,
-        embedding_dim=cfg.get("ner_dim", 2048),
+        embedding_dim=cfg.get("ner_dim", 1024),
         index_path=cfg.get("ner_index_path", "data/ner_retriever/index"),
         logger=logger,
         memory=memory,
@@ -122,7 +122,7 @@ class BaseEmbeddingStore(BaseSQLAlchemyStore):
                     model_name=self.cfg.get("ner_model", "dslim/bert-base-NER"),
                     layer=self.cfg.get("ner_layer", 17),
                     device=self.cfg.get("ner_device", "cuda" if torch.cuda.is_available() else "cpu"),
-                    embedding_dim=self.cfg.get("ner_dim", 2048),
+                    embedding_dim=self.cfg.get("ner_dim", 1024),
                     index_path=self.cfg.get("ner_index_path", "data/ner_retriever/index"),
                     logger=self.logger,
                     memory=self.memory,
@@ -132,7 +132,7 @@ class BaseEmbeddingStore(BaseSQLAlchemyStore):
                     {
                         "model": self.cfg.get("ner_model", "dslim/bert-base-NER"),
                         "layer": self.cfg.get("ner_layer", 17),
-                        "dim": self.cfg.get("ner_dim", 2048),
+                        "dim": self.cfg.get("ner_dim", 1024),
                         "index_path": self.cfg.get("ner_index_path", "data/ner_retriever/index"),
                     },
                 )

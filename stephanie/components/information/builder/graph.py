@@ -1,11 +1,15 @@
 # stephanie/components/information/graph_builder.py
 from __future__ import annotations
 
-from dataclasses import asdict
-from datetime import datetime
+import logging
 from typing import Any, Dict, List, Optional
 
-from .models import InformationRequest, InformationResult, InformationSource
+from stephanie.services.knowledge_graph_service import KnowledgeGraphService
+from stephanie.utils.date_utils import iso_now
+
+from ..models import InformationRequest, InformationResult, InformationSource
+
+log = logging.getLogger(__name__)
 
 
 class InformationGraphBuilder:
@@ -21,7 +25,7 @@ class InformationGraphBuilder:
       - A handful of edges connecting them
     """
 
-    def __init__(self, knowledge_graph_service, logger=None) -> None:
+    def __init__(self, knowledge_graph_service: KnowledgeGraphService, logger=None) -> None:
         self.kg = knowledge_graph_service
         self.logger = logger
 
@@ -44,16 +48,13 @@ class InformationGraphBuilder:
 
         # If we didn't create a MemCube, we can still create a graph, but
         # it's usually most useful when bound to a MemCube node.
-        if self.logger:
-            self.logger.log(
-                "InformationGraphBuilder_Start",
-                {
-                    "topic": topic,
-                    "memcube_id": memcube_id,
-                    "goal_id": result.goal_id,
-                    "casebook_id": result.casebook_id,
-                },
-            )
+        log.info(
+            "InformationGraphBuilder_Start topic=%s memcube_id=%s goal_id=%s casebook_id=%s",
+            topic,
+            memcube_id,
+            result.goal_id,
+            result.casebook_id,
+        )
 
         # 1) Resolve all sources: primary + extras
         primary_source = request.sources[0]
@@ -87,13 +88,13 @@ class InformationGraphBuilder:
             src=topic_node_id,
             dst=memcube_node_id,
             rel_type="REPRESENTED_BY",
-            properties={"created_at": self._now()},
+            properties={"created_at": iso_now()},
         )
         self._ensure_edge(
             src=memcube_node_id,
             dst=primary_doc_node_id,
             rel_type="SUMMARIZES",
-            properties={"created_at": self._now()},
+            properties={"created_at": iso_now()},
         )
 
         # 4) Add related sources as nodes + edges
@@ -105,19 +106,16 @@ class InformationGraphBuilder:
                 rel_type="ENRICHED_BY",
                 properties={
                     "source_kind": src.kind,
-                    "created_at": self._now(),
+                    "created_at": iso_now(),
                 },
             )
 
-        if self.logger:
-            self.logger.log(
-                "InformationGraphBuilder_Done",
-                {
-                    "topic": topic,
-                    "memcube_node_id": memcube_node_id,
-                    "primary_doc_node_id": primary_doc_node_id,
-                    "related_count": len(related_sources),
-                },
+            log.info(
+                "InformationGraphBuilder_Done topic=%s memcube_node_id=%s primary_doc_node_id=%s related_count=%d",
+                topic,
+                memcube_node_id,
+                primary_doc_node_id,
+                len(related_sources),
             )
 
     # ------------------------------------------------------------------
@@ -136,7 +134,7 @@ class InformationGraphBuilder:
             "type": "Topic",
             "title": topic,
             "slug": slug,
-            "created_at": self._now(),
+            "created_at": iso_now(),
         }
 
         # Optional: domains / tags from target meta
@@ -158,7 +156,7 @@ class InformationGraphBuilder:
             "type": "MemCube",
             "memcube_id": memcube_id,
             "topic": result.topic,
-            "created_at": self._now(),
+            "created_at": iso_now(),
         }
         self.kg.upsert_node(node_id=node_id, properties=props)
         return node_id
@@ -178,7 +176,7 @@ class InformationGraphBuilder:
             "doc_id": doc_id,
             "title": primary.title or doc.get("title", ""),
             "source_kind": primary.kind,
-            "created_at": self._now(),
+            "created_at": iso_now(),
         }
         self.kg.upsert_node(node_id=node_id, properties=props)
         return node_id
@@ -202,7 +200,7 @@ class InformationGraphBuilder:
             "title": s.title,
             "source_kind": s.kind,
             "id": s.id,
-            "created_at": self._now(),
+            "created_at": iso_now(),
         }
         # Attach a short summary / snippet
         if s.text:
@@ -232,8 +230,8 @@ class InformationGraphBuilder:
         """
         properties = properties or {}
         self.kg.upsert_edge(
-            src_id=src,
-            dst_id=dst,
+            source_id=src,
+            target_id=dst,
             rel_type=rel_type,
             properties=properties,
         )
@@ -254,5 +252,3 @@ class InformationGraphBuilder:
         # Turn URLs / IDs into safe node ids
         return self._slugify(text)
 
-    def _now(self) -> str:
-        return datetime.utcnow().isoformat() + "Z"

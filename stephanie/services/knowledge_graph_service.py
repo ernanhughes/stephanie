@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import json
 import logging
 import os
@@ -19,31 +18,16 @@ from stephanie.models.hnsw_index import HNSWIndex
 from stephanie.models.ner_retriever import EntityDetector, NERRetrieverEmbedder
 from stephanie.services.service_protocol import Service
 from stephanie.tools.scorable_classifier import ScorableClassifier
+from stephanie.utils.file_utils import hash_text
+from stephanie.utils.text_utils import safe_slice, sentences
 
 log = logging.getLogger(__name__)
+
 
 def _normalize_text(t: str) -> str:
     # Minimal normalization; extend with NFC, ZWSP stripping as needed
     return (t or "").replace("\u200b", "").strip()
 
-def _content_hash(t: str) -> str:
-    return hashlib.sha1(t.encode("utf-8")).hexdigest()
-
-def _segment_sentences(t: str) -> List[Tuple[int, int]]:
-    """
-    Return [(start, end), ...] char spans for naive sentences.
-    Replace with spaCy or your existing SentenceSegmenter when available.
-    """
-    spans = []
-    last = 0
-    for m in re.finditer(r"([.!?])\s+", t):
-        end = m.end()
-        if end > last:
-            spans.append((last, end))
-            last = end
-    if last < len(t):
-        spans.append((last, len(t)))
-    return spans
 
 def _locate_sentence_ix(
     sent_spans: List[Tuple[int, int]], start: int, end: int
@@ -53,11 +37,6 @@ def _locate_sentence_ix(
         if not (end <= s or start >= e):
             return i
     return -1
-
-def _safe_slice(t: str, start: int, end: int) -> str:
-    start = max(0, min(start, len(t)))
-    end = max(start, min(end, len(t)))
-    return t[start:end]
 
 
 class KnowledgeGraphService(Service):
@@ -148,7 +127,7 @@ class KnowledgeGraphService(Service):
     @property
     def name(self) -> str:
         return "knowledge-graph"
-    
+
     def initialize(self, **kwargs) -> None:
         if self._initialized or not self.enabled:
             return
@@ -161,14 +140,12 @@ class KnowledgeGraphService(Service):
                 )
             )
             self._retriever = NERRetrieverEmbedder(
-                model_name=self.cfg.get(
-                    "ner_model", "dslim/bert-base-NER"
-                ),
+                model_name=self.cfg.get("ner_model", "dslim/bert-base-NER"),
                 layer=self.cfg.get("ner_layer", 16),
                 device=self.cfg.get(
                     "device", "cuda" if torch.cuda.is_available() else "cpu"
                 ),
-                embedding_dim=self.cfg.get("ner_dim", 2048),
+                embedding_dim=self.cfg.get("ner_dim", 1024),
                 index_path=self.cfg.get(
                     "index_path", "data/knowledge_graph/index"
                 ),
@@ -186,7 +163,7 @@ class KnowledgeGraphService(Service):
             )
 
             self._graph = HNSWIndex(
-                dim=self.cfg.get("ner_dim", 2048),
+                dim=self.cfg.get("ner_dim", 1024),
                 index_path=self.cfg.get(
                     "index_path", "data/knowledge_graph/index"
                 ),
@@ -201,22 +178,20 @@ class KnowledgeGraphService(Service):
 
             asyncio.create_task(self._setup_event_listeners())
 
-            self.logger.log(
-                "KnowledgeGraphInitialized",
-                {
-                    "node_count": self._stats["total_nodes"],
-                    "edge_count": self._stats["total_edges"],
-                    "duration": self._stats["build_time"],
-                },
+            log.info(
+                "KnowledgeGraphInitialized in %.2f seconds nodes=%d edges=%d",
+                self._stats["build_time"],
+                self._stats["total_nodes"],
+                self._stats["total_edges"],
             )
 
         except Exception as e:
-            self.logger.log(
-                "KnowledgeGraphInitError",
-                {"error": str(e), "traceback": traceback.format_exc()},
+            log.error(
+                "KnowledgeGraphInitError: %s\n%s",
+                str(e),
+                traceback.format_exc(),
             )
             raise RuntimeError(f"KnowledgeGraph failed to initialize: {e}")
-
 
     # in KnowledgeGraphService
     def detect_entities(self, text: str) -> List[Dict[str, Any]]:
@@ -224,13 +199,12 @@ class KnowledgeGraphService(Service):
             raise RuntimeError("KG not initialized")
         return self._entity_detector.detect_entities(text or "")
 
-
     async def _setup_event_listeners(self):
         """Subscribe to indexing events via the bus."""
         await self.subscribe(
             "knowledge_graph.index_request", self._handle_index_request
         )
-        self.logger.info("KnowledgeGraphService listening for index requests")
+        log.info("KnowledgeGraphService listening for index requests")
 
     # --- main handler --------------------------------------------------------
 
@@ -258,9 +232,7 @@ class KnowledgeGraphService(Service):
                         )  # implement if missing
                         text = getattr(row, "text", None)
             except Exception as e:
-                log.warning(
-                    f"KG: fetch text by scorable_id failed: {e}"
-                )
+                log.warning(f"KG: fetch text by scorable_id failed: {e}")
 
             if not text:
                 text = payload.get("text")
@@ -279,10 +251,10 @@ class KnowledgeGraphService(Service):
                 return
 
             text = _normalize_text(text)
-            doc_hash = _content_hash(text)
+            doc_hash = hash_text(text)
 
             # 2) Sentence segmentation (cheap)
-            sent_spans = _segment_sentences(text)
+            sent_spans = sentences(text)
 
             # 3) Validate/repair entities against text; add surface/context/sentence_ix
             fixed_entities = []
@@ -314,7 +286,7 @@ class KnowledgeGraphService(Service):
                         continue
 
                 # If surface missing or mismatched, derive from offsets
-                derived = _safe_slice(text, start, end)
+                derived = safe_slice(text, start, end)
                 if not surface or surface != derived:
                     surface = derived
 
@@ -324,7 +296,7 @@ class KnowledgeGraphService(Service):
                     sstart, send = sent_spans[sentence_ix]
                     context = text[sstart:send]
                 else:
-                    context = _safe_slice(
+                    context = safe_slice(
                         text, max(0, start - 60), min(len(text), end + 60)
                     )
 
@@ -377,13 +349,15 @@ class KnowledgeGraphService(Service):
                 for i in range(n):
                     for j in range(i + 1, n):
                         a, b = ents[i], ents[j]
-                        relationships.append({
-                            "source_id": f"{scorable_id}:{a['type']}:{a['start']}-{a['end']}",
-                            "target_id": f"{scorable_id}:{b['type']}:{b['start']}-{b['end']}",
-                            "rel_type": "CO_OCCURS_IN_SENTENCE",
-                            "confidence": 1.0,   # match _add_relationship signature
-                            # if you want to persist 'meta', extend _add_relationship to accept it or store it elsewhere
-                        })
+                        relationships.append(
+                            {
+                                "source_id": f"{scorable_id}:{a['type']}:{a['start']}-{a['end']}",
+                                "target_id": f"{scorable_id}:{b['type']}:{b['start']}-{b['end']}",
+                                "rel_type": "CO_OCCURS_IN_SENTENCE",
+                                "confidence": 1.0,  # match _add_relationship signature
+                                # if you want to persist 'meta', extend _add_relationship to accept it or store it elsewhere
+                            }
+                        )
             # 6) Add relationships
             for rel in relationships:
                 self._add_relationship(
@@ -391,7 +365,7 @@ class KnowledgeGraphService(Service):
                     target_id=rel["target"],
                     rel_type=rel["type"],
                     confidence=rel["confidence"],
-                ) 
+                )
 
             # 7) Publish completion
             self.publish(
@@ -444,7 +418,7 @@ class KnowledgeGraphService(Service):
         self._graph = None
         self._pending_nodes.clear()
         self._pending_relationships.clear()
-        self.logger.log("KnowledgeGraphShutdown", {"status": "stopped"})
+        log.info("KnowledgeGraphShutdown: stopped")
 
     def build_tree(
         self,
@@ -580,21 +554,9 @@ class KnowledgeGraphService(Service):
             # 1) Ensure we have a canonical embedding and its integer id
             #    (use the *same* embedder/model you index with)
             embedding_vec = self._retriever.embed_type_query(text)
-
-            # Persist (or find) this embedding in your embedding store,
-            # tag it with type="ner" so we stay in the same space
-            if hasattr(self.memory, "embedding"):
-                # ensure returns an id for this exact text & type
-                emb_id = self.memory.embedding.ensure_query_embedding(
-                    text=text,
-                    embedding_vec=embedding_vec,
-                    embedding_type="ner",
-                )
-            else:
-                # fallback: try an id lookup; as last resort, fail open (no cache)
-                emb_id = getattr(
-                    self.memory, "get_id_for_text", lambda _t: None
-                )(text)
+            emb_id = self.memory.embedding.get_id_for_text(
+                text=text,
+            )
 
             # 2) Try cache → embedding_ref is an INT (FK to scorable_embeddings.id)
             if emb_id and hasattr(self.memory, "entity_cache"):
@@ -826,6 +788,69 @@ class KnowledgeGraphService(Service):
     # -------------------------
     # Entity & Node Management
     # -------------------------
+    def upsert_node(self, node_id: str, properties: Dict[str, Any]) -> None:
+        """
+        Public, generic node upsert used by higher-level components
+        (InformationGraphBuilder, future wiki/encyclopedia builders, etc.).
+
+        Semantics (for now):
+          - If a node with this node_id already exists in the backing index
+            (as per metadata), do nothing.
+          - Otherwise, embed a representative text field and add a new node.
+
+        `properties` is a loose bag of metadata; we store it under
+        `properties` in the index metadata so you can evolve this over time.
+        """
+        try:
+            if self._graph.has_metadata(node_id):
+                return
+
+            # Choose a representative text field for embedding
+            text = (
+                properties.get("summary")
+                or properties.get("title")
+                or properties.get("text")
+                or node_id
+            )
+
+            base_meta: Dict[str, Any] = {
+                "node_id": node_id,
+                "text": text,
+                "type": properties.get("type", "Node"),
+                "created_at": properties.get(
+                    "created_at",
+                    datetime.now(timezone.utc).isoformat(),
+                ),
+                # Keep the full property bag for later graph / viz tooling
+                "properties": dict(properties),
+            }
+
+            # Optional normalized fields if present
+            if "domains" in properties:
+                base_meta["domains"] = properties["domains"]
+            if "domain_scores" in properties:
+                base_meta["domain_scores"] = properties["domain_scores"]
+
+            # Same retriever → same embedding space as entity nodes
+            embedding = self.memory.embedding.get_or_create(base_meta["text"])
+            self._graph.add(embedding, base_meta)
+
+            log.info(
+                "KnowledgeGraphNodeUpserted node_id %s type %s text %s",
+                node_id,
+                base_meta["type"],
+                base_meta["text"][:80],
+            )
+
+            self._stats["total_nodes"] += 1
+            self._track_node_stats(base_meta["type"])
+
+        except Exception as e:
+            log.warning(
+                "KnowledgeGraphNodeUpsertError node id %s error: %s",
+                node_id,
+                str(e),
+            )
 
     def _extract_entities_safe(self, text: str) -> List[Dict[str, Any]]:
         try:
@@ -839,9 +864,7 @@ class KnowledgeGraphService(Service):
                     e for e in ents if isinstance(e, dict) and e.get("text")
                 ]
         except Exception as e:
-            self.logger and self.logger.log(
-                "KGEntityExtractionError", {"error": str(e)}
-            )
+            log.warning("KGEntityExtractionError error: %s", str(e))
 
         # heuristic fallback (capitalized tokens)
         tokens = re.findall(r"\b[A-Z][A-Za-z0-9\-\_]{2,}\b", text or "")
@@ -896,12 +919,14 @@ class KnowledgeGraphService(Service):
         domains: List[Dict[str, float]],
         scorable_id: str,
         scorable_type: str,
-        meta: Optional[Dict[str, Any]] = None,   # <-- NEW
+        meta: Optional[Dict[str, Any]] = None,  # <-- NEW
     ):
         try:
             # Avoid duplicates (only if the index supports it)
             try:
-                if hasattr(self._graph, "has_metadata") and self._graph.has_metadata(node_id):
+                if hasattr(
+                    self._graph, "has_metadata"
+                ) and self._graph.has_metadata(node_id):
                     return
             except Exception:
                 # If the backend doesn’t support duplicate checking, continue and let the index de-dupe or accept dupes
@@ -912,15 +937,27 @@ class KnowledgeGraphService(Service):
                 "node_id": node_id,
                 "text": entity.get("text", ""),
                 "type": entity.get("type", "UNKNOWN"),
-                "domains": [d.get("domain") for d in (domains or []) if isinstance(d, dict) and d.get("domain")],
-                "domain_scores": {d.get("domain"): d.get("score") for d in (domains or []) if isinstance(d, dict) and d.get("domain") is not None},
-                "sources": [{
-                    "scorable_id": scorable_id,
-                    "scorable_type": scorable_type,
-                    "start": int(entity.get("start", -1)),
-                    "end": int(entity.get("end", -1)),
-                    "source_text": entity.get("source_text", entity.get("text", "")),
-                }],
+                "domains": [
+                    d.get("domain")
+                    for d in (domains or [])
+                    if isinstance(d, dict) and d.get("domain")
+                ],
+                "domain_scores": {
+                    d.get("domain"): d.get("score")
+                    for d in (domains or [])
+                    if isinstance(d, dict) and d.get("domain") is not None
+                },
+                "sources": [
+                    {
+                        "scorable_id": scorable_id,
+                        "scorable_type": scorable_type,
+                        "start": int(entity.get("start", -1)),
+                        "end": int(entity.get("end", -1)),
+                        "source_text": entity.get(
+                            "source_text", entity.get("text", "")
+                        ),
+                    }
+                ],
                 "created_at": datetime.now(timezone.utc).isoformat(),
             }
 
@@ -932,23 +969,83 @@ class KnowledgeGraphService(Service):
             embedding = self._retriever.embed_type_query(base_meta["text"])
             self._graph.add(embedding, base_meta)
 
-            self.logger.log(
-                "KnowledgeGraphNodeAdded",
-                {
-                    "node_id": node_id,
-                    "text": base_meta["text"][:50],
-                    "type": base_meta["type"],
-                    "scorable_id": scorable_id,
-                    "scorable_type": scorable_type,
-                },
+            log.info(
+                "KnowledgeGraphNodeAdded node_id %s text %s type %s scorable_id %s scorable_type %s",
+                node_id,
+                base_meta["text"][:50],
+                base_meta["type"],
+                scorable_id,
+                scorable_type,
             )
             self._stats["total_nodes"] += 1
             self._track_node_stats(base_meta["type"])
 
         except Exception as e:
-            self.logger.log(
-                "KnowledgeGraphNodeAddError",
-                {"node_id": node_id, "error": str(e)},
+            log.error(
+                "KnowledgeGraphNodeAddError node_id %s error %s",
+                node_id,
+                str(e),
+            )
+
+    # -------------------------
+    # Public Edge Upsert (for builders)
+    # -------------------------
+    def upsert_edge(
+        self,
+        source_id: str,
+        target_id: str,
+        rel_type: str,
+        properties: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """
+        Public, generic edge upsert used by higher-level components
+        (InformationGraphBuilder, future encyclopedia/wiki builders, etc.).
+
+        Semantics (for now):
+          - Append an edge record to the relationships JSONL, same as
+            _add_relationship, but allow arbitrary metadata via `properties`.
+          - If `properties` includes `confidence`, it is used; otherwise
+            we default to 0.9.
+
+        This does NOT currently deduplicate edges; if you call it multiple
+        times with the same (source, target, type), you'll get multiple
+        rows. That’s acceptable for now and can be tightened later.
+        """
+        properties = properties or {}
+
+        # derive confidence, default to "fairly strong"
+        confidence = float(properties.get("confidence", 0.9))
+
+        rel = {
+            "source": source_id,
+            "target": target_id,
+            "type": rel_type,
+            "confidence": confidence,
+            "ts": datetime.now(timezone.utc).isoformat(),
+        }
+
+        # Merge any extra properties (topic, source_type, etc.)
+        for k, v in properties.items():
+            if k not in rel:
+                rel[k] = v
+
+        try:
+            # persist to the same JSONL file as other relationships
+            with open(self._rel_path, "a", encoding="utf-8") as f:
+                f.write(json.dumps(rel) + "\n")
+
+            if self.logger:
+                self.logger.log("KnowledgeGraphEdgeUpserted", rel)
+
+            self._stats["total_edges"] += 1
+            self._track_edge_stats(rel_type)
+
+        except Exception as e:
+            log.error(
+                "KnowledgeGraphEdgeUpsertError source_id %s target_id %s error %s",
+                source_id,
+                target_id,
+                str(e),
             )
 
     # -------------------------
@@ -974,9 +1071,11 @@ class KnowledgeGraphService(Service):
             self._track_edge_stats(rel_type)
 
         except Exception as e:
-            self.logger.log(
-                "KnowledgeGraphRelationshipAddError",
-                {"source": source_id, "target": target_id, "error": str(e)},
+            log.error(
+                "KnowledgeGraphRelationshipAddError source_id %s target_id %s error %s",
+                source_id,
+                target_id,
+                str(e),
             )
 
     # -------------------------

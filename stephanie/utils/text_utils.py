@@ -199,6 +199,11 @@ def is_high_quality_section(text: str, min_words: int = 30) -> bool:
     """
     return section_quality(text, min_words=min_words) >= 1.0
 
+def safe_slice(t: str, start: int, end: int) -> str:
+    start = max(0, min(start, len(t)))
+    end = max(start, min(end, len(t)))
+    return t[start:end]
+
 
 if __name__ == "__main__":
     # Simple test examples

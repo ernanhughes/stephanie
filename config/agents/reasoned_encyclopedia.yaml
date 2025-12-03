@@ -1,0 +1,21 @@
+reasoned_encyclopedia:
+  name: reasoned_encyclopedia
+  enabled: true
+
+  max_sections: 4
+  section_selection: "top_level"
+  candidates_per_section: 3
+
+  memento:
+    casebook_tag: "encyclopedia"
+    reuse_budget: 16
+    include_mars: true
+    eval_dimensions: ["alignment", "clarity", "usefulness"]
+    max_depth: 4
+    num_simulations: 20
+    branching_factor: 2
+
+  model:
+    name: ollama/qwen:0.5b
+    api_base: http://localhost:11434
+    api_key: null

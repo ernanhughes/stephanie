@@ -122,10 +122,10 @@ class KnowledgeFusionAgent(BaseAgent):
             ),
             layer=cfg.get("ner_layer", 16), # in paper we seee 17 here the llm has on y 16 layers
             device=cfg.get("device", "cpu"),
-            embedding_dim=cfg.get("ner_dim", 2048),
+            embedding_dim=cfg.get("ner_dim", 1024),
             index_path="data/ner_retriever/index",   # persistent path
             projection_enabled=cfg.get("ner_projection", False),
-            projection_dim=cfg.get("ner_projection_dim", 2048),
+            projection_dim=cfg.get("ner_projection_dim", 1024),
             projection_dropout=cfg.get("ner_projection_dropout", 0.1),
             logger=self.logger,
             memory=self.memory,

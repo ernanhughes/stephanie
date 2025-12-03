@@ -14,9 +14,9 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
 from stephanie.agents.knowledge.improver import Improver
-from stephanie.knowledge.casebook_store import CaseBookStore
+from stephanie.memory.casebook_store import CaseBookStore
 # stephanie/agents/paper_improver/orchestrator.py (diffs only)
-from stephanie.knowledge.knowledge_bus import KnowledgeBus
+from stephanie.services.bus.knowledge_bus import KnowledgeBus
 
 from ...zeromodel.vpm_controller import VPMController
 from .code_improver import CodeImprover

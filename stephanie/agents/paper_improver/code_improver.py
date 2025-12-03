@@ -11,9 +11,9 @@ import subprocess
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from stephanie.knowledge.casebook_store import CaseBookStore
-from stephanie.knowledge.knowledge_bus import KnowledgeBus
+from stephanie.memory.casebook_store import CaseBookStore
 from stephanie.scoring.scorable import ScorableType
+from stephanie.services.bus.knowledge_bus import KnowledgeBus
 from stephanie.utils.json_sanitize import safe_json
 
 from .bandit_router import ExemplarBandit
@@ -56,7 +56,7 @@ class CodeImprover:
         self.kb = kb or KnowledgeBus()
         self.casebook_store = CaseBookStore(root="./knowledge/casebooks")
 
-    def improve(self, spec: Dict[str, Any]) -> Dict[str, Any]:
+    def improve(self, spec: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
         """Takes spec JSON → returns PR-ready artifact + VPM row + DPO pair."""
         self.run_id += 1
         spec_hash = hashlib.sha256(

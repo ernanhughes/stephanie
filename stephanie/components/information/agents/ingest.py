@@ -1,30 +1,26 @@
 # stephanie/agents/information_ingest.py
 from __future__ import annotations
-from stephanie.components.information.graph_builder import InformationGraphBuilder
-from stephanie.components.information.quality import InformationQualityPass
 
+import logging
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
 from stephanie.agents.base_agent import BaseAgent
+from stephanie.components.information.builder.graph import \
+    InformationGraphBuilder
+# These are the new Information component types we designed earlier.
+# Adjust the import paths if you put them somewhere else.
+from stephanie.components.information.models import (InformationRequest,
+                                                     InformationResult,
+                                                     InformationSource,
+                                                     InformationTargetConfig)
+from stephanie.components.information.processor import InformationProcessor
+from stephanie.components.information.quality import InformationQualityPass
 from stephanie.models.casebook import CaseBookORM, CaseORM
 from stephanie.scoring.scorable import ScorableType
 from stephanie.utils.casebook_utils import generate_casebook_name
-from stephanie.utils.paper_utils import (
-    build_paper_goal_text,
-    build_paper_goal_meta,
-) 
-
-# These are the new Information component types we designed earlier.
-# Adjust the import paths if you put them somewhere else.
-from stephanie.components.information.models import (
-    InformationSource,
-    InformationTargetConfig,
-    InformationRequest,
-    InformationResult,
-)
-from stephanie.components.information.processor import InformationProcessor
-import logging
+from stephanie.utils.paper_utils import (build_paper_goal_meta,
+                                         build_paper_goal_text)
 
 log = logging.getLogger(__name__)
 
@@ -160,6 +156,16 @@ class InformationIngestAgent(BaseAgent):
           - InformationProcessor call
         """
         doc_id = paper.get("id") or paper.get("doc_id")
+        self.memory.pipeline_references.insert(
+            {
+                "pipeline_run_id": context.get("pipeline_run_id"),
+                "scorable_type": ScorableType.DOCUMENT,
+                "scorable_id": doc_id,
+                "relation_type": "inserted",
+                "source": self.name,
+            }
+        )
+
         title = paper.get("title", "") or f"Doc {doc_id}"
 
         # 1) CaseBook + Goal (same pattern as LfL but new description)

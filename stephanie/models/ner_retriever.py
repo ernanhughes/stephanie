@@ -172,18 +172,18 @@ class NERRetrieverEmbedder:
 
     def __init__(
         self,
+        logger,
+        memory,
+        cfg=None,
         model_name="dslim/bert-base-NER",
         layer=17,
         # device="cuda" if torch.cuda.is_available() else "cpu",
         device="cpu",
-        embedding_dim=2048,
+        embedding_dim=1024,
         index_path="data/ner_retriever/index",
         projection_enabled=False,
-        projection_dim=2048,
+        projection_dim=1024,
         projection_dropout=0.1,
-        logger=None,
-        memory=None,
-        cfg=None,
     ):
         self.device = device
         self.logger = logger

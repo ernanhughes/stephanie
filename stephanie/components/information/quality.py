@@ -1,14 +1,15 @@
 # stephanie/components/information/quality.py
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple
-from datetime import datetime
+import logging
 import math
 import re
-import logging
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Any, Dict, List, Optional, Tuple
 
 from stephanie.utils.date_utils import iso_now
+
 from .models import InformationSource
 
 log = logging.getLogger(__name__)

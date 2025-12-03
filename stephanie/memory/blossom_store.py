@@ -1,12 +1,13 @@
 # stephanie/memory/blossom_store.py
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy.orm import joinedload
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
-from stephanie.models.blossom import BlossomEdgeORM, BlossomNodeORM, BlossomORM
+from stephanie.models.blossom import BlossomEdgeORM, BlossomNodeORM, BlossomORM, BlossomOutputORM
 
 
 class BlossomStore(BaseSQLAlchemyStore):
@@ -450,3 +451,49 @@ class BlossomStore(BaseSQLAlchemyStore):
         Mark blossom completed and store final stats (counts, win rates, deltas).
         """
         return self.update_status(blossom_id, status="completed", stats=stats)
+
+
+    
+    def upsert_output_unique(self, data: Dict) -> BlossomOutputORM:
+        """Upserts while preventing duplicates"""
+        # Ensure required fields
+        required = ["blossom_id", "role", "scorable_type", "scorable_id"]
+        if not all(k in data for k in required):
+            raise ValueError(f"Missing required fields: {required}")
+        
+        # Check for existing record
+        existing = self.session.query(BlossomOutputORM).filter(
+            BlossomOutputORM.blossom_id == data["blossom_id"],
+            BlossomOutputORM.role == data["role"],
+            BlossomOutputORM.scorable_type == data["scorable_type"],
+            BlossomOutputORM.scorable_id == data["scorable_id"]
+        ).first()
+        
+        if existing:
+            # Update existing
+            for k, v in data.items():
+                setattr(existing, k, v)
+            existing.updated_at = datetime.now(timezone.utc)
+            self.session.commit()
+            return existing
+        
+        # Create new
+        output = BlossomOutputORM(
+            **data,
+            episode_id=data["blossom_id"],  # alias
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc)
+        )
+        self.session.add(output)
+        self.session.commit()
+        return output
+    
+    def add_features(self, output_id: int, features: Dict):
+        """Adds features to an output record"""
+        output = self.session.query(BlossomOutputORM).get(output_id)
+        if output:
+            output.extra_data = {
+                **(output.extra_data or {}),
+                "features": features
+            }
+            self.session.commit()

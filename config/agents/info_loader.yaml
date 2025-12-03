@@ -1,0 +1,34 @@
+# configs/agents/info_loader.yaml
+
+info_loader:
+  name: info_loader
+  enabled: true
+  save_prompt: true
+  save_context: false
+  skip_if_completed: true
+
+  embed_full_document: true # if you are not using hnet reconsider
+  force_domain_update: false
+  top_k_domains: 3
+  min_classification_score: 0.4
+  domain_seed_config_path: "config/domain/seeds.yaml"
+  download_directory: /tmp
+  max_chars_for_summary: 16000
+  summarize_documents: true
+
+  model:
+    name: ollama/qwen3
+    api_base: http://localhost:11434
+    api_key: null
+  input_key: search_results   # add nodes
+  output_key: documents
+  prompt_mode: file
+  prompt_file: summarize.txt
+
+  preferences:
+    - novelty_driven
+    - feasibility_first
+    - technical_precision
+    - clarity
+    - simplicity
+

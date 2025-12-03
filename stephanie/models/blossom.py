@@ -264,3 +264,92 @@ Index(
     BlossomEdgeORM.blossom_id,
     BlossomEdgeORM.relation,
 )
+
+
+# stephanie/models/blossom.py (ADD THIS TO EXISTING FILE)
+
+class BlossomOutputORM(Base):
+    """
+    Links Blossom nodes to scorables (dynamic or otherwise) with quality metrics.
+    
+    Critical for:
+      - Tracking which scorable corresponds to which Blossom node
+      - Storing reward scores for training
+      - Enabling self-improvement via non-regression
+    """
+    __tablename__ = "blossom_outputs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    blossom_id = Column(Integer, ForeignKey("blossoms.id", ondelete="CASCADE"), nullable=False)
+    episode_id = Column(Integer, ForeignKey("blossoms.id", ondelete="CASCADE"), nullable=False)  # alias for blossom_id
+    
+    # Node linkage (optional - baseline has no source node)
+    source_bn_id = Column(Integer, ForeignKey("blossom_nodes.id", ondelete="SET NULL"), nullable=True)
+    
+    # Scorable linkage
+    scorable_type = Column(String, nullable=False)  # "dynamic", "memcube", etc.
+    scorable_id = Column(Integer, nullable=False)   # ID in the scorable's table
+    
+    # Source context
+    source_type = Column(String, nullable=False)    # "chat_turn", "document_section", etc.
+    source_id = Column(Integer, nullable=False)     # Original source ID
+    
+    # Quality metrics (critical for self-improvement)
+    role = Column(String, nullable=False)          # "baseline", "winner", "candidate"
+    reward = Column(Float, nullable=False, default=0.0)
+    metrics = Column(JSON, nullable=True)          # {"faithfulness": 0.92, "clarity": 0.87, ...}
+    
+    # Metadata
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), 
+                       onupdate=lambda: datetime.now(timezone.utc))
+    extra_data = Column(JSON, nullable=True)       # For future extensions
+
+    # --- Relationships ---
+    blossom = relationship(
+        "BlossomORM",
+        backref="outputs",
+        primaryjoin="BlossomORM.id == BlossomOutputORM.blossom_id",
+        foreign_keys="[BlossomOutputORM.blossom_id]",
+    )
+    
+    source_node = relationship(
+        "BlossomNodeORM",
+        backref="outputs",
+        primaryjoin="BlossomNodeORM.id == BlossomOutputORM.source_bn_id",
+        foreign_keys="[BlossomOutputORM.source_bn_id]",
+    )
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "id": self.id,
+            "blossom_id": self.blossom_id,
+            "episode_id": self.episode_id,
+            "source_bn_id": self.source_bn_id,
+            "scorable_type": self.scorable_type,
+            "scorable_id": self.scorable_id,
+            "source_type": self.source_type,
+            "source_id": self.source_id,
+            "role": self.role,
+            "reward": self.reward,
+            "metrics": self.metrics,
+            "notes": self.notes,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+            "extra_data": self.extra_data,
+        }
+
+    def __repr__(self):
+        return (
+            f"<BlossomOutput id={self.id} role={self.role} "
+            f"scorable={self.scorable_type}:{self.scorable_id} "
+            f"reward={self.reward:.2f}>"
+        )
+
+
+# Critical indexes for performance (match your existing pattern)
+Index("ix_blossom_outputs_episode", BlossomOutputORM.blossom_id)
+Index("ix_blossom_outputs_node", BlossomOutputORM.source_bn_id)
+Index("ix_blossom_outputs_scorable", BlossomOutputORM.scorable_type, BlossomOutputORM.scorable_id)
+Index("ix_blossom_outputs_role", BlossomOutputORM.blossom_id, BlossomOutputORM.role)

@@ -35,12 +35,7 @@ class CartridgeBuilder:
 
         scorable = ScorableFactory.from_dict(doc, mode="full")
         text = scorable.text
-        embedding_vector = self.memory.embedding.get_or_create(text)
-        embedding_vector_id = self.memory.embedding.get_id_for_text(text)
-        if not embedding_vector_id:
-            if self.logger:
-                self.logger.log("EmbeddingNotFound", {"text": text[:100]})
-            return None
+        embedding_vector_id = self.memory.scorable_embeddings.get_or_create(scorable)
 
         # Extract sections from the content
         sections = self._split_into_sections(text, goal, context)
