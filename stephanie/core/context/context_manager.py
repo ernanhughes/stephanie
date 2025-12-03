@@ -54,6 +54,9 @@ class ContextManager:
         # Initialize context dictionary
         self._data = {
             "trace": [],
+            "REPORTS": [],
+            "LOGS": [],
+            "METRICS": [],
             "metadata": {
                 "run_id": run_id or str(uuid.uuid4()),
                 "start_time": datetime.now().isoformat(),
@@ -257,12 +260,14 @@ class ContextManager:
         return str(value) if value is not None else value
 
     def _strip_non_serializable(self, data: Any) -> Any:
-        """Remove non-serializable elements"""
+        """Remove non-serializable and ephemeral elements"""
         if isinstance(data, dict):
             return {
-                k: self._strip_non_serializable(v) 
-                for k, v in data.items() 
-                if k not in ["embedding", "logger", "scorer"]
+                k: self._strip_non_serializable(v)
+                for k, v in data.items()
+                # skip ephemeral (double underscore) and known heavy keys
+                if not (isinstance(k, str) and k.startswith("__"))
+                and k not in ["embedding", "logger", "scorer"]
             }
         if isinstance(data, (list, tuple)):
             return [self._strip_non_serializable(v) for v in data]
@@ -308,16 +313,16 @@ class ContextManager:
 
                 
         # Save to ORM
-        context_orm = ContextStateORM(
-            run_id=self.run_id,
-            stage_name=stage_dict.get("name", "unknown"),
-            context=json.dumps(processed_context_state),
-            trace=serializable_context.get("trace", []), # Make sure trace is handled correctly
-            token_count=serializable_context["metadata"].get("token_count", 0),
-            extra_data=json.dumps(stage_dict)
-        )
-        self.memory.session.add(context_orm)
-        self.memory.session.commit()
+        stage_name = stage_dict.get("name", "unknown")
+        context_dict = {
+            "run_id": self.run_id,
+            "stage_name": stage_name,
+            "context": json.dumps(processed_context_state),
+            "trace": serializable_context.get("trace", []), # Make sure trace is handled correctly
+            "token_count": serializable_context["metadata"].get("token_count", 0),
+            "extra_data": json.dumps(stage_dict)
+        }
+        self.memory.contexts.save(self.run_id, stage_name, context_dict)
         return True
 
     def stringify_tuple_keys(self, d):

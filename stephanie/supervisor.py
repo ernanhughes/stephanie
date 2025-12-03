@@ -13,7 +13,7 @@ from stephanie.constants import (GOAL, NAME, PIPELINE, PIPELINE_RUN_ID,
                                  PROMPT_DIR, RUN_ID, SAVE_CONTEXT,
                                  SCORABLE_DETAILS, SKIP_IF_COMPLETED, STAGE)
 from stephanie.core.logging.json_logger import JSONLogger
-from stephanie.engine.context_manager import ContextManager
+from stephanie.core.context.context_manager import ContextManager
 from stephanie.memory.memory_tool import MemoryTool
 from stephanie.reporting.formatter import ReportFormatter
 from stephanie.scoring.metrics.scorable_processor import ScorableProcessor
