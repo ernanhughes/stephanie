@@ -11,8 +11,9 @@ from typing import Any, Dict, Optional
 import numpy as np
 import torch
 from sqlalchemy import text
+import logging
 
-from stephanie.models.context_state import ContextStateORM
+log = logging.getLogger(__name__)
 
 
 class ContextManager:
@@ -308,9 +309,8 @@ class ContextManager:
         # Ensure context is valid
         serializable_context = self._strip_non_serializable(self._data)
         context_size_breakdown = self.context_size_breakdown(serializable_context)
-        print(f"Context size breakdown: {context_size_breakdown}")    
+        log.debug(f"Context size breakdown: {context_size_breakdown}")    
         processed_context_state = self._process_context_for_large_data(serializable_context)
-
                 
         # Save to ORM
         stage_name = stage_dict.get("name", "unknown")

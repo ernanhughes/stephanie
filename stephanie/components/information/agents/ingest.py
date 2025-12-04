@@ -38,7 +38,7 @@ class InformationIngestConfig:
     information: Dict[str, Any] | None = None
 
     @classmethod
-    def from_dict(cls, cfg: Dict[str, Any]) -> "InformationIngestConfig":
+    def from_dict(cls, cfg: Dict[str, Any]) -> InformationIngestConfig:
         return cls(
             input_key=cfg.get("input_key", "documents"),
             casebook_action=cfg.get("casebook_action", "information_ingest"),
@@ -190,6 +190,7 @@ class InformationIngestAgent(BaseAgent):
 
         # 2) Resolve sections (reuse LfL logic)
         sections = self._resolve_sections_with_attributes(paper, context)
+        context["document_sections"] = sections
 
         # Optional: progress hooks if you want
         self.logger.log(
@@ -408,10 +409,12 @@ class InformationIngestAgent(BaseAgent):
         (case_name / case_description) to make later UI / querying easier.
         """
         section_name = section["section_name"]
+        section_text = section["section_text"] or ""
         case = self.memory.casebooks.add_case(
             casebook_id=casebook.id,
             goal_id=context.get("goal").get("id"),
-            prompt_text=f"Section: {section_name}",
+            name=section_name,
+            description=section_text,
             agent_name=self.name,
             meta={"type": "information_section_case"},
         )

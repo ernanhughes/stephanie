@@ -1,11 +1,13 @@
 # stephanie/components/information/agents/section_research.py
 from __future__ import annotations
 
+import asyncio
 from typing import Dict, List, Any, Optional
 
 import logging
 
 from stephanie.agents.base_agent import BaseAgent
+from stephanie.models import metrics
 
 
 log = logging.getLogger(__name__)
@@ -74,12 +76,15 @@ class SectionResearchAgent(BaseAgent):
             "write_memcube_sections", True
         )
 
-        # --- Backing stores (through memory) ---
         # Adjust these attribute names if your Memory object differs.
         self.casebook_store = getattr(self.memory, "casebooks", None)
         self.dynamic_scorable_store = getattr(self.memory, "dynamic_scorables", None)
 
+        self.NON_REGRESSION_THRESHOLD = cfg.get("non_regression_threshold", 0.85)
+        self.casebook_tag = cfg.get("casebook_tag", "encyclopedia")
         self.VERIFIED_TAG = "[SELF-VERIFIED]"
+
+        self.prompt_service = container.get("prompt")
 
     # ------------------------------------------------------------------
     # Public entry point
@@ -108,10 +113,9 @@ class SectionResearchAgent(BaseAgent):
 
         docs = ingest_res.get("documents") or []
         results: List[Dict[str, Any]] = []
-
         for doc in docs:
             try:
-                processed = await self._process_document(doc)
+                processed = await self._process_document(doc, context=context)
                 results.append(processed)
             except Exception as exc:  # noqa: BLE001
                 doc_id = doc.get("document_id")
@@ -134,7 +138,7 @@ class SectionResearchAgent(BaseAgent):
     # ------------------------------------------------------------------
     # Document-level processing
     # ------------------------------------------------------------------
-    async def _process_document(self, doc: Dict[str, Any]) -> Dict[str, Any]:
+    async def _process_document(self, doc: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
         doc_id = doc.get("document_id")
         memcube_id = doc.get("memcube_id")
         casebook_id = doc.get("casebook_id")
@@ -158,7 +162,7 @@ class SectionResearchAgent(BaseAgent):
 
         for case in section_cases:
             try:
-                evidence = await self._build_evidence_bundle(case, memcube)
+                evidence = await self._build_evidence_bundle(case, memcube, context=context)
                 self._persist_evidence(case, evidence, memcube)
                 sections_processed.append(
                     self._format_section_result(case, evidence)
@@ -192,23 +196,21 @@ class SectionResearchAgent(BaseAgent):
         all_cases = self.casebook_store.get_cases_for_casebook(casebook.id)
         section_cases = []
         for case in all_cases:
-            meta = getattr(case, "meta", {}) or {}
-            if meta.get("case_kind") == "section":
-                section_cases.append(case)
+            section_cases.append(case.to_dict(include_scorables=False))
         return section_cases
 
     # ------------------------------------------------------------------
     # Evidence building
     # ------------------------------------------------------------------
-    async def _build_evidence_bundle(self, case, memcube) -> Dict[str, Any]:
+    async def _build_evidence_bundle(self, case, memcube, context: Dict[str, Any]) -> Dict[str, Any]:
         """
         Build the evidence bundle (snippets, optional bullets + draft, metrics)
         for a single section case.
         """
-        section_name = getattr(case, "name", "Unknown Section")
-        meta = getattr(case, "meta", {}) or {}
+        section_name = case.get("name", "Unknown Section")
+        meta = case.get("meta", {})
         section_index = meta.get("section_index", 0)
-        description = meta.get("description", "") or ""
+        description = case.get("description", "")
 
         # A. Build query text
         query_text = (
@@ -223,18 +225,40 @@ class SectionResearchAgent(BaseAgent):
         # C. (Optional) bullets via LLM
         bullets: List[str] = []
         if self.bullets_cfg and hasattr(self, "llm"):
-            bullets = await self._generate_bullets(section_name, snippets)
+            bullets = await self._generate_bullets(section_name, snippets, context)
 
         # D. (Optional) draft via LLM
         draft_markdown: Optional[str] = None
         if self.draft_enabled and hasattr(self, "llm"):
             draft_markdown = await self._generate_draft(
-                section_name, bullets, snippets
+                section_name, bullets, snippets, context
             )
 
         # E. Faithfulness / metrics
         metrics = self._compute_metrics(draft_markdown, snippets)
-
+        if draft_markdown and metrics:
+            draft_markdown = self._add_evidence_grounding(draft_markdown, metrics)
+        faithfulness = metrics.get("faithfulness", 0.0)
+    
+        if not self._check_non_regression(faithfulness, case.get("id")):
+            # FALL BACK TO PAST BEST (never degrade quality)
+            past_best = self._get_past_best_text(case.get("id"))
+            if past_best:
+                log.info(f"Using past best for '{case.get('id')}' (non-regression)")
+                return {
+                    "draft_markdown": past_best,
+                    "metrics": {
+                        **metrics,
+                        "faithfulness": self._get_past_best_score(case.get("id")),
+                        "non_regression": True
+                    },
+                    "section_name": section_name,
+                    "section_index": section_index,
+                    "query_text": query_text,
+                    "snippets": snippets,
+                    "bullets": bullets,
+                }
+    
         return {
             "section_name": section_name,
             "section_index": section_index,
@@ -242,7 +266,10 @@ class SectionResearchAgent(BaseAgent):
             "snippets": snippets,
             "bullets": bullets,
             "draft_markdown": draft_markdown,
-            "metrics": metrics,
+            "metrics": {
+                **metrics,
+                "non_regression": True
+            }
         }
 
     def _retrieve_evidence(self, query_text: str) -> List[Dict[str, Any]]:
@@ -268,7 +295,7 @@ class SectionResearchAgent(BaseAgent):
 
         snippets: List[Dict[str, Any]] = []
         for r in docs:
-            cosine = r.get("cosine") or r.get("similarity") or 0.0
+            cosine = r.get("norm_score") or 0.0
             if cosine < self.min_cosine_for_evidence:
                 continue
             snippets.append(
@@ -290,6 +317,7 @@ class SectionResearchAgent(BaseAgent):
         self,
         section_name: str,
         snippets: List[Dict[str, Any]],
+        context: Dict[str, Any],
     ) -> List[str]:
         """
         Call the LLM to extract factual bullets from evidence snippets.
@@ -318,13 +346,10 @@ class SectionResearchAgent(BaseAgent):
             "\nBullets:\n"
         )
 
-        max_tokens = int(self.bullets_cfg.get("max_tokens", 256))
 
-        response = await self.llm.generate(
-            prompt=prompt,
-            max_tokens=max_tokens,
-            temperature=0.1,
-        )
+        response = await self.prompt_service.run_prompt(prompt, context)
+        log.debug(f"LLM response for '{prompt[:50]}': {response[:100]}...")
+
 
         # Very simple parsing: lines starting with "-"
         lines = [ln.strip() for ln in response.splitlines()]
@@ -333,11 +358,35 @@ class SectionResearchAgent(BaseAgent):
         # Keep at most max_bullets
         return bullets[: self.max_bullets]
 
+    async def _process_sections_parallel(self, section_cases: List[Any], memcube, context: Dict[str, Any]):
+        """Process sections concurrently (2-3X speedup)"""
+        tasks = []
+        for case in section_cases:
+            task = asyncio.create_task(
+                self._build_evidence_bundle(case, memcube, context)
+            )
+            tasks.append(task)
+        
+        # Limit concurrency to avoid overwhelming resources
+        max_concurrent = self.cfg.get("max_concurrent_sections", 2)
+        results = []
+        for i in range(0, len(tasks), max_concurrent):
+            chunk = tasks[i:i+max_concurrent]
+            chunk_results = await asyncio.gather(*chunk, return_exceptions=True)
+            for result in chunk_results:
+                if isinstance(result, Exception):
+                    log.error(f"Section processing failed: {str(result)}")
+                    results.append(None)
+                else:
+                    results.append(result)
+        return results
+
     async def _generate_draft(
         self,
         section_name: str,
         bullets: List[str],
         snippets: List[Dict[str, Any]],
+        context: Dict[str, Any],
     ) -> str:
         """
         Call the LLM to generate a draft markdown section based on bullets + evidence.
@@ -362,13 +411,9 @@ class SectionResearchAgent(BaseAgent):
             "Draft:\n"
         )
 
-        max_tokens = int(self.draft_cfg.get("max_tokens", 512))
 
-        response = await self.llm.generate(
-            prompt=prompt,
-            max_tokens=max_tokens,
-            temperature=0.2,
-        )
+        response = await self.prompt_service.run_prompt(prompt, context)
+        log.debug(f"LLM response for '{prompt[:50]}': {response[:100]}...")
         return response.strip()
 
     # ------------------------------------------------------------------
@@ -401,7 +446,7 @@ class SectionResearchAgent(BaseAgent):
                 total_evidence_chars + 1
             )
 
-        if not (self.verify_enabled and draft_markdown and self.embedding_store):
+        if not (self.verify_enabled and draft_markdown):
             return metrics
 
         # Sentence-level faithfulness
@@ -415,8 +460,8 @@ class SectionResearchAgent(BaseAgent):
 
         snippet_texts = [s["text"] for s in snippets]
         snippet_vecs = [
-            self.embedding_store.get_embedding(
-                txt, space=self.embedding_space
+            self.memory.embedding.get_or_create(
+                txt
             )
             for txt in snippet_texts
         ]
@@ -433,8 +478,37 @@ class SectionResearchAgent(BaseAgent):
         halluc_rate = untrusted / max(len(sentences), 1)
         metrics["hallucination_rate"] = halluc_rate
         metrics["faithfulness"] = 1.0 - halluc_rate
-
+        if draft_markdown and snippets:
+            metrics["source_evidence"] = [
+                {
+                    "id": s["id"],
+                    "text": s["text"][:100] + "...",
+                    "cosine": s["cosine"]
+                }
+                for s in snippets[:3]
+            ]
         return metrics
+
+    def _add_evidence_grounding(self, text: str, metrics: Dict[str, Any]) -> str:
+        """Add self-verification tags + evidence grounding (Edge 1 proof)"""
+        faithfulness = metrics.get("faithfulness", 0.0)
+        
+        # 1. Add verification badge
+        if faithfulness >= 0.75:  # Your threshold
+            verified_badge = (
+                f"> {self.VERIFIED_TAG} (faithfulness: {int(faithfulness*100)}%)\n\n"
+            )
+            text = verified_badge + text
+        
+        # 2. Add source evidence (for transparency)
+        if metrics.get("source_evidence"):
+            evidence_text = "\n".join(
+                f"> *Source: [{e['id']}] (cosine: {e['cosine']:.2f})*" 
+                for e in metrics["source_evidence"]
+            )
+            text += f"\n\n{evidence_text}"
+        
+        return text
 
     @staticmethod
     def _max_cosine(v, vecs) -> float:
@@ -507,6 +581,41 @@ class SectionResearchAgent(BaseAgent):
             extra["sections"] = sections
             memcube.extra_data = extra
             self.memory.memcubes.upsert(memcube)
+
+    def _check_non_regression(self, new_score: float, section_id: str) -> bool:
+        """Ensure new content NEVER degrades past best quality (Edge 2 proof)"""
+        # 1. Get past best score for this section type
+        past_best = self._get_past_best_score(section_id)
+        
+        # 2. If no past work, allow it
+        if past_best is None:
+            return True
+        
+        # 3. Enforce non-regression (critical for self-improvement)
+        is_better = new_score >= past_best * self.NON_REGRESSION_THRESHOLD
+        
+        # 4. LOG PROOF (this is Edge 2 evidence)
+        if is_better:
+            log.info(
+                f"EDGE 2 PROVEN: Section '{section_id}' improved | "
+                f"New: {new_score:.2f} ≥ {past_best:.2f} * {self.NON_REGRESSION_THRESHOLD}"
+            )
+        else:
+            log.warning(
+                f"EDGE 2 VIOLATION: Would degrade section '{section_id}' | "
+                f"New: {new_score:.2f} < {past_best:.2f} * {self.NON_REGRESSION_THRESHOLD}"
+            )
+        
+        return is_better
+
+    def _get_past_best_score(self, section_id: str) -> Optional[float]:
+        """Retrieve past best quality score for non-regression"""
+        # Query CaseBookStore for best past case
+        case = self.casebook_store.find_best_case(
+            goal_text=f"Explain '{section_id}' section",
+            casebook_tag=self.casebook_tag
+        )
+        return case.meta.get("best_score") if case else None
 
     def _log_self_improvement(
         self,

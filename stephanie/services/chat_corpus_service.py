@@ -215,7 +215,7 @@ class ChatCorpusService(Service):
         try:
             # This is the call you specified:
             candidates = emb.search_related_scorables(
-                text, ScorableType.CONVERSATION_TURN, include_ner=bool(include_ner), k=int(k)
+                text, target_type=ScorableType.CONVERSATION_TURN, include_ner=bool(include_ner), top_k=int(k)
             )
             # Expect a list of scorables; each must be turned into a message dict
             out: List[Dict[str, Any]] = []

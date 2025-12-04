@@ -47,9 +47,7 @@ class RelatedAgent(BaseAgent):
         raw_hits = self.memory.embedding.search_related_scorables(
             query=goal_text,
             top_k=self.top_k,
-            document_type=self.document_type,
-            namespace=self.namespace,            # if your embedding impl supports it
-            include_text=self.include_text,      # if supported
+            target_type=self.document_type,
         )
 
         # 2) Normalize → DocHit, filter/dedupe
