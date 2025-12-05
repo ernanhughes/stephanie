@@ -16,7 +16,7 @@ class IdeaCriticHead(BaseAgent):
         )
         self.kg = self.container.get("knowledge_graph")
         self.embedding_store = self.memory.embedding
-        self.prompt_service = self.container.get("prompt_service")
+        self.prompt_service = self.container.get("prompt")
         self.feasibility_min_score = self.cfg.get("feasibility_min_score", 0.2)
         self.novelty_distance_threshold = self.cfg.get(
             "novelty_distance_threshold", 0.85
@@ -24,6 +24,15 @@ class IdeaCriticHead(BaseAgent):
         self.risk_keywords = self.cfg.get(
             "risk_keywords", ["weapons", "biohazard", "exploit", "unethical"]
         )
+
+    async def run(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        ideas: List[Idea] = context.get(self.input_key, [])
+        scored_ideas: List[Idea] = []
+        for idea in ideas:
+            scored = await self.evaluate(idea)
+            scored_ideas.append(scored)
+        context[self.output_key] = scored_ideas
+        return context
 
     async def evaluate(self, idea: Idea) -> Idea:
         """Async parallel scoring (4x speedup)"""

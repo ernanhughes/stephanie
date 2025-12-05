@@ -8,7 +8,7 @@ import logging
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.models import metrics
-from stephanie.scoring.scorable import Scorable
+from stephanie.scoring.scorable import Scorable, ScorableType
 from stephanie.tools.section_summarization_tool import SectionSummarizationTool
 
 
@@ -168,7 +168,7 @@ class SectionResearchAgent(BaseAgent):
         for case in section_cases:
             try:
                 evidence = await self._build_evidence_bundle(case, memcube, context=context)
-                self._persist_evidence(case, evidence, memcube)
+                self._persist_evidence(case, evidence, memcube, context)
                 sections_processed.append(
                     self._format_section_result(case, evidence)
                 )
@@ -542,18 +542,21 @@ class SectionResearchAgent(BaseAgent):
     # ------------------------------------------------------------------
     # Persistence
     # ------------------------------------------------------------------
-    def _persist_evidence(self, case, evidence: Dict[str, Any], memcube) -> None:
+    def _persist_evidence(self, case, evidence: Dict[str, Any], memcube, context: Dict[str, Any]) -> None:
         """
         Persist evidence as:
           - DynamicScorable per section (if enabled)
           - MemCube.extra_data["sections"] (if enabled)
         """
         # 1) DynamicScorable
-        if self.write_dynamic_scorables and self.dynamic_scorable_store is not None:
-            self.dynamic_scorable_store.create(
-                case_id=getattr(case, "id"),
-                scorable_type="section_evidence",
-                data={
+        if self.write_dynamic_scorables:
+            self.dynamic_scorable_store.add(
+                case_id=case.get("id"),
+                pipeline_run_id=context.get("pipeline_run_id"),
+                scorable_type=ScorableType.DOCUMENT_SECTION,
+                source=self.name,
+                text=evidence.get("draft_markdown"),
+                meta={
                     "section_name": evidence["section_name"],
                     "section_index": evidence["section_index"],
                     "bullets": evidence["bullets"],
@@ -563,12 +566,12 @@ class SectionResearchAgent(BaseAgent):
             )
 
         # 2) MemCube.extra_data["sections"]
-        if self.write_memcube_sections and self.memory.memcubes is not None:
+        if self.write_memcube_sections:
             extra = getattr(memcube, "extra_data", {}) or {}
             sections = extra.get("sections") or []
 
             section_data = {
-                "case_id": getattr(case, "id"),
+                "case_id": case.get("id"),
                 "section_index": evidence["section_index"],
                 "section_name": evidence["section_name"],
                 "metrics": evidence["metrics"],
@@ -580,7 +583,7 @@ class SectionResearchAgent(BaseAgent):
                 (
                     i
                     for i, s in enumerate(sections)
-                    if s.get("case_id") == getattr(case, "id")
+                    if s.get("case_id") == case.get("id")
                 ),
                 None,
             )

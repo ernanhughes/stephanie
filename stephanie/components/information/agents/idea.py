@@ -54,7 +54,7 @@ class IdeaGenerationHead(BaseAgent):
 
         self.kg: KnowledgeGraphService = self.container.get("knowledge_graph")
         self.emb = self.memory.embedding
-        self.prompt = self.container.get("prompt_service")
+        self.prompt = self.container.get("prompt")
 
         # Hydrate settings from cfg, but be robust to extra keys.
         self.settings = IdeaGenerationSettings()
@@ -71,6 +71,17 @@ class IdeaGenerationHead(BaseAgent):
 
         # Optional: which generator model this head is notionally using
         self.generator_model = cfg.get("generator_model", "ideator:default")
+
+
+    async def run(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Main entrypoint: generate frontier ideas.
+
+        Populates context["ideas_generated"] with a list of `Idea` objects.
+        """
+        ideas: List[Idea] = await self.generate_frontier_ideas()
+        context["ideas_generated"] = ideas
+        return context
 
     # ------------------------------------------------------------------
     # Public API
