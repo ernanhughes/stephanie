@@ -181,34 +181,17 @@ class IdeaGenerationHead(BaseAgent):
         This uses KnowledgeGraphService.query_frontier_concepts if available.
         If not present, it will fall back to an empty list (caller will log).
         """
-        concepts = []
-
-        # Prefer dedicated frontier API if available.
-        query_fn = getattr(self.kg, "query_frontier_concepts", None)
-        if query_fn is not None:
-            try:
-                concepts = await self._maybe_await(
-                    query_fn(limit=self.settings.top_k_pairs * 2)
-                )
-            except Exception as e:
-                log.error(
-                    "IdeaGenerationHead: query_frontier_concepts failed: %s", str(e)
-                )
-                concepts = []
-
+        concepts =  await self.kg.query_frontier_concepts(limit=self.settings.top_k_pairs * 2)
         if not concepts:
             return []
 
         # Extract IDs robustly (supports dicts or ORM/pydantic objects).
         ids: List[str] = []
         for c in concepts:
-            if isinstance(c, dict):
-                cid = c.get("id")
-            else:
-                cid = getattr(c, "id", None)
+            cid = c.get("id")
             if cid:
                 ids.append(cid)
-
+    
         if len(ids) < 2:
             return []
 

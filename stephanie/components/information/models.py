@@ -146,3 +146,19 @@ class InformationBuildResult:
     attributes: Dict[str, Any] = field(default_factory=dict)
     preview_markdown: Optional[str] = None
     extra_data: Dict[str, Any] = field(default_factory=dict)
+
+@dataclass
+class ReasonedSection:
+    section_id: str
+    title: str
+    text: str
+    candidates: List[Dict[str, Any]]
+    casebook_ref: Optional[Dict[str, Any]] = None
+    meta: Optional[Dict[str, Any]] = None
+
+@dataclass
+class ReasonedBlogResult:
+    outline: List[Dict[str, Any]]
+    sections: List[ReasonedSection]
+    full_text: str
+    meta: Dict[str, Any]

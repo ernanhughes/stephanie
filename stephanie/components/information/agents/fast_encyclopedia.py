@@ -7,30 +7,11 @@ import logging
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.core.context.context_manager import ContextManager
+from stephanie.components.information.models import ReasonedSection, ReasonedBlogResult
 
 log = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------
-# Data models (same shape as ReasonedEncyclopediaAgent)
-# ---------------------------------------------------------------------
 
-
-@dataclass
-class ReasonedSection:
-    section_id: str
-    title: str
-    text: str
-    candidates: List[Dict[str, Any]]
-    casebook_ref: Optional[Dict[str, Any]] = None
-    meta: Optional[Dict[str, Any]] = None
-
-
-@dataclass
-class ReasonedBlogResult:
-    outline: List[Dict[str, Any]]
-    sections: List[ReasonedSection]
-    full_text: str
-    meta: Dict[str, Any]
 
 
 # ---------------------------------------------------------------------

@@ -8,7 +8,7 @@ from typing import Dict, Any, List
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.memory.idea_store import IdeaStore
-from stephanie.models.idea import Idea
+from stephanie.types.idea import Idea
 
 log = logging.getLogger(__name__)
 

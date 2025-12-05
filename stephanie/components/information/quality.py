@@ -2,10 +2,8 @@
 from __future__ import annotations
 
 import logging
-import math
 import re
 from dataclasses import dataclass
-from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 from stephanie.utils.date_utils import iso_now
@@ -54,21 +52,17 @@ class InformationQualityPass:
     in the ingest pipeline.
     """
 
-    def __init__(
-        self,
-        memcube_store,
-        logger: Optional[Any] = None,
-        cfg: Optional[Dict[str, Any]] = None,
-    ) -> None:
-        self.memcubes = memcube_store
+    def __init__(self, cfg, memory, container, logger):
+        self.cfg = cfg 
+        self.memory = memory
+        self.container = container
         self.logger = logger
-        self.cfg = cfg or {}
+        self.memcube_store = memory.memcubes
 
         # thresholds (can be tuned via cfg)
-        q = self.cfg.get("quality", {})
-        self.min_relevance = float(q.get("min_relevance", 0.4))
-        self.min_authority = float(q.get("min_authority", 0.3))
-        self.min_novelty   = float(q.get("min_novelty", 0.1))  # avoid perfect dupes
+        self.min_relevance = float(self.cfg.get("min_relevance", 0.4))
+        self.min_authority = float(self.cfg.get("min_authority", 0.3))
+        self.min_novelty   = float(self.cfg I.get("min_novelty", 0.1))  # avoid perfect dupes
 
     # ------------------------------------------------------------------
     # Public API
