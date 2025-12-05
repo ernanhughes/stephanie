@@ -1,4 +1,4 @@
-# stephanie/components/information/info_scorable_adapter.py
+# stephanie/components/information/adapters/info_scorable_adapter.py
 from __future__ import annotations
 
 from typing import Any, Dict

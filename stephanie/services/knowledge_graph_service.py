@@ -10,6 +10,7 @@ import time
 import traceback
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
+from math import exp
 
 import numpy as np
 import torch
@@ -852,6 +853,125 @@ class KnowledgeGraphService(Service):
                 str(e),
             )
 
+
+    def upsert_concept(
+        self,
+        concept_id: str,
+        name: str,
+        summary: str,
+        domains: Optional[List[str]] = None,
+        extra: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """
+        Upsert a canonical concept node (AI Encyclopedia entry).
+        concept_id is stable (e.g., wiki slug: 'cross_entropy').
+        """
+        properties = {
+            "type": "concept",
+            "name": name,
+            "summary": summary,
+            "domains": domains or [],
+            "source": "encyclopedia",
+        }
+        if extra:
+            properties.update(extra)
+
+        node_id = f"concept:{concept_id}"
+        self.upsert_node(node_id=node_id, properties=properties)
+
+    def upsert_paper(
+        self,
+        paper_id: str,
+        title: str,
+        abstract: str,
+        year: Optional[int] = None,
+        domains: Optional[List[str]] = None,
+    ) -> None:
+        """
+        Upsert a paper node, so we can connect ideas and concepts back to sources.
+        """
+        properties = {
+            "type": "paper",
+            "title": title,
+            "summary": abstract,
+            "year": year,
+            "domains": domains or [],
+            "source": "paper",
+        }
+        node_id = f"paper:{paper_id}"
+        self.upsert_node(node_id=node_id, properties=properties)
+
+
+    def upsert_gap(
+        self,
+        gap_id: str,
+        claim_text: str,
+        severity: float,
+        paper_id: Optional[str] = None,
+        concept_ids: Optional[List[str]] = None,
+    ) -> str:
+        """
+        Store a knowledge gap as a first-class node in the graph.
+        Returns the node_id.
+        """
+        properties = {
+            "type": "gap",
+            "text": claim_text,
+            "severity": float(severity),
+            "source": "knowledge_tree",
+        }
+        node_id = f"gap:{gap_id}"
+        self.upsert_node(node_id=node_id, properties=properties)
+
+        if paper_id:
+            self.upsert_edge(
+                source_id=node_id,
+                target_id=f"paper:{paper_id}",
+                rel_type="GAP_IN_PAPER",
+                properties={"confidence": 0.9},
+            )
+
+        for cid in concept_ids or []:
+            self.upsert_edge(
+                source_id=node_id,
+                target_id=f"concept:{cid}",
+                rel_type="GAP_IN_CONCEPT",
+                properties={"confidence": 0.9},
+            )
+
+        return node_id
+
+    def link_entity_to_concept(
+        self,
+        entity_node_id: str,
+        concept_id: str,
+        confidence: float = 0.9,
+    ) -> None:
+        """
+        Link a low-level entity node to a canonical concept.
+        """
+        concept_node_id = f"concept:{concept_id}"
+        self.upsert_edge(
+            source_id=entity_node_id,
+            target_id=concept_node_id,
+            rel_type="MENTIONS_CONCEPT",
+            properties={"confidence": confidence},
+        )
+
+    def link_paper_to_concept(
+        self,
+        paper_id: str,
+        concept_id: str,
+        rel_type: str = "DISCUSSES",
+        confidence: float = 0.9,
+    ) -> None:
+        self.upsert_edge(
+            source_id=f"paper:{paper_id}",
+            target_id=f"concept:{concept_id}",
+            rel_type=rel_type,
+            properties={"confidence": confidence},
+        )
+
     def _extract_entities_safe(self, text: str) -> List[Dict[str, Any]]:
         try:
             if not text:
@@ -904,6 +1024,104 @@ class KnowledgeGraphService(Service):
             ):
                 out.append(s)
         return out[:256]
+
+    def find_innovation_candidates(
+        self,
+        novelty_min: float = 0.4,
+        novelty_max: float = 0.8,
+        limit_pairs: int = 200,
+    ) -> List[Dict[str, Any]]:
+        """
+        Return candidate concept pairs that live in the 'innovation frontier' band.
+        """
+        concept_nodes: List[Dict[str, Any]] = self._get_all_concept_nodes()
+        n = len(concept_nodes)
+        candidates: List[Dict[str, Any]] = []
+
+        for i in range(n):
+            for j in range(i + 1, n):
+                a = concept_nodes[i]
+                b = concept_nodes[j]
+                novelty = self._estimate_novelty_between_concepts(a, b)
+                if novelty_min <= novelty <= novelty_max:
+                    candidates.append(
+                        {
+                            "concept_a": a["node_id"],
+                            "concept_b": b["node_id"],
+                            "novelty": novelty,
+                        }
+                    )
+                if len(candidates) >= limit_pairs:
+                    break
+            if len(candidates) >= limit_pairs:
+                break
+
+        # sort by descending novelty (or middle-peaked if you prefer)
+        candidates.sort(key=lambda x: -x["novelty"])
+        return candidates
+
+    def _estimate_novelty_between_concepts(
+        self,
+        concept_a_meta: Dict[str, Any],
+        concept_b_meta: Dict[str, Any],
+        max_cooccurrence: int = 20,
+    ) -> float:
+        """
+        Heuristic novelty score in [0,1].
+        Higher = more novel (but maybe less plausible).
+        Components:
+        - semantic distance (1 - similarity)
+        - graph co-occurrence penalty (if heavily connected, novelty is low)
+        """
+        # 1) semantic similarity via embeddings if available
+        sim = 0.0
+        try:
+            text_a = concept_a_meta.get("text") or concept_a_meta.get("summary") or ""
+            text_b = concept_b_meta.get("text") or concept_b_meta.get("summary") or ""
+            emb_a = self.memory.embedding.get_or_create(text_a)
+            emb_b = self.memory.embedding.get_or_create(text_b)
+            # cosine similarity
+            sim = float(np.dot(emb_a, emb_b) / (np.linalg.norm(emb_a) * np.linalg.norm(emb_b) + 1e-8))
+        except Exception:
+            sim = 0.0
+
+        semantic_distance = 1.0 - self._clamp01(sim)
+
+        # 2) graph co-occurrence: how many edges connect them (directly or via shared papers)
+        co_count = self._cooccurrence_count(concept_a_meta["node_id"], concept_b_meta["node_id"])
+        co_penalty = min(co_count / max_cooccurrence, 1.0)
+
+        # If they co-occur a lot, novelty is low, regardless of embedding distance
+        novelty = self._clamp01(0.7 * semantic_distance + 0.3 * (1.0 - co_penalty))
+        return novelty
+
+    def _cooccurrence_count(self, node_a: str, node_b: str) -> int:
+        """
+        Approximate co-occurrence by counting how many papers connect to both concepts.
+        """
+        papers_with_a = set()
+        papers_with_b = set()
+
+        if not os.path.exists(self._rel_path):
+            return 0
+
+        with open(self._rel_path, "r", encoding="utf-8") as f:
+            for line in f:
+                try:
+                    rel = json.loads(line.strip())
+                except Exception:
+                    continue
+                s, t = rel.get("source"), rel.get("target")
+                rtype = rel.get("type")
+
+                # concept <-DISCUSSES- paper
+                if rtype == "DISCUSSES":
+                    if t == node_a:
+                        papers_with_a.add(s)
+                    if t == node_b:
+                        papers_with_b.add(s)
+
+        return len(papers_with_a & papers_with_b)
 
     def _create_entity_node_id(
         self, entity: Dict[str, Any], scorable_id: str
@@ -1047,6 +1265,64 @@ class KnowledgeGraphService(Service):
                 target_id,
                 str(e),
             )
+
+    async def query_frontier_concepts(
+        self,
+        novelty_range: Tuple[float, float] = (0.4, 0.8),
+        quiz_accuracy_range: Tuple[float, float] = (0.3, 0.7),
+        limit: int = 50,
+    ) -> List[Dict[str, Any]]:
+        """
+        REAL implementation using your AIEncyclopediaStore.
+        Returns concepts in the 'Goldilocks zone' for ideation.
+        """
+        # Reuse your existing frontier heuristics from quiz system
+        frontier_concepts = self.memory.encyclopedia.get_frontier_concepts(
+            novelty_min=novelty_range[0],
+            novelty_max=novelty_range[1],
+            accuracy_min=quiz_accuracy_range[0],
+            accuracy_max=quiz_accuracy_range[1],
+            limit=limit * 2  # oversample for filtering
+        )
+        
+        # Convert to expected schema (handle missing fields)
+        results = []
+        for concept in frontier_concepts:
+            results.append({
+                "id": concept.id,
+                "name": concept.name,
+                "summary": concept.summary or "",
+                "domains": concept.domains or [],
+                "quiz_stats": {
+                    "accuracy": concept.quiz_accuracy or 0.5,
+                    "novelty": concept.novelty_score or 0.5
+                }
+            })
+            if len(results) >= limit:
+                break
+        
+        return results
+
+    async def get_concept(self, concept_id: str) -> Dict[str, Any]:
+        """
+        Async get_concept - use this everywhere (no sync fallback needed).
+        Falls back to minimal dict if concept missing.
+        """
+        try:
+            concept = await self.memory.encyclopedia.get_concept(concept_id)
+            return {
+                "id": concept.id,
+                "name": concept.name,
+                "summary": concept.summary or "",
+                "domains": concept.domains or [],
+                "quiz_stats": {
+                    "accuracy": concept.quiz_accuracy or 0.5,
+                    "novelty": concept.novelty_score or 0.5
+                }
+            }
+        except Exception as e:
+            self.logger.warning(f"KG get_concept failed for {concept_id}: {str(e)}")
+            return {"id": concept_id, "name": concept_id, "summary": ""}
 
     # -------------------------
     # Relationships

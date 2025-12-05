@@ -5,9 +5,9 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
 from stephanie.components.information.builder.bucket import BucketBuilder
-from stephanie.components.information.info_casebook_adapter import \
+from stephanie.components.information.adapters.info_casebook_adapter import \
     InfoCaseBookAdapter
-from stephanie.components.information.info_scorable_adapter import \
+from stephanie.components.information.adapters.info_scorable_adapter import \
     score_memcube_and_attach_attributes
 from stephanie.components.information.builder.memcube import MemCubeBuilder
 from stephanie.components.information.models import InformationBuildResult

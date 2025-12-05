@@ -11,7 +11,7 @@ from stephanie.components.information.orchestrator import (
     InformationOrchestratorConfig,
 )
 from stephanie.components.information.builder.bucket import BucketBuilder
-from stephanie.components.information.info_casebook_adapter import InfoCaseBookAdapter
+from stephanie.components.information.adapters.info_casebook_adapter import InfoCaseBookAdapter
 from stephanie.components.information.builder.memcube import MemCubeBuilder
 
 

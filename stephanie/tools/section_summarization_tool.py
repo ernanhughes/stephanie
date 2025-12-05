@@ -6,6 +6,7 @@ from typing import Any, Dict, Optional
 import torch
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 
+from stephanie.scoring.scorable import Scorable
 from stephanie.tools.base_tool import BaseTool  # same interface as EmbeddingTool
 
 log = logging.getLogger(__name__)
@@ -30,7 +31,8 @@ class SectionSummarizationTool(BaseTool):
         # Config with sensible defaults for your “CNN + distilled” stack.
         self.summary_model_name: str = cfg.get(
             "summary_model_name",
-            "google/pegasus-cnn_dailymail",  # heavier, good for technical-ish summaries
+            "facebook/bart-large-cnn",
+            # "google/pegasus-cnn_dailymail",  # heavier, good for technical-ish summaries
         )
         self.title_model_name: str = cfg.get(
             "title_model_name",
@@ -47,7 +49,7 @@ class SectionSummarizationTool(BaseTool):
         self.min_title_tokens: int = int(cfg.get("min_title_tokens", 3))
 
         # Optional flag to skip if already summarized
-        self.force: bool = bool(cfg.get("force", False))
+        self.force: bool = bool(cfg.get("force", True))
 
         # Device selection
         self.device: str = "cuda" if torch.cuda.is_available() else "cpu"
@@ -144,13 +146,29 @@ class SectionSummarizationTool(BaseTool):
         return text_out
 
     def _generate_summary(self, text: str) -> str:
-        return self._generate_seq2seq(
+        summary = self._generate_seq2seq(
             self._summary_model,
             self._summary_tok,
             text,
             max_len=self.max_summary_tokens,
             min_len=self.min_summary_tokens,
         )
+
+        # Fallback: if the main model produced nothing, reuse the title model
+        if not summary.strip():
+            log.warning(
+                "[SectionSummarizationTool] Empty summary produced; "
+                "falling back to title model for summary."
+            )
+            summary = self._generate_seq2seq(
+                self._title_model,
+                self._title_tok,
+                text,
+                max_len=self.max_summary_tokens,
+                min_len=self.min_summary_tokens,
+            )
+
+        return summary
 
     def _generate_title(self, text: str) -> str:
         """
@@ -170,28 +188,26 @@ class SectionSummarizationTool(BaseTool):
     # Tool API
     # ------------------------------------------------------------------
 
-    async def apply(self, scorable, context: dict):
+    async def apply(self, scorable: Scorable, context: Dict[str]) -> Scorable:
         """
         Main entry point, matching BaseTool / EmbeddingTool interface.
 
         - Reads scorable.text
         - Writes scorable.meta["summaries"][self.name] = {title, summary, ...}
         """
-        text: str = getattr(scorable, "text", "") or ""
+        text = scorable.text
         if not text.strip():
             return scorable
 
         # Ensure meta exists
-        meta: Dict[str, Any] = getattr(scorable, "meta", None) or {}
-        setattr(scorable, "meta", meta)
-
+        meta: Dict[str, Any] = scorable.meta
         summaries: Dict[str, Any] = meta.setdefault("summaries", {})
 
         if not self.force and self.name in summaries:
             # Already summarized; skip unless forced
             log.debug(
                 "[SectionSummarizationTool] Summary already exists for scorable %r",
-                getattr(scorable, "id", None),
+                scorable.id
             )
             return scorable
 
@@ -216,6 +232,21 @@ class SectionSummarizationTool(BaseTool):
                 "title_model": self.title_model_name,
             }
 
+            row ={
+                "scorable_type": scorable.target_type,
+                "scorable_id": scorable.id,
+                "tool_name": self.name,
+                "model_name": self.summary_model_name,
+                "summary_kind": "section",
+                "title": section_title,
+                "summary": section_summary,
+                "run_id": context.get("run_id"),
+                "source_char_len": len(text),
+                "summary_char_len": len(section_summary),
+            }
+
+            self.memory.scorable_summaries.upsert(row)
+            
             log.debug(
                 "[SectionSummarizationTool] Summarized scorable %r (title=%r)",
                 getattr(scorable, "id", None),

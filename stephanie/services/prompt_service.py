@@ -17,13 +17,117 @@ from stephanie.constants import (BUS_STREAM, SUBJ_RESULT_LEG_W,
 from stephanie.services.bus.events.prompt_job import PromptJob
 from stephanie.services.service_protocol import Service
 from stephanie.utils.llm_utils import remove_think_blocks
+from enum import Enum
 
 log = logging.getLogger(__name__)
 
-# Subject constants (support both namespaced + legacy for smooth upgrades)
+
+class LLMRole(str, Enum):
+    CRITIC = "critic"
+    PLANNER = "planner"
+    IDEATOR = "ideator"
+    SUMMARIZER = "summarizer"
+    EXPLAINER = "explainer"
+    CRITIC_FEASIBILITY = "critic_feasibility"
+    CRITIC_RISK = "critic_risk"
+    EXECUTOR = "executor"
+    REFINER = "refiner"
+    
 
 
-log = logging.getLogger(__name__)
+DEFAULT_ROLE_SYSTEM_PROMPTS: Dict[LLMRole, str] = {
+    LLMRole.CRITIC_FEASIBILITY: (
+        "You are an AI research feasibility auditor. Your ONLY task is to score how "
+        "technically feasible and testable a research idea is with CURRENT tools and resources. "
+        "\n\n"
+        "SCORING RULES (STRICT):\n"
+        "- 1.0 = Trivial (uses standard libraries, public datasets, <1hr runtime)\n"
+        "- 0.7 = Straightforward (known methods, public data, <1 day runtime)\n"
+        "- 0.4 = Challenging (requires novel engineering, may need data collection)\n"
+        "- 0.1 = Nearly impossible (requires breakthroughs, proprietary data, or massive compute)\n"
+        "- 0.0 = Impossible (violates known physics/math)\n"
+        "\n"
+        "ASSESS THESE FACTORS:\n"
+        "1. Technical plausibility with current AI tools (PyTorch, Hugging Face, etc.)\n"
+        "2. Testability with PUBLIC datasets or easily collectible data\n"
+        "3. Clear, measurable success/failure criteria\n"
+        "4. Realistic compute requirements (<4 A100 GPUs, <1 week runtime)\n"
+        "\n"
+        "BE CONSERVATIVE. When in doubt, score LOWER. "
+        "DO NOT consider novelty, impact, or elegance—ONLY feasibility.\n"
+        "\n"
+        "OUTPUT FORMAT: A SINGLE FLOAT between 0.0 and 1.0. NO TEXT, NO EXPLANATION."
+    ),
+    
+    LLMRole.CRITIC_RISK: (
+        "You are an AI research safety auditor. Your ONLY task is to flag ideas that pose "
+        "significant safety, ethics, or reproducibility risks.\n\n"
+        "RED FLAG CATEGORIES (score 1.0 if ANY apply):\n"
+        "- Human subjects without IRB approval\n"
+        "- Bio/chem safety hazards (pathogens, toxins)\n"
+        "- Weaponization potential\n"
+        "- Privacy violations (non-public personal data)\n"
+        "- Irreproducible claims (no public code/data)\n"
+        "- Unverifiable assertions (no clear success metric)\n"
+        "\n"
+        "OUTPUT FORMAT: 1.0 if HIGH RISK, 0.0 otherwise. NO TEXT, NO EXPLANATION."
+    ),
+    LLMRole.EXECUTOR: (
+        "You are an AI research code generator. Your ONLY task is to convert research methods "
+        "into executable Python code using standard libraries (PyTorch, scikit-learn, etc.).\n\n"
+        "RULES:\n"
+        "- Use ONLY publicly available datasets (CIFAR-10, MNIST, GLUE, etc.)\n"
+        "- Include clear success metrics (accuracy, F1, runtime)\n"
+        "- Add safety checks (memory limits, timeout guards)\n"
+        "- Output COMPLETE, runnable code in one block\n"
+        "- NO hypothetical functions or placeholders\n"
+        "\n"
+        "If the method cannot be implemented with public tools/data, output:\n"
+        "'''INFEASIBLE: [reason]'''"
+    ),
+    
+    LLMRole.REFINER: (
+        "You are an AI research collaborator refining ideas WITH HUMAN FEEDBACK. "
+        "The human has provided constraints via sliders:\n"
+        "- Novelty: {novelty_level} (0=minimal, 1=radical)\n"
+        "- Feasibility: {feasibility_level} (0=moonshot, 1=straightforward)\n"
+        "- Risk tolerance: {risk_level} (0=none, 1=high)\n"
+        "\n"
+        "Your job: Rewrite the idea to satisfy these constraints while preserving core value.\n"
+        "Output ONLY the refined idea in this JSON format:\n"
+        "{\n"
+        '  "title": "Short title",\n'
+        '  "hypothesis": "Clear claim",\n'
+        '  "method": "Concrete validation approach",\n'
+        '  "constraints_applied": ["list", "of", "changes"]\n'
+        "}"
+    ),
+    
+    # Keep your existing roles below this line
+    LLMRole.CRITIC: (
+        "You are a rigorous but constructive AI research critic. "
+        "Your job is to find weaknesses, missing assumptions, and failure modes "
+        "in ideas, arguments, or experimental designs. Be precise and concrete."
+    ),
+    LLMRole.PLANNER: (
+        "You are an AI experiment and project planner. "
+        "Given a research idea or goal, produce a concrete, step-by-step plan "
+        "with milestones, resources, risks, and success criteria."
+    ),
+    LLMRole.IDEATOR: (
+        "You are a creative but technically grounded AI research collaborator. "
+        "Your job is to propose novel, plausible research ideas that connect "
+        "the provided concepts or findings."
+    ),
+    LLMRole.SUMMARIZER: (
+        "You are an expert summarizer for AI/ML research. "
+        "Produce clear, faithful summaries optimized for later reuse as knowledge."
+    ),
+    LLMRole.EXPLAINER: (
+        "You are a teacher explaining AI/ML concepts to an informed engineer. "
+        "Use concise, accurate language and concrete examples."
+    ),
+}
 
 config = """
 prompt_service:
@@ -138,6 +242,30 @@ class PromptService(Service):
 
     # ---- Low-level LLM calls -------------------------------------------------
 
+    def _build_sys_preamble(
+        self,
+        role: Optional[LLMRole],
+        sys_preamble: Optional[str],
+    ) -> Optional[str]:
+        """
+        Combine a role-based system prompt (if any) with an explicit sys_preamble.
+
+        Priority:
+          - If no role: just return sys_preamble.
+          - If role set but no sys_preamble: return the default role prompt.
+          - If both set: role prompt first, then user sys_preamble.
+        """
+        if role is None:
+            return sys_preamble
+
+        base = DEFAULT_ROLE_SYSTEM_PROMPTS.get(role)
+        if not base:
+            return sys_preamble
+
+        if sys_preamble:
+            return f"{base}\n\n{sys_preamble}"
+        return base
+
     async def _acomplete_messages(
         self,
         *,
@@ -190,6 +318,7 @@ class PromptService(Service):
         context: Optional[Dict[str, Any]],
         *,
         model: Optional[Union[str, Dict[str, Any]]] = None,
+        role: Optional[LLMRole] = None,          
         sys_preamble: Optional[str] = None,
         params: Optional[Dict[str, Any]] = None,
         timeout: Optional[int] = None,
@@ -202,10 +331,11 @@ class PromptService(Service):
                 log.debug(
                     f"run_prompt(model={model_spec.name}) active={self._active_requests}"
                 )
+                effective_sys = self._build_sys_preamble(role, sys_preamble)
                 coro = self._acomplete(
                     prompt=prompt_text,
                     model=model_spec,
-                    sys_preamble=sys_preamble,
+                    sys_preamble=effective_sys,
                     params=params,
                 )
                 return await asyncio.wait_for(coro, timeout=request_timeout)
@@ -225,6 +355,7 @@ class PromptService(Service):
         *,
         models: List[Union[str, Dict[str, Any]]],
         judge: Optional[callable] = None,
+        role: Optional[LLMRole] = None,          # <-- NEW
         sys_preamble: Optional[str] = None,
         params: Optional[Dict[str, Any]] = None,
         context: Optional[Dict[str, Any]] = None,
@@ -240,6 +371,7 @@ class PromptService(Service):
 
         model_specs = [ModelSpec.from_cfg(self.cfg, m) for m in models]
         keys = [ms.name for ms in model_specs]
+        effective_sys = self._build_sys_preamble(role, sys_preamble)
 
         async with self._semaphore:
             self._active_requests += 1
@@ -249,7 +381,7 @@ class PromptService(Service):
                         self._acomplete(
                             prompt=prompt_text,
                             model=ms,
-                            sys_preamble=sys_preamble,
+                            sys_preamble=effective_sys,
                             params=params,
                         ),
                         timeout=request_timeout,

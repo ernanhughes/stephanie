@@ -1,7 +1,7 @@
 defaults:
   - _self_
   - db: postgres
-  - bus: disabled
+  - bus: zmq
   - plan_monitor: disabled
   - logging: json_logger
   - services: all
@@ -13,7 +13,7 @@ defaults:
   - agents/reasoned_encyclopedia
   - agents/fast_encyclopedia
   - agents/info_loader
-  - agents/critic_inference
+  - agents/creative_association
   - agents/critic_loader
   - agents/critic_improver
   - agents/critic_evaluation
@@ -120,7 +120,6 @@ pipeline:
       enabled: true
       iterations: 1
 
-
     - name: fast_encyclopedia
       description: >
         Quickly compile researched sections into a coherent blog post
@@ -135,4 +134,12 @@ pipeline:
         that iteratively refines content based on multi-dimensional evaluation.
       cls: stephanie.components.information.agents.reasoned_encyclopedia.ReasonedEncyclopediaAgent
       enabled: false
+      iterations: 1
+
+    - name: creative_association
+      description: >
+        Generate novel ideas and associations related to the content,
+        enhancing creativity and depth in the final output.
+      cls: stephanie.components.information.agents.association.CreativeAssociationAgent
+      enabled: true
       iterations: 1

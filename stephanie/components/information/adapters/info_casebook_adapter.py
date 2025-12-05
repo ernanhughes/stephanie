@@ -1,8 +1,8 @@
-# stephanie/components/information/info_casebook_adapter.py
+# stephanie/components/information/adapters/info_casebook_adapter.py
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple
+from typing import List, Tuple
 
 from stephanie.components.information.models import Bucket, BucketNode
 from stephanie.memory.casebook_store import CaseBookStore

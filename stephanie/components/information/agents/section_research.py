@@ -8,6 +8,8 @@ import logging
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.models import metrics
+from stephanie.scoring.scorable import Scorable
+from stephanie.tools.section_summarization_tool import SectionSummarizationTool
 
 
 log = logging.getLogger(__name__)
@@ -77,14 +79,17 @@ class SectionResearchAgent(BaseAgent):
         )
 
         # Adjust these attribute names if your Memory object differs.
-        self.casebook_store = getattr(self.memory, "casebooks", None)
-        self.dynamic_scorable_store = getattr(self.memory, "dynamic_scorables", None)
+        self.casebook_store = self.memory.casebooks
+        self.dynamic_scorable_store = self.memory.dynamic_scorables
 
         self.NON_REGRESSION_THRESHOLD = cfg.get("non_regression_threshold", 0.85)
         self.casebook_tag = cfg.get("casebook_tag", "encyclopedia")
         self.VERIFIED_TAG = "[SELF-VERIFIED]"
 
         self.prompt_service = container.get("prompt")
+
+        self.summarizer = SectionSummarizationTool(
+            cfg.get("section_summarizer", {}),  memory, container, logger)
 
     # ------------------------------------------------------------------
     # Public entry point
@@ -212,6 +217,12 @@ class SectionResearchAgent(BaseAgent):
         section_index = meta.get("section_index", 0)
         description = case.get("description", "")
 
+        if len(description) > 100:
+            scorable = Scorable(text=description)
+
+            summary = await self.summarizer.apply(scorable, context)
+
+            print(summary)
         # A. Build query text
         query_text = (
             f"Section: {section_name}. "
@@ -468,8 +479,8 @@ class SectionResearchAgent(BaseAgent):
 
         untrusted = 0
         for sent in sentences:
-            sent_vec = self.embedding_store.get_embedding(
-                sent, space=self.embedding_space
+            sent_vec = self.memory.embedding.get_or_create(
+                sent
             )
             best_cos = self._max_cosine(sent_vec, snippet_vecs)
             if best_cos < self.faithfulness_cosine_threshold:
@@ -611,11 +622,12 @@ class SectionResearchAgent(BaseAgent):
     def _get_past_best_score(self, section_id: str) -> Optional[float]:
         """Retrieve past best quality score for non-regression"""
         # Query CaseBookStore for best past case
-        case = self.casebook_store.find_best_case(
-            goal_text=f"Explain '{section_id}' section",
-            casebook_tag=self.casebook_tag
-        )
-        return case.meta.get("best_score") if case else None
+        return None
+        # case = self.casebook_store.find_best_case(
+        #     goal_text=f"Explain '{section_id}' section",
+        #     casebook_tag=self.casebook_tag
+        # )
+        # return case.meta.get("best_score") if case else None
 
     def _log_self_improvement(
         self,

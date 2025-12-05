@@ -29,6 +29,7 @@ from stephanie.memory.document_section_store import DocumentSectionStore
 from stephanie.memory.document_store import DocumentStore
 from stephanie.memory.dynamic_scorable_store import DynamicScorableStore
 from stephanie.memory.embedding_store import EmbeddingStore
+from stephanie.memory.encyclopedia_store import EncyclopediaStore
 from stephanie.memory.entity_cache_store import EntityCacheStore
 from stephanie.memory.evaluation_attribute_store import \
     EvaluationAttributeStore
@@ -66,6 +67,7 @@ from stephanie.memory.scorable_domain_store import ScorableDomainStore
 from stephanie.memory.scorable_embedding_store import ScorableEmbeddingStore
 from stephanie.memory.scorable_entity_store import ScorableEntityStore
 from stephanie.memory.scorable_rank_store import ScorableRankStore
+from stephanie.memory.scorable_summary_store import ScorableSummaryStore
 from stephanie.memory.score_store import ScoreStore
 from stephanie.memory.scoring_store import ScoringStore
 from stephanie.memory.search_result_store import SearchResultStore
@@ -220,6 +222,8 @@ class MemoryTool:
         self.register_store(CacheStore(self.session_maker, logger))
         self.register_store(MetricStore(self.session_maker, logger))
         self.register_store(CodeCheckStore(self.session_maker, logger))
+        self.register_store(ScorableSummaryStore(self.session_maker, logger))
+        self.register_store(EncyclopediaStore(self.session_maker, logger))
 
         if cfg.get("extra_stores"):
             for store_class in cfg.get("extra_stores", []):

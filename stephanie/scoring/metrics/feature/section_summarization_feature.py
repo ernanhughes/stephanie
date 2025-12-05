@@ -1,7 +1,7 @@
 from stephanie.tools.section_summarization_tool import SectionSummarizationTool
 from stephanie.scoring.metrics.feature.base_feature import BaseFeature
 
-class SectionProcessingFeature(BaseFeature):
+class SectionSummarizationFeature(BaseFeature):
     name = "section_summarizer"
 
     def __init__(self, cfg, memory, container, logger):
