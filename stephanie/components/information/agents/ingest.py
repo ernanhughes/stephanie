@@ -243,7 +243,7 @@ class InformationIngestAgent(BaseAgent):
                 {"error": repr(e)},
             )
 
-        quality_pass = InformationQualityPass(memcube_store=self.memory.memcubes, logger=self.logger)
+        quality_pass = InformationQualityPass(cfg=self.cfg, memory=self.memory, container=self.container, logger=self.logger)
 
         # For a single cube
         quality_pass.run_for_memcube_id(info_result.memcube_id)

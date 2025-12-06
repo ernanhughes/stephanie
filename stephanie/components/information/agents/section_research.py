@@ -593,8 +593,27 @@ class SectionResearchAgent(BaseAgent):
                 sections.append(section_data)
 
             extra["sections"] = sections
-            memcube.extra_data = extra
-            self.memory.memcubes.upsert(memcube)
+
+            # 🔧 FIX: upsert with a dict, not the ORM instance
+            self.memory.memcubes.upsert(
+                {
+                    "scorable_id": memcube.scorable_id,
+                    "scorable_type": memcube.scorable_type,
+                    "dimension": memcube.dimension,
+                    "version": memcube.version or "v1",
+                    "source": memcube.source,
+                    "model": memcube.model,
+                    "content": memcube.content,
+                    "original_score": memcube.original_score,
+                    "refined_score": memcube.refined_score,
+                    "refined_content": memcube.refined_content,
+                    "priority": memcube.priority,
+                    "sensitivity": memcube.sensitivity,
+                    "ttl": memcube.ttl,
+                    "usage_count": memcube.usage_count,
+                    "extra_data": extra,
+                }
+            )
 
     def _check_non_regression(self, new_score: float, section_id: str) -> bool:
         """Ensure new content NEVER degrades past best quality (Edge 2 proof)"""
@@ -665,7 +684,7 @@ class SectionResearchAgent(BaseAgent):
         evidence: Dict[str, Any],
     ) -> Dict[str, Any]:
         return {
-            "case_id": getattr(case, "id"),
+            "case_id": case.get("id"),
             "section_index": evidence["section_index"],
             "section_name": evidence["section_name"],
             "metrics": evidence["metrics"],

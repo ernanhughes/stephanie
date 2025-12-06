@@ -134,6 +134,8 @@ class EncyclopediaStore(BaseSQLAlchemyStore):
         min_frontier_count: int = 1,
         min_accuracy: float = 0.3,
         max_accuracy: float = 0.8,
+        novelty_max: float = 1.0,
+        novelty_min: float = 0.0,
         limit: int = 100,
     ) -> List[AIConceptORM]:
         """

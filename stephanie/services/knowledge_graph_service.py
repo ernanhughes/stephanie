@@ -1280,8 +1280,8 @@ class KnowledgeGraphService(Service):
         frontier_concepts = self.memory.encyclopedia.get_frontier_concepts(
             novelty_min=novelty_range[0],
             novelty_max=novelty_range[1],
-            accuracy_min=quiz_accuracy_range[0],
-            accuracy_max=quiz_accuracy_range[1],
+            min_accuracy=quiz_accuracy_range[0],
+            max_accuracy=quiz_accuracy_range[1],
             limit=limit * 2  # oversample for filtering
         )
         

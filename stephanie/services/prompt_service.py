@@ -11,9 +11,15 @@ import litellm
 import yaml
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.constants import (BUS_STREAM, SUBJ_RESULT_LEG_W,
-                                 SUBJ_RESULT_NS_T, SUBJ_RESULT_NS_W,
-                                 SUBJ_SUBMIT, SUBJ_SUBMIT_LEG, SUBJ_SUBMIT_NS)
+from stephanie.constants import (
+    BUS_STREAM,
+    SUBJ_RESULT_LEG_W,
+    SUBJ_RESULT_NS_T,
+    SUBJ_RESULT_NS_W,
+    SUBJ_SUBMIT,
+    SUBJ_SUBMIT_LEG,
+    SUBJ_SUBMIT_NS,
+)
 from stephanie.services.bus.events.prompt_job import PromptJob
 from stephanie.services.service_protocol import Service
 from stephanie.utils.llm_utils import remove_think_blocks
@@ -32,7 +38,6 @@ class LLMRole(str, Enum):
     CRITIC_RISK = "critic_risk"
     EXECUTOR = "executor"
     REFINER = "refiner"
-    
 
 
 DEFAULT_ROLE_SYSTEM_PROMPTS: Dict[LLMRole, str] = {
@@ -58,7 +63,6 @@ DEFAULT_ROLE_SYSTEM_PROMPTS: Dict[LLMRole, str] = {
         "\n"
         "OUTPUT FORMAT: A SINGLE FLOAT between 0.0 and 1.0. NO TEXT, NO EXPLANATION."
     ),
-    
     LLMRole.CRITIC_RISK: (
         "You are an AI research safety auditor. Your ONLY task is to flag ideas that pose "
         "significant safety, ethics, or reproducibility risks.\n\n"
@@ -85,7 +89,6 @@ DEFAULT_ROLE_SYSTEM_PROMPTS: Dict[LLMRole, str] = {
         "If the method cannot be implemented with public tools/data, output:\n"
         "'''INFEASIBLE: [reason]'''"
     ),
-    
     LLMRole.REFINER: (
         "You are an AI research collaborator refining ideas WITH HUMAN FEEDBACK. "
         "The human has provided constraints via sliders:\n"
@@ -102,7 +105,6 @@ DEFAULT_ROLE_SYSTEM_PROMPTS: Dict[LLMRole, str] = {
         '  "constraints_applied": ["list", "of", "changes"]\n'
         "}"
     ),
-    
     # Keep your existing roles below this line
     LLMRole.CRITIC: (
         "You are a rigorous but constructive AI research critic. "
@@ -285,13 +287,10 @@ class PromptService(Service):
                 **call_params,
             )
             out = resp["choices"][0]["message"]["content"]
-            log.info(
-                f"PromptService._acomplete_messages success: model={model.name} {out[:60]!r}..."
-            )
+            log.info(f"PS success: model={model.name} {out[:60]!r}...")
             return remove_think_blocks(out)
         except Exception:
-            log.exception(
-                "PromptService._acomplete_messages failed extra=%s", model.name)
+            log.exception("PS failed extra=%s", model.name)
             return ""
 
     async def _acomplete(
@@ -318,7 +317,7 @@ class PromptService(Service):
         context: Optional[Dict[str, Any]],
         *,
         model: Optional[Union[str, Dict[str, Any]]] = None,
-        role: Optional[LLMRole] = None,          
+        role: Optional[LLMRole] = None,
         sys_preamble: Optional[str] = None,
         params: Optional[Dict[str, Any]] = None,
         timeout: Optional[int] = None,
@@ -355,7 +354,7 @@ class PromptService(Service):
         *,
         models: List[Union[str, Dict[str, Any]]],
         judge: Optional[callable] = None,
-        role: Optional[LLMRole] = None,          # <-- NEW
+        role: Optional[LLMRole] = None,  # <-- NEW
         sys_preamble: Optional[str] = None,
         params: Optional[Dict[str, Any]] = None,
         context: Optional[Dict[str, Any]] = None,
@@ -474,7 +473,7 @@ class PromptService(Service):
                 ],
             )
         except Exception as e:
-            log.warning("PromptService.ensure_stream failed: %s", e)
+            log.warning("PS _ensure_bus_bindings failed: %s", e)
 
         if not self._subs_ready:
             # Subscribe to both submit subjects; process in background
@@ -533,14 +532,14 @@ class PromptService(Service):
     async def _handle_submit_msg(self, msg) -> None:
         # Parse
         try:
-            log.info("PromptService.ReceivedJob: %s", msg)
+            log.info("PS ReceivedJob: %s", msg)
             raw = (
                 msg.data
                 if isinstance(msg.data, dict)
                 else json.loads(msg.data.decode("utf-8"))
             )
         except Exception as e:
-            log.exception("PromptService.BadJSON: %s", e)
+            log.exception("PS %s", e)
             if hasattr(msg, "nak"):
                 try:
                     await msg.nak()
@@ -550,10 +549,10 @@ class PromptService(Service):
 
         # Validate
         try:
-            log.info("PromptService.ValidatingJob: %s", raw)
+            log.info("PS ValidatingJob: %s", raw)
             job = PromptJob.model_validate(raw)  # Pydantic v2
         except Exception as e:
-            log.error("PromptService.ValidationError %s", e)
+            log.error("PS ValidationError %s", e)
             if hasattr(msg, "nak"):
                 try:
                     await msg.nak()
@@ -584,9 +583,7 @@ class PromptService(Service):
                         text = await self._acomplete_messages(
                             model=model_spec, messages=messages, params=params
                         )
-                        log.info(
-                            f"PromptService._acomplete success: {text[:60]!r}..."
-                        )
+                        log.info(f"PS success: {text[:60]}...")
                     else:
                         text = await self._acomplete(
                             prompt=job.prompt_text or "",
@@ -594,9 +591,7 @@ class PromptService(Service):
                             sys_preamble=job.system,
                             params=params,
                         )
-                        log.info(
-                            f"PromptService._acomplete success: {text[:60]!r}..."
-                        )
+                        log.info(f"PS success: {text[:60]!r}...")
                 finally:
                     self._active_requests = max(0, self._active_requests - 1)
 
@@ -607,19 +602,16 @@ class PromptService(Service):
                 "scorable_id": job.scorable_id,
                 "result": {"text": text},
             }
-            log.info("PromptService.PublishingResult: %s", ret)
+            log.info("PS PublishingResult: %s", ret)
             await self.memory.bus.publish(ret, payload)
             if hasattr(msg, "ack"):
                 try:
                     await msg.ack()
                 except Exception:
                     pass
-            log.info(
-                "PromptService.ResultSent",
-                extra={"job_id": job.job_id, "ret": ret},
-            )
+            log.info("PS ResultSent %s %s", job.job_id, ret)
         except Exception as e:
-            log.exception("PromptService.ExecuteError")
+            log.exception("PS ExecuteError %s", str(e))
             ret = job.return_topic or SUBJ_RESULT_NS_T.format(job=job.job_id)
             try:
                 await self.memory.bus.publish(

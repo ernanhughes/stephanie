@@ -62,7 +62,7 @@ class InformationQualityPass:
         # thresholds (can be tuned via cfg)
         self.min_relevance = float(self.cfg.get("min_relevance", 0.4))
         self.min_authority = float(self.cfg.get("min_authority", 0.3))
-        self.min_novelty   = float(self.cfg I.get("min_novelty", 0.1))  # avoid perfect dupes
+        self.min_novelty   = float(self.cfg.get("min_novelty", 0.1))  # avoid perfect dupes
 
     # ------------------------------------------------------------------
     # Public API
@@ -73,7 +73,7 @@ class InformationQualityPass:
         Fetch a MemCube by id, score its information_sources, and write
         the updated extra_data back to the store.
         """
-        cube = self.memcubes.get_by_id(memcube_id)
+        cube = self.memcube_store.get_by_id(memcube_id)
         if cube is None:
             log.info("MemCube id %s not found", memcube_id)
             return
@@ -83,7 +83,7 @@ class InformationQualityPass:
         data = cube.to_dict(include_extra=True)
         data["extra_data"] = updated_extra
 
-        self.memcubes.upsert(data, merge_extra=False)
+        self.memcube_store.upsert(data, merge_extra=False)
 
 
         log.info("updated memcube_id %s %s ", memcube_id, updated_extra.get("info_blog_ready_level")           )
