@@ -1,4 +1,4 @@
-# stephanie/models/types/belief_cartridge.py
+# stephanie/types/belief_cartridge.py
 from __future__ import annotations
 
 from datetime import datetime

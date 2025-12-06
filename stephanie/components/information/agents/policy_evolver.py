@@ -201,30 +201,21 @@ class PolicyEvolverAgent(BaseAgent):
     # ------------------------------------------------------------------
     async def _apply_policy_updates(self, updates: List[PolicyUpdate]) -> List[PolicyUpdate]:
         """
-        Apply policy changes.
-
-        In MVP: Log and store in persistent config.
-        Later: Trigger model retraining, RL fine-tuning, or dynamic parameter adjustment.
+        In MVP: we only **record** suggested updates.
+        A separate process is responsible for actually changing config.
         """
         applied = []
 
         for update in updates:
             log.info(
-                f"PolicyEvolver: Applying update {update.component}.{update.parameter} "
+                f"PolicyEvolver: proposing update {update.component}.{update.parameter} "
                 f"{update.old_value} → {update.new_value} [{update.confidence:.2f}]"
             )
 
-            # Here you would:
-            # - Write to a config store
-            # - Update a live service (if hot-reload supported)
-            # - Queue an RL training job
-            # - Emit event to refresh agents
-
-            # For now, just mark as applied
-            update.reason += " | ACTION_TAKEN"
+            # Mark as "proposed", not applied
+            update.reason += " | STATUS=PROPOSED"
             applied.append(update)
 
-            # 🔁 This is where you close the loop:
-            # E.g., trigger IdeaRLTrainerAgent if generator params changed
+            # TODO: write to PolicyStore / MemCube for human/agent review
 
-        return applied 
+        return applied
