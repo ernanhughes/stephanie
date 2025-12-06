@@ -1,239 +1,306 @@
 # stephanie/components/information/agents/smart_paper_builder.py
 from __future__ import annotations
 
-import asyncio
 from typing import Any, Dict, List, Optional
+import asyncio
+import logging
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.services.prompt_service import LLMRole
-from stephanie.types.idea import Idea  # your Pydantic Idea model
-import logging
+
+from stephanie.types.idea import Idea  # your Pydantic model
+from stephanie.memory.idea_store import IdeaStore
+from stephanie.memory.reflection_store import ReflectionStore
 
 log = logging.getLogger(__name__)
 
+
 class SmartPaperBuilderAgent(BaseAgent):
     """
-    SMART-style paper → blog section builder.
-
-    Assumptions / Inputs (from earlier pipeline stages):
-      - context["information"]:
-          {
-              "title": str,
-              "abstract": str,
-              "summary": str,             # high-level summary of the paper
-              "key_points": List[str],    # optional
-              "domain": str,              # optional
-              "similar_papers": [...],    # optional
-              ...
-          }
-
-      - context["ideas_accepted"]: List[Idea]
-          High-scoring ideas from the idea engine (IdeaGenerationHead + IdeaCriticHead).
-
-    Outputs:
-      - context["smart_blog_draft"]: str
-          A blog-style section explaining the paper and weaving in the best ideas.
-
-      - context["smart_trace"]: Dict[str, Any]
-          Lightweight trace capturing what went into this generation:
-              {
-                  "paper_title": ...,
-                  "idea_ids": [...],
-                  "prompt": "...",
-                  "n_ideas_used": int,
-              }
-
-    This is intentionally **minimal but real**:
-      - It uses your actual PromptService (new API).
-      - It ties information + ideas into a single artefact you can show in a demo.
-      - It is easy to extend later with more SMART-style loops (multiple drafts, critic, re-write, etc.).
+    End-to-end SMART paper builder:
+    - Fetch similar papers
+    - Ingest + structure
+    - Generate explainer draft
+    - Reflect & improve (SAMULE-style micro reflection)
+    - Generate & critique research ideas
+    - Assemble final blog artifact
     """
 
-    def __init__(self, cfg, memory, container, logger) -> None:
+    def __init__(self, cfg, memory, container, logger):
         super().__init__(cfg=cfg, memory=memory, container=container, logger=logger)
-        self.prompt_service = self.container.get("prompt")
 
-    # -------------------------------------------------------------------------
-    # Public API
-    # -------------------------------------------------------------------------
+        # Core services / tools
+        self.prompt = self.container.get("prompt_service")
+        self.similar_tool = self.container.get("similar_papers_tool")  # wrapper around recommend_similar_papers
+        self.doc_ingestor = self.container.get("document_ingest_agent")
+        self.info_reflection = self.container.get("info_reflection_agent")
+
+        # Idea engine
+        self.idea_gen = self.container.get("idea_generation_head")
+        self.idea_critic = self.container.get("idea_critic_head")
+
+        # Stores
+        self.idea_store: IdeaStore = self.memory.ideas
+        self.reflection_store: ReflectionStore = self.memory.reflections
+
+        # Scoring
+        self.scoring_agent = self.container.get("info_quality_scorer")
+
+        # Thresholds
+        self.min_quality = float(cfg.get("min_quality", 0.75))
+        self.min_idea_score = float(cfg.get("min_idea_r_final", 0.65))
+        self.max_ideas = int(cfg.get("max_ideas", 5))
 
     async def run(self, context: Dict[str, Any]) -> Dict[str, Any]:
-        information: Dict[str, Any] = context.get("information") or {}
-        ideas: List[Idea] = context.get("ideas_accepted") or []
+        paper_url: str = context["paper_url"]
+        audience: str = context.get("audience", "practitioner")
+        topic: str = context.get("topic", paper_url)
 
-        if not information:
-            log.warning(
-                "SmartPaperBuilderAgent: context['information'] missing or empty; "
-                "falling back to minimal prompt."
-            )
+        # 1) Find similar papers
+        similar = await self._find_similar_papers(paper_url)
+        self.logger.info(f"Found {len(similar)} similar papers for {paper_url}")
 
-        if not ideas:
-            log.warning(
-                "SmartPaperBuilderAgent: context['ideas_accepted'] is empty; "
-                "blog draft will not include novel idea directions."
-            )
+        # 2) Ingest + structure (main + similar papers)
+        ingest_result = await self._ingest_papers(paper_url, similar)
+        main_doc_id = ingest_result["main_doc_id"]
+        similar_doc_ids = ingest_result["similar_doc_ids"]
 
-        # 1) Select top-k ideas to weave into the blog post
-        top_ideas = self._select_top_ideas(ideas, k=self.cfg.get("max_ideas", 3))
-
-        # 2) Build a single, explicit prompt
-        prompt = self._build_blog_prompt(information, top_ideas)
-
-        # 3) Call PromptService (new signature) to generate the blog draft
-        blog_text = await self.prompt_service.run_prompt(
-            prompt_text=prompt,
-            context=context,           # pass pipeline context in case roles/sys need it
-            role=LLMRole.EXPLAINER,    # or a dedicated BLOG_WRITER role if you add one
-            params={
-                "temperature": self.cfg.get("temperature", 0.7),
-                "max_tokens": self.cfg.get("max_tokens", 1200),
-            },
+        # 3) Initial explainer draft
+        draft_v1 = await self._generate_blog_draft(
+            main_doc_id,
+            similar_doc_ids,
+            audience=audience,
+            reflection_hint=None,
         )
 
-        # 4) Store outputs + a tiny SMART-style trace
-        context["smart_blog_draft"] = blog_text
-        context["smart_trace"] = self._build_trace(information, top_ideas, prompt)
+        # 4) Score draft
+        score_v1 = await self._score_draft(draft_v1, main_doc_id)
+        self.logger.info(f"SMART draft_v1 score={score_v1:.3f}")
 
-        log.info(
-            "SmartPaperBuilderAgent: generated blog draft "
-            f"(len={len(blog_text)} chars, ideas_used={len(top_ideas)})"
+        draft_final = draft_v1
+        reflection = None
+
+        # 5) If below threshold: reflect & improve
+        if score_v1 < self.min_quality:
+            self.logger.warning("Draft below threshold; triggering reflection loop")
+            reflection = await self._reflect_on_draft(
+                topic=topic,
+                draft=draft_v1,
+                score=score_v1,
+                main_doc_id=main_doc_id,
+            )
+
+            draft_final = await self._generate_blog_draft(
+                main_doc_id,
+                similar_doc_ids,
+                audience=audience,
+                reflection_hint=reflection.get("action_plan") if reflection else None,
+            )
+            score_v2 = await self._score_draft(draft_final, main_doc_id)
+            self.logger.info(f"SMART draft_v2 score={score_v2:.3f}")
+        else:
+            self.logger.info("Draft above threshold; skipping reflection loop")
+
+        # 6) Generate & critique research ideas
+        ideas, accepted_ideas = await self._generate_and_score_ideas()
+        self.logger.info(f"Generated {len(ideas)} ideas, accepted {len(accepted_ideas)}")
+
+        if accepted_ideas:
+            # Persist ideas
+            await self._store_ideas(accepted_ideas)
+
+        # 7) Assemble final blog artifact
+        blog = self._assemble_blog(
+            draft_final=draft_final,
+            similar=similar,
+            top_ideas=accepted_ideas,
+            audience=audience,
+        )
+
+        context.update(
+            {
+                "blog_markdown": blog,
+                "draft_v1": draft_v1,
+                "reflection": reflection,
+                "ideas_raw": ideas,
+                "ideas_accepted": accepted_ideas,
+            }
         )
         return context
 
-    # -------------------------------------------------------------------------
+    # ------------------------------------------------------------------
     # Internal helpers
-    # -------------------------------------------------------------------------
+    # ------------------------------------------------------------------
 
-    def _select_top_ideas(self, ideas: List[Idea], k: int = 3) -> List[Idea]:
-        """
-        Select the top-k ideas by r_final. This is your 'SMART' selection step:
-        you are explicitly using the critic's multi-objective score to decide
-        what makes it into the narrative.
-        """
-        if not ideas:
+    async def _find_similar_papers(self, paper_url: str) -> List[Dict[str, Any]]:
+        try:
+            return await self.similar_tool.find_similar(paper_url=paper_url, limit=10)
+        except Exception as e:
+            self.logger.error(f"SimilarPapersTool failed: {e}")
             return []
 
-        sorted_ideas = sorted(
-            ideas,
-            key=lambda i: float(getattr(i, "r_final", 0.0)),
-            reverse=True,
+    async def _ingest_papers(
+        self, paper_url: str, similar: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        # Let your existing ingest agent handle PDF download, parsing, MemCubes, etc.
+        main_res = await self.doc_ingestor.run({"paper_url": paper_url})
+        main_doc_id = main_res["doc_id"]
+
+        similar_doc_ids: List[str] = []
+        for sp in similar:
+            try:
+                res = await self.doc_ingestor.run({"paper_url": sp["url"]})
+                similar_doc_ids.append(res["doc_id"])
+            except Exception as e:
+                self.logger.warning(f"Ingest failed for similar paper {sp.get('url')}: {e}")
+
+        return {
+            "main_doc_id": main_doc_id,
+            "similar_doc_ids": similar_doc_ids,
+        }
+
+    async def _generate_blog_draft(
+        self,
+        main_doc_id: str,
+        similar_doc_ids: List[str],
+        audience: str,
+        reflection_hint: Optional[List[str]],
+    ) -> str:
+        # Build a prompt that:
+        # - Explains the main paper
+        # - Draws on similar docs for context/contrast
+        # - Applies any reflection hints if provided
+        main_summary = await self._get_doc_summary(main_doc_id)
+        similar_summaries = await self._get_similar_summaries(similar_doc_ids)
+
+        prompt = self._build_blog_prompt(
+            main_summary=main_summary,
+            similar_summaries=similar_summaries,
+            audience=audience,
+            reflection_hint=reflection_hint,
         )
-        return sorted_ideas[:k]
+
+        out = await self.prompt.run_prompt(
+            prompt_text=prompt,
+            context=None,
+            role=LLMRole.EXPLAINER,
+        )
+        return out or ""
+
+    async def _score_draft(self, draft: str, main_doc_id: str) -> float:
+        try:
+            res = await self.scoring_agent.run(
+                {
+                    "doc_id": main_doc_id,
+                    "generated_text": draft,
+                }
+            )
+            return float(res.get("info_quality_score", 0.0))
+        except Exception as e:
+            self.logger.error(f"Draft scoring failed: {e}")
+            return 0.0
+
+    async def _reflect_on_draft(
+        self,
+        topic: str,
+        draft: str,
+        score: float,
+        main_doc_id: str,
+    ) -> Dict[str, Any]:
+        # Minimal micro reflection – no trace dependency required for v1
+        ref = await self.info_reflection.reflect_on_run(
+            task_id=topic,
+            trace_id=-1,
+            draft_text=draft,
+            reference_text=await self._get_doc_summary(main_doc_id),
+            score=score,
+        )
+        # Expect ref["structured_output"]["action_plan"] from agent
+        structured = ref.get("structured_output", {})
+        return {
+            "raw": ref.get("reflection_text", ""),
+            "problems": structured.get("problems", []),
+            "action_plan": structured.get("action_plan", []),
+        }
+
+    async def _generate_and_score_ideas(self) -> tuple[list[Idea], list[Idea]]:
+        # Use the already-implemented IdeaGenerationHead + IdeaCriticHead
+        ideas: List[Idea] = await self.idea_gen.generate_frontier_ideas()
+        if not ideas:
+            return [], []
+
+        scored: List[Idea] = await asyncio.gather(
+            *[self.idea_critic.evaluate(i) for i in ideas],
+            return_exceptions=False,
+        )
+        accepted = [i for i in scored if i.r_final >= self.min_idea_score]
+        return scored, accepted
+
+    async def _store_ideas(self, ideas: List[Idea]) -> None:
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, lambda: self.idea_store.upsert_ideas(ideas))
+
+    async def _get_doc_summary(self, doc_id: str) -> str:
+        # Thin wrapper around your existing summary retrieval
+        summary_store = self.memory.summaries
+        summary = await summary_store.get_summary(doc_id)
+        return summary or ""
+
+    async def _get_similar_summaries(self, doc_ids: List[str]) -> List[str]:
+        summary_store = self.memory.summaries
+        outs: List[str] = []
+        for did in doc_ids:
+            try:
+                s = await summary_store.get_summary(did)
+                if s:
+                    outs.append(s)
+            except Exception:
+                continue
+        return outs
 
     def _build_blog_prompt(
         self,
-        information: Dict[str, Any],
-        ideas: List[Idea],
+        main_summary: str,
+        similar_summaries: List[str],
+        audience: str,
+        reflection_hint: Optional[List[str]],
     ) -> str:
-        """
-        Compose a single rich prompt that:
-          - Explains the paper.
-          - Weaves in the selected ideas as 'our hypotheses' / 'future work'.
-        """
-        title = information.get("title", "Unknown Title")
-        abstract = (information.get("abstract") or "").strip()
-        summary = (information.get("summary") or "").strip()
-        domain = information.get("domain") or "AI / machine learning"
-
-        key_points = information.get("key_points") or []
-        key_points_text = ""
-        if key_points:
-            bullet_lines = "\n".join(f"- {kp}" for kp in key_points[:6])
-            key_points_text = f"\nKey points extracted from the paper:\n{bullet_lines}\n"
-
-        # Format ideas into a readable block
-        if ideas:
-            idea_lines = []
-            for idx, idea in enumerate(ideas, start=1):
-                idea_lines.append(
-                    f"{idx}. {idea.title}\n"
-                    f"   Hypothesis: {idea.hypothesis}\n"
-                    f"   Method (sketch): {idea.method}"
-                )
-            ideas_block = "\n".join(idea_lines)
-        else:
-            ideas_block = "None (you may still suggest plausible extensions)."
-
-        prompt = f"""
-You are helping write a blog post for technically literate readers
-(e.g., ML engineers, researchers, and advanced students).
-
-We have a **research paper** and a set of **novel research directions** that
-our idea engine has generated.
-
----
-
-PAPER METADATA
---------------
-Title: {title}
-
-Domain: {domain}
-
-Abstract:
-{abstract or "(no abstract available)"}
-
-High-level summary:
-{summary or "(no high-level summary available)"}
-{key_points_text}
-
----
-
-NOVEL RESEARCH DIRECTIONS (OUR OWN IDEAS, NOT CLAIMED BY THE PAPER)
--------------------------------------------------------------------
-{ideas_block}
-
-Each idea above has already been scored for:
-- novelty
-- feasibility
-- utility
-- risk
-
-Assume these ideas are *worthwhile to discuss*, especially the first ones.
-
----
-
-YOUR TASK
----------
-Write a **single coherent blog post section** (approximately 800–1200 words) that:
-
-1. Clearly explains what the paper is about and why it matters.
-2. Draws out one or more limitations, gaps, or open questions in the work.
-3. Introduces **our best new ideas** (from the list above) as:
-   - potential extensions,
-   - follow-up experiments, or
-   - alternative framings of the problem.
-4. Makes it obvious to the reader which ideas are from the *original paper*
-   and which ideas are *our own proposals*.
-5. Is written in a conversational but precise tone, suitable for a research blog
-   (e.g., programmer.ie).
-
-Structure the output roughly as:
-
-- Short hook / intro
-- "What this paper actually does"
-- "Where the gaps or limitations are"
-- "Where we think this could go next" (integrating our ideas)
-- Light concluding paragraph
-
-Do NOT use bullet lists in the final output. Write continuous prose.
-Do NOT fabricate experimental results; when you speculate, say so explicitly.
+        similar_block = ""
+        if similar_summaries:
+            joined = "\n\n".join(similar_summaries[:3])
+            similar_block = f"""
+Related papers (for context / contrast):
+{joined}
 """
-        return prompt.strip()
 
-    def _build_trace(
-        self,
-        information: Dict[str, Any],
-        ideas: List[Idea],
-        prompt: str,
-    ) -> Dict[str, Any]:
-        """
-        Minimal SMART-style trace: enough to debug + show in a demo.
-        You can later evolve this into a full PlanTrace.
-        """
-        return {
-            "paper_title": information.get("title"),
-            "paper_domain": information.get("domain"),
-            "idea_ids": [getattr(i, "id", None) for i in ideas],
-            "n_ideas_used": len(ideas),
-            "prompt": prompt,
-        }
+        reflection_block = ""
+        if reflection_hint:
+            fixes = "\n".join(f"- {f}" for f in reflection_hint)
+            reflection_block = f"""
+Critical feedback from previous draft:
+
+{fixes}
+
+Please explicitly apply these improvements.
+"""
+
+        return f"""
+You are an expert AI explainer writing for a {audience} audience.
+
+Main paper summary:
+{main_summary}
+
+{similar_block}
+
+Write a clear, engaging blog-style explanation that covers:
+- What problem this paper addresses
+- Why it matters in practice
+- The core idea, explained simply
+- How it compares to related work (if relevant)
+- Limitations and caveats
+
+Use headings, short paragraphs, and examples where helpful.
+Avoid heavy notation; focus on intuition.
+
+{reflection_block}
+"""

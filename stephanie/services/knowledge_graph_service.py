@@ -863,9 +863,30 @@ class KnowledgeGraphService(Service):
         extra: Optional[Dict[str, Any]] = None,
     ) -> None:
         """
-        Upsert a canonical concept node (AI Encyclopedia entry).
-        concept_id is stable (e.g., wiki slug: 'cross_entropy').
+        Upsert a canonical concept both in the encyclopedia DB and
+        as a node in the knowledge graph.
         """
+        # 1) Ensure encyclopedia row exists / is refreshed
+        try:
+            wiki_url = extra.get("wiki_url") if extra else None
+            sections = extra.get("sections") if extra else None
+
+            self.memory.encyclopedia.ensure_concept(
+                concept_id=concept_id,
+                name=name,
+                summary=summary or "",
+                wiki_url=wiki_url,
+                domains=domains,
+                sections=sections,
+            )
+        except Exception as e:
+            log.warning(
+                "KG upsert_concept: failed to persist %s to encyclopedia: %s",
+                concept_id,
+                e,
+            )
+
+        # 2) Upsert the KG node as before
         properties = {
             "type": "concept",
             "name": name,
@@ -1273,34 +1294,50 @@ class KnowledgeGraphService(Service):
         limit: int = 50,
     ) -> List[Dict[str, Any]]:
         """
-        REAL implementation using your AIEncyclopediaStore.
-        Returns concepts in the 'Goldilocks zone' for ideation.
+        Return concepts in the 'Goldilocks' band for ideation.
+
+        Primary source:
+        - AIEncyclopediaStore.get_frontier_concepts() (quiz-based frontier band)
+
+        Cold start:
+        - If there are no frontier concepts yet, fall back to
+            a simple list of concepts from the encyclopedia.
         """
-        # Reuse your existing frontier heuristics from quiz system
+
+        # 1) Preferred path: use PretrainZero-style frontier band
         frontier_concepts = self.memory.encyclopedia.get_frontier_concepts(
-            novelty_min=novelty_range[0],
-            novelty_max=novelty_range[1],
             min_accuracy=quiz_accuracy_range[0],
             max_accuracy=quiz_accuracy_range[1],
-            limit=limit * 2  # oversample for filtering
+            novelty_min=novelty_range[0],
+            novelty_max=novelty_range[1],
+            limit=limit * 2,
         )
-        
-        # Convert to expected schema (handle missing fields)
-        results = []
-        for concept in frontier_concepts:
-            results.append({
-                "id": concept.id,
-                "name": concept.name,
-                "summary": concept.summary or "",
-                "domains": concept.domains or [],
-                "quiz_stats": {
-                    "accuracy": concept.quiz_accuracy or 0.5,
-                    "novelty": concept.novelty_score or 0.5
+
+        # 2) Cold start fallback: just grab some concepts so callers don't get stuck
+        if not frontier_concepts:
+            frontier_concepts = self.memory.encyclopedia.list_concepts(limit=limit)
+
+        results: List[Dict[str, Any]] = []
+        for c in frontier_concepts:
+            # We don't currently store novelty per concept; you can later
+            # replace this with a graph-based estimate.
+            novelty = 0.5
+
+            results.append(
+                {
+                    "id": c.concept_id,            # use stable concept slug
+                    "name": c.name,
+                    "summary": c.summary or "",
+                    "domains": c.domains or [],
+                    "quiz_stats": {
+                        "accuracy": c.quiz_accuracy if c.quiz_accuracy is not None else 0.5,
+                        "novelty": novelty,
+                    },
                 }
-            })
+            )
             if len(results) >= limit:
                 break
-        
+
         return results
 
     async def get_concept(self, concept_id: str) -> Dict[str, Any]:

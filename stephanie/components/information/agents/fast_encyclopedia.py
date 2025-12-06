@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
-from typing import Any, Dict, List, Optional
+from dataclasses import asdict
+from typing import Any, Dict, List
 
 import logging
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.core.context.context_manager import ContextManager
 from stephanie.components.information.models import ReasonedSection, ReasonedBlogResult
 
 log = logging.getLogger(__name__)
@@ -56,47 +55,45 @@ class FastEncyclopediaAgent(BaseAgent):
     # Pipeline entrypoint
     # ------------------------------------------------------------------
 
-    async def run(self, context: ContextManager) -> ContextManager:
-        ctx = context
-
-        ingest_block = ctx.get("information_ingest") or {}
+    async def run(self, context: Dict[str, Any]) ->  Dict[str, Any]:
+        ingest_block = context.get("information_ingest") or {}
         if ingest_block.get("status") != "ok":
             log.warning(
                 "FastEncyclopediaAgent: information_ingest.status != 'ok', skipping."
             )
-            ctx["reasoned_blog"] = {
+            context["reasoned_blog"] = {
                 "status": "skipped",
                 "reason": "information_ingest not ready",
             }
-            return ctx
+            return context
 
         documents = ingest_block.get("documents") or []
         if not documents:
             log.warning(
                 "FastEncyclopediaAgent: no documents found in information_ingest."
             )
-            ctx["reasoned_blog"] = {
+            context["reasoned_blog"] = {
                 "status": "no_documents",
                 "reason": "no documents to enhance",
             }
-            return ctx
+            return context
 
         # For now, handle the first document only.
         doc_meta = documents[0]
-        result = self._process_single_document(doc_meta, ctx)
+        result = self._process_single_document(doc_meta, context)
 
-        ctx["reasoned_blog"] = {
+        context["reasoned_blog"] = {
             "status": "ok",
             "result": asdict(result),
         }
-        return ctx
+        return context
 
     # ------------------------------------------------------------------
     # Core per-document logic
     # ------------------------------------------------------------------
 
     def _process_single_document(
-        self, doc_meta: Dict[str, Any], ctx: ContextManager
+        self, doc_meta: Dict[str, Any], context: Dict[str, Any]
     ) -> ReasonedBlogResult:
         paper_id = str(doc_meta.get("document_id") or doc_meta.get("doc_id"))
         paper_title = doc_meta.get("title") or f"Paper {paper_id}"
@@ -112,7 +109,7 @@ class FastEncyclopediaAgent(BaseAgent):
         )
 
         # Resolve sections with a simple policy
-        sections = self._resolve_sections_for_paper(doc_meta, ctx)
+        sections = self._resolve_sections_for_paper(doc_meta, context)
         selected = self._select_sections(sections)
 
         reasoned_sections: List[ReasonedSection] = []
@@ -171,7 +168,7 @@ class FastEncyclopediaAgent(BaseAgent):
     def _resolve_sections_for_paper(
         self,
         doc_meta: Dict[str, Any],
-        ctx: ContextManager,
+        context: Dict[str, Any], 
     ) -> List[Dict[str, Any]]:
         """
         Resolve a list of sections for this paper.

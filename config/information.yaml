@@ -103,7 +103,6 @@ pipeline:
       enabled: false
       iterations: 1
 
-
     - name: ingest
       description: >
         Pull raw signal data from Huggingface or other sources. This builds
@@ -124,9 +123,9 @@ pipeline:
       description: >
         Quickly compile researched sections into a coherent blog post
         using a straightforward summarization approach.
-      cls: stephanie.components.information.agents.fast_encyclopedia.FastEncyclopediaAgent
+      cls: stephanie.components.information.agents.paper_to_ideas_blog.PaperToIdeasAndBlogAgent
       enabled: true
-      iterations: 1  
+      iterations: 1  well oh seems weird
 
     - name: reasoned_encyclopedia
       description: >

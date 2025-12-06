@@ -49,7 +49,7 @@ class InformationProcessor:
         self.enrich_arxiv: bool = bool(enrich.get("enable_arxiv", True))
         # Wikipedia enrichment is off by default to reduce API load and generally poor results.
         self.enrich_wiki: bool = bool(enrich.get("enable_wikipedia", False))
-        self.enrich_web: bool = bool(enrich.get("enable_web", True))
+        self.enrich_web: bool = bool(enrich.get("enable_web", False))
 
         self.max_results_arxiv: int = int(enrich.get("max_results_arxiv", 3))
         self.max_results_wiki: int = int(enrich.get("max_results_wiki", 2))

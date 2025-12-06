@@ -34,6 +34,9 @@ ingest:
     # Target for the build (MemCube with blog-view enabled)
     target: memcube_blog_post
 
+    enable_wikipedia: false
+    enable_web: false
+
     # Bucket / retrieval limits
     max_nodes: 80            # global cap on bucket nodes
     max_results_arxiv: 20

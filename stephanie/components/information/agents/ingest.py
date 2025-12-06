@@ -158,7 +158,7 @@ class InformationIngestAgent(BaseAgent):
         doc_id = paper.get("id") or paper.get("doc_id")
         self.memory.pipeline_references.insert(
             {
-                "pipeline_run_id": context.get("pipeline_run_id"),
+                "pipeline_run_id": pipeline_run_id,
                 "scorable_type": ScorableType.DOCUMENT,
                 "scorable_id": doc_id,
                 "relation_type": "inserted",
