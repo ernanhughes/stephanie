@@ -12,7 +12,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.memory.codecheck_store import CodeCheckStore
-from stephanie.models.base_config import BaseConfig
+from stephanie.data.base_config import BaseConfig
 
 log = logging.getLogger(__name__)
 
