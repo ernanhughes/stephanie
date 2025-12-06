@@ -10,8 +10,7 @@ from stephanie.components.information.adapters.info_casebook_adapter import \
 from stephanie.components.information.adapters.info_scorable_adapter import \
     score_memcube_and_attach_attributes
 from stephanie.components.information.builder.memcube import MemCubeBuilder
-from stephanie.components.information.models import InformationBuildResult
-from stephanie.components.information.source_profile import SourceProfile
+from stephanie.components.information.models import InformationBuildResult, SourceProfile
 
 
 @dataclass

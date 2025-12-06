@@ -185,19 +185,10 @@ class FastEncyclopediaAgent(BaseAgent):
         sections: List[Dict[str, Any]] = []
 
         # 1) document_sections from memory, if present
-        try:
-            # Some setups call it self.memory.document_sections, others may not.
-            if hasattr(self.memory, "document_sections") and doc_id is not None:
-                raw_sections = self.memory.document_sections.get_by_document(int(doc_id))
-                if raw_sections:
-                    sections = [s.to_dict() for s in raw_sections]
-        except Exception as e:
-            log.warning(
-                "FastEncyclopediaAgent: error reading document_sections for %s: %s",
-                doc_id,
-                e,
-            )
-
+        if doc_id is not None:
+            raw_sections = self.memory.document_sections.get_by_document(int(doc_id))
+            if raw_sections:
+                sections = [s.to_dict() for s in raw_sections]
         if sections:
             # Normalize keys a bit
             normalized: List[Dict[str, Any]] = []

@@ -6,9 +6,14 @@ import logging
 from typing import Dict, Any, List
 
 from stephanie.agents.base_agent import BaseAgent
+from stephanie.components.information.agents.critic import IdeaCriticHead
+from stephanie.components.information.agents.fast_encyclopedia import FastEncyclopediaAgent
+from stephanie.components.information.agents.idea import IdeaGenerationHead
 from stephanie.memory.idea_store import IdeaStore
 from stephanie.types.idea import Idea 
 from stephanie.components.information.models import ReasonedBlogResult
+from stephanie.components.information.agents.ingest import InformationIngestAgent  
+from stephanie.components.information.agents.section_research import SectionResearchAgent 
 
 log = logging.getLogger(__name__)
 
@@ -34,11 +39,11 @@ class PaperToIdeasAndBlogAgent(BaseAgent):
             self.logger.warning("No documents provided to PaperToIdeasAndBlogAgent")
             return context
 
-        ingest = self.container.get("information_ingest")
-        section_agent = self.container.get("section_research")
-        fast_ency = self.container.get("fast_encyclopedia")
-        idea_gen = self.container.get("idea_generation_head")
-        idea_critic = self.container.get("idea_critic_head")
+        ingest = InformationIngestAgent(self.cfg.get("ingest", {}), self.memory, self.container, self.logger)
+        section_agent = SectionResearchAgent(self.cfg.get("section_research", {}), self.memory, self.container, self.logger)
+        fast_ency = FastEncyclopediaAgent(self.cfg.get("fast_encyclopedia", {}), self.memory, self.container, self.logger)
+        idea_gen = IdeaGenerationHead(self.cfg.get("idea_generation", {}), self.memory, self.container, self.logger)
+        idea_critic = IdeaCriticHead(self.cfg.get("idea_critic", {}), self.memory, self.container, self.logger)
         idea_store: IdeaStore = self.memory.ideas
 
         all_results = []

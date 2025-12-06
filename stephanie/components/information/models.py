@@ -16,8 +16,9 @@ class InformationSource:
       - kind="wiki":     Wikipedia article
       - kind="memcube":  existing MemCube content
     """
-    kind: str                       # "document" | "web" | "wiki" | "memcube" | ...
-    id: str                         # opaque source id (doc_id, URL, etc.)
+
+    kind: str  # "document" | "web" | "wiki" | "memcube" | ...
+    id: str  # opaque source id (doc_id, URL, etc.)
     title: str
     text: str
     meta: Dict[str, Any] = field(default_factory=dict)
@@ -35,7 +36,8 @@ class InformationTargetConfig:
       - enable_blog_view=True to signal that we should also produce
         a blog-style markdown view.
     """
-    kind: str                       # "memcube", later maybe "nexus_page", etc.
+
+    kind: str  # "memcube", later maybe "nexus_page", etc.
     name: str
     description: str
 
@@ -57,6 +59,7 @@ class InformationRequest:
     - target:  what we want to build (memcube, page, etc.)
     - context: arbitrary pipeline context (goal, document dict, run ids, ...)
     """
+
     sources: List[InformationSource]
     target: InformationTargetConfig
     context: Dict[str, Any] = field(default_factory=dict)
@@ -75,6 +78,7 @@ class InformationResult:
       - goal_id / casebook_id: copied from target for convenience
       - extra:   free-form debug / telemetry / scoring info
     """
+
     memcube_id: Optional[str]
     bucket_id: Optional[str]
     blog_markdown: str
@@ -85,25 +89,6 @@ class InformationResult:
     markdown_path: Optional[str] = None
 
     extra: Dict[str, Any] = field(default_factory=dict)
-
-
-@dataclass
-class BucketNode:
-    """
-    A single information fragment collected for a topic.
-    Typically corresponds to a paragraph / section / snippet.
-    """
-    id: str
-    source_type: str       # "arxiv_meta", "pdf_section", "wiki", "web", "memcube"
-    title: str
-    snippet: str
-    url: Optional[str] = None
-    arxiv_id: Optional[str] = None
-    doc_id: Optional[str] = None   # e.g. pdf id, memcube id
-    section: Optional[str] = None  # section title / heading
-    score: float = 0.0             # initial relevance to topic
-    embedding: Optional[list[float]] = None
-    meta: Dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -127,6 +112,7 @@ class InfoSection:
     """
     One section in the eventual Information MemCube / page.
     """
+
     title: str
     description: str
     content: str
@@ -139,6 +125,7 @@ class InformationBuildResult:
     """
     Returned by the orchestrator after a full build.
     """
+
     topic: str
     target: str
     memcube_id: str
@@ -146,6 +133,7 @@ class InformationBuildResult:
     attributes: Dict[str, Any] = field(default_factory=dict)
     preview_markdown: Optional[str] = None
     extra_data: Dict[str, Any] = field(default_factory=dict)
+
 
 @dataclass
 class ReasonedSection:
@@ -156,9 +144,46 @@ class ReasonedSection:
     casebook_ref: Optional[Dict[str, Any]] = None
     meta: Optional[Dict[str, Any]] = None
 
+
 @dataclass
 class ReasonedBlogResult:
     outline: List[Dict[str, Any]]
     sections: List[ReasonedSection]
     full_text: str
     meta: Dict[str, Any]
+
+
+@dataclass
+class BucketNode:
+    """
+    A single information fragment collected for a topic.
+    Typically corresponds to a paragraph / section / snippet.
+    """
+
+    id: str
+    source_type: str  # "arxiv_meta", "pdf_section", "wiki", "web", "memcube"
+    title: str
+    snippet: str
+    url: Optional[str] = None
+    arxiv_id: Optional[str] = None
+    doc_id: Optional[str] = None  # e.g. pdf id, memcube id
+    section: Optional[str] = None  # section title / heading
+    score: float = 0.0  # initial relevance to topic
+    embedding: Optional[list[float]] = None
+    meta: Dict[str, Any] = field(default_factory=dict)
+
+
+class SourceProfile:
+    name: str
+    use_web: bool
+    use_arxiv: bool
+    use_wikipedia: bool
+    use_pdfs: bool
+    use_vector_store: bool
+    use_internal_memcubes: bool
+
+    max_results_web: int
+    max_results_arxiv: int
+    max_results_wiki: int
+    max_vector_hits: int
+    recency_days: int | None

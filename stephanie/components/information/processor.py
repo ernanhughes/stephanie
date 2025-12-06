@@ -10,10 +10,10 @@ from typing import Any, Dict, List, Optional
 from stephanie.tools.arxiv_tool import search_arxiv
 from stephanie.tools.web_search import WebSearchTool
 from stephanie.tools.wikipedia_tool import WikipediaTool
+from stephanie.utils.date_utils import iso_now
 from stephanie.utils.time_utils import now_iso
 
-from .models import (InformationRequest, InformationResult, InformationSource,
-                     InformationTargetConfig)
+from stephanie.components.information.models import (InformationRequest, InformationResult, InformationSource)
 
 
 class InformationProcessor:
@@ -148,7 +148,7 @@ class InformationProcessor:
             extra={
                 "source_meta": primary.meta,
                 "target_meta": target.meta,
-                "created_at": datetime.utcnow().isoformat() + "Z",
+                "created_at": iso_now(),
                 "markdown_path": markdown_path,
                 "related_counts": {
                     "total": len(related_sources),

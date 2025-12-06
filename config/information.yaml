@@ -143,3 +143,11 @@ pipeline:
       cls: stephanie.components.information.agents.association.CreativeAssociationAgent
       enabled: true
       iterations: 1
+
+    - name: creative_association
+      description: >
+        Generate novel ideas and associations related to the content,
+        enhancing creativity and depth in the final output.
+      cls: stephanie.components.information.agents.association.CreativeAssociationAgent
+      enabled: true
+      iterations: 1

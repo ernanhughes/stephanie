@@ -5,11 +5,7 @@ import asyncio
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
-try:
-    # Optional: integrate with your protocol dataclass
-    from stephanie.components.ssp.core.protocols import VerificationResult
-except Exception:  # pragma: no cover
-    VerificationResult = None  # type: ignore
+from stephanie.components.ssp.core.protocols import VerificationResult
 
 
 class RAGVerifier:
@@ -181,14 +177,6 @@ class RAGVerifier:
             evidence=evidence,
             context=context,
         )
-        if VerificationResult is None:  # Protocol class not available
-            return {
-                "is_valid": ok,
-                "score": score,
-                "reason": details.get("winner", "A"),
-                "filter_results": {},
-                "verification_details": details,
-            }
         return VerificationResult(
             is_valid=ok,
             score=score,

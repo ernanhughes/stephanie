@@ -1,8 +1,7 @@
 # stephanie/components/information/memcube_builder.py
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from stephanie.components.information.models import InfoSection
 from stephanie.memory.casebook_store import CaseBookStore
