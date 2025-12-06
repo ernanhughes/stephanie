@@ -3,11 +3,12 @@ from __future__ import annotations
 
 from typing import Any, Dict, List
 
-from stephanie.components.information.models import InfoSection
+from stephanie.components.information.data import InfoSection
 from stephanie.memory.casebook_store import CaseBookStore
 from stephanie.memory.memcube_store import MemCubeStore
 from stephanie.models.memcube import MemCubeORM
 from stephanie.utils.date_utils import iso_now
+from stephanie.utils.hash_utils import hash_text
 
 
 class MemCubeBuilder:
@@ -193,7 +194,6 @@ Do not include headings, just the abstract text.
         """
         Simple stable hash → int for scorable_id.
         """
-        import hashlib
 
-        h = hashlib.sha256(text.encode("utf-8")).hexdigest()
+        h = hash_text(text)
         return int(h[:12], 16)

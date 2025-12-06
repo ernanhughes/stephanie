@@ -6,9 +6,8 @@ import re
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
+from stephanie.components.information.data import InformationSource
 from stephanie.utils.date_utils import iso_now
-
-from .models import InformationSource
 
 log = logging.getLogger(__name__)
 

@@ -1,9 +1,9 @@
 
-from typing import List, Dict, Any    
+import logging
+from typing import Any, Dict, List
+
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.services.knowledge_graph_service import KnowledgeGraphService
-
-import logging
 
 log = logging.getLogger(__name__)
 

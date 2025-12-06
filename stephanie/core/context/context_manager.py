@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import sys
 import uuid
@@ -11,7 +12,6 @@ from typing import Any, Dict, Optional
 import numpy as np
 import torch
 from sqlalchemy import text
-import logging
 
 log = logging.getLogger(__name__)
 

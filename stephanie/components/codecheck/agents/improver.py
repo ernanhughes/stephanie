@@ -11,8 +11,8 @@ import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.memory.codecheck_store import CodeCheckStore
 from stephanie.data.base_config import BaseConfig
+from stephanie.memory.codecheck_store import CodeCheckStore
 
 log = logging.getLogger(__name__)
 

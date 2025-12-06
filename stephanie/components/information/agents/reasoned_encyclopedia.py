@@ -1,6 +1,7 @@
 # stephanie/components/encyclopedia/agents/reasoned_encyclopedia.py
 from __future__ import annotations
 
+import logging
 from dataclasses import asdict, dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -9,8 +10,6 @@ from stephanie.agents.base_agent import BaseAgent
 # Adjust import if your path differs.
 from stephanie.agents.dspy.memento import MementoAgent
 from stephanie.core.context.context_manager import ContextManager
-
-import logging
 
 log = logging.getLogger(__name__)
 

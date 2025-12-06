@@ -5,10 +5,10 @@ import hashlib
 import pickle
 import re
 from pathlib import Path
+from typing import Dict, List, Optional
 
 from gradio_client import Client
 from huggingface_hub import HfApi
-from typing import List, Dict, Optional
 
 CACHE_DIR = Path(".paper_cache")
 CACHE_DIR.mkdir(exist_ok=True)

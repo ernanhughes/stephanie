@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import Any, Dict, List
 
 from stephanie.agents.base_agent import BaseAgent
@@ -9,7 +10,6 @@ from stephanie.components.information.agents.idea import IdeaGenerationHead
 from stephanie.memory.idea_store import IdeaStore
 from stephanie.types.idea import Idea
 
-import logging
 log = logging.getLogger(__name__)
 
 

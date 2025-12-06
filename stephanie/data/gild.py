@@ -8,7 +8,6 @@ from uuid import UUID
 
 import torch
 
-
 # -------------------------
 #  Core training signal
 # -------------------------

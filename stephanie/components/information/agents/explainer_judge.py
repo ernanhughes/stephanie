@@ -94,7 +94,7 @@ class ExplainerJudgeAgent(BaseAgent):
         }
 
         # ---- NEW: log training events if available ----
-        tes = getattr(self.memory, "training_events", None)
+        tes = self.memory.training_events
         if tes and winner in ("v1", "v2"):
             try:
                 dimension = "explainer_quality"

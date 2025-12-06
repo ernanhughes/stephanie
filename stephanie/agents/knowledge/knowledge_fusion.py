@@ -48,6 +48,7 @@ from stephanie.models.ner_retriever import EntityDetector, NERRetrieverEmbedder
 from stephanie.scoring.calibration_manager import CalibrationManager
 from stephanie.scoring.scorable import Scorable, ScorableFactory
 from stephanie.tools.scorable_classifier import ScorableClassifier
+from stephanie.utils.hash_utils import hash_text
 
 log = logging.getLogger(__name__)
 
@@ -920,10 +921,9 @@ class KnowledgeFusionAgent(BaseAgent):
         self, paper_id: Optional[Any], text: str, chat: List[Dict]
     ) -> str:
         """Compute hash of knowledge state for versioning"""
-        import hashlib
 
         combined = f"{paper_id or 'unknown'}|||{text[:1000]}|||{len(chat)}"
-        return hashlib.sha256(combined.encode()).hexdigest()[:8]
+        return hash_text(combined)[:8]
 
     def _get_domain_confidence(self, domains: List[Dict[str, float]]) -> float:
         """Estimate confidence in domain classification"""

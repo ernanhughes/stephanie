@@ -33,6 +33,7 @@ from dataclasses import asdict, dataclass, field
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
 
 from stephanie.agents.base_agent import BaseAgent
+from stephanie.utils.hash_utils import hash_text
 
 # ----------------------------- Data structures ----------------------------- #
 
@@ -776,7 +777,7 @@ class AgenticTreeSearch:
     def _hash_or_none(self, s: Optional[str]) -> Optional[str]:
         if not s:
             return None
-        return hashlib.sha256(s.encode("utf-8")).hexdigest()
+        return hash_text(s)
 
     def _next_child_index(self, parent_id: Optional[str]) -> int:
         if not parent_id:

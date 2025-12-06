@@ -3,17 +3,20 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Dict, Any, List
+from typing import Any, Dict, List
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.components.information.agents.critic import IdeaCriticHead
-from stephanie.components.information.agents.fast_encyclopedia import FastEncyclopediaAgent
+from stephanie.components.information.agents.fast_encyclopedia import \
+    FastEncyclopediaAgent
 from stephanie.components.information.agents.idea import IdeaGenerationHead
+from stephanie.components.information.agents.ingest import \
+    InformationIngestAgent
+from stephanie.components.information.agents.section_research import \
+    SectionResearchAgent
+from stephanie.components.information.data import ReasonedBlogResult
 from stephanie.memory.idea_store import IdeaStore
-from stephanie.types.idea import Idea 
-from stephanie.components.information.models import ReasonedBlogResult
-from stephanie.components.information.agents.ingest import InformationIngestAgent  
-from stephanie.components.information.agents.section_research import SectionResearchAgent 
+from stephanie.types.idea import Idea
 
 log = logging.getLogger(__name__)
 

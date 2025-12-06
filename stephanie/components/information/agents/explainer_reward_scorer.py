@@ -3,8 +3,8 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-import numpy as np
 import joblib
+import numpy as np
 
 from stephanie.agents.base_agent import BaseAgent
 

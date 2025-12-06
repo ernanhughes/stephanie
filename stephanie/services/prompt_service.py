@@ -5,25 +5,19 @@ import json
 import logging
 import time
 from dataclasses import dataclass
+from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import litellm
 import yaml
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.constants import (
-    BUS_STREAM,
-    SUBJ_RESULT_LEG_W,
-    SUBJ_RESULT_NS_T,
-    SUBJ_RESULT_NS_W,
-    SUBJ_SUBMIT,
-    SUBJ_SUBMIT_LEG,
-    SUBJ_SUBMIT_NS,
-)
+from stephanie.constants import (BUS_STREAM, SUBJ_RESULT_LEG_W,
+                                 SUBJ_RESULT_NS_T, SUBJ_RESULT_NS_W,
+                                 SUBJ_SUBMIT, SUBJ_SUBMIT_LEG, SUBJ_SUBMIT_NS)
 from stephanie.services.bus.events.prompt_job import PromptJob
 from stephanie.services.service_protocol import Service
 from stephanie.utils.llm_utils import remove_think_blocks
-from enum import Enum
 
 log = logging.getLogger(__name__)
 

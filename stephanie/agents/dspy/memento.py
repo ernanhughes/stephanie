@@ -30,6 +30,7 @@ from stephanie.data.score_corpus import ScoreCorpus
 from stephanie.scoring.calculations.mars_calculator import MARSCalculator
 from stephanie.scoring.scorable import Scorable, ScorableType
 from stephanie.scoring.scorer.scorable_ranker import ScorableRanker
+from stephanie.utils.hash_utils import hash_text
 
 # Namespace keys (all internal writes go under this)
 CTX_NS = "_MEMENTO"
@@ -962,11 +963,9 @@ class MementoAgent(MCTSReasoningAgent):
                 continue
             text = (h.get("text") or "").strip()
             sid = (
-                hashlib.sha1(text.encode("utf-8")).hexdigest()[:16]
+                hash_text(text)[:16]
                 if text
-                else hashlib.sha1(
-                    str(random.random()).encode("utf-8")
-                ).hexdigest()[:16]
+                else hash_text(str(random.random()))[:16]
             )
             nh = dict(h)
             nh["id"] = sid

@@ -10,10 +10,10 @@ from stephanie.components.information.builder.graph import \
     InformationGraphBuilder
 # These are the new Information component types we designed earlier.
 # Adjust the import paths if you put them somewhere else.
-from stephanie.components.information.models import (InformationRequest,
-                                                     InformationResult,
-                                                     InformationSource,
-                                                     InformationTargetConfig)
+from stephanie.components.information.data import (InformationRequest,
+                                                   InformationResult,
+                                                   InformationSource,
+                                                   InformationTargetConfig)
 from stephanie.components.information.processor import InformationProcessor
 from stephanie.components.information.quality import InformationQualityPass
 from stephanie.models.casebook import CaseBookORM, CaseORM

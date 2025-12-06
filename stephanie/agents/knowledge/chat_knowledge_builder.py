@@ -11,6 +11,7 @@ from stephanie.memory.chat_store import ChatStore
 from stephanie.models.ner_retriever import EntityDetector
 from stephanie.scoring.scorable import Scorable, ScorableFactory, ScorableType
 from stephanie.tools.scorable_classifier import ScorableClassifier
+from stephanie.utils.hash_utils import hash_text
 
 log = logging.getLogger(__name__)
 
@@ -92,8 +93,8 @@ class ChatKnowledgeBuilder:
             ).strip()
 
             # Generate stable IDs
-            chat_hash = hashlib.sha256(chat_text.encode()).hexdigest()[:16]
-            paper_hash = hashlib.sha256(paper_text.encode()).hexdigest()[:16]
+            chat_hash = hash_text(chat_text)[:16]
+            paper_hash = hash_text(paper_text)[:16]
 
 
             chat_scorable = self.memory.dynamic_scorables.add(

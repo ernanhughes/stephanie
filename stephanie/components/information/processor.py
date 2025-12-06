@@ -7,13 +7,14 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from stephanie.components.information.data import (InformationRequest,
+                                                   InformationResult,
+                                                   InformationSource)
 from stephanie.tools.arxiv_tool import search_arxiv
 from stephanie.tools.web_search import WebSearchTool
 from stephanie.tools.wikipedia_tool import WikipediaTool
 from stephanie.utils.date_utils import iso_now
 from stephanie.utils.time_utils import now_iso
-
-from stephanie.components.information.models import (InformationRequest, InformationResult, InformationSource)
 
 
 class InformationProcessor:

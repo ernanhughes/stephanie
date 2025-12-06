@@ -2,18 +2,19 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import inspect
 import json
-import hashlib
+import logging
 import random
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
 from stephanie.agents.base_agent import BaseAgent
+from stephanie.services.knowledge_graph_service import KnowledgeGraphService
 from stephanie.services.prompt_service import LLMRole
 from stephanie.types.idea import Idea
-from stephanie.services.knowledge_graph_service import KnowledgeGraphService
-import logging
+from stephanie.utils.hash_utils import hash_text
 
 log = logging.getLogger(__name__)
 
@@ -134,8 +135,8 @@ class IdeaGenerationHead(BaseAgent):
         constraints = constraints or {}
 
         # Support both sync and async KG implementations.
-        a = await self._maybe_await(self.kg.get_concept(concept_a_id))
-        b = await self._maybe_await(self.kg.get_concept(concept_b_id))
+        a = await self.kg.get_concept(concept_a_id)
+        b = await self.kg.get_concept(concept_b_id)
 
         prompt = self._build_idea_prompt(a, b, constraints)
 
@@ -317,15 +318,7 @@ Respond ONLY with valid JSON matching this schema:
         )
         return idea
 
-    # ------------------------------------------------------------------
-    # Utilities
-    # ------------------------------------------------------------------
-    async def _maybe_await(self, value: Any) -> Any:
-        """Helper to transparently handle sync vs async service methods."""
-        if inspect.isawaitable(value):
-            return await value
-        return value
 
     def _hash_prompt(self, prompt: str) -> str:
         """Short, stable hash for provenance tracking."""
-        return hashlib.sha256(prompt.encode("utf-8")).hexdigest()[:16]
+        return hash_text(prompt)[:16]

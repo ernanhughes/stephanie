@@ -19,6 +19,7 @@ from stephanie.services.scm_service import SCM_FEATURE_KEYS, SCMService
 from stephanie.services.storage_service import StorageService
 from stephanie.services.workers.metrics_worker import MetricsWorkerInline
 from stephanie.services.workers.vpm_worker import VPMWorkerInline
+from stephanie.utils.hash_utils import hash_text
 from stephanie.utils.progress_mixin import ProgressMixin
 
 prefer = [
@@ -712,9 +713,7 @@ class ScoringProcessor(ProgressMixin):
             raise ValueError(f"Unknown dedupe policy: {policy}")
 
     def _fingerprint(self, g: str, o: str) -> str:
-        return hashlib.sha1(
-            (g.strip() + "\n␟\n" + o.strip()).encode("utf-8")
-        ).hexdigest()
+        return hash_text(g.strip() + "\n␟\n" + o.strip())
 
     def _to_vector(self, metrics: Dict[str, Any]) -> Dict[str, float]:
         vec = metrics.get("vector")

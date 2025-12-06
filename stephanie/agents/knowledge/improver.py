@@ -19,6 +19,7 @@ from stephanie.memory.casebook_store import CaseBookStore
 from stephanie.scoring.calibration_manager import CalibrationManager
 from stephanie.scoring.scorable import ScorableType
 from stephanie.services.bus.knowledge_bus import KnowledgeBus
+from stephanie.utils.hash_utils import hash_text
 from stephanie.utils.json_sanitize import safe_json
 
 from ..paper_improver.faithfulness import FaithfulnessBot
@@ -149,9 +150,7 @@ class Improver:
         plan_norm = self._sanitize_plan(content_plan)
 
         # 1) Prepare run dir + meta
-        plan_hash = hashlib.sha256(
-            json.dumps(plan_norm, sort_keys=True).encode()
-        ).hexdigest()[:8]
+        plan_hash = hash_text(json.dumps(plan_norm, sort_keys=True))[:8]
         run_dir = (
             self.workdir
             / f"run_{int(time.time())}_{uuid.uuid4().hex}_{plan_hash}"

@@ -4,7 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import List, Tuple
 
-from stephanie.components.information.models import Bucket, BucketNode
+from stephanie.components.information.data import Bucket, BucketNode
 from stephanie.memory.casebook_store import CaseBookStore
 from stephanie.models.goal import GoalORM  # adjust import if needed
 

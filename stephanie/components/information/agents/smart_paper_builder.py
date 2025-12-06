@@ -1,16 +1,15 @@
 # stephanie/components/information/agents/smart_paper_builder.py
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
 import asyncio
 import logging
+from typing import Any, Dict, List, Optional
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.services.prompt_service import LLMRole
-
-from stephanie.types.idea import Idea  # your Pydantic model
 from stephanie.memory.idea_store import IdeaStore
 from stephanie.memory.reflection_store import ReflectionStore
+from stephanie.services.prompt_service import LLMRole
+from stephanie.types.idea import Idea  # your Pydantic model
 
 log = logging.getLogger(__name__)
 

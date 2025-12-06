@@ -3,12 +3,13 @@
 """Utilities for computing and applying weight deltas between models"""
 from __future__ import annotations
 
-import hashlib
 import os
 from collections import OrderedDict
 from typing import Any, Dict
 
 import torch
+
+from stephanie.utils.hash_utils import hash_list
 
 
 def compute_weight_delta(
@@ -39,7 +40,7 @@ def compute_weight_delta(
         v[k] = (w - sd_before[k]).cpu()
     
     # Generate skill ID (hash of key properties)
-    param_hash = hashlib.sha256(str(list(v.keys())[:10]).encode()).hexdigest()[:8]
+    param_hash = hash_list(v.keys())
     size_mb = sum(p.numel() * p.element_size() for p in v.values()) / (1024 * 1024)
     skill_id = f"{id_prefix}_{param_hash}_{size_mb:.1f}mb"
     

@@ -4,8 +4,8 @@ from __future__ import annotations
 import re
 
 from stephanie.evaluator.base import BaseEvaluator
-from stephanie.utils.llm_utils import remove_think_blocks
 from stephanie.prompts.prompt_loader import PromptLoader
+from stephanie.utils.llm_utils import remove_think_blocks
 
 
 class LLMJudgeEvaluator(BaseEvaluator):

@@ -41,6 +41,7 @@ from stephanie.scoring.training.preference_pair_builder import \
 from stephanie.services.workers.metrics_worker import MetricsWorkerInline
 from stephanie.services.workers.vpm_worker import VPMWorkerInline
 from stephanie.services.zeromodel_service import ZeroModelService
+from stephanie.utils.hash_utils import hash_text
 from stephanie.utils.json_sanitize import dumps_safe
 
 log = logging.getLogger(__name__)
@@ -1194,9 +1195,7 @@ def _harvest_model_dim_scores(row: Dict[str, float], metrics: Dict[str, Any], *,
 
 
 def _fingerprint(goal_text: str, output_text: str) -> str:
-    h = hashlib.sha1()
-    h.update((goal_text.strip() + "\n␟\n" + output_text.strip()).encode("utf-8"))
-    return h.hexdigest()
+    return hash_text(goal_text.strip() + "\n␟\n" + output_text.strip())
 
 
 def _dedupe_triples_by_dimension(

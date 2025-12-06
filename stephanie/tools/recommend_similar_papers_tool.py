@@ -6,8 +6,8 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import numpy as np
 
-from stephanie.tools.base_tool import BaseTool
 from stephanie.scoring.metrics.common import ScoreTuple
+from stephanie.tools.base_tool import BaseTool
 
 
 @dataclass

@@ -24,12 +24,12 @@ class ExplainerRewardTrainerAgent(BaseAgent):
     def __init__(self, cfg, memory, container, logger):
         super().__init__(cfg=cfg, memory=memory, container=container, logger=logger)
         self.embedding = self.memory.embedding
-        self.tes = getattr(self.memory, "training_events", None)
+        self.tes = self.memory.training_events
         self.model_dir = cfg.get("model_dir", "models/explainer_reward")
 
     async def run(self, context: Dict[str, Any]) -> Dict[str, Any]:
         if not self.tes:
-            self.logger.warning("No training_events store available; skipping reward training.")
+            log.warning("No training_events store available; skipping reward training.")
             return context
 
         dimension = "explainer_quality"
@@ -38,13 +38,13 @@ class ExplainerRewardTrainerAgent(BaseAgent):
         # 1) Load events
         events = self._fetch_events(dimension)
         if len(events) < min_events:
-            self.logger.info(f"Not enough events ({len(events)}/{min_events}) to train reward model.")
+            log.info(f"Not enough events ({len(events)}/{min_events}) to train reward model.")
             return context
 
         # 2) Build dataset
         X, y = await self._build_dataset(events)
         if len(X) == 0:
-            self.logger.warning("Empty dataset after embedding; aborting training.")
+            log.warning("Empty dataset after embedding; aborting training.")
             return context
 
         # 3) Train simple logistic regression
@@ -54,7 +54,7 @@ class ExplainerRewardTrainerAgent(BaseAgent):
         # 4) Persist model (simple .npz)
         self._save_model(clf)
 
-        self.logger.info(
+        log.info(
             f"Trained ExplainerReward model on {len(X)} examples "
             f"(pos={int(y.sum())}, neg={int(len(y)-y.sum())})"
         )
@@ -70,7 +70,7 @@ class ExplainerRewardTrainerAgent(BaseAgent):
         try:
             return self.tes.fetch_pointwise(dimension=dimension)
         except AttributeError:
-            self.logger.warning("training_events.fetch_pointwise not implemented; returning empty list.")
+            log.warning("training_events.fetch_pointwise not implemented; returning empty list.")
             return []
 
     async def _build_dataset(
@@ -93,7 +93,7 @@ class ExplainerRewardTrainerAgent(BaseAgent):
                 X_list.append(np.array(emb, dtype=np.float32))
                 y_list.append(label)
             except Exception as e:
-                self.logger.warning(f"Failed to embed explainer text: {e}")
+                log.warning(f"Failed to embed explainer text: {e}")
 
         if not X_list:
             return np.zeros((0, 1), dtype=np.float32), np.zeros((0,), dtype=np.int64)
@@ -103,11 +103,12 @@ class ExplainerRewardTrainerAgent(BaseAgent):
         return X, y
 
     def _save_model(self, clf: LogisticRegression) -> None:
-        import joblib
         from pathlib import Path
+
+        import joblib
 
         out_dir = Path(self.model_dir)
         out_dir.mkdir(parents=True, exist_ok=True)
         path = out_dir / "logreg_explainer_reward.joblib"
         joblib.dump(clf, path)
-        self.logger.info(f"Saved explainer reward model to {path}")
+        log.info(f"Saved explainer reward model to {path}")

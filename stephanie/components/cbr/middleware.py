@@ -8,6 +8,7 @@ import numpy as np
 from stephanie.components.cbr.adaptor import DefaultAdaptor
 from stephanie.scoring.scorable import Scorable, ScorableType
 from stephanie.services.reporting_service import ReportingService
+from stephanie.utils.hash_utils import hash_text
 
 
 class CBRMiddleware:
@@ -467,7 +468,6 @@ class CBRMiddleware:
         return x
 
     def _ensure_ids(self, scorables: List[dict]) -> List[dict]:
-        import hashlib
         import random
 
         out = []
@@ -477,11 +477,9 @@ class CBRMiddleware:
                 continue
             text = (h.get("text") or "").strip()
             sid = (
-                hashlib.sha1(text.encode("utf-8")).hexdigest()[:16]
+                hash_text(text)[:16]
                 if text
-                else hashlib.sha1(
-                    str(random.random()).encode("utf-8")
-                ).hexdigest()[:16]
+                else hash_text(str(random.random()))[:16]
             )
             nh = dict(h)
             nh["id"] = sid

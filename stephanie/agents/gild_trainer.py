@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import time
 import traceback
@@ -17,16 +18,14 @@ from stephanie.agents.base_agent import BaseAgent
 from stephanie.data.gild import GILDConfig, GILDSignal, GILDTrainingResult
 from stephanie.data.plan_trace import ExecutionStep, PlanTrace
 from stephanie.scoring.scorable import ScorableFactory
-from stephanie.scoring.scorer.ep_hrm_scorer import (
-    EpistemicPlanHRMScorer,  # Adjust import
-)
+from stephanie.scoring.scorer.ep_hrm_scorer import \
+    EpistemicPlanHRMScorer  # Adjust import
 from stephanie.scoring.scorer.hrm_scorer import HRMScorer
 from stephanie.scoring.scorer.sicql_scorer import SICQLScorer
-from stephanie.scoring.training.preference_pair_builder import (
-    PreferencePairBuilder,
-)
+from stephanie.scoring.training.preference_pair_builder import \
+    PreferencePairBuilder
 from stephanie.utils.model_locator import ModelLocator
-import logging
+
 log = logging.getLogger(__name__)
 
 

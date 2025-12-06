@@ -2,15 +2,13 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Dict, List, Any, Optional
-
 import logging
+from typing import Any, Dict, List, Optional
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.models import metrics
 from stephanie.scoring.scorable import Scorable, ScorableType
 from stephanie.tools.section_summarization_tool import SectionSummarizationTool
-
 
 log = logging.getLogger(__name__)
 

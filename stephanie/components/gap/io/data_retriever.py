@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
 from stephanie.components.gap.models import TripleSample
+from stephanie.utils.hash_utils import hash_text
 
 log = logging.getLogger(__name__)
 
@@ -265,6 +266,5 @@ class DataRetriever:
             return False
 
     def _fingerprint(self, goal_text: str, output_text: str) -> str:
-        import hashlib
-        payload = (goal_text.strip() + "\n␟\n" + output_text.strip()).encode("utf-8")
-        return hashlib.sha1(payload).hexdigest()
+        payload = (goal_text.strip() + "\n␟\n" + output_text.strip())
+        return hash_text(payload)

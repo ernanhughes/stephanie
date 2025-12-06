@@ -68,24 +68,6 @@ def load_json(path: str):
         return None
 
 
-def hash_text(text: str, algorithm: str = "sha256") -> str:
-    """
-    Generate a hash for the given text using the specified algorithm.
-
-    Args:
-        text (str): The input text to hash.
-        algorithm (str): Hash algorithm, e.g., 'sha256', 'sha1', or 'md5'.
-
-    Returns:
-        str: The hexadecimal digest of the hash.
-    """
-    if not text:
-        return ""
-
-    hasher = hashlib.new(algorithm)
-    hasher.update(text.encode("utf-8"))
-    return hasher.hexdigest()
-
 def file_hash(path: str) -> str:
     """
     Compute SHA256 hash of a file's contents.

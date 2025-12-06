@@ -10,7 +10,6 @@ import time
 import traceback
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
-from math import exp
 
 import numpy as np
 import torch
@@ -19,7 +18,7 @@ from stephanie.models.hnsw_index import HNSWIndex
 from stephanie.models.ner_retriever import EntityDetector, NERRetrieverEmbedder
 from stephanie.services.service_protocol import Service
 from stephanie.tools.scorable_classifier import ScorableClassifier
-from stephanie.utils.file_utils import hash_text
+from stephanie.utils.hash_utils import hash_text
 from stephanie.utils.text_utils import safe_slice, sentences
 
 log = logging.getLogger(__name__)

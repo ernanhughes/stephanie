@@ -5,24 +5,12 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import (
-    JSON,
-    Boolean,
-    Column,
-    DateTime,
-    Float,
-    ForeignKey,
-    Integer,
-    String,
-    Text,
-    UniqueConstraint,
-    Index,
-)
-from sqlalchemy.orm import Mapped, mapped_column, relationship
-
+from sqlalchemy import (JSON, Boolean, Column, DateTime, Float, ForeignKey,
+                        Index, Integer, String, Text, UniqueConstraint)
 # If you already have a central Base, import that instead:
 # from stephanie.db.base import Base
-from sqlalchemy.orm import declarative_base
+from sqlalchemy.orm import (Mapped, declarative_base, mapped_column,
+                            relationship)
 
 Base = declarative_base()
 

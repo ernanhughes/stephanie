@@ -1,12 +1,10 @@
 # stephanie/components/information/bucket_builder.py
 from __future__ import annotations
 
-from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict
 
-from stephanie.components.information.models import (Bucket, BucketEdge,
-                                                     BucketNode)
-from stephanie.components.information.source_profile import SourceProfile
+from stephanie.components.information.data import (Bucket, BucketEdge,
+                                                   BucketNode, SourceProfile)
 from stephanie.memory.memcube_store import MemCubeStore
 from stephanie.tools.arxiv_tool import search_arxiv
 from stephanie.tools.web_search import WebSearchTool
@@ -105,7 +103,9 @@ class BucketBuilder:
         edges: list[BucketEdge],
     ) -> None:
         try:
-            results = search_arxiv([topic], max_results=profile.max_results_arxiv)
+            results = search_arxiv(
+                [topic], max_results=profile.max_results_arxiv
+            )
         except Exception as e:
             self.logger.log(
                 "InfoBucketArxivError", {"topic": topic, "error": str(e)}

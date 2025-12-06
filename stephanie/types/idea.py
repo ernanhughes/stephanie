@@ -1,6 +1,10 @@
+from typing import Any, Dict, List
+
 from pydantic import BaseModel, Field
-from typing import List, Dict, Any
-from stephanie.utils.id_utils import generate_uuid  # or wherever your UUID util lives
+
+from stephanie.utils.id_utils import \
+    generate_uuid  # or wherever your UUID util lives
+
 
 class Idea(BaseModel):
     id: str = Field(default_factory=generate_uuid)

@@ -7,6 +7,7 @@ import time
 from typing import Any, Dict, List, Optional
 
 from stephanie.agents.base_agent import BaseAgent
+from stephanie.utils.hash_utils import hash_text
 
 
 class KnowledgeRetriever(BaseAgent):
@@ -154,7 +155,7 @@ def _stable_id(s: str) -> str:
     s = (s or "").strip()
     if not s:
         return "kr:empty"
-    return "kr:" + hashlib.sha1(s.encode("utf-8")).hexdigest()[:12]
+    return "kr:" + hash_text(s)[:12]
 
 def _heuristic_claims(text: str, k: int = 8) -> List[str]:
     if not text:

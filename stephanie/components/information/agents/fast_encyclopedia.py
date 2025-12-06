@@ -1,12 +1,12 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import asdict
 from typing import Any, Dict, List
 
-import logging
-
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.components.information.models import ReasonedSection, ReasonedBlogResult
+from stephanie.components.information.data import (ReasonedBlogResult,
+                                                   ReasonedSection)
 
 log = logging.getLogger(__name__)
 

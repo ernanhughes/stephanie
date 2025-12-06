@@ -14,6 +14,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from stephanie.memory.casebook_store import CaseBookStore
 from stephanie.scoring.scorable import ScorableType
 from stephanie.services.bus.knowledge_bus import KnowledgeBus
+from stephanie.utils.hash_utils import hash_text
 from stephanie.utils.json_sanitize import safe_json
 
 from .bandit_router import ExemplarBandit
@@ -59,9 +60,7 @@ class CodeImprover:
     def improve(self, spec: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
         """Takes spec JSON → returns PR-ready artifact + VPM row + DPO pair."""
         self.run_id += 1
-        spec_hash = hashlib.sha256(
-            json.dumps(spec, sort_keys=True).encode()
-        ).hexdigest()[:8]
+        spec_hash = hash_text(json.dumps(spec, sort_keys=True))[:8]
         run_dir = self.workdir / f"run_{self.run_id}_{spec_hash}"
         run_dir.mkdir(parents=True, exist_ok=True)
 

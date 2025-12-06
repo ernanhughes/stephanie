@@ -10,7 +10,6 @@ from stephanie.types.training_event import TrainingEventCreate
 
 
 def _sha1(s: str) -> str:
-
     return hashlib.sha1(s.encode("utf-8")).hexdigest()
 
 

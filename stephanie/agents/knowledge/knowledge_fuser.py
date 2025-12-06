@@ -11,6 +11,7 @@ from stephanie.agents.knowledge.chat_knowledge_builder import \
     ChatKnowledgeBuilder
 from stephanie.data.knowledge_unit import KnowledgeUnit
 from stephanie.tools.scorable_classifier import ScorableClassifier
+from stephanie.utils.hash_utils import hash_text
 
 log = logging.getLogger(__name__)
 
@@ -76,7 +77,7 @@ class KnowledgeFuser:
         start_time = time.time()
         if not scorable_id:
             scorable_id = (
-                f"temp:{hashlib.sha256(text.encode()).hexdigest()[:16]}"
+                f"temp:{hash_text(text)[:16]}"
             )
 
         try:
@@ -365,4 +366,4 @@ class KnowledgeFuser:
                 m.get("text", "") for m in chat_messages if m.get("text")
             )
         )
-        return hashlib.sha256(combined.encode()).hexdigest()[:10]
+        return hash_text(combined)[:10]

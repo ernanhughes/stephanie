@@ -1,12 +1,15 @@
 # stephanie/components/information/agents/critic.py
-import numpy as np
-from typing import Any, Dict, List
-from stephanie.agents.base_agent import BaseAgent
-from stephanie.types.idea import Idea
 import asyncio
-from sklearn.metrics.pairwise import cosine_similarity
-from stephanie.services.prompt_service import LLMRole
 import logging
+from typing import Any, Dict, List
+
+import numpy as np
+from sklearn.metrics.pairwise import cosine_similarity
+
+from stephanie.agents.base_agent import BaseAgent
+from stephanie.services.prompt_service import LLMRole
+from stephanie.types.idea import Idea
+
 log = logging.getLogger(__name__)
 
 class IdeaCriticHead(BaseAgent):

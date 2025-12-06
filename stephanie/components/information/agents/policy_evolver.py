@@ -1,16 +1,17 @@
 # stephanie/components/information/agents/policy_evolver.py
 from __future__ import annotations
-import logging
+
 import json
-from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Tuple, Callable
+import logging
 from dataclasses import dataclass
+from datetime import datetime, timedelta
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.models.memcube import MemCubeORM
-from stephanie.models.idea import Idea
-from stephanie.memory.memcube_store import MemCubeStore
 from stephanie.memory.idea_store import IdeaStore
+from stephanie.memory.memcube_store import MemCubeStore
+from stephanie.models.idea import Idea
+from stephanie.models.memcube import MemCubeORM
 from stephanie.scoring.scorable import ScorableProcessor
 from stephanie.services.knowledge_graph_service import KnowledgeGraphService
 from stephanie.utils.date_utils import iso_now

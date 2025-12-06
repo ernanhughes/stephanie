@@ -1,12 +1,13 @@
 # stephanie/components/critic/critic_teachpack.py
 from __future__ import annotations
 
-import hashlib
 import json
 from pathlib import Path
 from typing import Any, Dict, List
 
 import numpy as np
+
+from stephanie.utils.hash_utils import hash_text
 
 
 def export_teachpack(
@@ -31,7 +32,7 @@ def export_teachpack(
 def teachpack_meta(model_fp: str, feature_names: List[str], calib: Dict[str, float] | None):
     return {
         "model_fingerprint": model_fp,
-        "feature_fingerprint": hashlib.sha256("|".join(feature_names).encode()).hexdigest()[:12],
+        "feature_fingerprint": hash_text("|".join(feature_names))[:12],
         "calibration": calib or {},
         "schema": {
             "X": "float32 (n, d) aligned to feature_names",

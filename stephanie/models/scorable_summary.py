@@ -4,18 +4,11 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Dict, Optional
 
-from sqlalchemy import (
-    Column,
-    Integer,
-    String,
-    Text,
-    Float,
-    DateTime,
-    JSON,
-    Index,
-)
+from sqlalchemy import (JSON, Column, DateTime, Float, Index, Integer, String,
+                        Text)
 
 from stephanie.models.base import Base
+
 
 class ScorableSummaryORM(Base):
     """

@@ -4,7 +4,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from typing import Dict, Any, List
+from typing import Any, Dict, List
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.memory.idea_store import IdeaStore
