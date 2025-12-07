@@ -111,6 +111,15 @@ pipeline:
       enabled: true
       iterations: 1
 
+    - name: fast_encyclopedia
+      description: >
+        Quickly compile researched sections into a coherent blog post
+        using a straightforward summarization approach.
+      cls: stephanie.components.information.agents.idea_extractor.LearnableIdeaExtractorAgent
+      enabled: true
+      iterations: 1
+
+
     - name: section_research
       description: >
         For each ingested document, build evidence bundles per section using
@@ -125,7 +134,7 @@ pipeline:
         using a straightforward summarization approach.
       cls: stephanie.components.information.agents.paper_to_ideas_blog.PaperToIdeasAndBlogAgent
       enabled: true
-      iterations: 1  well oh seems weird
+      iterations: 1
 
     - name: reasoned_encyclopedia
       description: >

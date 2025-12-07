@@ -23,22 +23,25 @@ class IdeaParser:
         - Scores usefulness/novelty/alignment
     """
 
-    def __init__(self, cfg, logger=None):
+    def __init__(self, cfg, memory, container, logger=None):
         self.cfg = cfg
-        self.dimensions = cfg.get("dimensions", ["usefulness", "novelty", "alignment", "epistemic_gain"])
+        self.memory = memory
+        self.container = container
         self.logger = logger
+
+        self.dimensions = cfg.get("dimensions", ["usefulness", "novelty", "alignment", "epistemic_gain"])
         self.prompt_loader = None  # Will be injected by agent
         self.call_llm = None       # Will be injected by agent
-        self.memory = None         # Will be injected by agent
 
         # Initialize section parser
         self.section_parser = DocumentSectionParser(cfg=cfg, logger=logger)
 
         # Initialize scorer
         self.scorer = SVMScorer(
-            cfg,
+            cfg=self.cfg,
+            memory=self.memory,
+            container=self.container,
             logger=self.logger,
-            memory=self.memory
         )
 
     def parse(self, paper_text: str, paper_title: str = "", context={}, override_dimensions: Optional[list] = None) -> List[Dict]:

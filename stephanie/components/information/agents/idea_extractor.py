@@ -22,12 +22,12 @@ class LearnableIdeaExtractorAgent(BaseAgent):
         super().__init__(cfg, memory, container, logger)
 
         # Components from config
-        self.idea_parser = IdeaParser(cfg, logger=logger)
+        self.idea_parser = IdeaParser(cfg, memory=memory, container=container, logger=logger)
         self.idea_parser.prompt_loader = self.prompt_loader
         self.idea_parser.call_llm = self.call_llm
         self.idea_parser.memory = self.memory
         
-        self.cartridge_builder = BeliefCartridgeBuilder(cfg, memory=memory, logger=logger)
+        self.cartridge_builder = BeliefCartridgeBuilder(cfg, memory=memory, container=container, logger=logger)
         self.domain_classifier = ScorableClassifier(
             memory=memory,
             logger=logger,
@@ -50,6 +50,10 @@ class LearnableIdeaExtractorAgent(BaseAgent):
         5. Store results
         """
         documents = context.get(self.input_key, [])
+        if not documents:
+            doc = self.memory.documents.get_random()
+            documents = [doc.to_dict()] 
+
         goal = context.get("goal", {})
         goal_id = goal.get("id")
 

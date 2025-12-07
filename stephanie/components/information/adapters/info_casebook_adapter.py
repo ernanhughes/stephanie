@@ -138,7 +138,7 @@ class InfoCaseBookAdapter:
         lines = []
         for idx, n in enumerate(nodes[:80]):
             lines.append(
-                f"- ID={n.id} | source={n.source_type} | title={n.title!r} | snippet={n.snippet[:160].replace('\n', ' ')}"
+                f"- ID={n.id} | source={n.source_type} | title={n.title!r} | snippet={n.snippet[:160].replace("\\n", " ")}"
             )
         listing = "\n".join(lines)
 
