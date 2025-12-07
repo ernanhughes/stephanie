@@ -16,9 +16,7 @@ from stephanie.models.evaluation import \
 from stephanie.models.goal import GoalORM
 from stephanie.models.pipeline_run import PipelineRunORM
 from stephanie.models.plan_trace_revision import PlanTraceRevisionORM
-
-# If EmbeddingORM is not directly importable or you just need the ID:
-# You can define a foreign key without the full ORM relationship if not needed for navigation here.
+from sqlalchemy import Column
 
 
 class PlanTraceORM(Base):
@@ -205,3 +203,29 @@ class ExecutionStepORM(Base):
         if include_evaluation and self.evaluation:
             data["evaluation"] = self.evaluation.to_dict(include_relationships=False)
         return data
+
+
+class StepRunORM(Base):
+    __tablename__ = "step_runs"
+
+    id = Column(String, primary_key=True)  # use your universal ID
+    plan_trace_id = Column(String, index=True)
+    pipeline_run_id = Column(String, index=True)
+    stage_idx = Column(Integer, index=True)      # which pipeline stage
+    stage_name = Column(String, index=True)
+    agent_name = Column(String, index=True)
+
+    scorable_id = Column(String, index=True)
+    step_name = Column(String, index=True)
+    component = Column(String, index=True)       # "tree", "nexus", "gap", "critic", "blossom", ...
+
+    started_at = Column(DateTime, default=datetime.utcnow)
+    finished_at = Column(DateTime)
+    duration_ms = Column(Float)
+
+    status = Column(String, default="ok")        # "ok" | "error" | "skipped"
+    error_message = Column(String)
+
+    features_before = Column(JSON)               # light snapshot
+    features_after = Column(JSON)
+    metrics = Column(JSON)                       # deltas, rewards, etc.

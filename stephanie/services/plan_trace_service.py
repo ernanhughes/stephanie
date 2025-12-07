@@ -7,17 +7,18 @@ import time
 import traceback
 from datetime import datetime
 from typing import Any, Dict, Optional
+import uuid
 
-from omegaconf import OmegaConf
 
 from stephanie.agents.agent_scorer import AgentScorerAgent
 from stephanie.agents.plan_trace_scorer import PlanTraceScorerAgent
 from stephanie.constants import PLAN_TRACE_ID, SCORABLE_DETAILS
 from stephanie.data.plan_trace import ExecutionStep, PlanTrace
-from stephanie.models.plan_trace import PlanTraceORM
+from stephanie.models.plan_trace import PlanTraceORM, StepRunORM
 from stephanie.scoring.scorable import ScorableFactory
 from stephanie.services.service_protocol import Service
 from stephanie.utils.serialization import default_serializer
+from contextlib import asynccontextmanager
 
 
 class PlanTraceService(Service):
@@ -51,19 +52,25 @@ class PlanTraceService(Service):
         self.stage_start_times: Dict[int, float] = {}
 
         if self.enabled:
-            self.plan_trace_scorer = PlanTraceScorerAgent(cfg, memory, container, logger)
+            self.plan_trace_scorer = PlanTraceScorerAgent(
+                cfg, memory, container, logger
+            )
             self.plan_trace_scorer.container = self.container
-            self.agent_scorer = AgentScorerAgent(cfg, memory, container, logger)
+            self.agent_scorer = AgentScorerAgent(
+                cfg, memory, container, logger
+            )
             self.agent_scorer.container = self.container
-    
-     
+
         self._initialized = False
 
     # === Service Protocol ===
     def initialize(self, **kwargs) -> None:
         self._initialized = True
         if self.logger:
-            self.logger.log("PlanTraceServiceInit", {"status": "initialized", "enabled": self.enabled})
+            self.logger.log(
+                "PlanTraceServiceInit",
+                {"status": "initialized", "enabled": self.enabled},
+            )
 
     def health_check(self) -> Dict[str, Any]:
         return {
@@ -76,7 +83,9 @@ class PlanTraceService(Service):
                 "stages_tracked": len(self.stage_start_times),
             },
             "dependencies": {
-                "scoring_service": "attached" if hasattr(self, "plan_trace_scorer") else "missing"
+                "scoring_service": "attached"
+                if hasattr(self, "plan_trace_scorer")
+                else "missing"
             },
         }
 
@@ -100,12 +109,13 @@ class PlanTraceService(Service):
         trace: PlanTraceORM = self.memory.plan_traces.get_by_trace_id(trace_id)
         if not trace:
             return
-        trace.meta.setdefault("revisions", []).append({
-            "timestamp": time.time(),
-            **revision
-        })
+        trace.meta.setdefault("revisions", []).append(
+            {"timestamp": time.time(), **revision}
+        )
         self.memory.plan_traces.upsert(trace)
-        self.logger.log("PlanTraceRevised", {"trace_id": trace_id, "revision": revision})
+        self.logger.log(
+            "PlanTraceRevised", {"trace_id": trace_id, "revision": revision}
+        )
 
     def apply_retention_policy(self):
         if self.retention_policy == "keep_all":
@@ -113,7 +123,11 @@ class PlanTraceService(Service):
         elif self.retention_policy == "keep_top_k":
             top_k = self.cfg["plan_monitor"].get("retain_k", 100)
             traces = self.memory.plan_traces.get_all()
-            sorted_traces = sorted(traces, key=lambda t: t.pipeline_score.get("overall", 0), reverse=True)
+            sorted_traces = sorted(
+                traces,
+                key=lambda t: t.pipeline_score.get("overall", 0),
+                reverse=True,
+            )
             for t in sorted_traces[top_k:]:
                 self.memory.plan_traces.delete(t.trace_id)
                 self.logger.log("PlanTraceDiscarded", {"trace_id": t.trace_id})
@@ -121,16 +135,19 @@ class PlanTraceService(Service):
             failed = self.memory.plan_traces.get_failed()
             for t in failed:
                 self.memory.plan_traces.delete(t.trace_id)
-                self.logger.log("PlanTraceDiscarded", {"trace_id": t.trace_id, "reason": "failed"})
+                self.logger.log(
+                    "PlanTraceDiscarded",
+                    {"trace_id": t.trace_id, "reason": "failed"},
+                )
 
     def start_pipeline(self, context: Dict, pipeline_run_id: str) -> None:
         if not self.enabled:
             self.logger.log("PlanTraceMonitorDisabled", {})
-            return 
+            return
 
         """Create PlanTrace when pipeline starts"""
         goal = context.get("goal", {})
-        
+
         # Create PlanTrace for this pipeline execution
         self.current_plan_trace = PlanTrace(
             trace_id=str(pipeline_run_id),  # Use pipeline_run_id as trace_id
@@ -147,55 +164,64 @@ class PlanTraceService(Service):
                 "agent_name": "PlanTraceMonitor",
                 "started_at": time.time(),
                 "pipeline_run_id": pipeline_run_id,
-            }
+            },
         )
 
         # After creating self.current_plan_trace
         self.memory.plan_traces.upsert(self.current_plan_trace)
         context[PLAN_TRACE_ID] = self.current_plan_trace.trace_id
 
-        
         # Log PlanTrace creation
-        self.logger.log("PlanTraceCreated", {
-            "trace_id": pipeline_run_id,
-            "goal_id": goal.get("id"),
-            "goal_text": (goal.get("goal_text", "")[:100] + "...") if goal.get("goal_text") else None
-        })
-    
+        self.logger.log(
+            "PlanTraceCreated",
+            {
+                "trace_id": pipeline_run_id,
+                "goal_id": goal.get("id"),
+                "goal_text": (goal.get("goal_text", "")[:100] + "...")
+                if goal.get("goal_text")
+                else None,
+            },
+        )
+
     def _generate_plan_signature(self, context: Dict) -> str:
         """Generate a signature identifying this pipeline configuration"""
         pipeline = context.get("pipeline", [])
         return f"{'_'.join(pipeline)}"
-    
+
     def _extract_input_data(self, context: Dict) -> Dict:
         """Extract relevant input data for the PlanTrace"""
         # Only capture essential input data, not the entire context
         return {
             "input_keys": list(context.keys()),
             "goal_id": context.get("goal", {}).get("id"),
-            "goal_text_preview": (context.get("goal", {}).get("goal_text", "")[:100] + "...")
-                if context.get("goal", {}).get("goal_text") else None
+            "goal_text_preview": (
+                context.get("goal", {}).get("goal_text", "")[:100] + "..."
+            )
+            if context.get("goal", {}).get("goal_text")
+            else None,
         }
-    
-    def start_stage(self, stage_name: str, context: Dict, stage_idx: int) -> None:
+
+    def start_stage(
+        self, stage_name: str, context: Dict, stage_idx: int
+    ) -> None:
         """Create ExecutionStep when stage starts"""
         if not self.current_plan_trace:
             return
-            
+
         # Record start time
         self.stage_start_times[stage_idx] = time.time()
-        
+
         # Create step ID
         step_id = f"{self.current_plan_trace.trace_id}_step_{stage_idx + 1}"
-        
+
         # Create step description
         description = f"Stage {stage_idx + 1}: {stage_name}"
-        
+
         # Extract input data (simplified)
         input_preview = "Context keys: " + ", ".join(list(context.keys())[:3])
         if len(context.keys()) > 3:
             input_preview += f" + {len(context.keys()) - 3} more"
-        
+
         # Create ExecutionStep
         execution_step = ExecutionStep(
             step_id=step_id,
@@ -208,19 +234,22 @@ class PlanTraceService(Service):
             agent_name=stage_name,
             start_time=time.time(),
             error=None,
-            scores=None
+            scores=None,
         )
-        
+
         # Add to PlanTrace
         self.current_plan_trace.execution_steps.append(execution_step)
-        
+
         # Log stage start
-        self.logger.log("PipelineStageStarted", {
-            "trace_id": self.current_plan_trace.trace_id,
-            "stage_idx": stage_idx + 1,
-            "stage_name": stage_name
-        })
-    
+        self.logger.log(
+            "PipelineStageStarted",
+            {
+                "trace_id": self.current_plan_trace.trace_id,
+                "stage_idx": stage_idx + 1,
+                "stage_name": stage_name,
+            },
+        )
+
     async def complete_stage(
         self,
         stage_name: str,
@@ -228,7 +257,9 @@ class PlanTraceService(Service):
         stage_idx: int,
     ) -> None:
         """Update ExecutionStep when stage completes."""
-        if not self.current_plan_trace or stage_idx >= len(self.current_plan_trace.execution_steps):
+        if not self.current_plan_trace or stage_idx >= len(
+            self.current_plan_trace.execution_steps
+        ):
             return
 
         # Calculate duration
@@ -260,23 +291,30 @@ class PlanTraceService(Service):
             step.output_keys = output_keys
             step.output_size = len(str(context))
 
-        self.logger.log("PipelineStageCompleted", {
-            "trace_id": self.current_plan_trace.trace_id,
-            "stage_idx": stage_idx + 1,
-            "stage_name": stage_name,
-            "stage_time": duration,
-            "is_scorable": bool(scorable_details)
-        })
-    
-    def handle_stage_error(self, stage_name: str, error: Exception, stage_idx: int) -> None:
+        self.logger.log(
+            "PipelineStageCompleted",
+            {
+                "trace_id": self.current_plan_trace.trace_id,
+                "stage_idx": stage_idx + 1,
+                "stage_name": stage_name,
+                "stage_time": duration,
+                "is_scorable": bool(scorable_details),
+            },
+        )
+
+    def handle_stage_error(
+        self, stage_name: str, error: Exception, stage_idx: int
+    ) -> None:
         """Update ExecutionStep when stage errors"""
-        if not self.current_plan_trace or stage_idx >= len(self.current_plan_trace.execution_steps):
+        if not self.current_plan_trace or stage_idx >= len(
+            self.current_plan_trace.execution_steps
+        ):
             return
-            
+
         # Calculate duration
         start_time = self.stage_start_times.get(stage_idx, time.time())
         duration = time.time() - start_time
-        
+
         # Update the current step with error information
         step = self.current_plan_trace.execution_steps[stage_idx]
         step.end_time = time.time()
@@ -284,42 +322,53 @@ class PlanTraceService(Service):
         step.error = {
             "type": type(error).__name__,
             "message": str(error),
-            "traceback": traceback.format_exc()
+            "traceback": traceback.format_exc(),
         }
-        
+
         # Log error
-        self.logger.log("PipelineStageError", {
-            "trace_id": self.current_plan_trace.trace_id,
-            "stage_idx": stage_idx + 1,
-            "stage_name": stage_name,
-            "error_type": type(error).__name__,
-            "error_message": str(error),
-            "stage_duration": duration
-        })
-    
+        self.logger.log(
+            "PipelineStageError",
+            {
+                "trace_id": self.current_plan_trace.trace_id,
+                "stage_idx": stage_idx + 1,
+                "stage_name": stage_name,
+                "error_type": type(error).__name__,
+                "error_message": str(error),
+                "stage_duration": duration,
+            },
+        )
+
     async def complete_pipeline(self, context: Dict) -> None:
         """Complete the PlanTrace when pipeline ends"""
         if not self.current_plan_trace:
             return
-            
+
         # Set final output text
         final_output = context.get("final_output", "")
         if isinstance(final_output, str):
             self.current_plan_trace.final_output_text = (
-                final_output[:1000] + "..." if len(final_output) > 1000 else final_output
+                final_output[:1000] + "..."
+                if len(final_output) > 1000
+                else final_output
             )
         elif isinstance(final_output, dict):
-            self.current_plan_trace.final_output_text = str(final_output)[:1000] + "..."
+            self.current_plan_trace.final_output_text = (
+                str(final_output)[:1000] + "..."
+            )
         else:
-            self.current_plan_trace.final_output_text = str(final_output)[:1000] + "..."
-        
+            self.current_plan_trace.final_output_text = (
+                str(final_output)[:1000] + "..."
+            )
+
         # Set completion time
         self.current_plan_trace.meta["completed_at"] = time.time()
-        
+
         # Calculate total pipeline time
-        start_time = self.current_plan_trace.meta.get("started_at", time.time())
+        start_time = self.current_plan_trace.meta.get(
+            "started_at", time.time()
+        )
         self.current_plan_trace.meta["total_time"] = time.time() - start_time
-        
+
         if self.enabled and self.save_output:
             self.save_plan_trace_to_json(self.current_plan_trace)
 
@@ -328,93 +377,125 @@ class PlanTraceService(Service):
             self.memory.plan_traces.upsert(self.current_plan_trace)
             scorable = ScorableFactory.from_orm(self.current_plan_trace)
             self.memory.scorable_embeddings.get_or_create(scorable)
-            self.logger.log("PlanTraceStored", {
-                "trace_id": self.current_plan_trace.trace_id,
-                "step_count": len(self.current_plan_trace.execution_steps)
-            })
+            self.logger.log(
+                "PlanTraceStored",
+                {
+                    "trace_id": self.current_plan_trace.trace_id,
+                    "step_count": len(self.current_plan_trace.execution_steps),
+                },
+            )
         except Exception as e:
-            self.logger.log("PlanTraceStorageError", {
+            self.logger.log(
+                "PlanTraceStorageError",
+                {
+                    "trace_id": self.current_plan_trace.trace_id,
+                    "error": str(e),
+                },
+            )
+
+        self.logger.log(
+            "PlanTraceCompleted",
+            {
                 "trace_id": self.current_plan_trace.trace_id,
-                "error": str(e)
-            })
-        
-        self.logger.log("PlanTraceCompleted", {
-            "trace_id": self.current_plan_trace.trace_id,
-            "step_count": len(self.current_plan_trace.execution_steps),
-            "total_time": self.current_plan_trace.meta["total_time"]
-        })
+                "step_count": len(self.current_plan_trace.execution_steps),
+                "total_time": self.current_plan_trace.meta["total_time"],
+            },
+        )
 
     async def score_pipeline(self, context: Dict) -> None:
         """Score the completed PlanTrace"""
         if not self.current_plan_trace:
             return
-            
+
         try:
             # Run PlanTraceScorerAgent
             scoring_context = {
                 "plan_traces": [self.current_plan_trace],
-                "goal": context.get("goal", {})
+                "goal": context.get("goal", {}),
             }
-            
+
             # Score the PlanTrace
             scored_context = await self.plan_trace_scorer.run(scoring_context)
-            
+
             if not scored_context:
-                self.logger.log("PlanTraceScoringWarning", {
-                    "trace_id": self.current_plan_trace.trace_id,
-                    "reason": "scorer returned None"
-                })
+                self.logger.log(
+                    "PlanTraceScoringWarning",
+                    {
+                        "trace_id": self.current_plan_trace.trace_id,
+                        "reason": "scorer returned None",
+                    },
+                )
                 return  # or keep current_plan_trace unscored
 
             # Update PlanTrace with scores
-            self.current_plan_trace.step_scores = scored_context.get("step_scores", [])
-            self.current_plan_trace.pipeline_score = scored_context.get("pipeline_score", {})
-            self.current_plan_trace.mars_analysis = scored_context.get("mars_analysis", {})
-            
+            self.current_plan_trace.step_scores = scored_context.get(
+                "step_scores", []
+            )
+            self.current_plan_trace.pipeline_score = scored_context.get(
+                "pipeline_score", {}
+            )
+            self.current_plan_trace.mars_analysis = scored_context.get(
+                "mars_analysis", {}
+            )
+
             # Update in memory
             self.memory.plan_traces.upsert(self.current_plan_trace)
-            
-            self.logger.log("PlanTraceScored", {
-                "trace_id": self.current_plan_trace.trace_id,
-                "step_count": len(self.current_plan_trace.execution_steps),
-                "pipeline_score": scored_context.get("pipeline_score", {})
-            })
+
+            self.logger.log(
+                "PlanTraceScored",
+                {
+                    "trace_id": self.current_plan_trace.trace_id,
+                    "step_count": len(self.current_plan_trace.execution_steps),
+                    "pipeline_score": scored_context.get("pipeline_score", {}),
+                },
+            )
         except Exception as e:
-            self.logger.log("PlanTraceScoringError", {
-                "trace_id": self.current_plan_trace.trace_id,
-                "error": str(e),
-                "traceback": traceback.format_exc()
-            })
-    
+            self.logger.log(
+                "PlanTraceScoringError",
+                {
+                    "trace_id": self.current_plan_trace.trace_id,
+                    "error": str(e),
+                    "traceback": traceback.format_exc(),
+                },
+            )
+
     def handle_pipeline_error(self, error: Exception, context: Dict) -> None:
         """Handle errors that occur during pipeline execution"""
         if not self.current_plan_trace:
             return
-            
+
         # Update PlanTrace with error information
-        self.current_plan_trace.final_output_text = f"Pipeline failed: {str(error)}"
+        self.current_plan_trace.final_output_text = (
+            f"Pipeline failed: {str(error)}"
+        )
         self.current_plan_trace.meta["error"] = {
             "type": type(error).__name__,
             "message": str(error),
-            "traceback": traceback.format_exc()
+            "traceback": traceback.format_exc(),
         }
         self.current_plan_trace.meta["completed_at"] = time.time()
-        
+
         # Store in memory
         try:
             self.memory.plan_traces.upsert(self.current_plan_trace)
         except Exception as e:
-            self.logger.log("PlanTraceSaveError", {
+            self.logger.log(
+                "PlanTraceSaveError",
+                {
+                    "trace_id": self.current_plan_trace.trace_id,
+                    "error": str(e),
+                },
+            )
+
+        self.logger.log(
+            "PlanTraceError",
+            {
                 "trace_id": self.current_plan_trace.trace_id,
-                "error": str(e)
-            })
-        
-        self.logger.log("PlanTraceError", {
-            "trace_id": self.current_plan_trace.trace_id,
-            "error_type": type(error).__name__,
-            "error_message": str(error)
-        })
-    
+                "error_type": type(error).__name__,
+                "error_message": str(error),
+            },
+        )
+
     def reset(self) -> None:
         """Reset the monitor for the next pipeline"""
         self.current_plan_trace = None
@@ -424,34 +505,242 @@ class PlanTraceService(Service):
         """Save PlanTrace to JSON file in the output directory"""
         if not self.enabled or not self.output_dir:
             return ""
-        
+
         try:
             # Create filename with trace_id and timestamp
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             filename = f"{plan_trace.trace_id}_{timestamp}.json"
             filepath = os.path.join(self.output_dir, filename)
-            
+
             # Convert to dictionary and save with custom serializer
             with open(filepath, "w", encoding="utf-8") as f:
                 json.dump(
-                    plan_trace.to_dict(), 
-                    f, 
-                    indent=2, 
+                    plan_trace.to_dict(),
+                    f,
+                    indent=2,
                     default=default_serializer,
-                    ensure_ascii=False
+                    ensure_ascii=False,
                 )
-            
+
             print(f"✅ PlanTrace saved to: {filepath}")
-            self.logger.log("PlanTraceSavedToFile", {
-                "trace_id": plan_trace.trace_id,
-                "filepath": filepath,
-                "step_count": len(plan_trace.execution_steps)
-            })
-            
+            self.logger.log(
+                "PlanTraceSavedToFile",
+                {
+                    "trace_id": plan_trace.trace_id,
+                    "filepath": filepath,
+                    "step_count": len(plan_trace.execution_steps),
+                },
+            )
+
             return filepath
         except Exception as e:
-            self.logger.log("PlanTraceSaveToFileError", {
-                "trace_id": plan_trace.trace_id,
-                "error": str(e),
-                "traceback": traceback.format_exc()
-            })
+            self.logger.log(
+                "PlanTraceSaveToFileError",
+                {
+                    "trace_id": plan_trace.trace_id,
+                    "error": str(e),
+                    "traceback": traceback.format_exc(),
+                },
+            )
+
+
+    def _summarize_features(self, features: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Lightly summarize a features dict so we don't store giant tensors.
+        Scalars are kept as-is; everything else is replaced with a type/shape hint.
+        """
+        summarized = {}
+        for k, v in (features or {}).items():
+            if isinstance(v, (int, float, str, bool)):
+                summarized[k] = v
+            elif isinstance(v, dict):
+                summarized[k] = f"dict(len={len(v)})"
+            elif isinstance(v, list):
+                summarized[k] = f"list(len={len(v)})"
+            else:
+                summarized[k] = str(type(v))
+        return summarized
+
+    def start_step_run(
+        self,
+        *,
+        scorable_id: str,
+        step_name: str,
+        component: str,
+        stage_idx: int,
+        stage_name: str,
+        agent_name: Optional[str] = None,
+        features_before: Optional[Dict[str, Any]] = None,
+    ) -> Optional[StepRunORM]:
+        """
+        Create a StepRun row for a micro-step on a Scorable.
+
+        Returns the StepRunORM (or None if plan-trace monitoring is disabled).
+        """
+        if not self.enabled or not self.current_plan_trace:
+            # Monitoring disabled or no active trace
+            return None
+
+        plan_trace_id = self.current_plan_trace.trace_id
+        pipeline_run_id = self.current_plan_trace.pipeline_run_id
+        step_run_id = uuid.uuid4().hex
+
+        orm = self.memory.plan_traces.create_step_run(
+            step_run_id=step_run_id,
+            plan_trace_id=plan_trace_id,
+            pipeline_run_id=pipeline_run_id,
+            stage_idx=stage_idx,
+            stage_name=stage_name,
+            agent_name=agent_name or stage_name,
+            scorable_id=scorable_id,
+            step_name=step_name,
+            component=component,
+            status="running",
+            features_before=features_before or {},
+            started_at=datetime.utcnow(),
+        )
+
+        if self.logger:
+            self.logger.log(
+                "StepRunStarted",
+                {
+                    "step_run_id": orm.id,
+                    "plan_trace_id": orm.plan_trace_id,
+                    "pipeline_run_id": orm.pipeline_run_id,
+                    "stage_idx": orm.stage_idx,
+                    "stage_name": orm.stage_name,
+                    "step_name": orm.step_name,
+                    "component": orm.component,
+                    "scorable_id": orm.scorable_id,
+                },
+            )
+
+        return orm
+
+    def complete_step_run(
+        self,
+        step_run_id: str,
+        *,
+        status: str = "ok",
+        features_after: Optional[Dict[str, Any]] = None,
+        metrics: Optional[Dict[str, Any]] = None,
+        error_message: Optional[str] = None,
+        duration_ms: Optional[float] = None,
+    ) -> Optional[StepRunORM]:
+        """
+        Finish a StepRun and record final state/metrics.
+        """
+        orm = self.memory.plan_traces.complete_step_run(
+            step_run_id,
+            status=status,
+            features_after=features_after,
+            metrics=metrics,
+            error_message=error_message,
+            duration_ms=duration_ms,
+            finished_at=datetime.utcnow(),
+        )
+
+        if orm and self.logger:
+            self.logger.log(
+                "StepRunFinished",
+                {
+                    "step_run_id": orm.id,
+                    "status": orm.status,
+                    "step_name": orm.step_name,
+                    "component": orm.component,
+                    "scorable_id": orm.scorable_id,
+                    "duration_ms": orm.duration_ms,
+                    "metrics": orm.metrics,
+                    "error_message": orm.error_message,
+                },
+            )
+
+        return orm
+
+    @asynccontextmanager
+    async def track_step_run(
+        self,
+        *,
+        scorable: Any,
+        step_name: str,
+        component: str,
+        stage_idx: int,
+        stage_name: str,
+        agent_name: Optional[str] = None,
+        extra_metrics_fn: Optional[callable] = None,
+    ):
+        """
+        Async context manager to track a micro-step on a Scorable.
+
+        Usage:
+            async with plan_trace_service.track_step_run(
+                scorable=scorable,
+                step_name="gap_diff",
+                component="gap",
+                stage_idx=stage_idx,
+                stage_name="GapAgent",
+                agent_name="GapAgent",
+            ):
+                await gap_step.run(scorable, ctx)
+        """
+        # If monitoring disabled, just yield without doing anything
+        if not self.enabled or not self.current_plan_trace:
+            yield None
+            return
+
+        from time import perf_counter
+
+        features_before = self._summarize_features(
+            getattr(scorable, "features", {}) or {}
+        )
+        step_run = self.start_step_run(
+            scorable_id=getattr(scorable, "id", None),
+            step_name=step_name,
+            component=component,
+            stage_idx=stage_idx,
+            stage_name=stage_name,
+            agent_name=agent_name,
+            features_before=features_before,
+        )
+
+        start = perf_counter()
+        error: Optional[Exception] = None
+
+        try:
+            yield step_run
+        except Exception as e:
+            error = e
+            raise
+        finally:
+            duration_ms = (perf_counter() - start) * 1000.0
+            features_after = self._summarize_features(
+                getattr(scorable, "features", {}) or {}
+            )
+
+            metrics: Dict[str, Any] = {}
+            if extra_metrics_fn is not None:
+                try:
+                    metrics = extra_metrics_fn(scorable, step_run)
+                except Exception as metric_err:
+                    # Don't break tracing if metrics computation fails
+                    if self.logger:
+                        self.logger.log(
+                            "StepRunMetricsError",
+                            {
+                                "step_run_id": getattr(step_run, "id", None),
+                                "error": str(metric_err),
+                            },
+                        )
+
+            status = "error" if error else "ok"
+            error_message = str(error) if error else None
+
+            if step_run is not None:
+                self.complete_step_run(
+                    step_run_id=step_run.id,
+                    status=status,
+                    features_after=features_after,
+                    metrics=metrics or None,
+                    error_message=error_message,
+                    duration_ms=duration_ms,
+                )

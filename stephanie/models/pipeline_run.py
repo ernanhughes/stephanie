@@ -8,10 +8,8 @@ from sqlalchemy import (JSON, Column, DateTime, ForeignKey, Integer, String,
 from sqlalchemy.orm import relationship
 
 from stephanie.models.base import Base
+from stephanie.utils.date_utils import iso_now
 
-
-def _iso(dt):
-    return dt.isoformat() if isinstance(dt, datetime) else dt
 
 
 class PipelineRunORM(Base):
@@ -79,7 +77,7 @@ class PipelineRunORM(Base):
             "lookahead_context": self.lookahead_context,
             "symbolic_suggestion": self.symbolic_suggestion,
             "extra_data": self.extra_data,
-            "created_at": _iso(self.created_at),
+            "created_at": iso_now(self.created_at),
         }
         if include_goal and getattr(self, "goal", None):
             data["goal"] = self.goal.to_dict() if hasattr(self.goal, "to_dict") else {"id": self.goal.id}
