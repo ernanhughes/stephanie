@@ -6,6 +6,7 @@ import json
 from typing import Any, Dict, List
 
 from stephanie.models.knowledge_pair import KnowledgePairORM
+from stephanie.utils.hash_utils import hash_text
 
 
 class KnowledgePairStore:
@@ -121,4 +122,4 @@ class KnowledgePairStore:
         # stable JSON to avoid key ordering problems
         payload = {k: params.get(k) for k in keys}
         s = json.dumps(payload, sort_keys=True, separators=(",", ":"))
-        return hashlib.md5(s.encode("utf-8")).hexdigest()
+        return hash_text(s)

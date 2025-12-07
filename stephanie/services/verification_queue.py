@@ -20,14 +20,11 @@ import hashlib
 import json
 from typing import Any, Dict, Optional, Union
 
+from stephanie.utils.hash_utils import hash_text
+
 MAX_INLINE = 128_000  # stay well below default NATS max payload
 RESULT_TTL_SEC = 3600
 
-def _sha(x: Union[str, bytes]) -> str:
-    """Generate SHA-256 hash of input."""
-    if isinstance(x, str):
-        x = x.encode("utf-8")
-    return hashlib.sha256(x).hexdigest()
 
 class VerificationQueue:
     """
@@ -89,7 +86,7 @@ class VerificationQueue:
         """
         # Create payload and job ID
         payload = json.dumps(section_ctx).encode("utf-8")
-        job_id = _sha(payload)[:16]
+        job_id = hash_text(payload)[:16]
         
         # Store body in KV (pointer pattern to avoid MaxPayload)
         if self.kv_jobs:

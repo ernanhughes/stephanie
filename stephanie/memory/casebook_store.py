@@ -18,6 +18,7 @@ from stephanie.models.casebook import (CaseAttributeORM, CaseBookORM, CaseORM,
 from stephanie.models.dynamic_scorable import DynamicScorableORM
 from stephanie.models.goal import GoalORM
 from stephanie.scoring.scorable import ScorableType
+from stephanie.utils.hash_utils import hash_text
 
 log = logging.getLogger(__name__)
 
@@ -1432,7 +1433,7 @@ class CaseBookStore(BaseSQLAlchemyStore):
         text = text or s.get("text", "") or s.get("content", "")
         if text:
             base = f"{case_id}:{idx}:{text}"
-            return hashlib.sha1(base.encode("utf-8")).hexdigest()[:16]
+            return hash_text(base)[:16]
         return uuid.uuid4().hex
 
 

@@ -8,6 +8,7 @@ import numpy as np
 from PIL import Image
 
 from stephanie.scoring.scorable import Scorable
+from stephanie.utils.hash_utils import hash_text
 
 IMG_SIZE = 256
 
@@ -93,5 +94,5 @@ def scorable_to_vpm(s: Scorable, out_dir: Path) -> Tuple[np.ndarray, Dict]:
 
     # dump the preview PNG for reports
     png = np.transpose(arr, (1,2,0))  # HWC
-    Image.fromarray(png).save(out_dir / f"scorable_{hashlib.md5((s.id+txt[:64]).encode()).hexdigest()[:8]}.png")
+    Image.fromarray(png).save(out_dir / f"scorable_{hash_text(s.id+txt[:64])[:8]}.png")
     return arr, meta

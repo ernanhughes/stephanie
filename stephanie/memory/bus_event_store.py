@@ -12,6 +12,7 @@ from stephanie.memory.base_store import BaseSQLAlchemyStore
 from stephanie.models.bus_event import BusEventORM
 from stephanie.models.goal import GoalORM
 from stephanie.models.pipeline_run import PipelineRunORM
+from stephanie.utils.hash_utils import hash_text
 
 
 class BusEventStore(BaseSQLAlchemyStore):
@@ -471,12 +472,12 @@ class BusEventStore(BaseSQLAlchemyStore):
                 "run_id": run_id,
                 "event": event,
                 "ts_bucket": int(now),
-                "body_sha": hashlib.sha256(json.dumps(body, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest(),
+                "body_sha": hash_text(json.dumps(body, sort_keys=True, ensure_ascii=False)),
             },
             sort_keys=True,
             ensure_ascii=False,
         ).encode("utf-8")
-        digest = hashlib.sha256(hsrc).hexdigest()
+        digest = hash_text(hsrc)
 
         # Optional small extras; keep it light so the row stays lean
         extras = {

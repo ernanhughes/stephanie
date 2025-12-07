@@ -10,13 +10,15 @@ from typing import Dict, List, Optional
 from gradio_client import Client
 from huggingface_hub import HfApi
 
+from stephanie.utils.hash_utils import hash_text
+
 CACHE_DIR = Path(".paper_cache")
 CACHE_DIR.mkdir(exist_ok=True)
 
 
 def _get_cache_path(paper_url: str) -> Path:
     # Create hash from URL to use as filename
-    key = hashlib.md5(paper_url.encode()).hexdigest()
+    key = hash_text(paper_url)
     return CACHE_DIR / f"{key}.pkl"
 
 

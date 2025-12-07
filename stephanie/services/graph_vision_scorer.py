@@ -11,6 +11,7 @@ import numpy as np
 
 from stephanie.components.nexus.graph.graph_layout import \
     render_multi_layout_vpm
+from stephanie.utils.hash_utils import hash_text
 
 try:
     import torch  # optional; used only if a jit model is supplied
@@ -302,8 +303,7 @@ class VisionScorer:
         m = G.number_of_edges()
         deg = sorted([d for _, d in G.degree()])[:32]
         payload = json.dumps({"n": n, "m": m, "deg": deg}, separators=(",", ":"))
-        import hashlib
-        return hashlib.sha1(payload.encode("utf-8")).hexdigest()
+        return hash_text(payload)
 
     def _try_cache_load(self, key: str) -> Optional[Dict[str, float]]:
         try:

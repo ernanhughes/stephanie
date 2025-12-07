@@ -8,6 +8,7 @@ from datetime import datetime
 from typing import Any, Dict, Iterable, List, Tuple
 
 from stephanie.models.casebook import CaseBookORM, CaseORM, CaseScorableORM
+from stephanie.utils.hash_utils import hash_text
 
 logger = logging.getLogger(__name__)
 
@@ -165,10 +166,7 @@ def conversation_to_casebook(
 # Internals
 # ---------------------------------------------------------------------------
 def _turn_hash(user_text: str, assistant_text: str) -> str:
-    h = hashlib.sha256()
-    # Keep hash stable across whitespace variants
-    h.update((user_text.strip() + "\n---\n" + assistant_text.strip()).encode("utf-8"))
-    return h.hexdigest()
+    return hash_text(user_text.strip() + "\n---\n" + assistant_text.strip())
 
 
 def _extract_turns_from_mapping(mapping: Dict[str, Any]) -> List[Dict[str, Any]]:

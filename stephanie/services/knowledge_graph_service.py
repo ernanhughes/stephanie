@@ -852,7 +852,6 @@ class KnowledgeGraphService(Service):
                 str(e),
             )
 
-
     def upsert_concept(
         self,
         concept_id: str,
@@ -920,7 +919,6 @@ class KnowledgeGraphService(Service):
         }
         node_id = f"paper:{paper_id}"
         self.upsert_node(node_id=node_id, properties=properties)
-
 
     def upsert_gap(
         self,
@@ -1096,23 +1094,38 @@ class KnowledgeGraphService(Service):
         # 1) semantic similarity via embeddings if available
         sim = 0.0
         try:
-            text_a = concept_a_meta.get("text") or concept_a_meta.get("summary") or ""
-            text_b = concept_b_meta.get("text") or concept_b_meta.get("summary") or ""
+            text_a = (
+                concept_a_meta.get("text")
+                or concept_a_meta.get("summary")
+                or ""
+            )
+            text_b = (
+                concept_b_meta.get("text")
+                or concept_b_meta.get("summary")
+                or ""
+            )
             emb_a = self.memory.embedding.get_or_create(text_a)
             emb_b = self.memory.embedding.get_or_create(text_b)
             # cosine similarity
-            sim = float(np.dot(emb_a, emb_b) / (np.linalg.norm(emb_a) * np.linalg.norm(emb_b) + 1e-8))
+            sim = float(
+                np.dot(emb_a, emb_b)
+                / (np.linalg.norm(emb_a) * np.linalg.norm(emb_b) + 1e-8)
+            )
         except Exception:
             sim = 0.0
 
         semantic_distance = 1.0 - self._clamp01(sim)
 
         # 2) graph co-occurrence: how many edges connect them (directly or via shared papers)
-        co_count = self._cooccurrence_count(concept_a_meta["node_id"], concept_b_meta["node_id"])
+        co_count = self._cooccurrence_count(
+            concept_a_meta["node_id"], concept_b_meta["node_id"]
+        )
         co_penalty = min(co_count / max_cooccurrence, 1.0)
 
         # If they co-occur a lot, novelty is low, regardless of embedding distance
-        novelty = self._clamp01(0.7 * semantic_distance + 0.3 * (1.0 - co_penalty))
+        novelty = self._clamp01(
+            0.7 * semantic_distance + 0.3 * (1.0 - co_penalty)
+        )
         return novelty
 
     def _cooccurrence_count(self, node_a: str, node_b: str) -> int:
@@ -1314,7 +1327,9 @@ class KnowledgeGraphService(Service):
 
         # 2) Cold start fallback: just grab some concepts so callers don't get stuck
         if not frontier_concepts:
-            frontier_concepts = self.memory.encyclopedia.list_concepts(limit=limit)
+            frontier_concepts = self.memory.encyclopedia.list_concepts(
+                limit=limit
+            )
 
         results: List[Dict[str, Any]] = []
         for c in frontier_concepts:
@@ -1324,12 +1339,14 @@ class KnowledgeGraphService(Service):
 
             results.append(
                 {
-                    "id": c.concept_id,            # use stable concept slug
+                    "id": c.concept_id,  # use stable concept slug
                     "name": c.name,
                     "summary": c.summary or "",
                     "domains": c.domains or [],
                     "quiz_stats": {
-                        "accuracy": c.quiz_accuracy if c.quiz_accuracy is not None else 0.5,
+                        "accuracy": c.quiz_accuracy
+                        if c.quiz_accuracy is not None
+                        else 0.5,
                         "novelty": novelty,
                     },
                 }
@@ -1353,11 +1370,13 @@ class KnowledgeGraphService(Service):
                 "domains": concept.domains or [],
                 "quiz_stats": {
                     "accuracy": concept.quiz_accuracy or 0.5,
-                    "novelty": concept.novelty_score or 0.5
-                }
+                    "novelty": concept.novelty_score or 0.5,
+                },
             }
         except Exception as e:
-            self.logger.warning(f"KG get_concept failed for {concept_id}: {str(e)}")
+            self.logger.warning(
+                f"KG get_concept failed for {concept_id}: {str(e)}"
+            )
             return {"id": concept_id, "name": concept_id, "summary": ""}
 
     # -------------------------
@@ -1563,9 +1582,5 @@ class KnowledgeGraphService(Service):
 
     @staticmethod
     def _node_id(kind: str, text: str) -> str:
-        import hashlib
-
-        h = hashlib.sha1(
-            (kind + "|" + (text or "")).encode("utf-8")
-        ).hexdigest()[:16]
+        h = hash_text(kind + "|" + (text or ""))[:16]
         return f"{kind}:{h}"

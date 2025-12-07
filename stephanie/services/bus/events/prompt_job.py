@@ -21,6 +21,7 @@ from sqlalchemy.types import Boolean
 
 from stephanie.constants import PROMPT_RESULT_TMPL
 from stephanie.models.base import Base  # declarative base
+from stephanie.utils.hash_utils import hash_text
 from stephanie.utils.json_sanitize import dumps_safe
 
 log = logging.getLogger(__name__)
@@ -274,7 +275,7 @@ class PromptJob(BaseModel):
             ),
         }
         s = json.dumps(payload, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
-        return hashlib.sha256(s.encode("utf-8")).hexdigest()
+        return hash_text(s)
 
     def compute_cache_key(self) -> str:
         base = {
@@ -290,7 +291,7 @@ class PromptJob(BaseModel):
             "prompt_schema": self.prompt_schema,
         }
         s = json.dumps(base, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
-        return hashlib.sha256(("CACHE:" + s).encode("utf-8")).hexdigest()
+        return hash_text("CACHE:" + s)
 
     # ── Provider payload helpers ──────────────────────────────────────────────
 
@@ -656,7 +657,7 @@ class PromptJobORM(Base):
             "force_json": self.force_json,
         }
         s = json.dumps(payload, sort_keys=True, ensure_ascii=False)
-        return hashlib.sha256(s.encode("utf-8")).hexdigest()
+        return hash_text(s)
 
     def compute_cache_key(self) -> str:
         """
@@ -674,7 +675,7 @@ class PromptJobORM(Base):
             "prompt_schema": self.prompt_schema,
         }
         s = json.dumps(base, sort_keys=True, ensure_ascii=False)
-        return hashlib.sha256(("CACHE:" + s).encode("utf-8")).hexdigest()
+        return hash_text("CACHE:" + s)
 
     # ── Provider payload helpers ---------------------------------------------
 

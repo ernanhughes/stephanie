@@ -7,10 +7,11 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 from stephanie.memory.base_store import BaseSQLAlchemyStore
 from stephanie.models.fragment import FragmentORM
 from stephanie.models.transition import TransitionORM
+from stephanie.utils.hash_utils import hash_text
 
 
 def _sha1(s: str) -> str:
-    return hashlib.sha1(s.encode("utf-8")).hexdigest()
+    return hash_text(s)
 
 def _stable_json(data: Dict[str, Any]) -> str:
     # stable string for dedup fingerprints

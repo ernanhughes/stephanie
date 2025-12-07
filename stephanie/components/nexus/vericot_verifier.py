@@ -8,6 +8,7 @@ from dataclasses import asdict, dataclass, field
 from enum import Enum
 from typing import Any, Dict, List, Literal, Optional, Tuple
 
+from stephanie.utils.hash_utils import hash_text
 import z3  # pip install z3-solver
 
 Status = Literal["valid", "contradiction", "ungrounded", "untranslatable"]
@@ -332,7 +333,7 @@ class VeriCoTVerifier:
         cleaned = "".join(ch.lower() if ch.isalnum() else "_" for ch in text).strip("_")
         base = (cleaned[:40] or "prop")
         suffix = (
-            hashlib.sha1(text.encode("utf-8")).hexdigest()[:8]
+            hash_text(text)[:8]
             if self.deterministic_atoms
             else f"{abs(hash(text)) % 10**6}"
         )

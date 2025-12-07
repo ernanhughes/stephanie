@@ -7,6 +7,7 @@ import time
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from stephanie.services.service_protocol import Service
+from stephanie.utils.hash_utils import hash_text
 
 
 class SelfValidationService(Service):
@@ -267,8 +268,8 @@ class SelfValidationService(Service):
 
     @staticmethod
     def _canon_pair(a: str, b: str) -> Tuple[str, str, bool]:
-        ha = hashlib.sha1((a or "").encode("utf-8")).hexdigest()
-        hb = hashlib.sha1((b or "").encode("utf-8")).hexdigest()
+        ha = hash_text(a or "")
+        hb = hash_text(b or "")
         if ha <= hb:
             return a, b, False
         else:
@@ -277,7 +278,7 @@ class SelfValidationService(Service):
     def _cache_key(self, goal: str, a: str, b: str, dimension: Optional[str]) -> Tuple[str, bool]:
         a_c, b_c, flipped = self._canon_pair(a, b)
         base = f"{goal}||{dimension or ''}||{a_c}||{b_c}"
-        return hashlib.sha1(base.encode("utf-8")).hexdigest(), flipped
+        return hash_text(base), flipped
 
     def _cache_put(self, key: str, pref: int):
         self._cache[key] = pref

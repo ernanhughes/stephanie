@@ -29,6 +29,7 @@ from stephanie.components.tree.plan_generator import PlanGenerator
 from stephanie.components.tree.solution_node import SolutionNode
 from stephanie.components.tree.task_executor import TaskExecutor
 from stephanie.components.tree.task_handler import TaskHandler
+from stephanie.utils.hash_utils import hash_text
 
 
 class AgenticTreeSearch:
@@ -493,7 +494,7 @@ class AgenticTreeSearch:
     def _hash_or_none(self, s: Optional[str]) -> Optional[str]:
         if not s:
             return None
-        return hashlib.sha256(s.encode("utf-8")).hexdigest()
+        return hash_text(s)
 
     def _short_hash(self, s: Optional[str], n: int = 8) -> str:
         h = self._hash_or_none(s) or uuid.uuid4().hex

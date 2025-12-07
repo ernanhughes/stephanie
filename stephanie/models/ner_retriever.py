@@ -47,6 +47,7 @@ from transformers import AutoModel, AutoTokenizer, pipeline
 
 from stephanie.models.hnsw_index import HNSWIndex
 from stephanie.scoring.scorable import Scorable
+from stephanie.utils.hash_utils import hash_text
 
 log = logging.getLogger(__name__)
 
@@ -560,13 +561,10 @@ class NERRetrieverEmbedder:
 
     def _cache_key(self, query: str, k: int, domain: str) -> str:
         """Stable key for caching retrieval results."""
-        import hashlib
         import json
 
         payload = {"q": query, "k": k, "d": domain or "general"}
-        return hashlib.sha256(
-            json.dumps(payload, sort_keys=True).encode("utf-8")
-        ).hexdigest()
+        return hash_text(json.dumps(payload, sort_keys=True))
 
     def _kv_get(self, key: str):
         if not self._kv:

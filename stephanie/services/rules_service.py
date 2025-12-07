@@ -31,6 +31,7 @@ import yaml
 
 from stephanie.memory.symbolic_rule_store import SymbolicRuleORM
 from stephanie.services.service_protocol import Service
+from stephanie.utils.hash_utils import hash_text
 
 
 class RulesService(Service):
@@ -708,4 +709,4 @@ class RulesService(Service):
                 canonical_dict[k] = str(v)
                 
         canonical_str = json.dumps(canonical_dict, sort_keys=True)
-        return hashlib.sha256(canonical_str.encode("utf-8")).hexdigest()
+        return hash_text(canonical_str)[:16]

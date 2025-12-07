@@ -6,6 +6,7 @@ from datetime import datetime
 from hashlib import sha256
 
 from stephanie.agents.knowledge import KnowledgePackage
+from stephanie.utils.hash_utils import hash_text
 
 
 class KnowledgeCartridge(KnowledgePackage):
@@ -44,7 +45,7 @@ class KnowledgeCartridge(KnowledgePackage):
 
     def _update_signature(self):
         content_str = json.dumps(self.schema, sort_keys=True)
-        self.signature = sha256(content_str.encode()).hexdigest()
+        self.signature = hash_text(content_str)
 
     def to_json(self, include_signature=True):
         data = {

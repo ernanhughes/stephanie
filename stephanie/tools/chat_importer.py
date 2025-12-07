@@ -31,6 +31,7 @@ from bs4 import BeautifulSoup
 
 from stephanie.models.casebook import CaseBookORM, CaseORM, CaseScorableORM
 from stephanie.utils.file_utils import file_hash
+from stephanie.utils.hash_utils import hash_text
 
 # Initialize module logger
 logger = logging.getLogger(__name__)
@@ -48,7 +49,7 @@ def _turn_hash(user_text: str, assistant_text: str) -> str:
         SHA256 hash of the combined turn content
     """
     key = (user_text.strip() + "||" + assistant_text.strip()).encode("utf-8")
-    return hashlib.sha256(key).hexdigest()
+    return hash_text(key)
 
 
 def safe_timestamp(ts: Optional[float]) -> Optional[datetime]:

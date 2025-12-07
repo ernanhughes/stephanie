@@ -10,6 +10,8 @@ from typing import Dict, Iterable, List, Literal, Optional, Tuple
 import networkx as nx
 import numpy as np
 
+from stephanie.utils.hash_utils import hash_text
+
 LayoutName = Literal["forceatlas2", "spectral"]
 ChannelName = Literal["node_density", "edge_density", "degree_heatmap"]
 
@@ -200,7 +202,7 @@ def _normalize_positions(pos: Dict) -> Dict:
 def _positions_hash(pos: Dict) -> str:
     items = sorted((str(k), float(v[0]), float(v[1])) for k, v in pos.items())
     raw = json.dumps(items, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
-    return hashlib.sha1(raw).hexdigest()
+    return hash_text(raw)
 
 # --------------------------- Channels ---------------------------
 
@@ -431,7 +433,7 @@ def _graph_signature(G: nx.Graph) -> str:
     nodes = sorted([str(n) for n in G.nodes()])
     edges = sorted([(*sorted((str(u), str(v))), float(G[u][v].get("weight", 1.0))) for u, v in G.edges()])
     raw = json.dumps({"n": nodes, "e": edges}, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
-    return hashlib.sha1(raw).hexdigest()
+    return hash_text(raw)
 
 def _cache_key(
     g_sig: str,
@@ -448,7 +450,7 @@ def _cache_key(
         "k": knobs,
     }
     raw = json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
-    return hashlib.sha1(raw).hexdigest()
+    return hash_text(raw)
 
 def _try_cache_load(cache_dir: str, key: str) -> Optional[Tuple[np.ndarray, Dict]]:
     root = Path(cache_dir)

@@ -7,7 +7,6 @@ Fix (2025-10-30):
 
 from __future__ import annotations
 
-import hashlib
 import json
 from typing import Any, Dict, Optional
 
@@ -96,5 +95,3 @@ Provide short structured feedback (1-3 sentences).
         resp = await self.agent.async_call_llm(prompt, context=context)
         return resp.strip()
 
-    def hash_text(self, text: str) -> str:
-        return hashlib.sha1(text.encode("utf-8")).hexdigest()[:12]
