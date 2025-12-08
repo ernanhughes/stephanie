@@ -2,8 +2,94 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
+from pathlib import Path
 
+from pyparsing import ABC, abstractmethod
+
+@dataclass
+class ReferenceRecord:
+    """One cited item in the reference list of a paper."""
+    arxiv_id: Optional[str]          # best-case: we know this
+    doi: Optional[str]
+    title: Optional[str]
+    year: Optional[int]
+    url: Optional[str]               # PDF url if available
+    raw_citation: Optional[str] = None  # fallback text if nothing else
+
+@dataclass
+class PaperNode:
+    """Node in the citation graph (only need minimal fields for now)."""
+    arxiv_id: Optional[str]
+    local_dir: Path              # where this paper lives on disk
+    pdf_path: Optional[Path]
+    metadata: Dict[str, Any]
+
+    # NEW:
+    roles: Set[str] = field(default_factory=set)
+    # e.g. {"root"}, {"reference"}, {"similar_root"}, {"reference", "similar_ref"}
+
+    importance_score: float = 0.0
+    # evidence for scoring (like which seeds it was similar to)
+    evidence: Dict[str, Any] = field(default_factory=dict)
+
+@dataclass
+class ReferenceEdge:
+    source_arxiv_id: Optional[str]
+    target_arxiv_id: Optional[str]
+    relation: str = "cites"
+
+@dataclass
+class PaperReferenceGraph:
+    root: PaperNode
+    nodes: Dict[str, PaperNode]          # keyed by arxiv_id or synthetic id
+    edges: List[ReferenceEdge]
+
+@dataclass
+class SimilarPaperRecord:
+    arxiv_id: Optional[str]
+    url: Optional[str]
+    title: Optional[str]
+    summary: Optional[str] = None
+    source: str = "hf_similar"
+    score: Optional[float] = None  # if the tool eventually gives one
+    raw: Optional[str] = None      # raw text result if needed
+
+
+class SimilarPaperProvider(ABC):
+    @abstractmethod
+    def get_similar_for_arxiv(self, arxiv_id: str) -> List[SimilarPaperRecord]:
+        raise NotImplementedError
+    
+@dataclass
+class DocumentSection:
+    section_id: str
+    paper_arxiv_id: Optional[str]
+    paper_role: str
+    section_index: int
+    text: str
+
+    title: Optional[str] = None
+    summary: Optional[str] = None
+
+    text_embedding: Optional[list[float]] = None
+    title_embedding: Optional[list[float]] = None
+    summary_embedding: Optional[list[float]] = None
+
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+    # NEW:
+    concept_cluster_id: Optional[str] = None
+    concept_cluster_strength: float = 0.0  # how “central” this section is to a shared concept
+
+
+@dataclass
+class SectionMatch:
+    source_section_id: str     # section in root paper
+    target_section_id: str     # section in related paper
+    similarity: float
+    target_paper_arxiv_id: Optional[str]
+    target_paper_role: str
 
 @dataclass
 class InformationSource:
