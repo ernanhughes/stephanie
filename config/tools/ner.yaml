@@ -11,3 +11,4 @@ tool:
 
   # Confidence / filtering
   min_conf: 0.05       # drop entities with score below this (if scores are available)
+

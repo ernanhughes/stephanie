@@ -23,13 +23,11 @@ _NER_OPTS = None
 
 def _build_ner_retriever(cfg, memory, logger):
     import torch
-
     from stephanie.models.ner_retriever import NERRetrieverEmbedder
 
     device = cfg.get("ner_device", "cuda" if torch.cuda.is_available() else "cpu")
     model_name = cfg.get("ner_model", "Minibase/NER-Small")
 
-    # Optional lightweight/quant settings (if your NERRetriever supports them)
     kwargs = dict(
         model_name=model_name,
         layer=cfg.get("ner_layer", 17),

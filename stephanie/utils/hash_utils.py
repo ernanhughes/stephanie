@@ -5,6 +5,29 @@ import hashlib
 import json
 from typing import Any, List
 
+def _hash(data: bytes, algo: str = "sha256") -> str:
+    """Internal helper that does the actual hashing."""
+    hasher = hashlib.new(algo)
+    hasher.update(data)
+    return hasher.hexdigest()
+
+
+def hash_bytes(data: bytes, algo: str = "sha256") -> str:
+    """
+    Hash raw bytes with the given algorithm.
+
+    Usage:
+        digest = hash_bytes(b"...")
+    """
+    if data is None:
+        data = b""
+    if not isinstance(data, (bytes, bytearray, memoryview)):
+        raise TypeError(f"hash_bytes expected bytes-like, got {type(data)}")
+    # normalize to bytes
+    if isinstance(data, bytearray) or isinstance(data, memoryview):
+        data = bytes(data)
+    return _hash(data, algo=algo)
+
 
 def hash_dict(
     data: dict[str, Any], sort_keys: bool = True, exclude_keys: list = None
@@ -48,13 +71,15 @@ def hash_text(text: str, algorithm: str = "sha256") -> str:
 
     Returns:
         str: The hexadecimal digest of the hash.
-    """
-    if not text:
-        return ""
 
-    hasher = hashlib.new(algorithm)
-    hasher.update(text.encode("utf-8"))
-    return hasher.hexdigest()
+    Usage:
+        digest = hash_text("hello world")
+    """
+    if text is None:
+        text = ""
+    if not isinstance(text, str):
+        raise TypeError(f"hash_text expected str, got {type(text)}")
+    return _hash(text.encode("utf-8"), algo=algorithm)
 
 def hash_list(names: List[str]) -> str:
     h = hashlib.sha256()

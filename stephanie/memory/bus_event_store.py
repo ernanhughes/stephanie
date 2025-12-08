@@ -1,7 +1,6 @@
 # stephanie/memory/bus_event_store.py
 from __future__ import annotations
 
-import hashlib
 import json
 import time
 from typing import Any, Dict, Iterable, List, Optional, Union
@@ -12,7 +11,7 @@ from stephanie.memory.base_store import BaseSQLAlchemyStore
 from stephanie.models.bus_event import BusEventORM
 from stephanie.models.goal import GoalORM
 from stephanie.models.pipeline_run import PipelineRunORM
-from stephanie.utils.hash_utils import hash_text
+from stephanie.utils.hash_utils import hash_bytes, hash_text
 
 
 class BusEventStore(BaseSQLAlchemyStore):
@@ -477,7 +476,7 @@ class BusEventStore(BaseSQLAlchemyStore):
             sort_keys=True,
             ensure_ascii=False,
         ).encode("utf-8")
-        digest = hash_text(hsrc)
+        digest = hash_bytes(hsrc)
 
         # Optional small extras; keep it light so the row stays lean
         extras = {
