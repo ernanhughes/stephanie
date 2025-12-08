@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.scoring.scorable import Scorable, ScorableType
-from stephanie.tools.section_summarization_tool import SectionSummarizationTool
+from stephanie.tools.summarization_tool import SummarizationTool
 
 log = logging.getLogger(__name__)
 
@@ -85,7 +85,7 @@ class SectionResearchAgent(BaseAgent):
 
         self.prompt_service = container.get("prompt")
 
-        self.summarizer = SectionSummarizationTool(
+        self.summarizer = SummarizationTool(
             cfg.get("section_summarizer", {}),  memory, container, logger)
 
     # ------------------------------------------------------------------

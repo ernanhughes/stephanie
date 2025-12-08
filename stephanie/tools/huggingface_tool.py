@@ -11,6 +11,10 @@ from huggingface_hub import HfApi
 
 from stephanie.utils.hash_utils import hash_text
 
+import logging
+
+log = logging.getLogger(__name__)
+
 CACHE_DIR = Path(".paper_cache")
 CACHE_DIR.mkdir(exist_ok=True)
 
@@ -20,6 +24,13 @@ def _get_cache_path(paper_url: str) -> Path:
     key = hash_text(paper_url)
     return CACHE_DIR / f"{key}.pkl"
 
+def recommend_similar_by_id(arxiv_id: str) -> list[dict]:
+    """
+    Convenience wrapper: take a bare arxiv_id like '2505.08827',
+    build the PDF URL, and call recommend_similar_papers.
+    """
+    pdf_url = f"https://arxiv.org/pdf/{arxiv_id}.pdf"
+    return recommend_similar_papers(pdf_url)
 
 def recommend_similar_papers(
     paper_url: str = "https://arxiv.org/pdf/2505.08827",
@@ -56,7 +67,7 @@ def recommend_similar_papers(
         return hits
 
     except Exception as e:
-        print(f"Failed to get similar papers: {e}")
+        log.error(f"Failed to get similar papers: {e}")
         return []
 
 

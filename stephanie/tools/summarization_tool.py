@@ -1,3 +1,4 @@
+# stephanie/tools/summarization_tool.py
 from __future__ import annotations
 
 import logging
@@ -13,7 +14,7 @@ from stephanie.tools.base_tool import \
 log = logging.getLogger(__name__)
 
 
-class SectionSummarizationTool(BaseTool):
+class SummarizationTool(BaseTool):
     """
     Generate a short section heading + a technical summary for scorable.text
     using Hugging Face summarization models.
@@ -24,7 +25,7 @@ class SectionSummarizationTool(BaseTool):
     - Results are attached to scorable.meta["summaries"][<tool-name>].
     """
 
-    name = "section_summarizer"
+    name = "summarizer"
 
     def __init__(self, cfg: Dict[str, Any], memory, container, logger) -> None:
         super().__init__(cfg, memory, container, logger)
@@ -52,6 +53,8 @@ class SectionSummarizationTool(BaseTool):
         # Optional flag to skip if already summarized
         self.force: bool = bool(cfg.get("force", True))
 
+        self.store_to_memory: bool = bool(cfg.get("store_to_memory", True))
+        
         # Device selection
         self.device: str = "cuda" if torch.cuda.is_available() else "cpu"
         log.info(
@@ -246,7 +249,8 @@ class SectionSummarizationTool(BaseTool):
                 "summary_char_len": len(section_summary),
             }
 
-            self.memory.scorable_summaries.upsert(row)
+            if self.store_to_memory:
+                self.memory.scorable_summaries.upsert(row)
             
             log.debug(
                 "[SectionSummarizationTool] Summarized scorable %r (title=%r)",
@@ -262,3 +266,22 @@ class SectionSummarizationTool(BaseTool):
             )
 
         return scorable
+
+    # inside SummarizationTool
+    def summarize_text(self, text: str) -> dict:
+        """
+        Convenience wrapper that returns {title, summary} for arbitrary text,
+        without needing a Scorable.
+        """
+        if not text.strip():
+            return {"title": "", "summary": ""}
+
+        section_summary = self._generate_summary(text)
+        section_title = self._generate_title(text)
+
+        return {
+            "title": section_title,
+            "summary": section_summary,
+            "summary_model": self.summary_model_name,
+            "title_model": self.title_model_name,
+        }

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import wikipedia
 
-from stephanie.tools.cos_sim_tool import get_top_k_similar
+from stephanie.tools.similar_tool import get_top_k_similar
 
 
 class WikipediaTool:
@@ -47,7 +47,7 @@ class WikipediaTool:
             return []
 
         summaries = [a["summary"] for a in raw_articles]
-        scored = get_top_k_similar(query, summaries, self.memory, top_k=self.top_k)
+        scored = get_top_k_similar(query, summaries, embed=self.memory.embedding.get_or_create, top_k=self.top_k)
         self.logger.log(
             "WikipediaSimilarityScores",
             {"scores": [{"summary": s, "score": sc} for s, sc in scored]},

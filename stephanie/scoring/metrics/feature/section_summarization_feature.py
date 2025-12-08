@@ -1,12 +1,12 @@
 from stephanie.scoring.metrics.feature.base_feature import BaseFeature
-from stephanie.tools.section_summarization_tool import SectionSummarizationTool
+from stephanie.tools.summarization_tool import SummarizationTool
 
 
 class SectionSummarizationFeature(BaseFeature):
     name = "section_summarizer"
 
     def __init__(self, cfg, memory, container, logger):
-        self.summarizer = SectionSummarizationTool(
+        self.summarizer = SummarizationTool(
             cfg["tools"]["section_summarizer"],
             memory,
             container,
