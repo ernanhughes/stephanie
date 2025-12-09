@@ -4,13 +4,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
-from stephanie.components.information.adapters.info_casebook_adapter import \
+from stephanie.components.information_legacy.adapters.info_casebook_adapter import \
     InfoCaseBookAdapter
-from stephanie.components.information.adapters.info_scorable_adapter import \
+from stephanie.components.information_legacy.adapters.info_scorable_adapter import \
     score_memcube_and_attach_attributes
-from stephanie.components.information.builder.bucket import BucketBuilder
-from stephanie.components.information.builder.memcube import MemCubeBuilder
-from stephanie.components.information.data import (InformationBuildResult,
+from stephanie.components.information_legacy.builder.bucket import BucketBuilder
+from stephanie.components.information_legacy.builder.memcube import MemCubeBuilder
+from stephanie.components.information_legacy.data import (InformationBuildResult,
                                                    SourceProfile)
 
 

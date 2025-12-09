@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List
 
-from stephanie.components.information.data import InfoSection
+from stephanie.components.information_legacy.data import InfoSection
 from stephanie.memory.casebook_store import CaseBookStore
 from stephanie.memory.memcube_store import MemCubeStore
 from stephanie.models.memcube import MemCubeORM

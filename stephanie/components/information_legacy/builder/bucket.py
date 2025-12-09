@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
-from stephanie.components.information.data import (Bucket, BucketEdge,
+from stephanie.components.information_legacy.data import (Bucket, BucketEdge,
                                                    BucketNode, SourceProfile)
 from stephanie.memory.memcube_store import MemCubeStore
 from stephanie.tools.arxiv_tool import search_arxiv

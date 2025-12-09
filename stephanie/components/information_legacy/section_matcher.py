@@ -2,7 +2,7 @@ from typing import List, Dict, DefaultDict, Optional
 from stephanie.utils.similarity_utils import cosine
 from collections import defaultdict
 
-from stephanie.components.information.data import DocumentSection, SectionMatch
+from stephanie.components.information_legacy.data import DocumentSection, SectionMatch
 
 class SectionMatcherTask:
     """

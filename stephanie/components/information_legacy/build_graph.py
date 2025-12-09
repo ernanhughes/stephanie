@@ -3,9 +3,8 @@ import logging
 from pathlib import Path
 from typing import Optional, Dict, Any, List
 
-from stephanie.components.information.data import PaperNode, PaperReferenceGraph, ReferenceEdge, ReferenceRecord
-from stephanie.components.information.pdf_tool import ImportPdfTask
-from stephanie.components.information.reference_provider import ReferenceProvider
+from stephanie.components.information_legacy.data import PaperNode, PaperReferenceGraph, ReferenceEdge, ReferenceRecord
+from stephanie.components.information_legacy.reference_provider import ReferenceProvider
 
 log = logging.getLogger(__name__)
 

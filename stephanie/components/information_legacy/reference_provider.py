@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import Any, List
 
-from stephanie.components.information.data import ReferenceRecord
+from stephanie.components.information_legacy.data import ReferenceRecord
 
 
 class ReferenceProvider(ABC):

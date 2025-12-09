@@ -2,7 +2,11 @@ from collections import defaultdict
 
 from typing import Dict, List, Optional, Set
 
-from stephanie.components.information.data import DocumentSection
+from stephanie.components.information_legacy.data import DocumentSection
+import math
+import uuid
+
+from stephanie.utils.similarity_utils import cosine
 
 class ConceptClusterTask:
     """
@@ -64,7 +68,7 @@ class ConceptClusterTask:
             idx_i, sec_i, emb_i = sec_list[i]
             for j in range(i + 1, n):
                 idx_j, sec_j, emb_j = sec_list[j]
-                sim = cosine_sim(emb_i, emb_j)
+                sim = cosine(emb_i, emb_j)
                 if sim >= self.strong_threshold:
                     adjacency[idx_i].append(idx_j)
                     adjacency[idx_j].append(idx_i)
@@ -115,7 +119,7 @@ class ConceptClusterTask:
                 for j_pos in range(i_pos + 1, len(component_idxs)):
                     idx_b = component_idxs[j_pos]
                     _, _, emb_b = sec_list[idx_b]
-                    sims.append(cosine_sim(emb_a, emb_b))
+                    sims.append(cosine(emb_a, emb_b))
 
             avg_sim = sum(sims) / len(sims) if sims else self.strong_threshold
 

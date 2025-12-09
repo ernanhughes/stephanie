@@ -6,7 +6,7 @@ import re
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
-from stephanie.components.information.data import InformationSource
+from stephanie.components.information_legacy.data import InformationSource
 from stephanie.utils.date_utils import iso_now
 
 log = logging.getLogger(__name__)

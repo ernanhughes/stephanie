@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List, Optional
 
-from stephanie.components.information.data import (InformationRequest,
+from stephanie.components.information_legacy.data import (InformationRequest,
                                                    InformationResult,
                                                    InformationSource)
 from stephanie.services.knowledge_graph_service import KnowledgeGraphService

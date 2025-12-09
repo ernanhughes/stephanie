@@ -4,11 +4,11 @@ from __future__ import annotations
 from typing import Any, Dict, Optional
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.components.information.adapters.info_casebook_adapter import \
+from stephanie.components.information_legacy.adapters.info_casebook_adapter import \
     InfoCaseBookAdapter
-from stephanie.components.information.builder.bucket import BucketBuilder
-from stephanie.components.information.builder.memcube import MemCubeBuilder
-from stephanie.components.information.orchestrator import (
+from stephanie.components.information_legacy.builder.bucket import BucketBuilder
+from stephanie.components.information_legacy.builder.memcube import MemCubeBuilder
+from stephanie.components.information_legacy.orchestrator import (
     InformationOrchestrator, InformationOrchestratorConfig)
 from stephanie.core.context.context_manager import ContextManager
 

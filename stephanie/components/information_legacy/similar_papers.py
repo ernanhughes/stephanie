@@ -1,7 +1,7 @@
 import re
 from typing import Any, List
 
-from stephanie.components.information.data import SimilarPaperProvider, SimilarPaperRecord
+from stephanie.components.information_legacy.data import SimilarPaperProvider, SimilarPaperRecord
 
 # from huggingface_hub import InferenceClient  # or gradio client you're using
 

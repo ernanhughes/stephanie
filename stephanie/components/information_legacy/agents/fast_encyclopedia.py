@@ -5,7 +5,7 @@ from dataclasses import asdict
 from typing import Any, Dict, List
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.components.information.data import (ReasonedBlogResult,
+from stephanie.components.information_legacy.data import (ReasonedBlogResult,
                                                    ReasonedSection)
 
 log = logging.getLogger(__name__)
