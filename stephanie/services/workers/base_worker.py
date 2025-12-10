@@ -1,3 +1,4 @@
+# stephanie/services/workers/base_worker.py
 from __future__ import annotations
 
 import asyncio
@@ -8,8 +9,18 @@ from typing import Any, Awaitable, Callable, Dict, Optional
 
 log = logging.getLogger(__name__)
 
-Handler = Callable[[Dict[str, Any]], Awaitable[None]]
+Handler = Callable[[Dict[str, Any]], Awaitable[Any]]
 
+def _wrap_handler(self, handler: Handler) -> Handler:
+    async def wrapped(payload: Dict[str, Any]):
+        self._stats["messages_in"] += 1
+        try:
+            return await handler(payload)
+        except Exception as e:
+            self._stats["messages_err"] += 1
+            log.debug("WorkerHandlerError name=%s, error=%s", self.name, str(e))
+            return None
+    return wrapped
 
 
 class BaseWorker:
@@ -31,15 +42,13 @@ class BaseWorker:
 
     def __init__(
         self,
-        *,
-        name: str,
         cfg: Dict[str, Any],
         memory: Any,
         container: Any,                    
         logger,
     ):
-        self.name = name
         self.cfg = cfg or {}
+        self.name = self.cfg.get("name", self.__class__.__name__)
         self.memory = memory
         self.container = container         
         self.logger = logger
@@ -105,7 +114,7 @@ class BaseWorker:
 
     async def init_services(self) -> None:
         """Optional: resolve/initialize services from the container."""
-        return
+        pass
 
     async def register_subjects(self) -> None:
         """Subclasses call self.subscribe(subject, handler) here."""

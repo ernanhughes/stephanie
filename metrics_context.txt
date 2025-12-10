@@ -1,0 +1,5341 @@
+# Project Context: metrics
+# Path: C:\Users\ernan\Project\stephanie\stephanie\scoring\metrics
+# Generated for AI Review
+
+
+==================================================
+FILE: core_metrics.py
+==================================================
+
+# stephanie/scoring/metrics/core_metrics.py
+from __future__ import annotations
+
+CORE_METRIC_MAPPING = {
+    # VisiCalc core metrics
+    "frontier_util": "frontier_util",
+    "stability": "stability",
+    "middle_dip": "middle_dip",
+    "std_dev": "std_dev",
+    "sparsity": "sparsity",
+    "entropy": "entropy",
+    "trend": "trend",
+    
+    # Scorer aggregate metrics
+    "hrm.aggregate": "HRM.aggregate",
+    "sicql.aggregate": "SICQL.aggregate",
+    "tiny.aggregate": "Tiny.aggregate",
+    
+    # Additional critical metrics
+    "verification_present": "Verification.present",
+    "step_count": "Reasoning.steps"
+}
+
+==================================================
+FILE: frontier_intelligence.py
+==================================================
+
+# stephanie/scoring/metrics/intelligent_frontier.py
+from __future__ import annotations
+
+import logging
+from dataclasses import dataclass, field
+from typing import Dict, List, Optional, Sequence, Tuple
+
+import numpy as np
+
+log = logging.getLogger(__name__)
+
+
+@dataclass
+class FrontierIntelligence:
+    """
+    Meta-controller for FrontierLens.
+
+    Tracks how well individual metrics separate target vs baseline over time,
+    and uses that (plus critic feedback) to choose a frontier metric.
+
+    This is where learning *about* the metric space happens.
+    """
+
+    stability_window: int = 5
+    alpha: float = 0.5     # weight on std (penalty)
+    beta: float = 0.2      # weight on critic quality (bonus)
+
+    # metric_name -> list of AUCs from past runs
+    metric_history: Dict[str, List[float]] = field(default_factory=dict)
+    # critic-wide quality scores (e.g., AUC over an eval set)
+    critic_quality_history: List[float] = field(default_factory=list)
+
+    # dynamically maintained list of core metrics
+    core_metrics: List[str] = field(default_factory=list)
+
+    def update_metric_stability(
+        self,
+        metric_importance: List[Dict[str, float]],
+        critic_quality_score: Optional[float] = None,
+    ) -> None:
+        """
+        Log AUC stability per metric and optionally log critic-wide quality
+        for this run.
+
+        metric_importance:
+            [
+              {"metric": "sicql.coverage.score", "auc_roc": 0.91, ...},
+              ...
+            ]
+        critic_quality_score:
+            e.g., TinyCritic AUC over held-out eval for this run.
+        """
+        # Per-metric AUC history
+        for metric in metric_importance:
+            name = metric["metric"]
+            auc = float(metric["auc_roc"])
+
+            hist = self.metric_history.setdefault(name, [])
+            hist.append(auc)
+            # Trim history to stability window
+            if len(hist) > self.stability_window:
+                hist.pop(0)
+
+        # Critic quality history
+        if critic_quality_score is not None:
+            self.critic_quality_history.append(float(critic_quality_score))
+            if len(self.critic_quality_history) > self.stability_window:
+                self.critic_quality_history.pop(0)
+
+        self._update_core_metrics()
+
+    def _update_core_metrics(self) -> None:
+        """
+        Identify the most stable, useful metrics across runs.
+
+        Score:
+            stability_score = avg_auc
+                              - alpha * std_auc
+                              + beta  * avg_critic_quality
+        """
+        stable_metrics: List[Tuple[str, float, float, float]] = []
+
+        avg_critic_quality = (
+            float(np.mean(self.critic_quality_history))
+            if self.critic_quality_history
+            else 0.5
+        )
+
+        for metric, scores in self.metric_history.items():
+            # skip special key
+            if metric == "critic_quality":
+                continue
+
+            if len(scores) < max(2, self.stability_window // 2):
+                continue
+
+            scores_arr = np.asarray(scores, dtype=np.float64)
+            stability = float(scores_arr.std())
+            avg_auc = float(scores_arr.mean())
+
+            stability_score = (
+                avg_auc
+                - self.alpha * stability
+                + self.beta * avg_critic_quality
+            )
+            stable_metrics.append((metric, stability_score, avg_auc, stability))
+
+        # Sort by stability_score descending
+        stable_metrics.sort(key=lambda x: x[1], reverse=True)
+        self.core_metrics = [m[0] for m in stable_metrics[: max(5, len(stable_metrics) // 3)]]
+
+        if self.core_metrics:
+            log.info(
+                "FrontierIntelligence: updated core_metrics (%d): %s%s",
+                len(self.core_metrics),
+                ", ".join(self.core_metrics[:3]),
+                "..." if len(self.core_metrics) > 3 else "",
+            )
+        else:
+            log.warning(
+                "FrontierIntelligence: no stable metrics yet "
+                "(need more runs or labels)."
+            )
+
+    def select_frontier_metric(
+        self,
+        candidate_metrics: Sequence[str],
+        fallback: Optional[str] = None,
+    ) -> str:
+        """
+        Choose the best frontier metric from the candidate list.
+
+        Preference order:
+          1) First core metric that appears in candidate_metrics,
+          2) explicit fallback,
+          3) first candidate.
+        """
+        cand_set = set(candidate_metrics)
+
+        # Prefer learned core metrics
+        for m in self.core_metrics:
+            if m in cand_set:
+                log.info("FrontierIntelligence: selected frontier_metric=%r", m)
+                return m
+
+        # Fallbacks
+        if fallback and fallback in cand_set:
+            log.warning(
+                "FrontierIntelligence: no core metrics in candidate set; "
+                "using fallback=%r",
+                fallback,
+            )
+            return fallback
+
+        if candidate_metrics:
+            log.warning(
+                "FrontierIntelligence: no core metrics; using first candidate=%r",
+                candidate_metrics[0],
+            )
+            return candidate_metrics[0]
+
+        raise ValueError("FrontierIntelligence.select_frontier_metric: no candidate_metrics provided")
+
+
+def compute_dynamic_bands(
+    frontier_values: np.ndarray,
+    target_good_ratio: float = 0.4,
+    min_band_size: int = 5,
+) -> Tuple[float, float, float]:
+    """
+    Dynamically adjust band boundaries based on the empirical distribution
+    of the frontier metric.
+
+    Args:
+        frontier_values:
+            1D array of frontier metric values for all examples
+            (already normalized into [0,1] is ideal).
+        target_good_ratio:
+            Desired fraction of examples in the "good" band.
+        min_band_size:
+            Minimum #examples on each side (below and above the band).
+
+    Returns:
+        (low_threshold, high_threshold, actual_good_ratio)
+    """
+    vals = np.asarray(frontier_values, dtype=np.float64)
+    vals = vals[np.isfinite(vals)]
+    if vals.size == 0:
+        # degenerate case: no finite data
+        log.warning(
+            "compute_dynamic_bands: no finite frontier_values; using default [0.25, 0.75]."
+        )
+        return 0.25, 0.75, 0.5
+
+    vals.sort()
+    n = vals.size
+
+    # Ideal indices assuming symmetric tails for "bad"
+    tail_fraction = (1.0 - float(target_good_ratio)) / 2.0
+    low_idx = max(min_band_size, int(n * tail_fraction))
+    high_idx = min(n - min_band_size, n - int(n * tail_fraction))
+
+    # Safety clamps
+    low_idx = max(0, min(low_idx, n - 1))
+    high_idx = max(low_idx + 1, min(high_idx, n - 1))
+
+    low_threshold = float(vals[low_idx])
+    high_threshold = float(vals[high_idx])
+
+    # Compute actual achieved good ratio Currently it's distributed across these files
+    mask_good = (vals >= low_threshold) & (vals <= high_threshold)
+    actual_good_ratio = float(mask_good.mean())
+
+    if high_threshold <= low_threshold:
+        log.warning(
+            "compute_dynamic_bands: degenerate thresholds (low=%.3f, high=%.3f); "
+            "falling back to [0.25, 0.75].",
+            low_threshold,
+            high_threshold,
+        )
+        low_threshold, high_threshold = 0.25, 0.75
+        actual_good_ratio = 0.5
+
+    log.info(
+        "FrontierIntelligence: dynamic bands [%.3f, %.3f] "
+        "(target_good_ratio=%.2f, actual_good_ratio=%.2f, n=%d)",
+        low_threshold,
+        high_threshold,
+        target_good_ratio,
+        actual_good_ratio,
+        n,
+    )
+
+    return low_threshold, high_threshold, actual_good_ratio
+
+
+==================================================
+FILE: frontier_lens.py
+==================================================
+
+# stephanie/scoring/metrics/frontier_lens.py
+"""
+FrontierLens: unified frontier analysis and feature engine for cognitive metrics.
+
+This module turns sequences of scored items (rows) × metrics (columns) into:
+
+  - A FrontierLensReport:
+      global + regional statistics for a chosen "frontier" metric
+      (e.g., quality, risk, clarity, etc.) over row-slices.
+  - A fixed-length feature vector + names:
+      suitable as input to small models (e.g. Tiny Critic).
+  - Optional VPM images (uint8 matrices) for ZeroModel / vision models.
+  - Quality scores + diffs between two episodes (target vs baseline).
+
+Design notes:
+  - Deterministic, pure-NumPy: no learned parameters here.
+  - Frontier band is defined in normalized [0,1] space.
+  - Backwards-compatible with previous "VisiCalc" naming:
+      VisiCalcRegion / VisiCalcReport / VisiCalcEpisode / VisiCalc
+      and compute_visicalc_report() all still exist as aliases.
+"""
+
+from __future__ import annotations
+
+import csv
+import logging
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
+
+import numpy as np
+from PIL import Image
+
+from stephanie.utils.json_sanitize import dumps_safe
+
+log = logging.getLogger(__name__)
+
+
+# =========================================================================== #
+# 1. Core Data Structures
+# =========================================================================== #
+
+
+@dataclass
+class FrontierLensRegion:
+    """One contiguous row region in a FrontierLens report."""
+
+    index: int
+    start_row: int
+    end_row: int
+    row_count: int
+    frontier_frac: float
+    low_frac: float
+    high_frac: float
+    mean_frontier_value: float
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "index": self.index,
+            "start_row": self.start_row,
+            "end_row": self.end_row,
+            "row_count": self.row_count,
+            "frontier_frac": self.frontier_frac,
+            "low_frac": self.low_frac,
+            "high_frac": self.high_frac,
+            "mean_frontier_value": self.mean_frontier_value,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any], index_fallback: int = 0) -> "FrontierLensRegion":
+        # Support older field names for robustness
+        start_row = data.get("start_row", data.get("row_start", 0))
+        end_row = data.get("end_row", data.get("row_end", 0))
+        row_count = data.get("row_count", data.get("num_rows", 0))
+        frontier_frac = data.get("frontier_frac", data.get("frontier_fraction", 0.0))
+        return cls(
+            index=int(data.get("index", index_fallback)),
+            start_row=int(start_row),
+            end_row=int(end_row),
+            row_count=int(row_count),
+            frontier_frac=float(frontier_frac),
+            low_frac=float(data.get("low_frac", 0.0)),
+            high_frac=float(data.get("high_frac", 0.0)),
+            mean_frontier_value=float(data.get("mean_frontier_value", 0.0) or 0.0),
+        )
+
+    def __str__(self) -> str:
+        return (
+            f"[R{self.index}] {self.start_row}-{self.end_row} "
+            f"| F={self.frontier_frac:.3f} L={self.low_frac:.3f} H={self.high_frac:.3f}"
+        )
+
+
+@dataclass
+class FrontierLensReport:
+    """
+    Full diagnostic report generated by FrontierLens.
+
+    Represents global + regional statistics over a scored item sequence for a single
+    "frontier" metric (e.g., quality, risk, clarity, etc.).
+    """
+
+    frontier_metric: str
+    frontier_low: float
+    frontier_high: float
+    row_region_splits: int
+    regions: List[FrontierLensRegion]
+    global_low_frac: float
+    global_high_frac: float
+    global_frontier_frac: float = 0.0
+    global_mean: float = 0.0
+    global_std: float = 0.0
+    global_min: float = 0.0
+    global_max: float = 0.0
+    entropy: float = 0.0
+    sparsity_level_e3: float = 0.0
+    sparsity_level_e2: float = 0.0
+
+    def validate(self) -> None:
+        assert 0.0 <= self.frontier_low < self.frontier_high <= 1.0, \
+            f"Invalid band [{self.frontier_low}, {self.frontier_high}]"
+        assert len(self.regions) == self.row_region_splits, \
+            f"regions count mismatch: {len(self.regions)} vs {self.row_region_splits}"
+        for r in self.regions:
+            assert 0 <= r.start_row <= r.end_row
+            assert r.row_count == r.end_row - r.start_row
+            assert 0.0 <= r.frontier_frac <= 1.0
+        log.debug("✅ FrontierLensReport validated: '%s'", self.frontier_metric)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "frontier": {
+                "metric": self.frontier_metric,
+                "low": self.frontier_low,
+                "high": self.frontier_high,
+                "row_region_splits": self.row_region_splits,
+            },
+            "global": {
+                "frontier_frac": self.global_frontier_frac,
+                "low_frac": self.global_low_frac,
+                "high_frac": self.global_high_frac,
+                "mean": self.global_mean,
+                "std": self.global_std,
+                "min": self.global_min,
+                "max": self.global_max,
+                "entropy": self.entropy,
+                "sparsity_level_e3": self.sparsity_level_e3,
+                "sparsity_level_e2": self.sparsity_level_e2,
+            },
+            "regions": [r.to_dict() for r in self.regions],
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "FrontierLensReport":
+        frontier = data.get("frontier", {}) or {}
+        global_stats = data.get("global", {}) or {}
+        region_items = data.get("regions", []) or []
+        regions = [
+            FrontierLensRegion.from_dict(r, index_fallback=i)
+            for i, r in enumerate(region_items)
+        ]
+        report = cls(
+            frontier_metric=str(frontier.get("metric", "")),
+            frontier_low=float(frontier.get("low", 0.0)),
+            frontier_high=float(frontier.get("high", 1.0)),
+            row_region_splits=int(frontier.get("row_region_splits", len(regions))),
+            regions=regions,
+            global_low_frac=float(global_stats.get("low_frac", 0.0)),
+            global_high_frac=float(global_stats.get("high_frac", 0.0)),
+            global_frontier_frac=float(global_stats.get("frontier_frac", 0.0)),
+            global_mean=float(global_stats.get("mean", 0.0)),
+            global_std=float(global_stats.get("std", 0.0)),
+            global_min=float(global_stats.get("min", 0.0)),
+            global_max=float(global_stats.get("max", 0.0)),
+            entropy=float(global_stats.get("entropy", 0.0)),
+            sparsity_level_e3=float(global_stats.get("sparsity_level_e3", 0.0)),
+            sparsity_level_e2=float(global_stats.get("sparsity_level_e2", 0.0)),
+        )
+        report.validate()
+        return report
+
+    # --- Persistence helpers ---
+
+    def save_json(self, path: Union[Path, str]) -> Path:
+        """Save this report to JSON (for dashboards / offline analysis)."""
+        p = Path(path)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        with p.open("w", encoding="utf-8") as f:
+            f.write(dumps_safe(self.to_dict(), indent=2))
+        log.info("Saved FrontierLensReport → %s", p)
+        return p
+
+    def save_csv(self, path: Union[Path, str]) -> Path:
+        """Save this report to a flat CSV (1 global row + 1 row per region)."""
+        p = Path(path)
+        p.parent.mkdir(parents=True, exist_ok=True)
+
+        fieldnames = [
+            "level", "frontier_metric", "frontier_low", "frontier_high",
+            "row_region_splits",
+            "global_frontier_frac", "global_low_frac", "global_high_frac",
+            "global_mean", "global_std", "global_min", "global_max",
+            "entropy", "sparsity_level_e3", "sparsity_level_e2",
+            "region_index", "region_start_row", "region_end_row", "region_row_count",
+            "region_frontier_frac", "region_low_frac", "region_high_frac",
+            "region_mean_frontier_value",
+        ]
+
+        with p.open("w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+
+            # Global row
+            writer.writerow({
+                "level": "global",
+                "frontier_metric": self.frontier_metric,
+                "frontier_low": self.frontier_low,
+                "frontier_high": self.frontier_high,
+                "row_region_splits": self.row_region_splits,
+                "global_frontier_frac": self.global_frontier_frac,
+                "global_low_frac": self.global_low_frac,
+                "global_high_frac": self.global_high_frac,
+                "global_mean": self.global_mean,
+                "global_std": self.global_std,
+                "global_min": self.global_min,
+                "global_max": self.global_max,
+                "entropy": self.entropy,
+                "sparsity_level_e3": self.sparsity_level_e3,
+                "sparsity_level_e2": self.sparsity_level_e2,
+                # region fields left empty
+                "region_index": None,
+                "region_start_row": None,
+                "region_end_row": None,
+                "region_row_count": None,
+                "region_frontier_frac": None,
+                "region_low_frac": None,
+                "region_high_frac": None,
+                "region_mean_frontier_value": None,
+            })
+
+            # Per-region rows
+            for r in self.regions:
+                writer.writerow({
+                    "level": "region",
+                    "frontier_metric": self.frontier_metric,
+                    "frontier_low": self.frontier_low,
+                    "frontier_high": self.frontier_high,
+                    "row_region_splits": self.row_region_splits,
+                    "global_frontier_frac": self.global_frontier_frac,
+                    "global_low_frac": self.global_low_frac,
+                    "global_high_frac": self.global_high_frac,
+                    "global_mean": self.global_mean,
+                    "global_std": self.global_std,
+                    "global_min": self.global_min,
+                    "global_max": self.global_max,
+                    "entropy": self.entropy,
+                    "sparsity_level_e3": self.sparsity_level_e3,
+                    "sparsity_level_e2": self.sparsity_level_e2,
+                    "region_index": r.index,
+                    "region_start_row": r.start_row,
+                    "region_end_row": r.end_row,
+                    "region_row_count": r.row_count,
+                    "region_frontier_frac": r.frontier_frac,
+                    "region_low_frac": r.low_frac,
+                    "region_high_frac": r.high_frac,
+                    "region_mean_frontier_value": r.mean_frontier_value,
+                })
+
+        log.info("Saved FrontierLensReport CSV → %s", p)
+        return p
+
+    # --- Scalar score + diff ---
+
+    def quality_score(self, low_weight: float = 0.5, high_weight: float = 0.5) -> float:
+        """
+        Simple scalar quality score:
+          - rewards frontier + high coverage,
+          - penalizes low coverage
+        """
+        return (
+            self.global_frontier_frac +
+            high_weight * self.global_high_frac -
+            low_weight * self.global_low_frac
+        )
+
+    def diff(self, baseline: "FrontierLensReport") -> Dict[str, Any]:
+        """Delta vs baseline report."""
+        assert self.frontier_metric == baseline.frontier_metric
+        return {
+            "frontier_metric": self.frontier_metric,
+            "band": [self.frontier_low, self.frontier_high],
+            "target_splits": self.row_region_splits,
+            "baseline_splits": baseline.row_region_splits,
+            "global_delta": {
+                "mean": self.global_mean - baseline.global_mean,
+                "std": self.global_std - baseline.global_std,
+                "min": self.global_min - baseline.global_min,
+                "max": self.global_max - baseline.global_max,
+                "frontier_frac": self.global_frontier_frac - baseline.global_frontier_frac,
+                "low_frac": self.global_low_frac - baseline.global_low_frac,
+                "high_frac": self.global_high_frac - baseline.global_high_frac,
+                "entropy": self.entropy - baseline.entropy,
+                "sparsity_e3": self.sparsity_level_e3 - baseline.sparsity_level_e3,
+                "sparsity_e2": self.sparsity_level_e2 - baseline.sparsity_level_e2,
+            },
+            "regions": [
+                {
+                    "index": i,
+                    "target_span": [tr.start_row, tr.end_row],
+                    "baseline_span": [br.start_row, br.end_row],
+                    "row_count_delta": tr.row_count - br.row_count,
+                    "frontier_frac_delta": tr.frontier_frac - br.frontier_frac,
+                    "low_frac_delta": tr.low_frac - br.low_frac,
+                    "high_frac_delta": tr.high_frac - br.high_frac,
+                    "mean_frontier_value_delta": tr.mean_frontier_value - br.mean_frontier_value,
+                }
+                for i, (tr, br) in enumerate(zip(self.regions, baseline.regions))
+            ],
+        }
+
+
+@dataclass
+class FrontierLensEpisode:
+    """
+    Generic "episode" for FrontierLens.
+
+    Typically created from:
+      - a score matrix (rows = items/time, cols = metrics)
+      - metric names
+      - item ids (e.g., documents, steps, tiles)
+    """
+
+    episode_id: str
+    scores: np.ndarray               # shape: (N_items, N_metrics)
+    metric_names: List[str]
+    item_ids: List[str]
+    meta: Dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        scores = np.asarray(self.scores)
+        if scores.ndim != 2:
+            raise ValueError(f"scores must be 2D, got shape {scores.shape}")
+        n_items, n_metrics = scores.shape
+        if len(self.metric_names) != n_metrics:
+            raise ValueError(
+                f"metric_names length {len(self.metric_names)} != scores.shape[1] {n_metrics}"
+            )
+        if len(self.item_ids) != n_items:
+            raise ValueError(
+                f"item_ids length {len(self.item_ids)} != scores.shape[0] {n_items}"
+            )
+        self.scores = scores
+
+    def summary(self, frontier_band: Tuple[float, float] = (0.25, 0.75)) -> Dict[str, Any]:
+        return episode_summary(self, frontier_band=frontier_band)
+
+    def features(self, frontier_band: Tuple[float, float] = (0.25, 0.75)) -> Tuple[np.ndarray, List[str]]:
+        return episode_features(self, frontier_band=frontier_band)
+
+
+# =========================================================================== #
+# 2. Utilities (normalization, entropy, frontier)
+# =========================================================================== #
+
+
+def normalize_scores(scores: np.ndarray, eps: float = 1e-8) -> np.ndarray:
+    """
+    Normalize each metric column to [0,1] across items.
+    If a column is constant, it becomes 0.5.
+    """
+    scores = np.asarray(scores, dtype=np.float64)
+    if scores.ndim != 2:
+        raise ValueError(f"Expected 2D scores, got {scores.shape}")
+
+    out = np.zeros_like(scores, dtype=np.float64)
+    for j in range(scores.shape[1]):
+        col = scores[:, j]
+        cmin = float(col.min())
+        cmax = float(col.max())
+        if cmax - cmin < eps:
+            out[:, j] = 0.5
+        else:
+            out[:, j] = (col - cmin) / (cmax - cmin)
+    return out
+
+
+def scores_to_vpm_uint8(
+    scores: np.ndarray,
+    *,
+    per_metric_normalize: bool = True,
+    eps: float = 1e-8,
+) -> np.ndarray:
+    """
+    Convert a 2D scores matrix into a [0,255] uint8 image.
+
+    - per_metric_normalize=True:
+        normalize each metric column to [0,1] (like normalize_scores)
+    - per_metric_normalize=False:
+        global min–max across the whole matrix.
+    """
+    arr = np.asarray(scores, dtype=np.float64)
+    if arr.ndim != 2:
+        raise ValueError(f"scores_to_vpm_uint8: expected 2D, got shape {arr.shape}")
+
+    if per_metric_normalize:
+        arr = normalize_scores(arr, eps=eps)
+    else:
+        cmin = float(np.nanmin(arr))
+        cmax = float(np.nanmax(arr))
+        if not np.isfinite(cmin) or not np.isfinite(cmax):
+            arr = np.nan_to_num(arr, nan=0.0, posinf=1.0, neginf=0.0)
+            cmin = float(arr.min())
+            cmax = float(arr.max())
+        if cmax - cmin < eps:
+            arr = np.zeros_like(arr) + 0.5
+        else:
+            arr = (arr - cmin) / (cmax - cmin)
+
+    # Clean up NaNs/Infs and clip to [0,1]
+    arr = np.nan_to_num(arr, nan=0.0, posinf=1.0, neginf=0.0)
+    arr = np.clip(arr, 0.0, 1.0)
+
+    img = (arr * 255.0).round().astype(np.uint8)  # shape: (N_rows, N_metrics)
+    return img
+
+
+def compute_frontier_mask(
+    scores: np.ndarray,
+    low: float = 0.25,
+    high: float = 0.75,
+) -> np.ndarray:
+    """
+    Frontier band: entries whose value lies in [low, high].
+    Returns a boolean mask of same shape as scores.
+    """
+    scores = np.asarray(scores, dtype=np.float64)
+    if scores.ndim != 2:
+        raise ValueError(f"Expected 2D scores, got {scores.shape}")
+    if not (0.0 <= low <= high <= 1.0):
+        raise ValueError(f"Invalid band [{low}, {high}], must be in [0,1] with low <= high")
+
+    return (scores >= low) & (scores <= high)
+
+
+def row_entropy(prob_row: np.ndarray, eps: float = 1e-8) -> float:
+    """
+    Shannon entropy of a row of non-negative values, treated as a distribution.
+    We renormalize the row to sum to 1.
+    """
+    p = np.asarray(prob_row, dtype=np.float64)
+    p = np.maximum(p, 0.0)
+    s = float(p.sum())
+    if s < eps:
+        return 0.0
+    p = p / s
+    mask = p > eps
+    return float(-np.sum(p[mask] * np.log(p[mask] + eps)))
+
+
+def episode_summary(
+    episode: FrontierLensEpisode,
+    frontier_band: Tuple[float, float] = (0.25, 0.75),
+) -> Dict[str, Any]:
+    """
+    Produce a dictionary of summary stats for an episode.
+    You can log this or turn it into features later.
+    """
+    scores_norm = normalize_scores(episode.scores)
+    low, high = frontier_band
+    frontier_mask = compute_frontier_mask(scores_norm, low=low, high=high)
+
+    N, M = scores_norm.shape
+
+    # Per-metric stats
+    means = scores_norm.mean(axis=0)
+    stds = scores_norm.std(axis=0)
+
+    # Frontier coverage
+    frontier_fraction = frontier_mask.mean()          # global fraction
+    frontier_per_metric = frontier_mask.mean(axis=0)  # per metric
+
+    # Row entropies (treat each row as distribution over metrics)
+    row_entropies = np.array([row_entropy(scores_norm[i, :]) for i in range(N)])
+    mean_row_entropy = float(row_entropies.mean()) if len(row_entropies) else 0.0
+    std_row_entropy = float(row_entropies.std()) if len(row_entropies) else 0.0
+
+    return {
+        "episode_id": episode.episode_id,
+        "n_items": N,
+        "n_metrics": M,
+        "metric_names": list(episode.metric_names),
+        "mean_per_metric": means,
+        "std_per_metric": stds,
+        "frontier_fraction": float(frontier_fraction),
+        "frontier_per_metric": frontier_per_metric,
+        "mean_row_entropy": mean_row_entropy,
+        "std_row_entropy": std_row_entropy,
+        "frontier_band": (low, high),
+    }
+
+
+def episode_features(
+    episode: FrontierLensEpisode,
+    frontier_band: Tuple[float, float] = (0.25, 0.75),
+) -> Tuple[np.ndarray, List[str]]:
+    """
+    Turn an episode into a fixed-length feature vector + feature names.
+
+    Current design (for M metrics):
+      - mean_per_metric (M)
+      - std_per_metric (M)
+      - frontier_per_metric (M)
+      - frontier_fraction (1)
+      - mean_row_entropy (1)
+      - std_row_entropy (1)
+    => total dim = 3M + 3
+    """
+    summary = episode_summary(episode, frontier_band=frontier_band)
+    metric_names = summary["metric_names"]
+
+    mean_per_metric = np.asarray(summary["mean_per_metric"], dtype=np.float64)
+    std_per_metric = np.asarray(summary["std_per_metric"], dtype=np.float64)
+    frontier_per_metric = np.asarray(summary["frontier_per_metric"], dtype=np.float64)
+
+    feats = np.concatenate(
+        [
+            mean_per_metric,
+            std_per_metric,
+            frontier_per_metric,
+            np.array(
+                [
+                    summary["frontier_fraction"],
+                    summary["mean_row_entropy"],
+                    summary["std_row_entropy"],
+                ],
+                dtype=np.float64,
+            ),
+        ],
+        axis=0,
+    )
+
+    # Feature names
+    feat_names: List[str] = []
+    for name in metric_names:
+        feat_names.append(f"mean[{name}]")
+    for name in metric_names:
+        feat_names.append(f"std[{name}]")
+    for name in metric_names:
+        feat_names.append(f"frontier[{name}]")
+    feat_names.extend(
+        [
+            "frontier_global",
+            "mean_row_entropy",
+            "std_row_entropy",
+        ]
+    )
+
+    return feats.astype(np.float32), feat_names
+
+
+# =========================================================================== #
+# 3. Core computation: compute_frontier_lens_report (with visicalc alias)
+# =========================================================================== #
+
+
+def compute_frontier_lens_report(
+    vpm: np.ndarray,
+    metric_names: Sequence[str],
+    frontier_metric: str,
+    row_region_splits: int,
+    frontier_low: float = 0.25,
+    frontier_high: float = 0.75,
+) -> FrontierLensReport:
+    """
+    Pure computation: build a FrontierLensReport from a raw score matrix.
+
+    vpm:
+        (N_items, N_metrics) score matrix, ideally normalized to [0,1]
+    metric_names:
+        length-N_metrics list of metric names
+    frontier_metric:
+        which metric to treat as the "frontier" dimension
+    row_region_splits:
+        how many contiguous row regions to divide the items into
+    frontier_low/high:
+        band defining the frontier for coverage stats
+    """
+    vpm = np.asarray(vpm, dtype=np.float64)
+    if vpm.ndim != 2:
+        raise ValueError(f"vpm must be 2D, got shape {vpm.shape}")
+
+    num_rows, num_metrics = vpm.shape
+    metric_names = list(metric_names)
+
+    if num_rows == 0 or num_metrics == 0:
+        report = FrontierLensReport(
+            frontier_metric=frontier_metric,
+            frontier_low=frontier_low,
+            frontier_high=frontier_high,
+            row_region_splits=row_region_splits,
+            regions=[],
+            global_frontier_frac=0.0,
+            global_low_frac=0.0,
+            global_high_frac=0.0,
+        )
+        report.validate()
+        return report
+
+    # Select frontier column
+    try:
+        fm_idx = metric_names.index(frontier_metric)
+    except ValueError:
+        log.warning(
+            "Frontier metric '%s' not found; using first metric '%s'",
+            frontier_metric,
+            metric_names[0],
+        )
+        fm_idx = 0
+        frontier_metric = metric_names[0]
+
+    frontier_vals = vpm[:, fm_idx]
+    low, high = float(frontier_low), float(frontier_high)
+
+    if not (0.0 <= low < high <= 1.0):
+        raise ValueError(f"Invalid frontier band [{low}, {high}]")
+
+    # Global stats over the entire matrix
+    g_mean = float(vpm.mean())
+    g_std = float(vpm.std())
+    g_min = float(vpm.min())
+    g_max = float(vpm.max())
+
+    band_mask = (frontier_vals >= low) & (frontier_vals <= high)
+    global_frontier_frac = float(band_mask.mean())
+    global_low_frac = float((frontier_vals < low).mean())
+    global_high_frac = float((frontier_vals > high).mean())
+
+    # Sparsity (approximate "how much of the matrix is near zero")
+    sparsity_e3 = float(np.mean(vpm <= 1e-3))
+    sparsity_e2 = float(np.mean(vpm <= 1e-2))
+
+    # Entropy of the scalar distribution
+    hist, _ = np.histogram(vpm, bins=32, range=(0.0, 1.0), density=True)
+    hist = hist[hist > 0]
+    if len(hist) > 0:
+        entropy = float(-np.sum(hist * np.log(hist)) / np.log(len(hist)))
+    else:
+        entropy = 0.0
+
+    # Row region bounds: split rows as evenly as possible
+    splits = int(row_region_splits)
+    base, rem = divmod(num_rows, splits)
+    bounds: List[Tuple[int, int]] = []
+    start = 0
+    for i in range(splits):
+        end = start + base + (1 if i < rem else 0)
+        bounds.append((start, end))
+        start = end
+
+    regions: List[FrontierLensRegion] = []
+    for i, (rs, re) in enumerate(bounds):
+        if rs >= re:
+            regions.append(
+                FrontierLensRegion(
+                    index=i,
+                    start_row=rs,
+                    end_row=re,
+                    row_count=0,
+                    frontier_frac=0.0,
+                    low_frac=0.0,
+                    high_frac=0.0,
+                    mean_frontier_value=0.0,
+                )
+            )
+            continue
+
+        seg_vals = frontier_vals[rs:re]
+        seg_mask = band_mask[rs:re]
+        regions.append(
+            FrontierLensRegion(
+                index=i,
+                start_row=rs,
+                end_row=re,
+                row_count=re - rs,
+                frontier_frac=float(seg_mask.mean()),
+                low_frac=float((seg_vals < low).mean()),
+                high_frac=float((seg_vals > high).mean()),
+                mean_frontier_value=float(seg_vals.mean()),
+            )
+        )
+
+    report = FrontierLensReport(
+        frontier_metric=frontier_metric,
+        frontier_low=low,
+        frontier_high=high,
+        row_region_splits=splits,
+        regions=regions,
+        global_frontier_frac=global_frontier_frac,
+        global_low_frac=global_low_frac,
+        global_high_frac=global_high_frac,
+        global_mean=g_mean,
+        global_std=g_std,
+        global_min=g_min,
+        global_max=g_max,
+        entropy=entropy,
+        sparsity_level_e3=sparsity_e3,
+        sparsity_level_e2=sparsity_e2,
+    )
+    report.validate()
+    return report
+
+
+# =========================================================================== #
+# 4. Main Class: FrontierLens
+# =========================================================================== #
+
+
+@dataclass
+class FrontierLens:
+    """
+    Unified analyzer for cognitive metrics over sequences of scored items (e.g., Scorables).
+
+    Turns a list of scored items into:
+      - a FrontierLensReport (structured summary)
+      - a fixed-length feature vector (for ML models)
+      - a scalar quality score
+      - a diff vs another state
+
+    Use cases:
+      - Compare graph states before/after Blossom expansion
+      - Measure reasoning coherence in Nexus episodes
+      - Track idea evolution in filmstrip visualizations
+    """
+
+    episode_id: str
+    scores: np.ndarray           # (N_items, N_metrics)
+    metric_names: List[str]
+    item_ids: List[str]
+    frontier_metric: str
+    row_region_splits: int = 3
+    frontier_low: float = 0.25
+    frontier_high: float = 0.75
+    meta: Dict[str, Any] = field(default_factory=dict)
+
+    # Computed during __post_init__
+    report: Optional[FrontierLensReport] = None
+    features: Optional[np.ndarray] = None
+    feature_names: Optional[List[str]] = None
+
+    def __post_init__(self):
+        scores = np.asarray(self.scores)
+        if scores.ndim != 2:
+            raise ValueError(f"scores must be 2D, got shape {scores.shape}")
+        if len(self.metric_names) != scores.shape[1]:
+            raise ValueError("metric_names length mismatch")
+        if len(self.item_ids) != scores.shape[0]:
+            raise ValueError("item_ids length mismatch")
+
+        self.scores = scores
+
+        # Build derived outputs
+        self.report = compute_frontier_lens_report(
+            vpm=self.scores,
+            metric_names=self.metric_names,
+            frontier_metric=self.frontier_metric,
+            row_region_splits=self.row_region_splits,
+            frontier_low=self.frontier_low,
+            frontier_high=self.frontier_high,
+        )
+        episode = FrontierLensEpisode(
+            episode_id=self.episode_id,
+            scores=self.scores,
+            metric_names=self.metric_names,
+            item_ids=self.item_ids,
+            meta=self.meta,
+        )
+        feats, names = episode_features(episode, frontier_band=(self.frontier_low, self.frontier_high))
+        self.features = feats
+        self.feature_names = names
+
+    # =============================
+    # Public API
+    # =============================
+
+    @classmethod
+    def from_rows(
+        cls,
+        *,
+        episode_id: str,
+        rows: List[Dict[str, Any]],
+        frontier_metric: str,
+        row_region_splits: int = 3,
+        frontier_low: float = 0.25,
+        frontier_high: float = 0.75,
+        meta: Optional[Dict[str, Any]] = None,
+    ) -> "FrontierLens":
+        """
+        Build from ScorableProcessor-style rows.
+
+        Each row must have:
+          - 'scorable_id'
+          - 'metrics_columns': List[str]
+          - 'metrics_values': List[float]
+        """
+        if not rows:
+            raise ValueError("FrontierLens.from_rows: no rows provided")
+
+        first = rows[0]
+        metric_names = list(first.get("metrics_columns") or [])
+        if not metric_names:
+            raise ValueError("FrontierLens.from_rows: first row missing 'metrics_columns'")
+
+        matrix_rows: List[List[float]] = []
+        item_ids: List[str] = []
+
+        for row in rows:
+            vals = row.get("metrics_values")
+            if not vals:
+                continue
+            mapping = dict(zip(row.get("metrics_columns", []), vals))
+            vec = [float(mapping.get(m, 0.0)) for m in metric_names]
+            matrix_rows.append(vec)
+            item_ids.append(str(row.get("scorable_id", "unknown")))
+
+        if not matrix_rows:
+            raise ValueError("FrontierLens.from_rows: no valid rows with metrics_values")
+
+        X = np.array(matrix_rows, dtype=np.float32)
+
+        fm = frontier_metric if frontier_metric in metric_names else metric_names[0]
+
+        return cls(
+            episode_id=episode_id,
+            scores=X,
+            metric_names=metric_names,
+            item_ids=item_ids,
+            frontier_metric=fm,
+            row_region_splits=row_region_splits,
+            frontier_low=frontier_low,
+            frontier_high=frontier_high,
+            meta=meta or {},
+        )
+
+    @classmethod
+    def from_matrix(
+        cls,
+        *,
+        episode_id: str,
+        scores: Union[np.ndarray, Sequence[Sequence[float]]],
+        metric_names: Sequence[str],
+        item_ids: Sequence[str],
+        frontier_metric: Optional[str] = None,
+        row_region_splits: int = 3,
+        frontier_low: float = 0.25,
+        frontier_high: float = 0.75,
+        meta: Optional[Dict[str, Any]] = None,
+    ) -> "FrontierLens":
+        """
+        Build a FrontierLens instance directly from a score matrix.
+
+        Args:
+            episode_id:
+                Logical id for this episode (e.g. "frontier_lens:targeted").
+            scores:
+                2D array-like of shape (N_items, N_metrics).
+            metric_names:
+                Length-N_metrics sequence of metric names (column order).
+            item_ids:
+                Length-N_items sequence of ids for each row (e.g. scorable_ids).
+            frontier_metric:
+                Which metric to treat as the 'frontier' dimension.
+                If None or not found, falls back to the first metric.
+            row_region_splits:
+                How many contiguous row regions to divide items into.
+            frontier_low / frontier_high:
+                Frontier band in normalized [0, 1] space.
+            meta:
+                Optional extra metadata to carry along.
+
+        Returns:
+            FrontierLens instance with .report, .features, .feature_names populated.
+        """
+        X = np.asarray(scores, dtype=np.float32)
+        if X.ndim != 2:
+            raise ValueError(f"FrontierLens.from_matrix: scores must be 2D, got shape {X.shape}")
+
+        n_items, n_metrics = X.shape
+        metric_names_list = list(metric_names)
+        item_ids_list = [str(i) for i in item_ids]
+
+        if len(metric_names_list) != n_metrics:
+            raise ValueError(
+                f"FrontierLens.from_matrix: metric_names length {len(metric_names_list)} "
+                f"!= scores.shape[1] {n_metrics}"
+            )
+
+        if len(item_ids_list) != n_items:
+            raise ValueError(
+                f"FrontierLens.from_matrix: item_ids length {len(item_ids_list)} "
+                f"!= scores.shape[0] {n_items}"
+            )
+
+        # Resolve frontier metric
+        fm = frontier_metric
+        if not fm or fm not in metric_names_list:
+            if fm is not None:
+                log.warning(
+                    "FrontierLens.from_matrix: requested frontier_metric=%r not in metric_names=%r; "
+                    "falling back to first metric",
+                    fm,
+                    metric_names_list,
+                )
+            fm = metric_names_list[0]
+
+        return cls(
+            episode_id=episode_id,
+            scores=X,
+            metric_names=metric_names_list,
+            item_ids=item_ids_list,
+            frontier_metric=fm,
+            row_region_splits=row_region_splits,
+            frontier_low=float(frontier_low),
+            frontier_high=float(frontier_high),
+            meta=meta or {},
+        )
+
+    def quality(self, low_weight: float = 0.5, high_weight: float = 0.5) -> float:
+        """Scalar quality score for this episode."""
+        return self.report.quality_score(low_weight=low_weight, high_weight=high_weight)
+
+    def diff(self, baseline: "FrontierLens") -> Dict[str, Any]:
+        """
+        Compare this state to a baseline.
+
+        Returns a dict with:
+          - 'frontier_metric'
+          - 'band'
+          - 'target_splits' / 'baseline_splits'
+          - 'global_delta'
+          - 'regions'
+          - 'quality_delta'
+          - 'feature_sim'
+        """
+        report_delta = self.report.diff(baseline.report)
+
+        # Add extra top-level deltas
+        quality_delta = self.quality() - baseline.quality()
+        # cos-sim between feature vectors
+        num = float(np.dot(self.features, baseline.features))
+        den = float(np.linalg.norm(self.features) * np.linalg.norm(baseline.features) + 1e-8)
+        feature_sim = num / den if den > 0 else 0.0
+
+        report_delta["quality_delta"] = quality_delta
+        report_delta["feature_sim"] = feature_sim
+        report_delta["target_episode_id"] = self.episode_id
+        report_delta["baseline_episode_id"] = baseline.episode_id
+        return report_delta
+
+    def save_report(self, path: Union[Path, str]) -> Path:
+        """Save just the report to JSON."""
+        return self.report.save_json(path)
+
+    def to_vpm_array(
+        self,
+        *,
+        per_metric_normalize: bool = True,
+    ) -> np.ndarray:
+        """
+        Return a uint8 VPM array (N_items × N_metrics) suitable for saving
+        as a PNG or feeding into ZeroModel / tiny vision models.
+        """
+        return scores_to_vpm_uint8(
+            self.scores,
+            per_metric_normalize=per_metric_normalize,
+        )
+
+    def save_vpm_png(
+        self,
+        path: Union[Path, str],
+        *,
+        per_metric_normalize: bool = True,
+        mode: str = "L",
+    ) -> Path:
+        """
+        Save the episode's scores as a VPM PNG.
+
+        - mode="L": grayscale (items = vertical axis, metrics = horizontal).
+        - mode="RGB": replicate grayscale into 3 channels.
+        """
+        img_arr = self.to_vpm_array(per_metric_normalize=per_metric_normalize)
+        p = Path(path)
+        p.parent.mkdir(parents=True, exist_ok=True)
+
+        if mode.upper() == "L":
+            img = Image.fromarray(img_arr, mode="L")
+        else:
+            if img_arr.ndim == 2:
+                rgb = np.stack([img_arr] * 3, axis=-1)
+            else:
+                rgb = img_arr
+            img = Image.fromarray(rgb, mode="RGB")
+
+        img.save(p)
+        log.info(
+            "FrontierLens: saved VPM PNG → %s (shape=%s, mode=%s, per_metric_normalize=%s)",
+            p,
+            img_arr.shape,
+            mode,
+            per_metric_normalize,
+        )
+        return p
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Full serializable snapshot of this FrontierLens state."""
+        return {
+            "episode_id": self.episode_id,
+            "meta": self.meta,
+            "n_items": len(self.item_ids),
+            "n_metrics": len(self.metric_names),
+            "metric_names": self.metric_names,
+            "frontier_metric": self.frontier_metric,
+            "row_region_splits": self.row_region_splits,
+            "frontier_low": self.frontier_low,
+            "frontier_high": self.frontier_high,
+            "quality": self.quality(),
+            "report": self.report.to_dict(),
+            "features_shape": self.features.shape if self.features is not None else None,
+            "feature_names": self.feature_names,
+        }
+
+    def pretty(self) -> str:
+        """Pretty JSON string for logging / dashboards."""
+        return dumps_safe(self.to_dict(), indent=2)
+
+
+# =========================================================================== #
+# 5. Backward compatibility / small helpers
+# =========================================================================== #
+
+
+def graph_quality_from_report(report: Any, **kwargs) -> float:
+    """
+    Convenience shim:
+      - if 'report' is a FrontierLensReport, call its .quality_score()
+      - if it's a dict, reconstruct a FrontierLensReport first.
+    """
+    if isinstance(report, FrontierLensReport):
+        return report.quality_score(**kwargs)
+    return FrontierLensReport.from_dict(report).quality_score(**kwargs)
+
+
+==================================================
+FILE: metric_filter.py
+==================================================
+
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional, Sequence, Tuple
+
+import numpy as np
+
+# Optional: fast MI/AUC if sklearn available; otherwise fall back to variance
+try:
+    from sklearn.feature_selection import mutual_info_classif
+    from sklearn.metrics import roc_auc_score
+    _SK = True
+except Exception:
+    _SK = False
+
+_ALIAS_STRIP_RE = re.compile(
+    r"\.(raw|debug|z|znorm|norm|standard|std)$", re.IGNORECASE
+)
+
+
+@dataclass
+class MetricFilterReport:
+    kept: List[str]
+    dropped_lowvar: List[str]
+    dropped_nonfinite: List[str]
+    dropped_duplicates: List[Tuple[str, str, float]]  # (kept, dropped, sim)
+    normalized: bool
+    topk: int
+    stats: Dict[str, Any]
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "kept": self.kept,
+            "dropped_lowvar": self.dropped_lowvar,
+            "dropped_nonfinite": self.dropped_nonfinite,
+            "dropped_duplicates": [
+                {"kept": k, "dropped": d, "similarity": float(s)}
+                for k, d, s in self.dropped_duplicates
+            ],
+            "normalized": self.normalized,
+            "topk": self.topk,
+            "stats": self.stats,
+        }
+
+
+class MetricFilter:
+    """
+    Input:
+      - rows: list of ScorableProcessor rows (each has metrics_columns + metrics_values)
+      - labels: optional list of 0/1 correctness (len = rows), improves ranking
+    Output:
+      - filtered matrix X_filtered (N x K), metric_names_filtered, report
+
+    Guarantees:
+      - All columns finite, in [0,1]
+      - No duplicate/alias columns (post-filter similarity <= dup_threshold)
+      - Deterministic ordering
+
+    example config: add to processor:
+    ---------------------------------   
+      metrics_filter:
+        enabled: true
+        top_k: 100           # 50 / 100 / 150
+        normalize: true
+        dup_threshold: 0.995
+        min_variance: 1e-8
+        include:             # optional, supports * wildcards
+            - "HRM.*"
+            - "sicql.*"
+            - "tiny.*"
+        exclude:
+            - "*.raw"
+            - "*.debug"
+            - "*.stdev"        # if you decide to exclude SD-only channels
+
+    """
+
+    def __init__(
+        self,
+        *,
+        k: int = 100,
+        dup_threshold: float = 0.995,  # cosine similarity to drop as dup
+        min_variance: float = 1e-8,  # drop nearly-constant columns
+        normalize: bool = True,
+        include_patterns: Optional[List[str]] = None,  # glob-like or regex
+        exclude_patterns: Optional[List[str]] = None,
+        alias_strip: bool = True,
+    ):
+        self.k = int(k)
+        self.dup_threshold = float(dup_threshold)
+        self.min_variance = float(min_variance)
+        self.normalize = bool(normalize)
+        self.include_patterns = include_patterns or []
+        self.exclude_patterns = exclude_patterns or []
+        self.alias_strip = bool(alias_strip)
+
+    # ---------------- Core API ----------------
+    def run(
+        self,
+        rows: List[Dict[str, Any]],
+        *,
+        labels: Optional[Sequence[int]] = None,
+    ) -> Tuple[np.ndarray, List[str], MetricFilterReport]:
+        if not rows:
+            raise ValueError("MetricFilter: empty rows")
+
+        names_union = self._union_metric_names(rows)
+        names = self._apply_include_exclude(names_union)
+        if not names:
+            raise ValueError(
+                "MetricFilter: no metric names after include/exclude"
+            )
+
+        # matrix build
+        X = self._build_matrix(rows, names)  # (N, D)
+        nonfinite = self._nonfinite_cols(X, names)
+
+        # drop non-finite cols
+        keep_mask = np.ones(X.shape[1], dtype=bool)
+        for j in nonfinite:
+            keep_mask[j] = False
+        X, names = (
+            X[:, keep_mask],
+            [n for j, n in enumerate(names) if keep_mask[j]],
+        )
+
+        # variance filter
+        lowvar = self._low_variance_cols(X, self.min_variance)
+        keep_mask = np.ones(X.shape[1], dtype=bool)
+        for j in lowvar:
+            keep_mask[j] = False
+        X, names = (
+            X[:, keep_mask],
+            [n for j, n in enumerate(names) if keep_mask[j]],
+        )
+
+        # alias collapse (string-level)
+        if self.alias_strip:
+            names, alias_map = self._alias_collapse(names)
+            # merge exact alias duplicates (post-collapse name collisions)
+            X, names = self._merge_exact_dups(X, names)
+
+        # normalize to [0,1]
+        normalized = False
+        if self.normalize:
+            X = self._safe_minmax(X)
+            normalized = True
+
+        # near-duplicate drop by cosine similarity
+        kept_idx, dup_pairs = self._drop_near_duplicates(
+            X, names, self.dup_threshold
+        )
+        X, names = X[:, kept_idx], [names[i] for i in kept_idx]
+
+        # rank / select top-K
+        rank_scores, rank_name = self._rank_columns(X, names, labels)
+        order = np.argsort(-rank_scores)  # desc
+        order = order[: min(self.k, X.shape[1])]
+        Xf, names_f = X[:, order], [names[i] for i in order]
+
+        report = MetricFilterReport(
+            kept=names_f,
+            dropped_lowvar=[
+                names_union[i] for i in []
+            ],  # keep simple; lowvar listed below
+            dropped_nonfinite=[
+                names_union[i] for i in []
+            ],  # simple; detailed below
+            dropped_duplicates=dup_pairs,
+            normalized=normalized,
+            topk=len(names_f),
+            stats={
+                "total_raw_names": len(names_union),
+                "post_include_exclude": int(len(names_union)),
+                "post_nonfinite": int(X.shape[1] + len(nonfinite)),
+                "nonfinite_count": int(len(nonfinite)),
+                "lowvar_count": int(len(lowvar)),
+                "dup_pairs": len(dup_pairs),
+                "rank_method": rank_name,
+            },
+        )
+        return Xf, names_f, report
+
+
+    # ---------------- Optional helper for array-based selection ----------------
+    def select(self, names: list[str], X: np.ndarray, labels=None) -> tuple[np.ndarray, list[str]]:
+        """
+        Returns:
+        keep_mask: np.ndarray[bool] with len == len(names)  (original width)
+        selected_names: List[str] of kept metric names (in final order)
+        """ 
+        names = self._make_hashable_names(names)
+        names0 = list(names)
+        n_rows, n_cols = X.shape
+
+        def _empty():
+            # all-False mask aligned to original columns; zero selected names
+            return np.zeros(len(names0), dtype=bool), []
+
+        # 0) trivial/degenerate cases
+        if n_cols == 0 or not names0:
+            return _empty()
+
+        # 1) include/exclude filter -> names1, X1
+        names1 = self._apply_include_exclude(names0)
+        names1 = self._make_hashable_names(names1)
+        if not names1:
+            return _empty()
+        col_idx = {nm: i for i, nm in enumerate(names0)}
+        X1 = X[:, [col_idx[nm] for nm in names1]]
+
+        # 2) alias collapse (optional)
+        if self.alias_strip:
+            names2, _ = self._alias_collapse(names1)
+        else:
+            names2 = names1
+        names2 = self._make_hashable_names(names2)
+        if not names2:
+            return _empty()
+        col_idx2 = {nm: i for i, nm in enumerate(names1)}
+        X2 = X1[:, [col_idx2[nm] for nm in names2]]
+
+        # 3) per-column normalization (robust: constant columns -> zeros)
+        if self.normalize:
+            X2 = self._minmax_normalize_safe(X2)  # make sure it handles zero-range
+
+        # 4) merge exact dups (safe-guarded)
+        X3, names3 = self._merge_exact_dups(X2, names2)
+        if X3.shape[1] == 0 or not names3:
+            return _empty()
+
+        # 5) variance filter
+        keep_var = self._variance_keep_mask(X3, min_var=self.min_variance)
+        names4 = [nm for nm, k in zip(names3, keep_var) if k]
+        X4 = X3[:, keep_var] if any(keep_var) else np.empty((X3.shape[0], 0), dtype=float)
+        if X4.shape[1] == 0 or not names4:
+            return _empty()
+
+        # 6) optional supervised / effect-size filter using `labels` (if provided)
+        if labels is not None and len(set(labels)) > 1:
+            names5, X5 = self._effect_size_rank_and_cut(names4, X4, labels, top_k=self.k)
+        else:
+            # unsupervised: top-K by variance
+            names5, X5 = self._variance_rank_and_cut(names4, X4, top_k=self.k)
+
+        if X5.shape[1] == 0 or not names5:
+            return _empty()
+
+        # 7) final: build mask aligned to original names
+        selected = set(names5)
+        keep_mask = np.array([nm in selected for nm in names0], dtype=bool)
+        return keep_mask, names5
+
+
+
+    # ---------------- Helpers ----------------
+    def _union_metric_names(self, rows: List[Dict[str, Any]]) -> List[str]:
+        seen = set()
+        for r in rows:
+            for n in r.get("metrics_columns") or []:
+                seen.add(str(n))
+        return sorted(seen)
+
+    def _apply_include_exclude(self, names: List[str]) -> List[str]:
+        def ok(n: str) -> bool:
+            if self.include_patterns:
+                if not any(
+                    re.fullmatch(p.replace("*", ".*"), n)
+                    for p in self.include_patterns
+                ):
+                    return False
+            if self.exclude_patterns:
+                if any(
+                    re.fullmatch(p.replace("*", ".*"), n)
+                    for p in self.exclude_patterns
+                ):
+                    return False
+            return True
+
+        return [n for n in names if ok(n)]
+
+    def _build_matrix(self, rows, names) -> np.ndarray:
+        name_to_pos = {n: i for i, n in enumerate(names)}
+        X = np.zeros((len(rows), len(names)), dtype=np.float32)
+        for i, r in enumerate(rows):
+            cols = r.get("metrics_columns") or []
+            vals = r.get("metrics_values") or []
+            m = dict(zip(cols, vals))
+            for n, j in name_to_pos.items():
+                v = float(m.get(n, 0.0))
+                X[i, j] = v
+        return X
+
+    def _nonfinite_cols(self, X: np.ndarray, names: List[str]) -> List[int]:
+        bad = []
+        for j in range(X.shape[1]):
+            col = X[:, j]
+            if not np.all(np.isfinite(col)):
+                bad.append(j)
+        return bad
+
+    def _low_variance_cols(self, X: np.ndarray, thr: float) -> List[int]:
+        var = X.var(axis=0)
+        return [int(i) for i, v in enumerate(var) if float(v) < thr]
+
+    def _alias_collapse(
+        self, names: List[str]
+    ) -> Tuple[List[str], Dict[str, str]]:
+        out, mp = [], {}
+        for n in names:
+            base = _ALIAS_STRIP_RE.sub("", n)
+            mp[n] = base
+            out.append(base)
+        return out, mp
+
+    def _merge_exact_dups(
+        self, X: np.ndarray, names: List[str]
+    ) -> Tuple[np.ndarray, List[str]]:
+        # combine identical-named columns by max (post-alias collapse)
+        order = {}
+        merged = []
+        cols = []
+        for j, n in enumerate(names):
+            if n in order:
+                jj = order[n]
+                cols[jj] = np.maximum(cols[jj], X[:, j])
+            else:
+                order[n] = len(merged)
+                merged.append(n)
+                cols.append(X[:, j].copy())
+        if not cols:
+            # return an empty (n_rows x 0) matrix and no names
+            return np.empty((X.shape[0], 0), dtype=float), []
+
+        X2 = np.stack(cols, axis=1)
+        return X2, merged
+
+    def _safe_minmax(self, X: np.ndarray) -> np.ndarray:
+        X = X.copy()
+        col_min = np.nanmin(X, axis=0)
+        col_max = np.nanmax(X, axis=0)
+        span = np.maximum(col_max - col_min, 1e-12)
+        X = (X - col_min) / span
+        X = np.clip(X, 0.0, 1.0)
+        X[~np.isfinite(X)] = 0.0
+        return X
+
+    def _drop_near_duplicates(
+        self, X: np.ndarray, names: List[str], thr: float
+    ) -> Tuple[List[int], List[Tuple[str, str, float]]]:
+        kept = []
+        dup_pairs = []
+        norms = np.linalg.norm(X, axis=0) + 1e-12
+        for j in range(X.shape[1]):
+            v = X[:, j]
+            v /= norms[j]
+            is_dup = False
+            for k in kept:
+                sim = float(
+                    np.dot(v, X[:, k] / (np.linalg.norm(X[:, k]) + 1e-12))
+                )
+                if sim >= thr:
+                    dup_pairs.append((names[k], names[j], sim))
+                    is_dup = True
+                    break
+            if not is_dup:
+                kept.append(j)
+        return kept, dup_pairs
+
+    def _rank_columns(
+        self, X: np.ndarray, names: List[str], labels: Optional[Sequence[int]]
+    ) -> Tuple[np.ndarray, str]:
+        if labels is not None and _SK:
+            y = np.asarray(labels, dtype=int)
+            if (
+                len(y) == X.shape[0]
+                and (y.min() >= 0)
+                and (y.max() <= 1)
+                and (y.sum() not in (0, len(y)))
+            ):
+                # 1) MI for non-linear signal; 2) tie-break with AUC when possible
+                mi = mutual_info_classif(
+                    X, y, discrete_features=False, random_state=0
+                )
+                score = mi.astype(np.float64)
+                # optional: boost columns with high AUC
+                try:
+                    aucs = np.array(
+                        [roc_auc_score(y, X[:, j]) for j in range(X.shape[1])],
+                        dtype=np.float64,
+                    )
+                    score = 0.7 * score + 0.3 * np.nan_to_num(aucs, nan=0.5)
+                except Exception:
+                    pass
+                return score, "MI(+AUC)"
+        # Fallback: variance (works even unlabeled)
+        return X.var(axis=0).astype(np.float64), "variance"
+
+    def _minmax_normalize_safe(self, X: np.ndarray) -> np.ndarray:
+        Xn = X.astype(float, copy=True)
+        mins = Xn.min(axis=0)
+        maxs = Xn.max(axis=0)
+        rng = maxs - mins
+        # avoid /0: constant columns -> zeros
+        safe_rng = np.where(rng == 0.0, 1.0, rng)
+        Xn = (Xn - mins) / safe_rng
+        # also clamp tiny numerical drift to [0,1]
+        np.clip(Xn, 0.0, 1.0, out=Xn)
+        return Xn
+
+    def _make_hashable_names(self, names):
+        """
+        Ensure all metric names are hashable, flat strings.
+        - If a name is a list/tuple, keep only the first element (stringify it).
+        - If a name is not a string, stringify it.
+        """
+        fixed = []
+        dropped = 0
+        for n in names:
+            if isinstance(n, (list, tuple)):
+                if len(n) == 0:
+                    dropped += 1
+                    continue
+                n = n[0]
+            if not isinstance(n, str):
+                n = str(n)
+            fixed.append(n)
+        if dropped:
+            import logging
+            logging.getLogger(__name__).warning(
+                "[MetricFilter] dropped %d empty/invalid metric-name containers", dropped
+            )
+        return fixed
+
+    def _variance_keep_mask(self, X: np.ndarray, min_var: float) -> np.ndarray:
+        """
+        Return a boolean mask of columns whose (NaN-safe) variance >= min_var.
+
+        - Works for any 2D array-like (treats NaNs as missing).
+        - Non-finite variances are treated as 0 to avoid crashes.
+        """
+        X = np.asarray(X, dtype=float)
+        if X.ndim != 2:
+            X = np.atleast_2d(X)
+
+        # NaN-safe variance per column
+        with np.errstate(invalid="ignore"):
+            col_var = np.nanvar(X, axis=0)
+
+        # Replace non-finite with 0 so we can compare safely
+        col_var = np.where(np.isfinite(col_var), col_var, 0.0)
+
+        return col_var >= float(min_var)
+    
+    def _variance_rank_and_cut(
+        self,
+        names: List[str],
+        X: np.ndarray,
+        top_k: Optional[int],
+    ) -> Tuple[List[str], np.ndarray]:
+        """
+        Returns (kept_names, kept_matrix) by selecting the top_k columns with the
+        largest NaN-safe variance. Stable and deterministic.
+
+        - If top_k is None/<=0 or >= num_cols, returns inputs unchanged.
+        - Non-finite variances treated as 0 to avoid crashes.
+        """
+        X = np.asarray(X, dtype=float)
+        if X.ndim != 2:
+            X = np.atleast_2d(X)
+
+        n_cols = X.shape[1]
+        if not names or n_cols == 0:
+            return [], X
+
+        k = int(top_k) if (top_k is not None and int(top_k) > 0) else n_cols
+        if k >= n_cols:
+            # nothing to cut
+            return list(names), X
+
+        # NaN-safe variance per column
+        with np.errstate(invalid="ignore"):
+            col_var = np.nanvar(X, axis=0)
+        col_var = np.where(np.isfinite(col_var), col_var, 0.0)
+
+        # Stable sort by variance desc; ties break by original index
+        order = np.argsort(col_var, kind="mergesort")[::-1]
+        sel_idx = order[:k]
+
+        kept_names = [names[i] for i in sel_idx]
+        kept_X = X[:, sel_idx]
+        return kept_names, kept_X
+    
+
+def assert_feature_consistency(source, X, metric_names, kept):
+    # 1) empty checks
+    if X.size == 0 or len(metric_names) == 0:
+        raise RuntimeError(f"[{source}] empty feature space")
+
+    # 2) if kept is present, enforce length & order
+    if kept:
+        if len(metric_names) != len(kept):
+            raise RuntimeError(f"[{source}] header mismatch: metric_names={len(metric_names)} kept={len(kept)}")
+        # order equality (exact)
+        if any(a != b for a, b in zip(metric_names, kept)):
+            raise RuntimeError(f"[{source}] column order drift vs kept; refuse to proceed")
+
+    # 3) NaN/Inf guard
+    import numpy as np
+    if not np.isfinite(X).all():
+        raise RuntimeError(f"[{source}] non-finite values in feature matrix")
+
+
+==================================================
+FILE: metric_filter_explain.py
+==================================================
+
+# stephanie/scoring/metrics/metric_filter_explain.py
+from __future__ import annotations
+
+import csv
+import json
+import math
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+
+import numpy as np
+
+try:
+    import pandas as pd
+except Exception:
+    pd = None  # CSV still works without pandas
+
+@dataclass
+class ColumnDiag:
+    name: str
+    kept: bool
+    reason: str                      # e.g., "low-variance", "non-finite", "duplicate(~0.998→HRM.coverage.score)", "selected"
+    variance: float
+    min: float
+    max: float
+    frac_zeros: float
+    frac_ones: float
+    auc: Optional[float] = None      # if labels exist
+    mi: Optional[float] = None       # if labels exist
+
+def _safe_stats(col: np.ndarray) -> Tuple[float, float, float, float, float]:
+    x = np.asarray(col, dtype=float)
+    x_ok = x[np.isfinite(x)]
+    if x_ok.size == 0:
+        return (float("nan"), float("nan"), float("nan"), float("nan"), float("nan"))
+    v = float(np.nanvar(x_ok))
+    mn = float(np.nanmin(x_ok))
+    mx = float(np.nanmax(x_ok))
+    frac0 = float(np.mean(np.isclose(x_ok, 0.0))) if x_ok.size else float("nan")
+    frac1 = float(np.mean(np.isclose(x_ok, 1.0))) if x_ok.size else float("nan")
+    return v, mn, mx, frac0, frac1
+
+def _label_scores(col: np.ndarray, y: Optional[Sequence[int]]) -> Tuple[Optional[float], Optional[float]]:
+    try:
+        if y is None:
+            return None, None
+        y = np.asarray(y, dtype=int)
+        if y.size != col.shape[0] or y.min() == y.max():
+            return None, None
+        try:
+            from sklearn.metrics import roc_auc_score
+            auc = float(roc_auc_score(y, col))
+        except Exception:
+            auc = None
+        try:
+            from sklearn.feature_selection import mutual_info_classif
+            mi = float(mutual_info_classif(col.reshape(-1, 1), y, discrete_features=False, random_state=0)[0])
+        except Exception:
+            mi = None
+        return auc, mi
+    except Exception:
+        return None, None
+
+def _ensure_dir(p: Path) -> None:
+    p.parent.mkdir(parents=True, exist_ok=True)
+
+def write_metric_filter_explain(
+    *,
+    run_dir: Path,
+    names_union: List[str],
+    rows: List[Dict[str, Any]],
+    kept_names: List[str],
+    dup_pairs: List[Tuple[str, str, float]],
+    nonfinite_idx: Iterable[int],
+    lowvar_idx: Iterable[int],
+    labels: Optional[Sequence[int]],
+    normalize_used: bool,
+    rank_method: str,
+    cfg_snapshot: Dict[str, Any] | None = None,
+    md_filename: str = "metric_filter_explain.md",
+    csv_filename: str = "metric_filter_explain.csv",
+    always_include: Optional[List[str]] = None,
+) -> Dict[str, Any]:
+    """
+    Produces:
+      - Markdown report (per-run)
+      - CSV table of per-column diagnostics
+    Returns a small summary dict you can stash into Memory.
+    """
+    # Build dense matrix on union for diagnostics
+    name_to_pos = {n: i for i, n in enumerate(names_union)}
+    X = np.zeros((len(rows), len(names_union)), dtype=float)
+    for i, r in enumerate(rows):
+        cols = r.get("metrics_columns") or []
+        vals = r.get("metrics_values") or []
+        mp = dict(zip(cols, vals))
+        for n, j in name_to_pos.items():
+            X[i, j] = float(mp.get(n, 0.0))
+
+    kept_set = set(kept_names)
+    nonfinite_set = set(int(i) for i in nonfinite_idx)
+    lowvar_set = set(int(i) for i in lowvar_idx)
+    dup_dropped_map = {}  # dropped -> (kept, sim)
+    for kept, dropped, sim in dup_pairs:
+        dup_dropped_map[dropped] = (kept, float(sim))
+
+    # Diagnostics per column
+    y = np.asarray(labels, dtype=int) if labels is not None else None
+    diags: List[ColumnDiag] = []
+    for j, n in enumerate(names_union):
+        col = X[:, j]
+        var, mn, mx, f0, f1 = _safe_stats(col)
+        auc, mi = _label_scores(col, y)
+        if j in nonfinite_set:
+            reason = "non-finite"
+        elif j in lowvar_set:
+            reason = "low-variance"
+        elif n in dup_dropped_map:
+            k, sim = dup_dropped_map[n]
+            reason = f"duplicate(~{sim:.3f}→{k})"
+        elif n in kept_set:
+            reason = "selected"
+        else:
+            reason = "dropped"
+        diags.append(ColumnDiag(
+            name=n, kept=(n in kept_set), reason=reason,
+            variance=var, min=mn, max=mx, frac_zeros=f0, frac_ones=f1, auc=auc, mi=mi
+        ))
+
+    # CSV
+    csv_path = run_dir / csv_filename
+    _ensure_dir(csv_path)
+    with open(csv_path, "w", newline="", encoding="utf-8") as f:
+        w = csv.writer(f)
+        w.writerow(["name", "kept", "reason", "variance", "min", "max", "frac_zeros", "frac_ones", "auc", "mi"])
+        for d in diags:
+            w.writerow([d.name, int(d.kept), d.reason, d.variance, d.min, d.max, d.frac_zeros, d.frac_ones, d.auc if d.auc is not None else "", d.mi if d.mi is not None else ""])
+
+    # Headline stats
+    kept_hrm = sum(1 for d in diags if d.kept and d.name.lower().startswith("hrm"))
+    kept_sicql = sum(1 for d in diags if d.kept and d.name.lower().startswith("sicql"))
+    kept_tiny = sum(1 for d in diags if d.kept and d.name.lower().startswith("tiny"))
+
+    # Markdown
+    md_path = run_dir / md_filename
+    _ensure_dir(md_path)
+    total = len(names_union)
+    kept_ct = len(kept_names)
+    dropped_ct = total - kept_ct
+    # top “all-ones/zeros” suspects
+    most_ones = sorted(diags, key=lambda d: (math.isnan(d.frac_ones), -d.frac_ones))[:10]
+    most_zeros = sorted(diags, key=lambda d: (math.isnan(d.frac_zeros), -d.frac_zeros))[:10]
+    with open(md_path, "w", encoding="utf-8") as f:
+        f.write(f"# Metric Filter Explain Report\n\n")
+        f.write(f"- **Total columns seen (union)**: {total}\n")
+        f.write(f"- **Kept**: {kept_ct}\n")
+        f.write(f"- **Dropped**: {dropped_ct}\n")
+        f.write(f"- **Normalize to [0,1]**: {normalize_used}\n")
+        f.write(f"- **Ranking method**: {rank_method}\n")
+        if always_include:
+            f.write(f"- **Always-include columns**: {len(always_include)} (forced)\n")
+        if cfg_snapshot:
+            f.write(f"\n<details><summary>Config snapshot</summary>\n\n```json\n{json.dumps(cfg_snapshot, indent=2)}\n```\n</details>\n")
+
+        f.write("\n## Kept by family\n")
+        f.write(f"- HRM: {kept_hrm}\n")
+        f.write(f"- SICQL: {kept_sicql}\n")
+        f.write(f"- Tiny: {kept_tiny}\n")
+
+        f.write("\n## Duplicate drops (sample)\n")
+        for dropped, (k, sim) in list(dup_dropped_map.items())[:20]:
+            f.write(f"- `{dropped}` → `{k}` (cos≈{sim:.3f})\n")
+
+        f.write("\n## High-probably-saturated columns (top frac=1.0)\n")
+        for d in most_ones:
+            if not math.isnan(d.frac_ones) and d.frac_ones > 0.9:
+                f.write(f"- `{d.name}` frac_ones={d.frac_ones:.3f} var={d.variance:.2e}\n")
+
+        f.write("\n## High-probably-dead columns (top frac=0.0)\n")
+        for d in most_zeros:
+            if not math.isnan(d.frac_zeros) and d.frac_zeros > 0.9:
+                f.write(f"- `{d.name}` frac_zeros={d.frac_zeros:.3f} var={d.variance:.2e}\n")
+
+        f.write("\n---\n")
+        f.write(f"Full per-column table: `{csv_path}`\n")
+
+    return {
+        "csv": str(csv_path),
+        "md": str(md_path),
+        "kept": kept_names,
+        "totals": {"union": total, "kept": kept_ct, "dropped": dropped_ct},
+    }
+
+
+==================================================
+FILE: metric_importance.py
+==================================================
+
+# stephanie/scoring/metrics/metric_importance.py
+from __future__ import annotations
+
+import json
+import math
+from dataclasses import asdict, dataclass
+from pathlib import Path
+from typing import Any, Dict, List, Sequence, Tuple
+
+import numpy as np
+
+
+@dataclass
+class MetricImportance:
+    name: str
+    mean_target: float
+    mean_baseline: float
+    std_target: float
+    std_baseline: float
+    cohen_d: float
+    abs_cohen_d: float
+    ks_stat: float
+    ks_pvalue: float
+    auc: float  # probability metric_target > metric_baseline
+    direction: int  # +1 if target > baseline, -1 if baseline > target, 0 if tie-ish
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+
+def _cohen_d(x: np.ndarray, y: np.ndarray, eps: float = 1e-8) -> float:
+    x = np.asarray(x, dtype=np.float64)
+    y = np.asarray(y, dtype=np.float64)
+    nx = x.size
+    ny = y.size
+    if nx < 2 or ny < 2:
+        return 0.0
+    mx = float(x.mean())
+    my = float(y.mean())
+    vx = float(x.var(ddof=1))
+    vy = float(y.var(ddof=1))
+    # pooled std
+    sp2 = ((nx - 1) * vx + (ny - 1) * vy) / max(nx + ny - 2, 1)
+    sp = math.sqrt(max(sp2, eps))
+    return (mx - my) / sp
+
+
+def _ks_2sample(x: np.ndarray, y: np.ndarray) -> Tuple[float, float]:
+    """
+    Tiny self-contained 2-sample KS test (approx p-value).
+
+    We could use scipy.stats.ks_2samp, but this keeps the dependency surface small.
+    This is not meant to be super-precise; it's just a "is there a big distribution gap?" flag.
+    """
+    x = np.asarray(x, dtype=np.float64)
+    y = np.asarray(y, dtype=np.float64)
+    if x.size == 0 or y.size == 0:
+        return 0.0, 1.0
+
+    # Empirical CDFs
+    data_all = np.concatenate([x, y])
+    data_sorted = np.sort(data_all)
+    nx = x.size
+    ny = y.size
+
+    # ranks → CDF
+    cdf_x = np.searchsorted(np.sort(x), data_sorted, side="right") / nx
+    cdf_y = np.searchsorted(np.sort(y), data_sorted, side="right") / ny
+
+    diffs = np.abs(cdf_x - cdf_y)
+    d = float(diffs.max())
+
+    # Rough asymptotic p-value (Smirnov)
+    en = math.sqrt(nx * ny / (nx + ny))
+    try:
+        p = 2.0 * math.exp(-2.0 * (d * en) ** 2)
+    except OverflowError:
+        p = 0.0
+    p = max(0.0, min(1.0, p))
+    return d, p
+
+
+def _auc_from_scores(x: np.ndarray, y: np.ndarray) -> float:
+    """
+    AUC-style probability that a random target > random baseline.
+    Uses Mann–Whitney U on 1D feature only.
+
+    Returns:
+        auc \in [0,1], where 0.5 ~ no separation.
+    """
+    x = np.asarray(x, dtype=np.float64)
+    y = np.asarray(y, dtype=np.float64)
+    nx = x.size
+    ny = y.size
+    if nx == 0 or ny == 0:
+        return 0.5
+
+    # rank all values
+    values = np.concatenate([x, y])
+    ranks = values.argsort().argsort().astype(np.float64) + 1.0  # 1-based ranks
+    r_x = ranks[:nx].sum()
+
+    # Mann–Whitney U for x
+    u_x = r_x - nx * (nx + 1) / 2.0
+    auc = u_x / (nx * ny)
+    return float(max(0.0, min(1.0, auc)))
+
+
+def compute_metric_importance(
+    X_target: np.ndarray,
+    X_baseline: np.ndarray,
+    metric_names: Sequence[str],
+    *,
+    top_k: int | None = None,
+    min_effect: float = 0.0,
+) -> List[MetricImportance]:
+    """
+    GAP-style per-metric importance analysis.
+
+    Args:
+        X_target:   (N_t, D) matrix for "good" / targeted cohort
+        X_baseline: (N_b, D) matrix for baseline / "bad" cohort
+        metric_names: length-D list of names
+        top_k:      optionally keep only top_k metrics by |Cohen's d|
+        min_effect: optionally require |d| >= this threshold
+
+    Returns:
+        List[MetricImportance], sorted by abs_cohen_d descending.
+    """
+    Xt = np.asarray(X_target, dtype=np.float64)
+    Xb = np.asarray(X_baseline, dtype=np.float64)
+    metric_names = list(metric_names)
+
+    if Xt.ndim != 2 or Xb.ndim != 2:
+        raise ValueError(f"compute_metric_importance: expected 2D matrices, got {Xt.shape} and {Xb.shape}")
+    if Xt.shape[1] != Xb.shape[1]:
+        raise ValueError(f"compute_metric_importance: dim mismatch {Xt.shape[1]} vs {Xb.shape[1]}")
+    if len(metric_names) != Xt.shape[1]:
+        raise ValueError(
+            f"metric_names length {len(metric_names)} != num_metrics {Xt.shape[1]}"
+        )
+
+    N_t, D = Xt.shape
+    N_b, _ = Xb.shape
+    if N_t == 0 or N_b == 0 or D == 0:
+        return []
+
+    out: List[MetricImportance] = []
+    for j in range(D):
+        name = metric_names[j]
+        tcol = Xt[:, j]
+        bcol = Xb[:, j]
+
+        m_t = float(np.mean(tcol))
+        m_b = float(np.mean(bcol))
+        s_t = float(np.std(tcol))
+        s_b = float(np.std(bcol))
+
+        d = _cohen_d(tcol, bcol)
+        ks_stat, ks_p = _ks_2sample(tcol, bcol)
+        auc = _auc_from_scores(tcol, bcol)
+
+        # direction: which way is "better"?
+        if abs(d) < 1e-6:
+            direction = 0
+        else:
+            direction = 1 if d > 0 else -1
+
+        imp = MetricImportance(
+            name=name,
+            mean_target=m_t,
+            mean_baseline=m_b,
+            std_target=s_t,
+            std_baseline=s_b,
+            cohen_d=d,
+            abs_cohen_d=abs(d),
+            ks_stat=ks_stat,
+            ks_pvalue=ks_p,
+            auc=auc,
+            direction=direction,
+        )
+        out.append(imp)
+
+    # sort most discriminative first
+    out.sort(key=lambda r: r.abs_cohen_d, reverse=True)
+
+    # apply filters
+    if min_effect > 0.0:
+        out = [r for r in out if r.abs_cohen_d >= min_effect]
+    if top_k is not None and top_k > 0:
+        out = out[:top_k]
+
+    return out
+
+
+def save_metric_importance_json(
+    importance: List[MetricImportance],
+    path: Path | str,
+) -> Path:
+    p = Path(path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    payload = [m.to_dict() for m in importance]
+    with p.open("w", encoding="utf-8") as f:
+        json.dump(payload, f, indent=2)
+    return p
+
+
+==================================================
+FILE: metric_mapping.py
+==================================================
+
+# stephanie/scoring/metrics/metric_mapping.py
+from __future__ import annotations
+
+import logging
+from dataclasses import dataclass, field
+from fnmatch import fnmatch
+from typing import Any, Dict, List, Optional, Sequence, Tuple
+
+import numpy as np
+
+log = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# 1. Rule primitives
+# ---------------------------------------------------------------------------
+
+@dataclass
+class MetricMappingRule:
+    """
+    One logical group of metrics in the final VPM / feature vector.
+
+    Example rule:
+      name: "HRM.aggregate"
+      patterns: ["HRM.aggregate", "hrm.aggregate"]
+      normalize: true
+    """
+    name: str
+    patterns: List[str] = field(default_factory=list)
+    normalize: bool = True
+    allow_missing: bool = True
+
+
+@dataclass
+class MetricMappingConfig:
+    """
+    Full mapping configuration.
+
+    fields:
+      rules:
+        - ordered list of groups to put at the *front* of the matrix
+      include_unmatched:
+        - whether to keep metrics that don't match any rule
+      normalize_unmatched:
+        - whether to min–max normalize unmatched columns as well
+    """
+    rules: List[MetricMappingRule] = field(default_factory=list)
+    include_unmatched: bool = True
+    normalize_unmatched: bool = True
+
+
+# ---------------------------------------------------------------------------
+# 2. Mapper
+# ---------------------------------------------------------------------------
+
+class MetricMapper:
+    """
+    Config-driven mapping from (metric_names, scores) → (new_names, new_scores).
+
+    Responsibilities:
+      - Select a subset of columns based on glob-style patterns
+      - Order them according to preferred keys
+      - Optionally apply rule-based grouping + normalization
+    """
+
+    def __init__(
+        self,
+        *,
+        include_patterns: Optional[Sequence[str]] = None,
+        exclude_patterns: Optional[Sequence[str]] = None,
+        rename_map: Optional[Dict[str, str]] = None,
+        preferred_keys: Optional[Sequence[str]] = None,
+        rules: Optional[Sequence[Dict[str, Any]]] = None,
+        include_unmatched: bool = True,
+        normalize_unmatched: bool = True,
+    ) -> None:
+        # Simple include/exclude/rename path (used by VisiCalc)
+        self.include_patterns: List[str] = list(include_patterns or [])
+        self.exclude_patterns: List[str] = list(exclude_patterns or [])
+        self.rename_map: Dict[str, str] = dict(rename_map or {})
+        self.preferred_keys: List[str] = list(preferred_keys or [])
+
+        # Rule-based path (used by .apply if you want it)
+        raw_rules = list(rules or [])
+        self.rules: List[MetricMappingRule] = [
+            MetricMappingRule(
+                name=str(r.get("name", f"rule_{i}")),
+                patterns=list(r.get("patterns") or []),
+                normalize=bool(r.get("normalize", True)),
+                allow_missing=bool(r.get("allow_missing", True)),
+            )
+            for i, r in enumerate(raw_rules)
+        ]
+
+        self.include_unmatched: bool = bool(include_unmatched)
+        self.normalize_unmatched: bool = bool(normalize_unmatched)
+        self.case_insensitive: bool = True
+
+        # ---- DEBUG: construction summary ----
+        log.info(
+            "MetricMapper.__init__: "
+            "include_patterns=%r exclude_patterns=%r "
+            "preferred_keys=%r include_unmatched=%r normalize_unmatched=%r "
+            "rename_map_keys=%r rules=%d",
+            self.include_patterns,
+            self.exclude_patterns,
+            self.preferred_keys,
+            self.include_unmatched,
+            self.normalize_unmatched,
+            sorted(self.rename_map.keys()),
+            len(self.rules),
+        )
+        for r in self.rules:
+            log.info(
+                "MetricMapper.__init__: rule name=%r patterns=%r "
+                "normalize=%r allow_missing=%r",
+                r.name,
+                r.patterns,
+                r.normalize,
+                r.allow_missing,
+            )
+
+    # ------------------------------------------------------------------
+    # Factory from Hydra-style config (your visicalc.yaml)
+    # ------------------------------------------------------------------
+    @classmethod
+    def from_config(cls, vis_cfg: Optional[Dict[str, Any]] = None) -> "MetricMapper":
+        """
+        Robust constructor from a Hydra-style visicalc config.
+
+        Design goals:
+          - If vis_cfg is None or {}, return a neutral mapper:
+              * includes all columns
+              * no renames
+              * no rules
+          - If metric_mapping is missing or badly typed, fall back to {}.
+          - If fields are badly typed (string instead of list, etc.), coerce or drop.
+        """
+        vis_cfg = vis_cfg or {}
+        if log.isEnabledFor(logging.DEBUG):
+            # Don't dump the whole Hydra cfg, just the visicalc-relevant bits.
+            log.info(
+                "MetricMapper.from_config: vis_cfg keys=%r, raw metric_keys=%r, "
+                "raw metric_mapping type=%r",
+                list(vis_cfg.keys()),
+                vis_cfg.get("metric_keys"),
+                type(vis_cfg.get("metric_mapping")),
+            )
+
+        raw_mm = vis_cfg.get("metric_mapping") or {}
+        if not isinstance(raw_mm, dict):
+            log.warning(
+                "MetricMapper.from_config: expected dict for metric_mapping, got %r; using empty config",
+                type(raw_mm),
+            )
+            raw_mm = {}
+
+        # metric_keys: preferred ordering (may be missing or wrong type)
+        raw_metric_keys = vis_cfg.get("metric_keys") or []
+        if not isinstance(raw_metric_keys, (list, tuple)):
+            log.warning(
+                "MetricMapper.from_config: metric_keys should be list/tuple, got %r; ignoring",
+                type(raw_metric_keys),
+            )
+            raw_metric_keys = []
+
+        def _as_str_list(val: Any) -> List[str]:
+            """
+            Coerce config values to a list of strings:
+              - list/tuple → [str(...), ...]
+              - string → [string]
+              - None/empty → []
+              - anything else → [].
+            """
+            if val is None:
+                return []
+            if isinstance(val, (list, tuple)):
+                return [str(x) for x in val]
+            if isinstance(val, str):
+                return [val]
+            return []
+
+        include = _as_str_list(raw_mm.get("include"))
+        exclude = _as_str_list(raw_mm.get("exclude"))
+
+        rename = raw_mm.get("rename") or {}
+        if not isinstance(rename, dict):
+            log.warning(
+                "MetricMapper.from_config: rename should be dict, got %r; ignoring",
+                type(rename),
+            )
+            rename = {}
+
+        raw_rules = raw_mm.get("rules") or []
+        if not isinstance(raw_rules, (list, tuple)):
+            log.warning(
+                "MetricMapper.from_config: rules should be list/tuple, got %r; ignoring",
+                type(raw_rules),
+            )
+            raw_rules = []
+
+        # Only keep dict-like rules; everything else is ignored
+        rules: List[Dict[str, Any]] = [r for r in raw_rules if isinstance(r, dict)]
+
+        include_unmatched = bool(raw_mm.get("include_unmatched", True))
+        normalize_unmatched = bool(raw_mm.get("normalize_unmatched", True))
+
+        if log.isEnabledFor(logging.DEBUG):
+            log.info(
+                "MetricMapper.from_config: include=%r exclude=%r metric_keys=%r "
+                "rename_keys=%r rules=%d include_unmatched=%r normalize_unmatched=%r",
+                include,
+                exclude,
+                raw_metric_keys,
+                sorted(rename.keys()),
+                len(rules),
+                include_unmatched,
+                normalize_unmatched,
+            )
+
+        mapper = cls(
+            include_patterns=include,
+            exclude_patterns=exclude,
+            rename_map=rename,
+            preferred_keys=_as_str_list(raw_metric_keys),
+            rules=rules,
+            include_unmatched=include_unmatched,
+            normalize_unmatched=normalize_unmatched,
+        )
+
+        return mapper
+
+    # Optional sugar: explicit identity mapper if you ever want it
+    @classmethod
+    def identity(cls) -> "MetricMapper":
+        """
+        Identity-ish mapper: keep all columns, no renames, no rules,
+        include_unmatched=True, normalize_unmatched=True.
+        """
+        return cls()
+
+    # ------------------------------------------------------------------
+    # Column selection / ordering (used by CriticCohortAgent)
+    # ------------------------------------------------------------------
+
+    # ------------------------------------------------------------------
+    # Column selection / ordering (used by CriticCohortAgent)
+    # ------------------------------------------------------------------
+
+    # ------------------------------------------------------------------
+    # Column selection / ordering (used by CriticCohortAgent)
+    # ------------------------------------------------------------------
+
+    def _match_any(self, name: str, patterns: Sequence[str]) -> bool:
+        return any(fnmatch(name, pat) for pat in patterns)
+
+    def select(self, all_columns: Sequence[str]) -> List[str]:
+        """
+        Filter metric columns based on include/exclude patterns.
+
+        Design choice: do *not* attempt clever preferred-keys reordering here.
+        That logic was brittle and caused crashes when configs didn't line up.
+        We just:
+          - start from the incoming order
+          - apply include/exclude globs
+          - return the result in stable order
+        """
+        cols = list(all_columns)
+        log.info("MetricMapper.select: start with %d columns", len(cols))
+
+        # 1) include filter
+        if self.include_patterns:
+            before = len(cols)
+            cols = [c for c in cols if self._match_any(c, self.include_patterns)]
+            log.info(
+                "MetricMapper.select: include %r → %d → %d columns",
+                self.include_patterns,
+                before,
+                len(cols),
+            )
+
+        # 2) exclude filter
+        if self.exclude_patterns:
+            before = len(cols)
+            cols = [c for c in cols if not self._match_any(c, self.exclude_patterns)]
+            log.info(
+                "MetricMapper.select: exclude %r → %d → %d columns",
+                self.exclude_patterns,
+                before,
+                len(cols),
+            )
+
+        # 3) Keep original order. We deliberately ignore preferred_keys here.
+        log.info(
+            "MetricMapper.select: final selected=%d columns (first few=%r)",
+            len(cols),
+            cols[:10],
+        )
+        return cols
+
+    # Alias to keep your current agent code working
+    def select_columns(self, all_columns: Sequence[str]) -> List[str]:
+        selected = self.select(all_columns)
+        log.info(
+            "MetricMapper.select_columns: selected %d of %d: %s",
+            len(selected),
+            len(all_columns),
+            selected[:20],
+        )
+        return selected
+
+    def rename(self, name: str) -> str:
+        new_name = self.rename_map.get(name, name)
+        log.info("MetricMapper.rename: %r -> %r", name, new_name)
+        return new_name
+
+    # ------------------------------------------------------------------
+    # Optional: rule-based mapping + normalization over a scores matrix
+    # ------------------------------------------------------------------
+
+    def apply(
+        self,
+        metric_names: Sequence[str],
+        scores: np.ndarray,
+    ) -> Tuple[List[str], np.ndarray]:
+        """
+        Apply mapping to a (N, D) scores matrix.
+
+        Args:
+            metric_names: list of column names length D
+            scores:       numpy array shape (N, D)
+
+        Returns:
+            (mapped_names, mapped_scores)
+        """
+        metric_names = list(metric_names)
+        scores = np.asarray(scores, dtype=np.float32)
+
+        if scores.ndim != 2:
+            raise ValueError(f"MetricMapper.apply expected 2D scores, got {scores.shape}")
+
+        if len(metric_names) != scores.shape[1]:
+            raise ValueError(
+                f"MetricMapper.apply: metric_names length {len(metric_names)} "
+                f"!= scores.shape[1] {scores.shape[1]}"
+            )
+
+        if not metric_names or scores.size == 0:
+            return metric_names, scores
+
+        log.info(
+            "MetricMapper.apply: n_items=%d n_metrics=%d rules=%d "
+            "include_unmatched=%r normalize_unmatched=%r",
+            scores.shape[0],
+            scores.shape[1],
+            len(self.rules),
+            self.include_unmatched,
+            self.normalize_unmatched,
+        )
+        if len(metric_names) <= 40:
+            log.info("MetricMapper.apply: metric_names=%r", metric_names)
+        else:
+            log.info(
+                "MetricMapper.apply: metric_names sample=%r (+%d more)",
+                metric_names[:40],
+                len(metric_names) - 40,
+            )
+
+        # Map metric_name -> index
+        name_to_idx: Dict[str, int] = {name: i for i, name in enumerate(metric_names)}
+
+        used_indices: List[int] = []
+        mapped_names: List[str] = []
+
+        # 1) Apply explicit rules in order
+        for rule in self.rules:
+            matched_indices = self._match_rule(rule, metric_names, name_to_idx)
+            log.info(
+                "MetricMapper.apply: rule=%r patterns=%r matched_indices=%r",
+                rule.name,
+                rule.patterns,
+                matched_indices,
+            )
+            if not matched_indices:
+                if not rule.allow_missing:
+                    log.warning(
+                        "MetricMapper: rule %r had no matches and allow_missing=False",
+                        rule.name,
+                    )
+                continue
+
+            for idx in matched_indices:
+                if idx not in used_indices:
+                    used_indices.append(idx)
+                    mapped_names.append(metric_names[idx])
+
+        # 2) Append unmatched columns if requested
+        if self.include_unmatched:
+            for idx, name in enumerate(metric_names):
+                if idx not in used_indices:
+                    used_indices.append(idx)
+                    mapped_names.append(name)
+
+        log.info(
+            "MetricMapper.apply: used_indices=%r mapped_names=%r",
+            used_indices,
+            mapped_names,
+        )
+
+        # 3) Build the remapped scores matrix
+        mapped_scores = scores[:, used_indices]
+
+        # 4) Normalize columns according to rules / defaults
+        mapped_scores = self._normalize_columns(
+            mapped_scores,
+            mapped_names,
+        )
+
+        return mapped_names, mapped_scores
+
+    # ------------------------------------------------------------------
+    # Internals
+    # ------------------------------------------------------------------
+
+    def _match_rule(
+        self,
+        rule: MetricMappingRule,
+        metric_names: Sequence[str],
+        name_to_idx: Dict[str, int],
+    ) -> List[int]:
+        """
+        Return a list of column indices that match any of rule.patterns,
+        in the *original* order of metric_names.
+        """
+        if not rule.patterns and self._canon(rule.name) in {self._canon(n): None for n in metric_names}:
+            idx = next(i for i, n in enumerate(metric_names) if self._canon(n) == self._canon(rule.name))
+            # Direct name match fallback
+            log.info(
+                "MetricMapper._match_rule: rule=%r direct name match %r -> idx=%d",
+                rule.name,
+                rule.name,
+                name_to_idx[rule.name],
+            )
+            return [idx]
+
+        matched: List[int] = []
+        for i, name in enumerate(metric_names):
+            if any(fnmatch(self._canon(name), self._canon(p)) for p in rule.patterns):
+                matched.append(i)
+
+        log.info(
+            "MetricMapper._match_rule: rule=%r patterns=%r matched_names=%r",
+            rule.name,
+            rule.patterns,
+            [metric_names[i] for i in matched],
+        )
+        return matched
+
+    def _normalize_columns(
+        self,
+        scores: np.ndarray,
+        names: Sequence[str],
+    ) -> np.ndarray:
+        """
+        Min–max normalize each column into [0, 1] according to rule.normalize
+        or normalize_unmatched for columns without a matching rule.
+        """
+        if scores.size == 0:
+            return scores
+
+        scores = scores.copy()
+        col_count = scores.shape[1]
+
+        log.info(
+            "MetricMapper._normalize_columns: col_count=%d rules=%d normalize_unmatched=%r",
+            col_count,
+            len(self.rules),
+            self.normalize_unmatched,
+        )
+
+        # Pre-build: name -> rule
+        name_to_rule: Dict[str, MetricMappingRule] = {}
+        for rule in self.rules:
+            for name in names:
+                if rule.patterns and any(fnmatch(name, p) for p in rule.patterns):
+                    name_to_rule[name] = rule
+                elif not rule.patterns and name == rule.name:
+                    name_to_rule[name] = rule
+
+        eps = 1e-8
+
+        for j in range(col_count):
+            col = scores[:, j]
+            name = names[j]
+            rule = name_to_rule.get(name)
+
+            if rule is not None:
+                if not rule.normalize:
+                    log.info(
+                        "MetricMapper._normalize_columns: skipping normalization for %r "
+                        "(rule.normalize=False)",
+                        name,
+                    )
+                    continue  # leave as-is
+            else:
+                if not self.normalize_unmatched:
+                    log.info(
+                        "MetricMapper._normalize_columns: skipping normalization for %r "
+                        "(no rule, normalize_unmatched=False)",
+                        name,
+                    )
+                    continue
+
+            cmin = float(col.min())
+            cmax = float(col.max())
+            if cmax - cmin < eps:
+                scores[:, j] = 0.5  # flat column → neutral mid value
+                log.info(
+                    "MetricMapper._normalize_columns: %r is flat (min=max=%.4f); set to 0.5",
+                    name,
+                    cmin,
+                )
+            else:
+                scores[:, j] = (col - cmin) / (cmax - cmin)
+                log.info(
+                    "MetricMapper._normalize_columns: normalized %r from [%.4f, %.4f] to [0,1]",
+                    name,
+                    cmin,
+                    cmax,
+                )
+
+        return scores
+
+
+    def _canon(self, s: str) -> str:
+        return s.lower() if self.case_insensitive and isinstance(s, str) else s
+
+    def _match_any(self, name: str, patterns: Sequence[str]) -> bool:
+        n = self._canon(name)
+        return any(fnmatch(self._canon(p), n) or fnmatch(n, self._canon(p)) for p in patterns)
+
+
+==================================================
+FILE: metric_observer.py
+==================================================
+
+# stephanie/scoring/metrics/metric_observer.py
+from __future__ import annotations
+
+import json
+import logging
+import threading
+import time
+from dataclasses import asdict, dataclass
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
+
+log = logging.getLogger(__name__)
+
+@dataclass
+class MetricStats:
+    name: str
+    count: int = 0
+    first_seen: float = 0.0
+    last_seen: float = 0.0
+    min_val: float = float('inf')
+    max_val: float = float('-inf')
+    
+    def update(self, value: float) -> None:
+        self.count += 1
+        self.last_seen = time.time()
+        if self.count == 1:
+            self.first_seen = self.last_seen
+            
+        try:
+            val = float(value)
+            if val < self.min_val:
+                self.min_val = val
+            if val > self.max_val:
+                self.max_val = val
+        except (TypeError, ValueError):
+            pass
+
+class MetricObserver:
+    """Dynamically observes metrics as they flow through the system"""
+    
+    def __init__(self, enabled: bool = True, snapshot_path: Optional[str] = None):
+        """Initialize the metric observer.
+        
+        Args:
+            enabled: Whether metric observation is active
+            snapshot_path: Path to save metric snapshots (optional)
+        """
+        self.enabled = enabled
+        self.snapshot_path = snapshot_path
+        self._lock = threading.Lock()
+        self._metrics: Dict[str, MetricStats] = {}
+        self._runs: Dict[str, List[str]] = {}  # run_id -> list of metrics
+    
+    def observe(
+        self,
+        metrics: Dict[str, float],
+        run_id: Optional[str] = None,
+        cohort: Optional[str] = None,
+        is_correct: Optional[bool] = None
+    ) -> None:
+        """Record metrics from a single scorable"""
+        if not self.enabled:
+            return
+            
+        with self._lock:
+            for name, value in metrics.items():
+                if name not in self._metrics:
+                    self._metrics[name] = MetricStats(name=name)
+                self._metrics[name].update(value)
+                
+                if run_id:
+                    if run_id not in self._runs:
+                        self._runs[run_id] = []
+                    if name not in self._runs[run_id]:
+                        self._runs[run_id].append(name)
+    
+    def get_stable_core(
+        self,
+        min_runs: int = 5,
+        stability_threshold: float = 0.6
+    ) -> List[Tuple[str, float]]:
+        """Find metrics that consistently distinguish good from bad reasoning"""
+        if not self.enabled or not self._metrics:
+            return []
+            
+        stable_metrics = []
+        
+        for metric_name, stats in self._metrics.items():
+            # Only consider metrics that appeared in enough runs
+            if metric_name not in self._runs or len(self._runs[metric_name]) < min_runs:
+                continue
+                
+            # Calculate stability
+            correct_runs = 0
+            total_runs = 0
+            
+            # In a real implementation, you'd use your visicalc_metric_importance logic here
+            # This is a simplified version for illustration
+            for run_id in self._runs[metric_name]:
+                # You would have stored is_correct per run somewhere
+                # This is just a placeholder
+                total_runs += 1
+                # correct_runs += 1 if is_correct else 0
+            
+            if total_runs > 0:
+                stability = correct_runs / total_runs
+                if stability >= stability_threshold:
+                    stable_metrics.append((metric_name, stability))
+        
+        # Sort by stability
+        return sorted(stable_metrics, key=lambda x: -x[1])
+    
+    def save_snapshot(self) -> None:
+        """Save current metric universe to disk"""
+        if not self.enabled or not self.snapshot_path:
+            return
+            
+        try:
+            snapshot = {
+                "metrics": {name: asdict(stats) for name, stats in self._metrics.items()},
+                "runs": self._runs
+            }
+            
+            path = Path(self.snapshot_path)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            
+            with open(path, "w") as f:
+                json.dump(snapshot, f, indent=2)
+                
+            log.info(f"Saved metric observer snapshot to {path}")
+        except Exception as e:
+            log.error(f"Failed to save metric observer snapshot: {str(e)}")
+
+==================================================
+FILE: row_builder.py
+==================================================
+
+# stephanie/scoring/metrics/row_builder.py
+from __future__ import annotations
+
+import time
+
+import numpy as np
+
+from stephanie.data.scorable_row import ScorableRow
+from stephanie.utils.hash_utils import hash_text
+
+
+class RowBuilder:
+    """
+    Builds ScorableRow objects from a Scorable + accumulator dictionary.
+
+    This is the final glue step after all Features + Tools have run.
+    """
+
+    # ------------------------------------------------------------------
+    def build(self, scorable, acc: dict) -> ScorableRow:
+        text = scorable.text or ""
+        meta = scorable.meta or {}
+
+        # --------------------------------------------------------------
+        # Core identity + title
+        # --------------------------------------------------------------
+        title = (
+            acc.get("title")
+            or meta.get("title")
+            or text[:80]
+            or f"{scorable.target_type}:{scorable.id}"
+        )
+
+        # --------------------------------------------------------------
+        # Embeddings
+        # --------------------------------------------------------------
+        embeddings = dict(acc.get("embeddings") or {})
+        embed_global = None
+
+        gl = embeddings.get("global")
+        if isinstance(gl, list) and gl:
+            try:
+                embed_global_np = np.asarray(gl, dtype=np.float32)
+                embed_global = embed_global_np.tolist()
+            except Exception:
+                embed_global = gl  # fallback
+
+        # --------------------------------------------------------------
+        # Metrics
+        # --------------------------------------------------------------
+        metrics_vector = dict(acc.get("metrics_vector") or {})
+        metrics_columns = list(acc.get("metrics_columns") or metrics_vector.keys())
+        metrics_values = [float(metrics_vector.get(c, 0.0)) for c in metrics_columns]
+
+        # --------------------------------------------------------------
+        # VPM / Vision signals
+        # --------------------------------------------------------------
+        vision_signals = acc.get("vision_signals")
+        vision_meta = acc.get("vision_signals_meta") or {}
+
+        # --------------------------------------------------------------
+        # VisiCalc features (optional)
+        # --------------------------------------------------------------
+        visicalc_report = acc.get("visicalc_report") or {}
+        visicalc_features = acc.get("visicalc_features")
+        visicalc_feature_names = acc.get("visicalc_feature_names")
+
+        # --------------------------------------------------------------
+        # Build final row
+        # --------------------------------------------------------------
+        return ScorableRow(
+            scorable_id=str(scorable.id)
+            or f"{scorable.target_type}:{hash_text(text)[:16]}",
+            scorable_type=scorable.target_type,
+            conversation_id=meta.get("conversation_id"),
+            external_id=meta.get("external_id"),
+            order_index=meta.get("order_index"),
+            text=text,
+            title=title,
+
+            # Feature outputs
+            near_identity=acc.get("near_identity") or meta.get("near_identity") or {},
+            domains=acc.get("domains") or [],
+            ner=acc.get("ner") or [],
+
+            # Scores / human labels
+            ai_score=meta.get("ai_score"),
+            star=meta.get("star"),
+            goal_ref=meta.get("goal_ref"),
+
+            # Embedding info
+            embeddings=embeddings,
+            embed_global=embed_global,
+
+            # Metrics (canonical vector)
+            metrics_columns=metrics_columns,
+            metrics_values=metrics_values,
+            metrics_vector=metrics_vector,
+
+            # Agreement / stability / meta
+            agreement=meta.get("agreement"),
+            stability=meta.get("stability"),
+            chat_id=meta.get("chat_id"),
+            turn_index=meta.get("turn_index"),
+            parent_scorable_id=meta.get("parent_scorable_id"),
+            parent_scorable_type=meta.get("parent_scorable_type"),
+            order_in_parent=meta.get("order_in_parent"),
+
+            # Vision / ZeroModel / VPM
+            vision_signals=vision_signals,
+            vision_signals_meta=vision_meta,
+
+            # VisiCalc
+            visicalc_report=visicalc_report,
+            visicalc_features=visicalc_features,
+            visicalc_feature_names=visicalc_feature_names,
+
+            # Rollout / pipeline info
+            rollout=meta.get("rollout") or {},
+            processor_version="3.0",
+            content_hash16=hash_text(text)[:16],
+            created_utc=time.time(),
+        )
+
+    # ------------------------------------------------------------------
+    def build_minimal(self, scorable) -> ScorableRow:
+        """
+        Minimal row used for async/offload mode before features finish.
+        """
+        text = scorable.text or ""
+        meta = scorable.meta or {}
+
+        title = (
+            meta.get("title")
+            or text[:80]
+            or f"{scorable.target_type}:{scorable.id}"
+        )
+
+        return ScorableRow(
+            scorable_id=str(scorable.id)
+            or f"{scorable.target_type}:{hash_text(text)[:16]}",
+            scorable_type=scorable.target_type,
+            conversation_id=meta.get("conversation_id"),
+            external_id=meta.get("external_id"),
+            order_index=meta.get("order_index"),
+            text=text,
+            title=title,
+
+            # Everything empty until features run
+            near_identity={},
+            domains=[],
+            ner=[],
+            ai_score=meta.get("ai_score"),
+            star=meta.get("star"),
+            goal_ref=meta.get("goal_ref"),
+
+            embeddings={},
+            embed_global=None,
+            metrics_columns=[],
+            metrics_values=[],
+            metrics_vector={},
+
+            agreement=meta.get("agreement"),
+            stability=meta.get("stability"),
+            chat_id=meta.get("chat_id"),
+            turn_index=meta.get("turn_index"),
+            parent_scorable_id=meta.get("parent_scorable_id"),
+            parent_scorable_type=meta.get("parent_scorable_type"),
+            order_in_parent=meta.get("order_in_parent"),
+
+            vision_signals=None,
+            vision_signals_meta={},
+
+            visicalc_report={},
+            visicalc_features=None,
+            visicalc_feature_names=None,
+
+            rollout=meta.get("rollout") or {},
+            processor_version="3.0",
+            content_hash16=hash_text(text)[:16],
+            created_utc=time.time(),
+        )
+
+
+==================================================
+FILE: scorable_processor.py
+==================================================
+
+# stephanie/scoring/metrics/scorable_processor.py
+from __future__ import annotations
+
+import logging
+import time
+from dataclasses import asdict
+from typing import Any, Dict, List, Union
+
+from stephanie.constants import PIPELINE_RUN_ID
+from stephanie.scoring.metrics.feature.domain_feature import DomainFeature
+from stephanie.scoring.metrics.feature.embedding_feature import \
+    EmbeddingFeature
+from stephanie.scoring.metrics.feature.frontier_lens_feature import \
+    FrontierLensFeature
+from stephanie.scoring.metrics.feature.frontier_lens_group_feature import \
+    FrontierLensGroupFeature
+from stephanie.scoring.metrics.feature.metric_filter_group_feature import \
+    MetricFilterGroupFeature
+from stephanie.scoring.metrics.feature.metrics_feature import MetricsFeature
+from stephanie.scoring.metrics.feature.ner_feature import NerFeature
+from stephanie.scoring.metrics.feature.section_summarization_feature import \
+    SectionSummarizationFeature
+from stephanie.scoring.metrics.feature.text_feature import TextFeature
+from stephanie.scoring.metrics.row_builder import RowBuilder
+from stephanie.scoring.scorable import Scorable, ScorableFactory
+from stephanie.utils.progress_mixin import ProgressMixin
+
+log = logging.getLogger(__name__)
+
+
+FEATURE_REGISTRY = {
+    "metrics": MetricsFeature,
+    "frontier_lens": FrontierLensFeature,
+    "embeddings": EmbeddingFeature,
+    "ner": NerFeature,
+    "domains": DomainFeature,
+    "text": TextFeature,
+    "section_summarizer": SectionSummarizationFeature,
+}
+
+
+GROUP_FEATURE_REGISTRY = {
+    "metric_filter": MetricFilterGroupFeature,
+    "frontier_lens_group": FrontierLensGroupFeature,
+}
+
+
+class ScorableProcessor(ProgressMixin):
+    """
+    PURE PROCESSOR:
+      - Applies feature modules (DomainFeature, NerFeature, EmbeddingFeature, MetricsFeature, VpmFeature, etc)
+      - Builds a standardized ScorableRow via RowBuilder
+      - Persists deltas through Writers
+      - NO bus
+      - NO manifest
+      - NO hydration providers (hydration is a feature)
+    """
+
+    def __init__(self, cfg, memory, container, logger):
+        self.cfg = cfg or {}
+        self.memory = memory
+        self.container = container
+        self.logger = logger
+
+        # ---------- Row features ----------
+        feature_cfgs = self.cfg.get("feature_configs", {}) or {}
+        self.features = []
+
+        for name, subcfg in feature_cfgs.items():  # preserves YAML order
+            cls = FEATURE_REGISTRY.get(name)
+            if cls is None:
+                log.warning(f"[SP] unknown feature '{name}' ignored")
+                continue
+            feat = cls(
+                cfg=subcfg or {},
+                memory=self.memory,
+                container=self.container,
+                logger=self.logger,
+            )
+            if getattr(feat, "enabled", True):
+                self.features.append(feat)
+                log.info(f"[SP] feature loaded: {name} → {cls.__name__}")
+            else:
+                log.info(f"[SP] feature disabled: {name}")
+
+        # ---------- Group features ----------
+        self.group_features = []
+        for name, subcfg in (
+            self.cfg.get("group_feature_configs", {}) or {}
+        ).items():
+            cls = GROUP_FEATURE_REGISTRY.get(name)
+            if not cls:
+                log.warning("[SP] unknown group feature '%s'", name)
+                continue
+            gf = cls(  # MUST pass the sub-config
+                cfg=subcfg,  # ← not `cfg`
+                memory=self.memory,
+                container=self.container,
+                logger=self.logger,
+            )
+            if gf.enabled:
+                self.group_features.append(gf)
+                log.info(
+                    "[SP] group feature loaded: %s → %s", name, cls.__name__
+                )
+
+        # ---------- Row builder ----------
+        self.row_builder = RowBuilder()
+
+        # ---------- Writers (optional legacy) ----------
+        self.writers = self.cfg.get(
+            "writers", []
+        )  # consider removing entirely later
+
+        # ---------- Progress + misc ----------
+        self._init_progress(self.container, self.logger)
+        self.skip_if_exists = bool(self.cfg.get("skip_if_exists", True))
+
+    # -----------------------------------------------------
+    # Public API
+    # -----------------------------------------------------
+
+    async def process(
+        self,
+        input_data: Union[Scorable, Dict[str, Any]],
+        context: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        t0 = time.perf_counter()
+        scorable = (
+            input_data
+            if isinstance(input_data, Scorable)
+            else ScorableFactory.from_dict(input_data)
+        )
+        acc: Dict[str, Any] = {}
+
+        for feature in self.features:
+            try:
+                log.debug(
+                    f"[ScorableProcessor] applying feature: {feature.name}"
+                )
+                acc = await feature.apply(scorable, acc, context)
+                log.debug(
+                    f"[ScorableProcessor] applied feature: {feature.name}"
+                )
+            except Exception as e:
+                log.warning(
+                    f"[ScorableProcessor] Feature {feature.name} failed: {e}"
+                )
+
+        row_obj = self.row_builder.build(scorable, acc)
+        row = row_obj.to_dict()
+
+        for writer in self.writers:
+            try:
+                await writer.persist(scorable, acc)
+            except Exception as e:
+                log.warning(
+                    f"[ScorableProcessor] Writer {getattr(writer, 'name', 'writer')} failed: {e}"
+                )
+
+        log.debug(
+            "[ScorableProcessor] done id=%s in %.2f ms",
+            scorable.id,
+            (time.perf_counter() - t0) * 1000,
+        )
+        return row
+
+    # -----------------------------------------------------
+    # Batch processing
+    # -----------------------------------------------------
+
+    async def process_many(
+        self,
+        inputs: List[Union[Scorable, Dict[str, Any]]],
+        context: Dict[str, Any],
+    ) -> List[Dict[str, Any]]:
+        n = len(inputs)
+        t_all = time.perf_counter()
+
+        task_rows = (
+            f"ScorableProcess:rows:{context.get(PIPELINE_RUN_ID, 'na')}"
+        )
+        self.pstart(task=task_rows, total=n)
+
+        rows: List[Dict[str, Any]] = []
+        try:
+            for idx, sc in enumerate(inputs):
+                row = await self.process(sc, context)
+                rows.append(row)
+                self.ptick(task=task_rows, done=idx + 1, total=n)
+        finally:
+            self.pdone(task=task_rows)
+
+        # Optional: enforce simple dependencies if group features declare `requires`
+        available = {
+            getattr(f, "name", f"f{idx}")
+            for idx, f in enumerate(self.group_features)
+        }
+        for gf in self.group_features:
+            reqs = getattr(gf, "requires", []) or []
+            missing = [r for r in reqs if r not in available]
+            if missing:
+                log.warning(
+                    f"[SP] group feature '{gf.name}' missing requirements: {missing}"
+                )
+
+        task_group = (
+            f"ScorableProcess:group:{context.get('pipeline_run_id', 'na')}"
+        )
+        self.pstart(task=task_group, total=len(self.group_features))
+        try:
+            for i, gf in enumerate(self.group_features, start=1):
+                try:
+                    log.info(
+                        f"[ScorableProcessor] applying group feature: {gf.name}"
+                    )
+                    rows = await gf.apply(rows, context)
+                    log.info(
+                        f"[ScorableProcessor] applied group feature: {gf.name}"
+                    )
+                except Exception as e:
+                    log.warning(
+                        f"[ScorableProcessor] Group feature {gf.name} failed: {e}"
+                    )
+                self.ptick(
+                    task=task_group, done=i, total=len(self.group_features)
+                )
+        finally:
+            self.pdone(task=task_group)
+
+        if context is not None:
+            context.setdefault("feature_reports", self.feature_reports())
+
+        log.debug(
+            "[ScorableProcessor] batch_size=%d finished in %.2f ms",
+            n,
+            (time.perf_counter() - t_all) * 1000,
+        )
+        return rows
+
+    def feature_reports(self) -> list[dict]:
+        reps = []
+        # per-row features
+        for f in self.features:
+            if hasattr(f, "report"):
+                try:
+                    reps.append(_report_to_dict(f.report(), f))
+                except Exception as e:
+                    reps.append(
+                        {
+                            "name": getattr(f, "name", f.__class__.__name__),
+                            "kind": getattr(f, "kind", "row"),
+                            "ok": False,
+                            "summary": "report() raised",
+                            "details": {"error": str(e)},
+                        }
+                    )
+        # group features
+        for gf in self.group_features:
+            try:
+                reps.append(_report_to_dict(gf.report(), gf))
+            except Exception as e:
+                reps.append(
+                    {
+                        "name": getattr(gf, "name", gf.__class__.__name__),
+                        "kind": getattr(gf, "kind", "group"),
+                        "ok": False,
+                        "summary": "report() raised",
+                        "details": {"error": str(e)},
+                    }
+                )
+        return reps
+
+
+def _report_to_dict(rep, feature):
+    # 1) FeatureReport dataclass → dict
+    try:
+        from stephanie.scoring.metrics.feature.feature_report import \
+            FeatureReport  # adjust import if needed
+
+        if isinstance(rep, FeatureReport):
+            d = asdict(rep)
+            # ensure minimal fields
+            d.setdefault(
+                "name", getattr(feature, "name", feature.__class__.__name__)
+            )
+            d.setdefault("kind", getattr(feature, "kind", "row"))
+            return d
+    except Exception:
+        pass
+
+    # 2) Already a mapping → ensure name/kind
+    if isinstance(rep, dict):
+        rep = dict(rep)
+        rep.setdefault(
+            "name", getattr(feature, "name", feature.__class__.__name__)
+        )
+        rep.setdefault("kind", getattr(feature, "kind", "row"))
+        rep.setdefault("ok", rep.get("ok", True))
+        return rep
+
+    # 3) Fallback: opaque value
+    return {
+        "name": getattr(feature, "name", feature.__class__.__name__),
+        "kind": getattr(feature, "kind", "row"),
+        "ok": False,
+        "summary": "Unknown report type",
+        "details": {"raw": repr(rep)},
+        "warnings": ["non-dict/non-FeatureReport report"],
+    }
+
+
+==================================================
+FILE: feature\base_feature.py
+==================================================
+
+# stephanie/scoring/metrics/features/base_feature.py
+from __future__ import annotations
+
+import abc
+from typing import Any, Dict
+
+from stephanie.scoring.metrics.feature.feature_report import FeatureReport
+from stephanie.scoring.scorable import Scorable
+
+
+class BaseFeature(abc.ABC):
+    """
+    A Feature transforms (scorable, acc, context) → updated acc.
+
+    Rules:
+    - NEVER mutate the `scorable` object.
+    - ALWAYS return the updated accumulator dict.
+    - Each feature is fully self-contained.
+    - Features may depend on external tools/services (passed in __init__).
+    """
+
+    name: str = "base_feature"
+
+    def __init__(self, cfg: dict, memory, container, logger):
+        self.cfg = cfg or {}
+        self.memory = memory
+        self.container = container
+        self.logger = logger
+
+    @abc.abstractmethod
+    async def apply(
+        self,
+        scorable: Scorable,
+        acc: Dict[str, Any],
+        context: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """
+        Given a Scorable + current accumulator + pipeline context,
+        compute new attributes and return updated accumulator.
+        """
+        raise NotImplementedError
+
+    def report(self) -> FeatureReport:
+        # default no-op
+        return FeatureReport(name=self.name, kind="row", ok=True, summary="no-op")
+
+==================================================
+FILE: feature\base_group_feature.py
+==================================================
+
+# stephanie/scoring/metrics/feature/base_group_feature.py
+from __future__ import annotations
+
+from typing import Any, Dict, List
+
+from stephanie.scoring.metrics.feature.feature_report import FeatureReport
+
+
+class BaseGroupFeature:
+    """
+    A group feature wraps a BaseGroupTool and is called once per batch.
+    """
+    name = "group_feature"
+    requires: list[str] = []  # declare upstream dependencies by feature name if you like
+
+    def __init__(self, cfg: Dict, memory, container, logger):
+        self.cfg = cfg or {}
+        self.memory = memory
+        self.container = container
+        self.logger = logger
+        self.enabled = bool(self.cfg.get("enabled", True))
+
+    async def apply(self, rows: List[Dict[str, Any]], context: Dict[str, Any]) -> List[Dict[str, Any]]:
+        if not self.enabled:
+            return rows
+        return rows
+
+    def report(self) -> FeatureReport:
+        # default no-op
+        return FeatureReport(name=self.name, kind="group", ok=True, summary="no-op")
+
+==================================================
+FILE: feature\domain_feature.py
+==================================================
+
+# stephanie/scoring/metrics/feature/domain_feature.py
+from __future__ import annotations
+
+from stephanie.scoring.metrics.feature.base_feature import BaseFeature
+from stephanie.tools.domain_tool import DomainTool
+
+
+class DomainFeature(BaseFeature):
+    name = "domain"
+
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
+        self.tool = DomainTool(cfg, memory, container, logger)
+
+    async def apply(self, scorable, context):
+        return await self.tool.apply(scorable, context)
+
+
+==================================================
+FILE: feature\dynamic_features.py
+==================================================
+
+# stephanie/scoring/metrics/feature/dynamic_features.py
+from __future__ import annotations
+
+import json
+import logging
+from datetime import datetime
+from pathlib import Path
+from typing import Dict, List, Optional
+
+import numpy as np
+
+CORE_METRICS_PATH = Path("config/core_metrics.json")
+
+log = logging.getLogger(__name__)
+
+
+def load_core_metric_names(path: Path) -> List[str]:
+    """
+    Load the list of core metric names from JSON.
+
+    Supported formats:
+
+    1) Simple list:
+       ["metric.a", "metric.b", ...]
+
+    2) Dict with explicit list:
+       {"core_metrics": ["metric.a", ...]}
+       {"metrics": ["metric.a", ...]}
+
+    3) MARS summary format (your file):
+       {
+         "num_core_metrics": 150,
+         "metrics": [
+           {"name": "sicql.faithfulness.attr.advantage", ...},
+           {"name": "Tiny.coverage.attr.consistency_hat", ...},
+           ...
+         ]
+       }
+    """
+    log.info(f"📂 Loading core metrics from: {path.absolute()}")
+    
+    if not path.exists():
+        log.warning(f"⚠️  No core metric config found at {path}")
+        log.info("ℹ️  Dynamic metrics will be unnamed - using VisiCalc features only")
+        return []
+
+    try:
+        log.debug(f"🔍 Reading core metrics file: {path}")
+        with path.open("r", encoding="utf-8") as f:
+            data = json.load(f)
+        log.debug(f"✅ Successfully loaded core metrics file (size: {len(str(data))} chars)")
+    except Exception as e:
+        log.error(f"❌ Failed to load core metric config from {path}: {e}")
+        return []
+
+    # --- Case 1: file is just a list of names ---
+    if isinstance(data, list):
+        names = [str(x) for x in data]
+        log.info(f"📌 Loaded {len(names)} core metric names from simple list")
+        log.debug(f"🔢 First 5 metrics: {names[:5]}")
+        return names
+
+    # --- Case 2: dict with explicit list fields ---
+    if isinstance(data, dict):
+        log.debug(f"📊 Processing dictionary format with keys: {list(data.keys())}")
+        
+        # If it's already a list of strings under core_metrics / metrics
+        for key in ("core_metrics", "metrics"):
+            if key in data and isinstance(data[key], list):
+                if all(isinstance(x, str) for x in data[key]):
+                    names = [str(x) for x in data[key]]
+                    log.info(f"📌 Loaded {len(names)} core metric names from '{key}' field")
+                    log.debug(f"🔢 First 5 metrics: {names[:5]}")
+                    return names
+                else:
+                    log.warning(f"⚠️  Field '{key}' exists but contains non-string elements")
+
+        # --- Case 3: MARS summary style ---
+        #   { "num_core_metrics": 150,
+        #     "metrics": [ {"name": "...", "auc_mean": ..., ...}, ... ] }
+        metrics = data.get("metrics")
+        if isinstance(metrics, list) and metrics:
+            log.debug(f"📋 Found {len(metrics)} metric entries in MARS format")
+            
+            # Check if first element is a dict with name field
+            if isinstance(metrics[0], dict) and "name" in metrics[0]:
+                all_names = [m.get("name") for m in metrics if m.get("name")]
+                valid_names = [name for name in all_names if name is not None]
+                
+                # Optional: respect num_core_metrics if present
+                n_core = data.get("num_core_metrics")
+                if isinstance(n_core, int) and n_core > 0:
+                    log.debug(f"🎯 Limiting to top {n_core} metrics as per num_core_metrics")
+                    valid_names = valid_names[:n_core]
+                else:
+                    log.debug("ℹ️  No num_core_metrics specified, using all valid metric names")
+
+                log.info(f"📌 Loaded {len(valid_names)} core metric names from MARS summary")
+                if valid_names:
+                    log.debug(f"🔢 First 5 metrics: {valid_names[:5]}")
+                    # Log some statistics about the metrics if available
+                    if len(metrics) > 0 and "auc_mean" in metrics[0]:
+                        auc_values = [m.get("auc_mean", 0) for m in metrics[:5] if m.get("auc_mean")]
+                        if auc_values:
+                            log.debug(f"📈 Sample AUC values: {auc_values}")
+                return valid_names
+            else:
+                log.warning(f"⚠️  Metrics list doesn't contain dictionaries with 'name' field in file: {path}")
+        else:
+            log.warning(f"⚠️  'metrics' field not found or not a list in MARS format in file: {path}")
+
+    log.warning(
+        f"⚠️  Core metric config at {path} has unexpected format; "
+        "no dynamic metric names will be used"
+    )
+    log.debug(f"🔍 Data type: {type(data)}, sample: {str(data)[:200]}...")
+    return []
+
+
+def build_dynamic_feature_vector(
+    visicalc_report: dict,
+    metrics: Dict[str, float],
+    metric_names: List[str],
+    problem_id: Optional[str] = None
+) -> np.ndarray:
+    """
+    Build [VisiCalc 8] + [dynamic metrics] feature vector.
+
+    - visicalc_report: full VisiCalc report dict
+    - metrics: dict of metric_name -> value (from HRM/SICQL/Tiny/etc.)
+    - metric_names: ordered list of metric keys to pull from metrics
+    - problem_id: optional identifier for logging
+
+    Missing metrics are filled with 0.0.
+    """
+    start_time = datetime.now()
+    problem_context = f" for {problem_id}" if problem_id else ""
+    
+    log.debug(f"🔧 Building dynamic feature vector{problem_context}")
+    log.debug(f"📊 Input metrics dict has {len(metrics)} total metrics")
+    log.debug(f"🎯 Target metric names: {len(metric_names)} core metrics")
+
+    # 1) VisiCalc structural features (8 dims)
+    log.debug("🔄 Extracting VisiCalc structural features...")
+    try:
+        v_feats = extract_tiny_features(visicalc_report).astype(np.float32)
+        log.debug(f"✅ VisiCalc features extracted: shape={v_feats.shape}, dtype={v_feats.dtype}")
+        log.debug(f"   VisiCalc feature stats: min={v_feats.min():.3f}, max={v_feats.max():.3f}, mean={v_feats.mean():.3f}")
+    except Exception as e:
+        log.error(f"❌ Failed to extract VisiCalc features: {e}")
+        # Create fallback VisiCalc features
+        v_feats = np.zeros(8, dtype=np.float32)
+        log.warning("⚠️  Using zero-filled VisiCalc features as fallback")
+
+    # 2) Dynamic metric features (N dims)
+    log.debug("🔄 Processing dynamic metric features...")
+    m_vals = []
+    missing_metrics = []
+    available_metrics = []
+    
+    for i, name in enumerate(metric_names):
+        if name in metrics:
+            try:
+                value = float(metrics[name])
+                m_vals.append(value)
+                available_metrics.append((i, name, value))
+            except (ValueError, TypeError):
+                log.warning(f"⚠️  Metric '{name}' has non-float value: {metrics[name]} - using 0.0")
+                m_vals.append(0.0)
+                missing_metrics.append(name)
+        else:
+            m_vals.append(0.0)
+            missing_metrics.append(name)
+    
+    m_feats = np.asarray(m_vals, dtype=np.float32)
+    
+    # Log detailed metrics information
+    log.debug(f"📈 Dynamic metrics: {len(available_metrics)} available, {len(missing_metrics)} missing")
+    
+    if available_metrics:
+        # Log first few available metrics for debugging
+        sample_metrics = available_metrics[:3]
+        sample_str = ", ".join([f"{name}={value:.3f}" for _, name, value in sample_metrics])
+        log.debug(f"🔢 Sample available metrics: {sample_str}")
+        
+        # Log statistics of available metrics
+        if available_metrics:
+            available_values = [val for _, _, val in available_metrics]
+            log.debug(f"📊 Available metrics stats: min={min(available_values):.3f}, "
+                     f"max={max(available_values):.3f}, mean={np.mean(available_values):.3f}")
+    
+    if missing_metrics:
+        log.debug(f"❌ Missing metrics ({len(missing_metrics)}): {missing_metrics[:5]}{'...' if len(missing_metrics) > 5 else ''}")
+        if len(missing_metrics) > 10:
+            log.debug(f"   ... and {len(missing_metrics) - 5} more missing metrics")
+
+    # 3) Concatenate → [8 + N]
+    log.debug("🔗 Concatenating VisiCalc and dynamic metrics...")
+    try:
+        combined_features = np.concatenate([v_feats, m_feats], axis=-1)
+        
+        duration = (datetime.now() - start_time).total_seconds()
+        log.debug(f"✅ Feature vector built successfully in {duration:.3f}s")
+        log.debug(f"📐 Final feature vector: shape={combined_features.shape}, "
+                 f"dtype={combined_features.dtype}")
+        log.debug(f"📊 Combined stats: min={combined_features.min():.3f}, "
+                 f"max={combined_features.max():.3f}, mean={combined_features.mean():.3f}")
+        
+        # Log feature composition
+        log.debug(f"🧩 Feature composition: {v_feats.shape[0]} VisiCalc + {m_feats.shape[0]} dynamic = {combined_features.shape[0]} total")
+        
+        return combined_features
+        
+    except Exception as e:
+        log.error(f"❌ Failed to concatenate features: {e}")
+        log.error(f"   VisiCalc features shape: {v_feats.shape}, dtype: {v_feats.dtype}")
+        log.error(f"   Dynamic features shape: {m_feats.shape}, dtype: {m_feats.dtype}")
+        raise
+
+
+def build_dynamic_feature_vectors_batch(
+    visicalc_reports: List[dict],
+    metrics_list: List[Dict[str, float]],
+    metric_names: List[str], 
+    problem_ids: Optional[List[str]] = None
+) -> np.ndarray:
+    """
+    Build dynamic feature vectors for a batch of examples.
+    
+    Args:
+        visicalc_reports: List of VisiCalc report dicts
+        metrics_list: List of metric dictionaries
+        metric_names: Ordered list of metric keys
+        problem_ids: Optional list of problem identifiers for logging
+        
+    Returns:
+        np.ndarray: Batch of feature vectors [batch_size, 8 + len(metric_names)]
+    """
+    log.info(f"🏭 Building batch of {len(visicalc_reports)} dynamic feature vectors")
+    log.info(f"🎯 Using {len(metric_names)} core metrics")
+    
+    if problem_ids is None:
+        problem_ids = [f"example_{i}" for i in range(len(visicalc_reports))]
+    
+    if len(visicalc_reports) != len(metrics_list):
+        log.error(f"❌ Mismatched batch sizes: {len(visicalc_reports)} reports vs {len(metrics_list)} metrics")
+        raise ValueError("visicalc_reports and metrics_list must have same length")
+    
+    if len(visicalc_reports) != len(problem_ids):
+        log.error(f"❌ Mismatched batch sizes: {len(visicalc_reports)} reports vs {len(problem_ids)} problem_ids")
+        raise ValueError("visicalc_reports and problem_ids must have same length")
+    
+    batch_features = []
+    successful = 0
+    failed = 0
+    
+    for i, (report, metrics, problem_id) in enumerate(zip(visicalc_reports, metrics_list, problem_ids)):
+        try:
+            features = build_dynamic_feature_vector(
+                visicalc_report=report,
+                metrics=metrics,
+                metric_names=metric_names,
+                problem_id=problem_id
+            )
+            batch_features.append(features)
+            successful += 1
+            
+            # Log progress for large batches
+            if (i + 1) % 50 == 0:
+                log.info(f"📦 Processed {i + 1}/{len(visicalc_reports)} examples")
+                
+        except Exception as e:
+            log.error(f"❌ Failed to build features for {problem_id}: {e}")
+            failed += 1
+            # Create zero vector as fallback
+            fallback_features = np.zeros(8 + len(metric_names), dtype=np.float32)
+            batch_features.append(fallback_features)
+    
+    if batch_features:
+        batch_array = np.stack(batch_features, axis=0)
+        log.info(f"✅ Batch feature construction complete: {successful} successful, {failed} failed")
+        log.info(f"📦 Final batch shape: {batch_array.shape}")
+        log.info(f"📊 Batch stats - min: {batch_array.min():.3f}, max: {batch_array.max():.3f}, "
+                f"mean: {batch_array.mean():.3f}, std: {batch_array.std():.3f}")
+        return batch_array
+    else:
+        log.error("❌ No features were successfully built")
+        raise ValueError("Failed to build any feature vectors")
+
+
+def validate_core_metrics_coverage(
+    metrics_list: List[Dict[str, float]],
+    metric_names: List[str],
+    sample_size: int = 10
+) -> Dict[str, float]:
+    """
+    Validate how many core metrics are actually available in the data.
+    
+    Returns coverage statistics for debugging data quality issues.
+    """
+    log.info("🔍 Validating core metrics coverage in dataset...")
+    
+    if not metrics_list:
+        log.warning("⚠️  No metrics data provided for validation")
+        return {}
+    
+    # Sample a subset for analysis
+    sample_metrics = metrics_list[:sample_size] if len(metrics_list) > sample_size else metrics_list
+    
+    coverage_stats = {}
+    total_possible = len(metric_names) * len(sample_metrics)
+    total_found = 0
+    
+    for metric_name in metric_names:
+        metric_found = 0
+        for metrics_dict in sample_metrics:
+            if metric_name in metrics_dict:
+                try:
+                    float(metrics_dict[metric_name])
+                    metric_found += 1
+                    total_found += 1
+                except (ValueError, TypeError):
+                    pass
+        
+        coverage = metric_found / len(sample_metrics)
+        coverage_stats[metric_name] = coverage
+        
+        if coverage < 0.5:
+            log.debug(f"⚠️  Low coverage for {metric_name}: {coverage:.1%}")
+    
+    overall_coverage = total_found / total_possible if total_possible > 0 else 0
+    log.info(f"📊 Core metrics coverage: {overall_coverage:.1%} "
+            f"({total_found}/{total_possible} expected metrics found)")
+    
+    # Log best and worst covered metrics
+    if coverage_stats:
+        sorted_coverage = sorted(coverage_stats.items(), key=lambda x: x[1], reverse=True)
+        best_metrics = sorted_coverage[:3]
+        worst_metrics = sorted_coverage[-3:] if len(sorted_coverage) >= 3 else sorted_coverage
+        
+        log.info(f"🏆 Best covered metrics: {', '.join([f'{name}({cov:.1%})' for name, cov in best_metrics])}")
+        log.info(f"🔻 Worst covered metrics: {', '.join([f'{name}({cov:.1%})' for name, cov in worst_metrics])}")
+    
+    return coverage_stats
+
+
+def extract_tiny_features(report):
+    # 1. Overall stability (less variation = better)
+    region_values = [region["mean_frontier_value"] for region in report["regions"]]
+    stability = np.std(region_values)
+    
+    # 2. Middle region dip (more negative = worse)
+    middle_dip = region_values[2] - min(region_values[0], region_values[3])
+    
+    # 3. Standard deviation (lower = better consistency)
+    std_dev = report["global"]["std"]
+    
+    # 4. Sparsity (lower = more meaningful signal)
+    sparsity = report["global"]["sparsity_level_e3"]
+    
+    # 5. Entropy (higher = more diverse reasoning)
+    entropy = report["global"]["entropy"]
+    
+    # 6. Trend pattern (positive = improving)
+    trend = region_values[-1] - region_values[0]
+    
+    # 7. Mid-bad ratio (how much worse is middle vs average)
+    mid_bad_ratio = region_values[2] / np.mean(region_values)
+    
+    # 8. Frontier band utilization (even if 0, the pattern matters)
+    frontier_util = report["global"]["frontier_frac"]
+    
+    return np.array([stability, middle_dip, std_dev, sparsity, 
+                    entropy, trend, mid_bad_ratio, frontier_util])# stephanie/scoring/metrics/dynamic_features.py
+
+
+def load_core_metric_names(path: Path) -> List[str]:
+    """
+    Load the list of core metric names from JSON.
+
+    Supported formats:
+
+    1) Simple list:
+       ["metric.a", "metric.b", ...]
+
+    2) Dict with explicit list:
+       {"core_metrics": ["metric.a", ...]}
+       {"metrics": ["metric.a", ...]}
+
+    3) MARS summary format (your file):
+       {
+         "num_core_metrics": 150,
+         "metrics": [
+           {"name": "sicql.faithfulness.attr.advantage", ...},
+           {"name": "Tiny.coverage.attr.consistency_hat", ...},
+           ...
+         ]
+       }
+    """
+    log.info(f"📂 Loading core metrics from: {path.absolute()}")
+    
+    if not path.exists():
+        log.warning(f"⚠️  No core metric config found at {path}")
+        log.info("ℹ️  Dynamic metrics will be unnamed - using VisiCalc features only")
+        return []
+
+    try:
+        log.debug(f"🔍 Reading core metrics file: {path}")
+        with path.open("r", encoding="utf-8") as f:
+            data = json.load(f)
+        log.debug(f"✅ Successfully loaded core metrics file (size: {len(str(data))} chars)")
+    except Exception as e:
+        log.error(f"❌ Failed to load core metric config from {path}: {e}")
+        return []
+
+    # --- Case 1: file is just a list of names ---
+    if isinstance(data, list):
+        names = [str(x) for x in data]
+        log.info(f"📌 Loaded {len(names)} core metric names from simple list")
+        log.debug(f"🔢 First 5 metrics: {names[:5]}")
+        return names
+
+    # --- Case 2: dict with explicit list fields ---
+    if isinstance(data, dict):
+        log.debug(f"📊 Processing dictionary format with keys: {list(data.keys())}")
+        
+        # If it's already a list of strings under core_metrics / metrics
+        for key in ("core_metrics", "metrics"):
+            if key in data and isinstance(data[key], list):
+                if all(isinstance(x, str) for x in data[key]):
+                    names = [str(x) for x in data[key]]
+                    log.info(f"📌 Loaded {len(names)} core metric names from '{key}' field")
+                    log.debug(f"🔢 First 5 metrics: {names[:5]}")
+                    return names
+                else:
+                    log.warning(f"⚠️  Field '{key}' exists but contains non-string elements")
+
+        # --- Case 3: MARS summary style ---
+        #   { "num_core_metrics": 150,
+        #     "metrics": [ {"name": "...", "auc_mean": ..., ...}, ... ] }
+        metrics = data.get("metrics")
+        if isinstance(metrics, list) and metrics:
+            log.debug(f"📋 Found {len(metrics)} metric entries in MARS format")
+            
+            # Check if first element is a dict with name field
+            if isinstance(metrics[0], dict) and "name" in metrics[0]:
+                all_names = [m.get("name") for m in metrics if m.get("name")]
+                valid_names = [name for name in all_names if name is not None]
+                
+                # Optional: respect num_core_metrics if present
+                n_core = data.get("num_core_metrics")
+                if isinstance(n_core, int) and n_core > 0:
+                    log.debug(f"🎯 Limiting to top {n_core} metrics as per num_core_metrics")
+                    valid_names = valid_names[:n_core]
+                else:
+                    log.debug("ℹ️  No num_core_metrics specified, using all valid metric names")
+
+                log.info(f"📌 Loaded {len(valid_names)} core metric names from MARS summary")
+                if valid_names:
+                    log.debug(f"🔢 First 5 metrics: {valid_names[:5]}")
+                    # Log some statistics about the metrics if available
+                    if len(metrics) > 0 and "auc_mean" in metrics[0]:
+                        auc_values = [m.get("auc_mean", 0) for m in metrics[:5] if m.get("auc_mean")]
+                        if auc_values:
+                            log.debug(f"📈 Sample AUC values: {auc_values}")
+                return valid_names
+            else:
+                log.warning(f"⚠️  Metrics list doesn't contain dictionaries with 'name' field in file: {path}")
+        else:
+            log.warning(f"⚠️  'metrics' field not found or not a list in MARS format in file: {path}")
+
+    log.warning(
+        f"⚠️  Core metric config at {path} has unexpected format; "
+        "no dynamic metric names will be used"
+    )
+    log.debug(f"🔍 Data type: {type(data)}, sample: {str(data)[:200]}...")
+    return []
+
+
+def build_dynamic_feature_vector(
+    visicalc_report: dict,
+    metrics: Dict[str, float],
+    metric_names: List[str],
+    problem_id: Optional[str] = None
+) -> np.ndarray:
+    """
+    Build [VisiCalc 8] + [dynamic metrics] feature vector.
+
+    - visicalc_report: full VisiCalc report dict
+    - metrics: dict of metric_name -> value (from HRM/SICQL/Tiny/etc.)
+    - metric_names: ordered list of metric keys to pull from metrics
+    - problem_id: optional identifier for logging
+
+    Missing metrics are filled with 0.0.
+    """
+    start_time = datetime.now()
+    problem_context = f" for {problem_id}" if problem_id else ""
+    
+    log.debug(f"🔧 Building dynamic feature vector{problem_context}")
+    log.debug(f"📊 Input metrics dict has {len(metrics)} total metrics")
+    log.debug(f"🎯 Target metric names: {len(metric_names)} core metrics")
+
+    # 1) VisiCalc structural features (8 dims)
+    log.debug("🔄 Extracting VisiCalc structural features...")
+    try:
+        v_feats = extract_tiny_features(visicalc_report).astype(np.float32)
+        log.debug(f"✅ VisiCalc features extracted: shape={v_feats.shape}, dtype={v_feats.dtype}")
+        log.debug(f"   VisiCalc feature stats: min={v_feats.min():.3f}, max={v_feats.max():.3f}, mean={v_feats.mean():.3f}")
+    except Exception as e:
+        log.error(f"❌ Failed to extract VisiCalc features: {e}")
+        # Create fallback VisiCalc features
+        v_feats = np.zeros(8, dtype=np.float32)
+        log.warning("⚠️  Using zero-filled VisiCalc features as fallback")
+
+    # 2) Dynamic metric features (N dims)
+    log.debug("🔄 Processing dynamic metric features...")
+    m_vals = []
+    missing_metrics = []
+    available_metrics = []
+    
+    for i, name in enumerate(metric_names):
+        if name in metrics:
+            try:
+                value = float(metrics[name])
+                m_vals.append(value)
+                available_metrics.append((i, name, value))
+            except (ValueError, TypeError):
+                log.warning(f"⚠️  Metric '{name}' has non-float value: {metrics[name]} - using 0.0")
+                m_vals.append(0.0)
+                missing_metrics.append(name)
+        else:
+            m_vals.append(0.0)
+            missing_metrics.append(name)
+    
+    m_feats = np.asarray(m_vals, dtype=np.float32)
+    
+    # Log detailed metrics information
+    log.debug(f"📈 Dynamic metrics: {len(available_metrics)} available, {len(missing_metrics)} missing")
+    
+    if available_metrics:
+        # Log first few available metrics for debugging
+        sample_metrics = available_metrics[:3]
+        sample_str = ", ".join([f"{name}={value:.3f}" for _, name, value in sample_metrics])
+        log.debug(f"🔢 Sample available metrics: {sample_str}")
+        
+        # Log statistics of available metrics
+        if available_metrics:
+            available_values = [val for _, _, val in available_metrics]
+            log.debug(f"📊 Available metrics stats: min={min(available_values):.3f}, "
+                     f"max={max(available_values):.3f}, mean={np.mean(available_values):.3f}")
+    
+    if missing_metrics:
+        log.debug(f"❌ Missing metrics ({len(missing_metrics)}): {missing_metrics[:5]}{'...' if len(missing_metrics) > 5 else ''}")
+        if len(missing_metrics) > 10:
+            log.debug(f"   ... and {len(missing_metrics) - 5} more missing metrics")
+
+    # 3) Concatenate → [8 + N]
+    log.debug("🔗 Concatenating VisiCalc and dynamic metrics...")
+    try:
+        combined_features = np.concatenate([v_feats, m_feats], axis=-1)
+        
+        duration = (datetime.now() - start_time).total_seconds()
+        log.debug(f"✅ Feature vector built successfully in {duration:.3f}s")
+        log.debug(f"📐 Final feature vector: shape={combined_features.shape}, "
+                 f"dtype={combined_features.dtype}")
+        log.debug(f"📊 Combined stats: min={combined_features.min():.3f}, "
+                 f"max={combined_features.max():.3f}, mean={combined_features.mean():.3f}")
+        
+        # Log feature composition
+        log.debug(f"🧩 Feature composition: {v_feats.shape[0]} VisiCalc + {m_feats.shape[0]} dynamic = {combined_features.shape[0]} total")
+        
+        return combined_features
+        
+    except Exception as e:
+        log.error(f"❌ Failed to concatenate features: {e}")
+        log.error(f"   VisiCalc features shape: {v_feats.shape}, dtype: {v_feats.dtype}")
+        log.error(f"   Dynamic features shape: {m_feats.shape}, dtype: {m_feats.dtype}")
+        raise
+
+
+def build_dynamic_feature_vectors_batch(
+    visicalc_reports: List[dict],
+    metrics_list: List[Dict[str, float]],
+    metric_names: List[str], 
+    problem_ids: Optional[List[str]] = None
+) -> np.ndarray:
+    """
+    Build dynamic feature vectors for a batch of examples.
+    
+    Args:
+        visicalc_reports: List of VisiCalc report dicts
+        metrics_list: List of metric dictionaries
+        metric_names: Ordered list of metric keys
+        problem_ids: Optional list of problem identifiers for logging
+        
+    Returns:
+        np.ndarray: Batch of feature vectors [batch_size, 8 + len(metric_names)]
+    """
+    log.info(f"🏭 Building batch of {len(visicalc_reports)} dynamic feature vectors")
+    log.info(f"🎯 Using {len(metric_names)} core metrics")
+    
+    if problem_ids is None:
+        problem_ids = [f"example_{i}" for i in range(len(visicalc_reports))]
+    
+    if len(visicalc_reports) != len(metrics_list):
+        log.error(f"❌ Mismatched batch sizes: {len(visicalc_reports)} reports vs {len(metrics_list)} metrics")
+        raise ValueError("visicalc_reports and metrics_list must have same length")
+    
+    if len(visicalc_reports) != len(problem_ids):
+        log.error(f"❌ Mismatched batch sizes: {len(visicalc_reports)} reports vs {len(problem_ids)} problem_ids")
+        raise ValueError("visicalc_reports and problem_ids must have same length")
+    
+    batch_features = []
+    successful = 0
+    failed = 0
+    
+    for i, (report, metrics, problem_id) in enumerate(zip(visicalc_reports, metrics_list, problem_ids)):
+        try:
+            features = build_dynamic_feature_vector(
+                visicalc_report=report,
+                metrics=metrics,
+                metric_names=metric_names,
+                problem_id=problem_id
+            )
+            batch_features.append(features)
+            successful += 1
+            
+            # Log progress for large batches
+            if (i + 1) % 50 == 0:
+                log.info(f"📦 Processed {i + 1}/{len(visicalc_reports)} examples")
+                
+        except Exception as e:
+            log.error(f"❌ Failed to build features for {problem_id}: {e}")
+            failed += 1
+            # Create zero vector as fallback
+            fallback_features = np.zeros(8 + len(metric_names), dtype=np.float32)
+            batch_features.append(fallback_features)
+    
+    if batch_features:
+        batch_array = np.stack(batch_features, axis=0)
+        log.info(f"✅ Batch feature construction complete: {successful} successful, {failed} failed")
+        log.info(f"📦 Final batch shape: {batch_array.shape}")
+        log.info(f"📊 Batch stats - min: {batch_array.min():.3f}, max: {batch_array.max():.3f}, "
+                f"mean: {batch_array.mean():.3f}, std: {batch_array.std():.3f}")
+        return batch_array
+    else:
+        log.error("❌ No features were successfully built")
+        raise ValueError("Failed to build any feature vectors")
+
+
+def validate_core_metrics_coverage(
+    metrics_list: List[Dict[str, float]],
+    metric_names: List[str],
+    sample_size: int = 10
+) -> Dict[str, float]:
+    """
+    Validate how many core metrics are actually available in the data.
+    
+    Returns coverage statistics for debugging data quality issues.
+    """
+    log.info("🔍 Validating core metrics coverage in dataset...")
+    
+    if not metrics_list:
+        log.warning("⚠️  No metrics data provided for validation")
+        return {}
+    
+    # Sample a subset for analysis
+    sample_metrics = metrics_list[:sample_size] if len(metrics_list) > sample_size else metrics_list
+    
+    coverage_stats = {}
+    total_possible = len(metric_names) * len(sample_metrics)
+    total_found = 0
+    
+    for metric_name in metric_names:
+        metric_found = 0
+        for metrics_dict in sample_metrics:
+            if metric_name in metrics_dict:
+                try:
+                    float(metrics_dict[metric_name])
+                    metric_found += 1
+                    total_found += 1
+                except (ValueError, TypeError):
+                    pass
+        
+        coverage = metric_found / len(sample_metrics)
+        coverage_stats[metric_name] = coverage
+        
+        if coverage < 0.5:
+            log.debug(f"⚠️  Low coverage for {metric_name}: {coverage:.1%}")
+    
+    overall_coverage = total_found / total_possible if total_possible > 0 else 0
+    log.info(f"📊 Core metrics coverage: {overall_coverage:.1%} "
+            f"({total_found}/{total_possible} expected metrics found)")
+    
+    # Log best and worst covered metrics
+    if coverage_stats:
+        sorted_coverage = sorted(coverage_stats.items(), key=lambda x: x[1], reverse=True)
+        best_metrics = sorted_coverage[:3]
+        worst_metrics = sorted_coverage[-3:] if len(sorted_coverage) >= 3 else sorted_coverage
+        
+        log.info(f"🏆 Best covered metrics: {', '.join([f'{name}({cov:.1%})' for name, cov in best_metrics])}")
+        log.info(f"🔻 Worst covered metrics: {', '.join([f'{name}({cov:.1%})' for name, cov in worst_metrics])}")
+    
+    return coverage_stats
+
+
+def extract_tiny_features(report):
+    # 1. Overall stability (less variation = better)
+    region_values = [region["mean_frontier_value"] for region in report["regions"]]
+    stability = np.std(region_values)
+    
+    # 2. Middle region dip (more negative = worse)
+    middle_dip = region_values[2] - min(region_values[0], region_values[3])
+    
+    # 3. Standard deviation (lower = better consistency)
+    std_dev = report["global"]["std"]
+    
+    # 4. Sparsity (lower = more meaningful signal)
+    sparsity = report["global"]["sparsity_level_e3"]
+    
+    # 5. Entropy (higher = more diverse reasoning)
+    entropy = report["global"]["entropy"]
+    
+    # 6. Trend pattern (positive = improving)
+    trend = region_values[-1] - region_values[0]
+    
+    # 7. Mid-bad ratio (how much worse is middle vs average)
+    mid_bad_ratio = region_values[2] / np.mean(region_values)
+    
+    # 8. Frontier band utilization (even if 0, the pattern matters)
+    frontier_util = report["global"]["frontier_frac"]
+    
+    return np.array([stability, middle_dip, std_dev, sparsity, 
+                    entropy, trend, mid_bad_ratio, frontier_util])
+
+==================================================
+FILE: feature\embedding_feature.py
+==================================================
+
+# stephanie/scoring/metrics/feature/embedding_feature.py
+from __future__ import annotations
+
+from stephanie.scoring.metrics.feature.base_feature import BaseFeature
+from stephanie.tools.embedding_tool import EmbeddingTool
+
+
+class EmbeddingFeature(BaseFeature):
+    name = "embedding"
+
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
+        self.tool = EmbeddingTool(cfg, memory, container, logger)
+
+    async def apply(self, scorable, context):
+        return await self.tool.apply(scorable, context)
+
+
+==================================================
+FILE: feature\feature_report.py
+==================================================
+
+# stephanie/scoring/metrics/feature/feature_report.py
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Any, Dict, List
+
+
+@dataclass
+class FeatureReport:
+    name: str
+    kind: str                  # "row" | "group"
+    ok: bool
+    quality: float | None = None
+    summary: str = ""
+    details: Dict[str, Any] = field(default_factory=dict)
+    warnings: List[str] = field(default_factory=list)
+
+
+==================================================
+FILE: feature\frontier_lens_feature.py
+==================================================
+
+# stephanie/scoring/metrics/feature/frontier_lens_feature.py
+from __future__ import annotations
+
+import logging
+from typing import Any, Dict
+
+from stephanie.scoring.metrics.feature.base_feature import BaseFeature
+from stephanie.tools.frontier_lens_tool import FrontierLensTool
+
+log = logging.getLogger(__name__)
+
+
+class FrontierLensFeature(BaseFeature):
+    """
+    Lightweight per-row FrontierLens feature.
+
+    Runs AFTER metrics are computed and attaches a small summary:
+        - frontier_lens_report  (frontier metric + value + metric count)
+
+    Full episode-level FrontierLens analysis (report + features + VPM)
+    is handled by FrontierLensGroupFeature or by dedicated Critic/Nexus
+    agents using FrontierLensTool.apply_rows().
+    """
+
+    # New, stable name for config + registry
+    name = "frontier_lens_basic"
+
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
+        self.tool = FrontierLensTool(cfg, memory, container, logger)
+        self.enabled = bool(cfg.get("enabled", True))
+
+    async def apply(
+        self,
+        scorable,
+        acc: Dict[str, Any],
+        context: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """
+        Expects:
+            acc["metrics_columns"]
+            acc["metrics_values"]
+
+        Produces (if metrics exist):
+            acc["frontier_lens_report"] : Dict[str, Any]
+        """
+        if not self.enabled:
+            return acc
+
+        cols = acc.get("metrics_columns") or []
+        vals = acc.get("metrics_values") or []
+
+        if not cols or not vals:
+            log.debug("[FrontierLensFeature] no metrics for row; skipping")
+            return acc
+
+        # Delegate to the tool’s per-row FrontierLens summary
+        acc = await self.tool.apply(scorable, acc, context)
+        return acc
+
+
+==================================================
+FILE: feature\frontier_lens_group_feature.py
+==================================================
+
+# stephanie/scoring/metrics/feature/frontier_lens_group_feature.py
+from __future__ import annotations
+
+import logging
+from typing import Any, Dict, List
+
+import numpy as np
+
+from stephanie.scoring.metrics.feature.base_group_feature import \
+    BaseGroupFeature
+from stephanie.tools.frontier_lens_tool import FrontierLensTool
+
+log = logging.getLogger(__name__)
+
+
+class FrontierLensGroupFeature(BaseGroupFeature):
+    """
+    Batch FrontierLens feature.
+
+    - Consumes rows with metrics_columns / metrics_values
+    - Runs FrontierLensTool.apply_rows() once per batch
+    - Attaches a shared 'frontier_lens_report' and (optionally) the
+      global FrontierLens feature vector to each row.
+    """
+
+    name = "frontier_lens_group"
+    requires = ["metric_filter"]  # keep the dependency ordering
+
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
+        self.tool = FrontierLensTool(cfg, memory, container, logger)
+        self.enabled = bool(self.cfg.get("enabled", True))
+        self.episode_id = self.cfg.get("episode_id", "frontier_lens:default")
+
+        # Optional: attach the same global features to each row
+        self.store_per_row_features = bool(self.cfg.get("store_per_row_features", False))
+
+        # debug/telemetry fields so .report() never crashes
+        self._quality: float | None = None
+        self._kept_cols: int = 0
+        self._rows_in: int = 0
+        self._rows_used: int = 0
+        self._error: str | None = None
+
+    async def apply(self, rows: List[Dict[str, Any]], context: Dict[str, Any]) -> List[Dict[str, Any]]:
+        if not self.enabled:
+            return rows
+
+        self._error = None
+        self._rows_in = len(rows)
+
+        if not rows:
+            return rows
+
+        # Use pipeline_run_id when available, fall back to static
+        episode_id = context.get("pipeline_run_id") or self.episode_id
+
+        try:
+            out = self.tool.apply_rows(
+                episode_id=episode_id,
+                rows=rows,
+                meta={"n_rows": len(rows)},
+            )
+        except Exception as e:
+            # Fail-closed: keep rows untouched and record why
+            self._quality = None
+            self._kept_cols = 0
+            self._rows_used = 0
+            self._error = f"{type(e).__name__}: {e}"
+            log.warning("[FrontierLensGroupFeature] skipped: %s", self._error)
+            return rows
+
+        report = out.get("report")
+        vpm = out.get("vpm")
+        feats = out.get("features")
+        names = out.get("feature_names") or []
+
+        q = out.get("quality")
+        self._quality = float(q) if isinstance(q, (int, float)) else None
+        self._kept_cols = len(names)
+        self._rows_used = int(vpm.shape[0]) if isinstance(vpm, np.ndarray) else 0
+
+        # attach per-row artifacts (lightweight)
+        rep_dict = report.to_dict() if hasattr(report, "to_dict") else (report or {})
+
+        # If we decide to expose features, it’s one global vector (3M+3),
+        # not per-row. Attach as-is or leave None.
+        if isinstance(feats, np.ndarray):
+            global_feats = feats.astype(float).tolist()
+        else:
+            global_feats = None
+
+        for r in rows:
+            r.setdefault("frontier_lens_report", rep_dict)
+            r.setdefault("frontier_lens_feature_names", names)
+            if self.store_per_row_features:
+                r.setdefault("frontier_lens_features", global_feats)
+            else:
+                r.setdefault("frontier_lens_features", None)
+
+        return rows
+
+    def report(self) -> Dict[str, Any]:
+        ok = (self._error is None) and (self._quality is None or self._quality >= 0.5)
+        return {
+            "feature": self.name,
+            "ok": ok,
+            "quality": self._quality,
+            "rows_in": self._rows_in,
+            "rows_used": self._rows_used,
+            "kept_metric_cols": self._kept_cols,
+            "error": self._error,
+            "summary": (
+                f"rows={self._rows_used}/{self._rows_in}; "
+                f"kept_cols={self._kept_cols}; quality={self._quality}"
+            ),
+        }
+
+
+==================================================
+FILE: feature\metrics_feature.py
+==================================================
+
+# stephanie/scoring/metrics/feature/metrics_feature.py
+from __future__ import annotations
+
+import asyncio
+import logging
+import time
+from typing import Any, Dict, List
+
+import numpy as np
+
+from stephanie.scoring.scorable import Scorable
+
+from .base_feature import BaseFeature
+from .feature_report import FeatureReport
+
+log = logging.getLogger(__name__)
+
+
+def _clip01(x: float) -> float:
+    try:
+        if not np.isfinite(x): return 0.0
+        if x < 0.0: return 0.0
+        if x > 1.0: return 1.0
+        return float(x)
+    except Exception:
+        return 0.0
+
+
+class _NoOpObserver:
+    def observe(self, **kwargs):  # signature match; do nothing
+        pass
+
+
+class MetricsFeature(BaseFeature):
+    """
+    Computes the canonical metrics vector for each scorable by calling ScoringService.
+
+    Populates:
+      - acc["metrics_vector"]  : Dict[str, float]
+      - acc["metrics_columns"] : List[str]
+      - acc["metrics_values"]  : List[float]
+
+    Also maintains diagnostics for .report().
+    """
+
+    name = "metrics"
+
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
+
+        # feature toggles
+        self.enabled: bool = bool(self.cfg.get("enabled", True))
+        self.attach_scores: bool = bool(self.cfg.get("attach_scores", True))
+        self.persist: bool = bool(self.cfg.get("persist", False))
+
+        # scoring scope
+        self.scorers: List[str] = list(self.cfg.get("scorers", []))
+        self.dimensions: List[str] = list(self.cfg.get("dimensions", []))
+
+        # services
+        self.scoring = container.get("scoring")  # <-- your ScoringService
+
+        # diagnostics for report() I
+        self._num_rows: int = 0
+        self._col_minmax: Dict[str, tuple[float, float]] = {}
+        self._nan_counts: Dict[str, int] = {}
+        self._sum_sq: Dict[str, float] = {}
+
+    # -------------------------------------------------------------
+    async def apply(self, scorable, acc: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
+        if not self.enabled:
+            return acc
+
+        # if already present (e.g., upstream tool), normalize + keep
+        existing = dict(acc.get("metrics_vector") or {})
+        if existing and self.attach_scores is False:
+            cols = sorted(existing.keys())
+            vals = [_clip01(float(existing[c])) for c in cols]
+            acc["metrics_vector"]  = dict(zip(cols, vals))
+            acc["metrics_columns"] = cols
+            acc["metrics_values"]  = vals
+            self._bump_diag(cols, vals)
+            return acc
+
+        # --- Primary path: use ScoringService ---
+        vector: Dict[str, float] = {}
+        if self.scoring and self.attach_scores and self.scorers:
+            t0_scores = time.perf_counter()
+            goal_text = Scorable.get_goal_text(scorable, context=context)
+            run_id = context.get("pipeline_run_id")
+            ctx = {"goal": {"goal_text": goal_text}, "pipeline_run_id": run_id}
+
+            log.debug("[MetricsFeature] score start scorers=%s dims=%s", self.scorers, self.dimensions)
+
+            for name in self.scorers:
+                t0 = time.perf_counter()
+                try:
+                    api = self.scoring.score_and_persist if self.persist else self.scoring.score
+                    bundle = api(
+                        scorer_name=name,
+                        scorable=scorable,
+                        context=ctx,
+                        dimensions=self.dimensions,
+                    )
+                    if asyncio.iscoroutine(bundle):
+                        bundle = await bundle
+
+                    # model alias + flat metrics
+                    try:
+                        model_alias = self.scoring.get_model_name(name) or name
+                    except Exception:
+                        model_alias = name
+
+                    agg = float(bundle.aggregate()) if hasattr(bundle, "aggregate") else None
+                    flat = bundle.flatten(
+                        include_scores=True,
+                        include_attributes=True,
+                        numeric_only=True,
+                    ) if hasattr(bundle, "flatten") else {}
+
+                    for k, v in flat.items():
+                        vector[f"{model_alias}.{k}"] = _clip01(float(v))
+                    if agg is not None:
+                        vector[f"{model_alias}.aggregate"] = _clip01(agg)
+
+                    log.debug(
+                        "[MetricsFeature] scorer=%s alias=%s agg=%s added=%d in %.1fms",
+                        name, model_alias, f"{agg:.4f}" if agg is not None else "na",
+                        (len(flat) + (1 if agg is not None else 0)),
+                        (time.perf_counter() - t0) * 1000.0,
+                    )
+                except Exception as e:
+                    log.warning("[MetricsFeature] scorer '%s' failed: %s", name, e)
+
+                await asyncio.sleep(0)  # cooperative yield
+
+            log.debug(
+                "[MetricsFeature] score done total_keys=%d in %.1fms",
+                len(vector), (time.perf_counter() - t0_scores) * 1000.0
+            )
+
+        # Fallback: heuristics if vector still empty (keeps pipeline alive)
+        if not vector:
+            vector = self._fallback_heuristics((scorable.text or ""))
+
+        # Deterministic ordering + stash
+        cols = sorted(vector.keys())
+        vals = [float(vector[c]) for c in cols]
+
+        acc["metrics_vector"]  = vector
+        acc["metrics_columns"] = cols
+        acc["metrics_values"]  = vals
+
+        # Diagnostics & optional observe/persist
+        self._bump_diag(cols, vals)
+
+        # try:
+        #     self.metric_observer.observe(
+        #         metrics=dict(zip(cols, vals)),
+        #         run_id=context.get("run_id", "unknown_run"),
+        #         cohort=context.get("cohort", "default"),
+        #         is_correct=(getattr(scorable, "meta", {}) or {}).get("is_correct"),
+        #     )
+        # except Exception:
+        #     pass  # never block pipeline on telemetry
+
+        return acc
+
+    # -------------------------------------------------------------
+    def report(self) -> FeatureReport:
+        if self._num_rows == 0 or not self._col_minmax:
+            return FeatureReport(
+                name=self.name, kind="row", ok=True, quality=None,
+                summary="no metrics collected yet (num_rows=0)",
+            )
+
+        total_cols = len(self._col_minmax)
+        oob = {k: (lo, hi) for k, (lo, hi) in self._col_minmax.items() if (hi > 1.001) or (lo < -0.001)}
+        nan_cols = {k: c for k, c in self._nan_counts.items() if c > 0}
+        var_proxy = {k: (s / max(self._num_rows, 1)) for k, s in self._sum_sq.items()}
+        var_top = dict(sorted(var_proxy.items(), key=lambda kv: -kv[1])[:20])
+
+        bad_cols = len(oob) + len(nan_cols)
+        quality = float(max(0.0, 1.0 - (bad_cols / max(total_cols, 1))))
+
+        return FeatureReport(
+            name=self.name,
+            kind="row",
+            ok=(bad_cols == 0),
+            quality=quality,
+            summary=f"{total_cols} metrics across {self._num_rows} rows; out_of_bounds={len(oob)}; NaN_cols={len(nan_cols)}",
+            details={
+                "out_of_bounds_examples": dict(list(oob.items())[:10]),
+                "nan_columns": nan_cols,
+                "variance_proxy_top": var_top,
+            },
+            warnings=(
+                (["Found metrics outside [0,1]"] if oob else [])
+                + (["Found NaNs in metrics"] if nan_cols else [])
+            ),
+        )
+
+    # -------------------------------------------------------------
+    # internals
+    def _fallback_heuristics(self, text: str) -> Dict[str, float]:
+        t = text.strip()
+        n_chars = len(t)
+        n_tokens = len(t.split())
+        digit_ratio = (sum(c.isdigit() for c in t) / max(n_chars, 1))
+        upper_ratio = (sum(c.isupper() for c in t) / max(n_chars, 1))
+        punct_ratio = (sum(c in ".,?!;:()[]{}\"'" for c in t) / max(n_chars, 1))
+
+        # crude entropy → squash to [0,1]
+        counts = {}
+        for c in t:
+            counts[c] = counts.get(c, 0) + 1
+        total = sum(counts.values()) or 1
+        ent = -sum((c/total) * np.log((c/total) + 1e-12) for c in counts.values())
+        ent_norm = float(np.tanh(ent / 5.0))
+
+        len_norm = float(np.tanh(n_tokens / 200.0))
+
+        return {
+            "heuristics.length.score": _clip01(len_norm),
+            "heuristics.entropy.score": _clip01(ent_norm),
+            "heuristics.digit_ratio.score": _clip01(digit_ratio),
+            "heuristics.upper_ratio.score": _clip01(upper_ratio),
+            "heuristics.punct_ratio.score": _clip01(punct_ratio),
+        }
+
+    def _bump_diag(self, cols: List[str], vals: List[float]) -> None:
+        if not cols or not vals:
+            return
+        self._num_rows += 1
+        for k, v in zip(cols, vals):
+            if v is None or not np.isfinite(v):
+                self._nan_counts[k] = self._nan_counts.get(k, 0) + 1
+                continue
+            v = float(v)
+            lo, hi = self._col_minmax.get(k, (v, v))
+            if v < lo: lo = v
+            if v > hi: hi = v
+            self._col_minmax[k] = (lo, hi)
+            self._sum_sq[k] = self._sum_sq.get(k, 0.0) + v * v
+
+
+==================================================
+FILE: feature\metric_filter_group_feature.py
+==================================================
+
+# stephanie/scoring/metrics/feature/metric_filter_group_feature.py
+from __future__ import annotations
+
+import fnmatch
+import logging
+from pathlib import Path
+from typing import Any, Dict, List
+
+import numpy as np
+
+from stephanie.constants import PIPELINE_RUN_ID
+from stephanie.scoring.metrics.core_metrics import CORE_METRIC_MAPPING
+from stephanie.scoring.metrics.feature.base_group_feature import \
+    BaseGroupFeature
+from stephanie.scoring.metrics.feature.feature_report import FeatureReport
+from stephanie.scoring.metrics.metric_filter import MetricFilter
+from stephanie.scoring.metrics.metric_filter_explain import \
+    write_metric_filter_explain
+from stephanie.utils.hash_utils import hash_list
+
+log = logging.getLogger(__name__)
+
+def _casefold(s: str) -> str:
+    return s.casefold() if hasattr(s, "casefold") else s.lower()
+
+def _match_any(name: str, patterns: List[str]) -> bool:
+    """Case-insensitive glob check."""
+    ncf = _casefold(name)
+    for p in (patterns or []):
+        if fnmatch.fnmatch(ncf, _casefold(p)):
+            return True
+    return False
+
+def _project_rows_to_names(rows: List[Dict[str, Any]], kept: List[str]) -> None:
+    """Rewrite each row to the kept column set (zeros if missing)."""
+    for r in rows:
+        cols = r.get("metrics_columns") or []
+        vals = r.get("metrics_values") or []
+        mapping = dict(zip(cols, vals)) if cols and vals else {}
+        new_vals = [float(mapping.get(k, 0.0)) for k in kept]
+        r["metrics_columns"] = list(kept)
+        r["metrics_values"] = new_vals
+        r["metrics_vector"] = {k: v for k, v in zip(kept, new_vals)}
+
+class MetricFilterGroupFeature(BaseGroupFeature):
+    name = "metric_filter"
+    requires: list[str] = []
+
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
+
+        self.filter = MetricFilter(
+            k=int(cfg.get("top_k", 100)),
+            dup_threshold=float(cfg.get("dup_threshold", 0.995)),
+            min_variance=float(cfg.get("min_variance", 1e-8)),
+            normalize=bool(cfg.get("normalize", True)),
+            include_patterns=list(cfg.get("include", []) or []),
+            exclude_patterns=list(cfg.get("exclude", []) or []),
+            alias_strip=bool(cfg.get("alias_strip", True)),
+        )
+
+        # Behavior knobs
+        self.short_circuit_if_locked = bool(cfg.get("short_circuit_if_locked", True))
+        self.always_include: List[str] = list(cfg.get("always_include", []) or [])
+
+        # Optional “core” visicalc columns you always want present
+        if cfg.get("include_visicalc_core", False):
+            core = list(cfg.get("visicalc_core_names", []) or [])
+            # common default if none provided
+            if not core:
+                core = [
+                    "frontier_util","stability","middle_dip","std_dev",
+                    "sparsity","entropy","trend","HRM.aggregate"
+                ]
+            # Ensure we're using canonical names
+            core = [CORE_METRIC_MAPPING.get(name.lower(), name) for name in core]
+            self.always_include.extend([c for c in core if c not in self.always_include])
+
+
+        # Internal
+        self._last_summary: Dict[str, Any] | None = None
+        self._last_selected: List[str] | None = None
+
+    # ---------- Main ----------
+    async def apply(self, rows: list[dict], context: dict) -> list[dict]:
+        if not self.enabled or not rows:
+            return rows
+
+        run_id = context.get(PIPELINE_RUN_ID)
+        run_dir = Path(context.get("run_dir") or f"runs/critic/{run_id}")
+        run_dir.mkdir(parents=True, exist_ok=True)
+
+        # (A) Short-circuit if kept already locked in DB
+        if self.short_circuit_if_locked and getattr(self.memory, "metrics", None):
+            try:
+                kept_locked = self.memory.metrics.get_kept_columns(run_id)
+            except Exception:
+                kept_locked = None
+            if kept_locked:
+                log.info("[MetricFilterGroupFeature] short-circuit: using DB-locked %d kept columns", len(kept_locked))
+                _project_rows_to_names(rows, kept_locked)
+                dig = hash_list(kept_locked)
+                summary = {
+                    "status": "short_circuit",
+                    "reason": "DB-locked kept columns found",
+                    "kept_count": len(kept_locked),
+                    "kept_digest": dig,
+                    "source": "MetricStore.get_kept_columns",
+                }
+                self._last_summary = summary
+                self._last_selected = list(kept_locked)
+                self._persist_summary(context, summary, kept_locked)
+                # still write lock file for reproducibility
+                (run_dir / "kept_features.txt").write_text("\n".join(kept_locked), encoding="utf-8")
+                return rows
+
+        # (B) Build column universe
+        all_cols: list[str] = []
+        for r in rows:
+            cols = r.get("metrics_columns") or []
+            if cols:
+                all_cols.extend(cols)
+        if not all_cols:
+            summary = {
+                "status": "no_cols",
+                "reason": "no metric columns present on any row",
+                "total_rows": len(rows),
+            }
+            context["metric_filter_summary"] = summary
+            self._last_summary = summary
+            self._persist_summary(context, summary, kept=None)
+            return rows
+
+        uniq_cols = list(dict.fromkeys(all_cols))
+        name_to_idx = {n: i for i, n in enumerate(uniq_cols)}
+        X = np.asarray(
+            [[float(dict(zip(r.get("metrics_columns") or [], r.get("metrics_values") or [])).get(n, 0.0)) for n in uniq_cols]
+             for r in rows],
+            dtype=np.float32
+        )
+
+        names_union = list(uniq_cols)
+        # keep original X (pre-selection) for diagnostics
+        X_union = X.copy()
+
+        # (C) Pre-diagnostics for pattern filters (case-insensitive)
+        include_pats = list(self.filter.include_patterns or [])
+        exclude_pats = list(self.filter.exclude_patterns or [])
+        dropped_by_exclude = [n for n in uniq_cols if _match_any(n, exclude_pats)]
+        # If include_patterns specified, anything not matching include is at-risk
+        if include_pats:
+            not_included = [n for n in uniq_cols if not _match_any(n, include_pats)]
+        else:
+            not_included = []
+        pattern_drops_preview = {
+            "would_drop_by_exclude": dropped_by_exclude[:20],
+            "would_drop_by_not_included": not_included[:20],
+            "counts": {
+                "exclude_hits": len(dropped_by_exclude),
+                "not_included": len(not_included),
+            },
+            "patterns": {
+                "include": include_pats,
+                "exclude": exclude_pats,
+            }
+        }
+
+        # (D) Resolve always-include/core metrics against the universe
+        core_names = self._resolve_always_include(uniq_cols)
+        core_set = set(core_names)
+
+        # (E) Run the metric filter selection on NON-core columns only
+        candidate_cols = [n for n in uniq_cols if n not in core_set]
+        selected_names: List[str] = []
+        if candidate_cols:
+            # Build candidate matrix
+            cand_idx = [name_to_idx[n] for n in candidate_cols]
+            X_cand = X[:, cand_idx]
+
+            keep_mask, selected_subset = self.filter.select(
+                candidate_cols, X_cand, labels=context.get("labels")
+            )
+            # ensure list
+            selected_names = list(selected_subset or [])
+        else:
+            keep_mask = None
+            selected_names = []
+
+        # (F) If everything got dropped, fall back gracefully
+        if not core_names and not selected_names:
+            log.warning(
+                "[MetricFilterGroupFeature] selection empty; falling back to all columns"
+            )
+            selected_names = list(uniq_cols)
+
+        # (G) Compose final kept set: core first, then filtered candidates
+        final_selected = core_names + [n for n in selected_names if n not in core_set]
+
+        # Track which came from always_include for the summary
+        forced_in = [n for n in core_names if n not in candidate_cols]
+        if not forced_in and core_names:
+            # core_names were present in candidate_cols but bypassed the filter by design,
+            # so treat them as forced as well.
+            forced_in = list(core_names)
+
+        # (H) Categorize drops for the report
+        selected_set = set(final_selected)
+        actually_dropped = [n for n in uniq_cols if n not in selected_set]
+
+        dropped_by_pattern = [n for n in actually_dropped if (_match_any(n, exclude_pats) or (include_pats and not _match_any(n, include_pats)))]
+        dropped_by_simvar = [n for n in actually_dropped if n not in dropped_by_pattern]
+
+        # (I) Project rows and persist locks + summary
+        _project_rows_to_names(rows, final_selected)
+
+        # (J) Write lock file
+        (run_dir / "kept_features.txt").write_text("\n".join(final_selected), encoding="utf-8")
+
+        digest = hash_list(final_selected)
+        summary = {
+            "status": "ok",
+            "kept_count": len(final_selected),
+            "total_raw": len(uniq_cols),
+            "kept_digest": digest,
+            "forced_in": forced_in[:20],
+            "drops": {
+                "pattern": {
+                    "count": len(dropped_by_pattern),
+                    "examples": dropped_by_pattern[:20],
+                    "patterns": {"include": include_pats, "exclude": exclude_pats},
+                    "preview_counts": pattern_drops_preview["counts"],
+                },
+                "similarity_or_variance": {
+                    "count": len(dropped_by_simvar),
+                    "examples": dropped_by_simvar[:20],
+                },
+            },
+            "samples": {
+                "kept_head": final_selected[:20],
+                "raw_head": uniq_cols[:20],
+            },
+        }
+        self._last_summary = summary
+        self._last_selected = list(final_selected)
+
+        # (K) Persist to MetricStore
+        self._persist_summary(context, summary, kept=final_selected)
+
+        log.info("[MetricFilterGroupFeature] kept %d of %d metrics (forced +%d) digest=%s",
+                 summary["kept_count"], summary["total_raw"], len(forced_in), digest)
+
+
+        # (L) Write detailed explain report (MD + CSV + quick figs)
+        try:
+            # ---- Build diagnostics with safe fallbacks ----
+            # union of columns seen pre-filter
+            names_union = list(uniq_cols)
+
+            # labels (optional supervision)
+            labels = context.get("labels")
+
+            # Attempt to pull diagnostics from MetricFilter, else fall back
+            # dup_pairs: List[Tuple[kept_name, dropped_name, similarity]]
+            dup_pairs = []
+            if hasattr(self.filter, "last_dup_pairs") and self.filter.last_dup_pairs:
+                dup_pairs = list(self.filter.last_dup_pairs)
+
+            # indices of columns in names_union flagged as non-finite / low variance
+            nonfinite_idx = []
+            if hasattr(self.filter, "last_nonfinite_idx") and self.filter.last_nonfinite_idx is not None:
+                nonfinite_idx = list(self.filter.last_nonfinite_idx)
+
+            lowvar_idx = []
+            if hasattr(self.filter, "last_lowvar_idx") and self.filter.last_lowvar_idx is not None:
+                lowvar_idx = list(self.filter.last_lowvar_idx)
+
+            # rank method (string label for the report)
+            rank_method = getattr(self.filter, "rank_method", "variance+similarity")
+
+            # whether normalization was used
+            normalize_used = bool(getattr(self.filter, "normalize", True))
+
+            # always-include list if you wired it on the feature (optional)
+            always_include = list(getattr(self, "always_include", []) or [])
+
+            # snapshot the filter config for reproducibility
+            cfg_snapshot = {
+                "k": getattr(self.filter, "k", None),
+                "dup_threshold": getattr(self.filter, "dup_threshold", None),
+                "min_variance": getattr(self.filter, "min_variance", None),
+                "normalize": normalize_used,
+                "include": list(getattr(self.filter, "include_patterns", []) or []),
+                "exclude": list(getattr(self.filter, "exclude_patterns", []) or []),
+                "alias_strip": getattr(self.filter, "alias_strip", True),
+                "rank_method": rank_method,
+            }
+
+            write_metric_filter_explain(
+                run_dir=run_dir,
+                names_union=names_union,
+                rows=rows,                              # current (post-application) rows are fine: we rebuild union X inside writer
+                kept_names=list(final_selected),
+                dup_pairs=list(dup_pairs),
+                nonfinite_idx=list(nonfinite_idx),
+                lowvar_idx=list(lowvar_idx),
+                labels=labels,
+                normalize_used=normalize_used,
+                rank_method=str(rank_method),
+                cfg_snapshot=cfg_snapshot,
+                md_filename="metric_filter_explain.md",
+                csv_filename="metric_filter_explain.csv",
+                always_include=always_include,
+            )
+        except Exception as e:
+            log.warning("[MetricFilterGroupFeature] explain writer failed: %s", e)
+
+        return rows
+
+    # ---------- Persistence ----------
+    def _persist_summary(self, context: dict, summary: dict, kept: List[str] | None) -> None:
+        try:
+            run_id = context.get("pipeline_run_id", "unknown")
+            patch = {"metric_filter_summary": summary}
+            if kept is not None:
+                patch["metric_filter"] = {
+                    "kept_columns": list(kept),
+                    "n_kept": len(kept),
+                    "kept_digest": hash_list(kept),
+                }
+            self.memory.metrics.upsert_group_meta(run_id=run_id, patch=patch)
+        except Exception as e:
+            self._warn(f"[MetricFilterGroupFeature] persist skipped: {e}")
+
+    # ---------- Feature report hook ----------
+    def report(self) -> FeatureReport:
+        if not self._last_summary:
+            return FeatureReport(
+                name=self.name, kind="group", ok=True, quality=None,
+                summary="no-op", details={}, warnings=[]
+            )
+        kept = self._last_summary.get("kept_count", 0)
+        total = self._last_summary.get("total_raw", 0)
+        quality = float(kept / max(total, 1)) if total else None
+        ok = kept > 0
+        return FeatureReport(
+            name=self.name,
+            kind="group",
+            ok=ok,
+            quality=quality,
+            summary=f"kept {kept} of {total} metrics; digest={self._last_summary.get('kept_digest')}",
+            details=self._last_summary,
+            warnings=[],
+        )
+
+    def _strip_alias(self, name: str) -> str:
+        """
+        Alias-stripping logic consistent with MetricFilter.alias_strip:
+        'Visi.frontier_util' -> 'frontier_util'
+        """
+        return name.split(".", 1)[1] if "." in name else name
+
+    def _resolve_always_include(self, names_union: List[str]) -> List[str]:
+        """
+        Map self.always_include (which may be bare names or alias-prefixed)
+        to actual column names present in names_union.
+
+        - If an entry already exists in names_union, use it.
+        - Else try to match by alias-stripped stem.
+        - Log a warning for anything that can't be resolved.
+        """
+        if not self.always_include:
+            return []
+
+        union_set = set(names_union)
+
+        # Build stem -> [full names] index from the universe
+        stem_to_full: Dict[str, List[str]] = {}
+        for n in names_union:
+            stem = self._strip_alias(n).casefold()
+            stem_to_full.setdefault(stem, []).append(n)
+
+        resolved: List[str] = []
+        for raw in self.always_include:
+            # 1) Exact match
+            if raw in union_set:
+                resolved.append(raw)
+                continue
+
+            # 2) Match by stem
+            stem = self._strip_alias(raw).casefold()
+            candidates = stem_to_full.get(stem)
+            if candidates:
+                # Pick a stable representative (first occurrence)
+                resolved.append(candidates[0])
+            else:
+                log.warning(
+                    "[MetricFilterGroupFeature] always_include '%s' not found in metric universe",
+                    raw,
+                )
+
+        # De-duplicate while preserving order
+        seen: set[str] = set()
+        out: List[str] = []
+        for n in resolved:
+            if n not in seen:
+                seen.add(n)
+                out.append(n)
+        return out
+
+    def _order_core_first(self, selected_names: List[str], core_names: List[str]) -> List[str]:
+        """
+        Ensure core_names appear first (in the order given), and preserve
+        the relative ordering of the remaining names.
+        """
+        core_set = set(core_names)
+        core_block: List[str] = []
+        other_block: List[str] = []
+
+        for n in selected_names:
+            if n in core_set:
+                core_block.append(n)
+            else:
+                other_block.append(n)
+
+        # Make sure any core_names not in selected_names (but resolved from universe)
+        # are still included at the very front, in the order of core_names.
+        final_core: List[str] = []
+        seen = set()
+        for n in core_names:
+            if n not in seen:
+                seen.add(n)
+                final_core.append(n)
+        # Now merge with any that came from selected_names but weren't in core_names order
+        for n in core_block:
+            if n not in seen:
+                seen.add(n)
+                final_core.append(n)
+
+        return final_core + [n for n in other_block if n not in seen]
+
+
+==================================================
+FILE: feature\ner_feature.py
+==================================================
+
+# stephanie/scoring/metrics/feature/ner_feature.py
+from __future__ import annotations
+
+from stephanie.scoring.metrics.feature.base_feature import BaseFeature
+from stephanie.tools.ner_tool import NerTool
+
+
+class NerFeature(BaseFeature):
+    name = "ner"
+
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
+        self.tool = NerTool(cfg, memory, container, logger)
+
+    async def apply(self, scorable, context):
+        return await self.tool.apply(scorable, context)
+
+
+==================================================
+FILE: feature\section_summarization_feature.py
+==================================================
+
+from stephanie.scoring.metrics.feature.base_feature import BaseFeature
+from stephanie.tools.summarization_tool import SummarizationTool
+
+
+class SectionSummarizationFeature(BaseFeature):
+    name = "section_summarizer"
+
+    def __init__(self, cfg, memory, container, logger):
+        self.summarizer = SummarizationTool(
+            cfg["tools"]["section_summarizer"],
+            memory,
+            container,
+            logger,
+        )
+
+    async def process_section(self, scorable, context):
+        scorable = await self.summarizer.apply(scorable, context)
+        return scorable
+
+
+==================================================
+FILE: feature\text_feature.py
+==================================================
+
+# stephanie/scoring/metrics/feature/text_feature.py
+from __future__ import annotations
+
+from stephanie.scoring.metrics.feature.base_feature import BaseFeature
+from stephanie.tools.text_tool import TextTool
+
+
+class TextFeature(BaseFeature):
+    """
+    Wraps TextTool as a ScorableProcessor Feature.
+    
+    Produces:
+        acc["text_features"] = { ... computed text statistics ... }
+    """
+
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
+        self.enabled = bool(cfg.get("enabled", True))
+
+        # TextTool already handles entropy/sentence toggles.
+        self.tool = TextTool(cfg, memory, container, logger)
+
+    async def apply(self, scorable, acc: dict, context: dict):
+        if not self.enabled:
+            return acc
+
+        # Use TextTool.apply, which updates scorable.meta
+        sc_after = await self.tool.apply(scorable, context)
+
+        # Extract & copy meta → attach to acc
+        stats = sc_after.meta.get("text_stats")
+        if stats:
+            acc["text_features"] = dict(stats)
+
+        return acc
+
+
+==================================================
+FILE: feature\vpm_feature.py
+==================================================
+
+# stephanie/scoring/metrics/feature/vpm_feature.py
+from __future__ import annotations
+
+import logging
+from typing import Any, Dict
+
+from stephanie.scoring.metrics.feature.base_feature import BaseFeature
+from stephanie.tools.vpm_tool import VpmTool
+
+log = logging.getLogger(__name__)
+
+
+class VpmFeature(BaseFeature):
+    name = "vpm"
+
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
+        self.tool = VpmTool(cfg, memory, container, logger)
+
+    async def apply(
+        self,
+        scorable,
+        context: Dict[str, Any],
+    ):
+        # VPM depends on metrics stored in acc
+        metrics_columns = scorable.meta.get("metrics_columns") or []
+        metrics_values = scorable.meta.get("metrics_values") or []
+
+        out = await self.tool.apply(
+            scorable,
+            metrics_columns=metrics_columns,
+            metrics_values=metrics_values,
+        )
+        scorable.meta.update(out)
+        return scorable
+

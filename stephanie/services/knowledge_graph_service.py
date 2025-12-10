@@ -94,6 +94,7 @@ class KnowledgeGraphService(Service):
         self.max_entities_per_section = int(
             kg_cfg.get("max_entities_per_section", 128)
         )
+        self.nexus_run_id = kg_cfg.get("nexus_run_id", "kg_live")
 
         # (if you didn’t add these earlier, include them now too)
         self.min_claim_len = int(kg_cfg.get("min_claim_len", 30))
@@ -125,6 +126,8 @@ class KnowledgeGraphService(Service):
             "cache_hits": 0,
             "cache_misses": 0,
         }
+
+
 
     @property
     def name(self) -> str:
@@ -796,16 +799,18 @@ class KnowledgeGraphService(Service):
         (InformationGraphBuilder, future wiki/encyclopedia builders, etc.).
 
         Semantics (for now):
-          - If a node with this node_id already exists in the backing index
+        - If a node with this node_id already exists in the backing index
             (as per metadata), do nothing.
-          - Otherwise, embed a representative text field and add a new node.
+        - Otherwise, embed a representative text field and add a new node.
 
         `properties` is a loose bag of metadata; we store it under
         `properties` in the index metadata so you can evolve this over time.
         """
         try:
             if self._graph.has_metadata(node_id):
-                return
+                # Even if the HNSW node exists, we still want Nexus to be up-to-date,
+                # so don't early-return until after we mirror below if needed.
+                pass
 
             # Choose a representative text field for embedding
             text = (
@@ -846,6 +851,45 @@ class KnowledgeGraphService(Service):
 
             self._stats["total_nodes"] += 1
             self._track_node_stats(base_meta["type"])
+
+            # --- NEW: mirror this node into Nexus via the store ---
+            try:
+                # Node identity / type
+                node_type = base_meta["type"]
+                name = text
+
+                # Domains & entities if present
+                domains = base_meta.get("domains") or []
+                entities = base_meta.get("entities") or []
+
+                # Meta: keep the full property bag
+                payload = {
+                    "domains": domains,
+                    "entities": entities,
+                    "meta": {
+                        "properties": properties,
+                    },
+                }
+
+                # Allow callers to tell us which scorables this node came from
+                source_ids: List[str] = []
+                sid = properties.get("scorable_id")
+                if sid:
+                    source_ids.append(str(sid))
+                for sid in properties.get("source_ids", []):
+                    s_str = str(sid)
+                    if s_str not in source_ids:
+                        source_ids.append(s_str)
+
+                self.nexus_store.create_or_update_node(
+                    node_id=node_id,
+                    name=name,
+                    node_type=node_type,
+                    payload=payload,
+                    source_ids=source_ids,
+                )
+            except Exception:
+                log.exception("KnowledgeGraphNodeUpsertError (nexus mirror) node id %s", node_id)
 
         except Exception as e:
             log.warning(
@@ -1292,9 +1336,9 @@ class KnowledgeGraphService(Service):
         (InformationGraphBuilder, future encyclopedia/wiki builders, etc.).
 
         Semantics (for now):
-          - Append an edge record to the relationships JSONL, same as
+        - Append an edge record to the relationships JSONL, same as
             _add_relationship, but allow arbitrary metadata via `properties`.
-          - If `properties` includes `confidence`, it is used; otherwise
+        - If `properties` includes `confidence`, it is used; otherwise
             we default to 0.9.
 
         This does NOT currently deduplicate edges; if you call it multiple
@@ -1320,7 +1364,7 @@ class KnowledgeGraphService(Service):
                 rel[k] = v
 
         try:
-            # persist to the same JSONL file as other relationships
+            # --- Legacy JSONL persistence (keeps old tooling working) ---
             with open(self._rel_path, "a", encoding="utf-8") as f:
                 f.write(json.dumps(rel) + "\n")
 
@@ -1329,6 +1373,32 @@ class KnowledgeGraphService(Service):
 
             self._stats["total_edges"] += 1
             self._track_edge_stats(rel_type)
+
+            # --- NEW: Mirror into Nexus edges via the store ---
+            try:
+                if self.nexus_store:
+                    # All non-confidence properties become 'channels' on the edge
+                    channels = dict(properties)
+                    channels.pop("confidence", None)
+
+                    self.nexus_store.write_edges(
+                        run_id=self.nexus_run_id,
+                        edges=[
+                            {
+                                "src": source_id,
+                                "dst": target_id,
+                                "type": rel_type,
+                                "weight": confidence,
+                                "channels": channels,
+                            }
+                        ],
+                    )
+            except Exception:
+                log.exception(
+                    "KnowledgeGraphEdgeUpsertError (nexus mirror) source_id %s target_id %s",
+                    source_id,
+                    target_id,
+                )
 
         except Exception as e:
             log.error(

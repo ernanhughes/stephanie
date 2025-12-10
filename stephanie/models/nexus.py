@@ -142,7 +142,7 @@ class NexusEdgeORM(Base):
 # --- Pulse ------------------------------------------------------------------
 
 class NexusPulseORM(Base):
-    __tablename__ = " You sure she doesn't need to take a the dog yeah she might need to take a **** she might have taken **** because she's expecting to go out Yeah she she she stores up her **** for a walks right well I gotta grace he's in the bathtub Put her out the back she she needs All right I'll put her at the back yeah OK So I've been spelling there is unreal"
+    __tablename__ = "nexus_pulse"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     ts = Column(DateTime, default=datetime.utcnow, index=True)

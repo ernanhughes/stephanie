@@ -392,3 +392,25 @@ class NexusStore(BaseSQLAlchemyStore):
             return result
 
         return self._run(op)
+
+
+    def list_edges_for_node(
+        self,
+        run_id: str,
+        node_id: str,
+        *,
+        limit: int = 1000,
+    ) -> List[NexusEdgeORM]:
+        """
+        Return edges where this node appears as either src or dst.
+        """
+        def op(s: Session):
+            q = s.query(NexusEdgeORM).filter(
+                and_(
+                    NexusEdgeORM.run_id == run_id,
+                    or_(NexusEdgeORM.src == node_id, NexusEdgeORM.dst == node_id),
+                )
+            )
+            return q.order_by(desc(NexusEdgeORM.created_ts)).limit(limit).all()
+
+        return self._run(op) or []

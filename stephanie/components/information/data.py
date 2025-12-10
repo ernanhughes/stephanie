@@ -163,3 +163,20 @@ class ConceptCluster:
     score: float = 1.0
     label: Optional[str] = None
     meta: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class SectionNodePayload:
+    """
+    Minimal payload for inserting a document section into Nexus as a node.
+    This is what your Information pipeline will produce.
+    """
+    id: str                 # stable scorable_id
+    text: str
+    target_type: str        # e.g. "paper_section"
+    paper_id: Optional[str] = None
+    section_path: Optional[str] = None  # like "1/1.2/1.2.3"
+    domains: List[Any] = field(default_factory=list)
+    entities: List[Any] = field(default_factory=list)
+    dims: Dict[str, float] = field(default_factory=dict)   # metrics vector
+    meta: Dict[str, Any] = field(default_factory=dict)
