@@ -1,7 +1,6 @@
 # stephanie/memory/casebook_store.py
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 import uuid

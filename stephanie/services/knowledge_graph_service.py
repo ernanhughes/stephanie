@@ -14,6 +14,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 import torch
 
+from stephanie.memory.nexus_store import NexusStore
 from stephanie.models.hnsw_index import HNSWIndex
 from stephanie.models.ner_retriever import EntityDetector, NERRetrieverEmbedder
 from stephanie.services.service_protocol import Service
@@ -53,6 +54,7 @@ class KnowledgeGraphService(Service):
         self.cfg = cfg
         self.memory = memory
         self.logger = logger
+        self.nexus_store: NexusStore = memory.nexus
         self.enabled = cfg.get("knowledge_graph", {}).get("enabled", True)
         self._initialized = False
         self._graph = None
@@ -1163,14 +1165,51 @@ class KnowledgeGraphService(Service):
             f"{scorable_id}:{entity['type']}:{entity['start']}-{entity['end']}"
         )
 
+
     def _add_entity_node(
+        self,
+        node_id: str,
+        entity: Dict[str, Any],
+        domains: List[Dict[str, Any]],
+        scorable_id: str,
+        scorable_type: str,
+        meta: Dict[str, Any],
+    ):
+        # 1) existing behavior (HNSW index, relationships.jsonl, etc.)
+        self._legacy_add_entity_node(node_id, entity, domains, scorable_id, scorable_type, meta)
+
+        # 2) NEW: mirror into Nexus
+        try:
+            name = entity["text"]
+            node_type = entity.get("type", "ENTITY")
+
+            payload = {
+                "scorable_id": scorable_id,
+                "scorable_type": scorable_type,
+                "entity_type": node_type,
+                "meta": meta,
+                "domains": domains,
+            }
+
+            self.nexus_store.create_or_update_node(
+                node_id=node_id,
+                name=name,
+                node_type=node_type,
+                payload=payload,
+                source_ids=[scorable_id],
+            )
+        except Exception:
+            self.logger.exception("Failed to mirror entity node into Nexus", extra={"node_id": node_id})
+
+
+    def _legacy_add_entity_node(
         self,
         node_id: str,
         entity: Dict[str, Any],
         domains: List[Dict[str, float]],
         scorable_id: str,
         scorable_type: str,
-        meta: Optional[Dict[str, Any]] = None,  # <-- NEW
+        meta: Optional[Dict[str, Any]] = None,
     ):
         try:
             # Avoid duplicates (only if the index supports it)

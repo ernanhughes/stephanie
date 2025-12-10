@@ -112,10 +112,20 @@ class NexusEdgeORM(Base):
     channels = Column(JSONB if JSONB else JSON, nullable=True)
     created_ts = Column(DateTime, default=datetime.utcnow, index=True)
 
-    __table_args__ = (
-        Index("idx_nexus_edge_src", "run_id", "src"),
-        Index("idx_nexus_edge_dst", "run_id", "dst"),
-    )
+    # Keywords/themes for this relation
+    # Low-level: concrete entities; High-level: abstract themes
+    index_keys = Column(JSON, default=list)
+
+    # Focused paragraph explaining the relationship:
+    # e.g. "Paper A extends Paper B by introducing a cost-aware graph-based RAG."
+    value_summary = Column(Text)
+
+    # Provenance – which MemCubes/docs/traces contributed to this relation
+    source_ids = Column(JSON, default=list)
+
+    # Optional metrics for the relation itself
+    metric_snapshot = Column(JSON, default=dict)
+
 
     def to_dict(self) -> Dict[str, Any]:
         return {

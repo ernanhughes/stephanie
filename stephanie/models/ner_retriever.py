@@ -161,7 +161,6 @@ class EntityDetector:
             log.error(f"EntityDetector: failed to init BERT NER pipeline: {e}")
             self.ner_pipeline = None
 
-    # ------------------------------------------------------------------
     def detect_entities(self, text: str) -> List[Dict[str, Any]]:
         """
         Detect entities in `text`.
@@ -175,33 +174,77 @@ class EntityDetector:
         # 1) GLiNER2 path
         if self.gliner_model is not None:
             try:
-                # NOTE: GLiNER2 API may differ slightly; adapt here if needed.
-                # Expecting a list of dicts with at least: text, label/type, start, end, score.
                 raw = self.gliner_model.extract_entities(
                     text,
                     self.labels,
                     threshold=self.threshold,
                 )
                 entities: List[Dict[str, Any]] = []
+
                 for r in raw:
-                    ent_text = (r.get("text") or "").strip()
-                    if not ent_text:
+                    # --- NEW: handle multiple possible GLiNER2 return formats ---
+                    if isinstance(r, dict):
+                        ent_text = (r.get("text") or "").strip()
+                        if not ent_text:
+                            continue
+
+                        etype = (
+                            r.get("label")
+                            or r.get("type")
+                            or r.get("entity_type")
+                            or "UNKNOWN"
+                        )
+                        start = int(r.get("start", -1))
+                        end = int(r.get("end", -1))
+                        score = float(r.get("score", 1.0))
+
+                    elif isinstance(r, str):
+                        # e.g. simple list of strings
+                        ent_text = r.strip()
+                        if not ent_text:
+                            continue
+                        etype = "UNKNOWN"
+                        idx = text.find(ent_text)
+                        if idx != -1:
+                            start = idx
+                            end = idx + len(ent_text)
+                        else:
+                            start, end = 0, 0
+                        score = 1.0
+
+                    elif isinstance(r, (list, tuple)) and len(r) >= 1:
+                        # e.g. ("entity text", start?, end?, label?)
+                        ent_text = str(r[0]).strip()
+                        if not ent_text:
+                            continue
+
+                        # Best-effort extraction of type / spans
+                        etype = "UNKNOWN"
+                        if len(r) >= 4:
+                            etype = str(r[3]) or "UNKNOWN"
+
+                        # Try to get numeric spans if present
+                        start = -1
+                        end = -1
+                        if len(r) >= 3 and isinstance(r[1], int) and isinstance(r[2], int):
+                            start, end = int(r[1]), int(r[2])
+                        score = 1.0
+
+                        # If spans are missing or invalid, search in text
+                        if start < 0 or end <= start or end > len(text):
+                            idx = text.find(ent_text)
+                            if idx != -1:
+                                start = idx
+                                end = idx + len(ent_text)
+                            else:
+                                start, end = 0, 0
+
+                    else:
+                        # Unknown format; skip
                         continue
 
-                    # Try to be robust to naming differences: label/type/entity_type
-                    etype = (
-                        r.get("label")
-                        or r.get("type")
-                        or r.get("entity_type")
-                        or "UNKNOWN"
-                    )
-                    start = int(r.get("start", -1))
-                    end = int(r.get("end", -1))
-                    score = float(r.get("score", 1.0))
-
-                    # Fallback if spans are missing
+                    # Fallback span repair (shared)
                     if start < 0 or end <= start or end > len(text):
-                        # Best-effort: find first occurrence
                         idx = text.find(ent_text)
                         if idx != -1:
                             start = idx
@@ -218,6 +261,7 @@ class EntityDetector:
                             "score": score,
                         }
                     )
+
                 return entities
             except Exception as e:
                 log.error(f"EntityDetector (GLiNER2) failed: {e}")

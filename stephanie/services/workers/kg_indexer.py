@@ -124,12 +124,12 @@ class KnowledgeGraphIndexerWorker:
 
             # Log success
             duration = time.time() - start_time
-            log.info("KnowledgeGraphIndexSuccess", {
-                "scorable_id": scorable_id,
-                "entity_count": len(payload["entities"]),
-                "relationship_count": len(payload["relationships"]),
-                "duration": duration
-            })
+            log.info("KnowledgeGraphIndexSuccess scorable_id %s entities %d relationships %d duration %.2f sec",
+                scorable_id,
+                len(payload["entities"]),
+                len(payload["relationships"]),
+                duration
+            )
             self.stats["processed"] += 1
             self.stats["last_event_time"] = datetime.now(timezone.utc).isoformat()
 

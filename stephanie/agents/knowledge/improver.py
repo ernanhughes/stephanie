@@ -62,7 +62,6 @@ class Improver:
         self,
         cfg, 
         memory,
-        context: Dict[str, Any],
         workdir: str = "./data/text_runs",
         timeout: int = 60,
         seed: int = 0,
@@ -74,7 +73,6 @@ class Improver:
     ):
         self.cfg = cfg
         self.memory = memory
-        self.context = context
         self.workdir = Path(workdir)
         self.workdir.mkdir(parents=True, exist_ok=True)
         self.run_id = 0
@@ -82,7 +80,7 @@ class Improver:
         self.seed = seed
         self.faithfulness_topk = faithfulness_topk
         self.kb = kb or KnowledgeBus()
-        self.casebooks = casebooks or CaseBookStore()
+        self.casebooks = casebooks or memory.casebooks
 
         self.logger = logger
         self.calibration = calibration or CalibrationManager(
@@ -174,7 +172,7 @@ class Improver:
 
         # 2) Casebook + Case
         casebook_name = f"text_{plan_hash}_{(content_plan.get('section_title') or 'section')}"
-        pipeline_run_id = self.context.get("pipeline_run_id")
+        pipeline_run_id = content_plan.get("pipeline_run_id")
         cb = self.casebooks.ensure_casebook(
             name=casebook_name,
             pipeline_run_id=pipeline_run_id,

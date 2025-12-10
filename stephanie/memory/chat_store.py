@@ -324,22 +324,46 @@ class ChatStore(BaseSQLAlchemyStore):
     ) -> List[Tuple[ChatConversationORM, int]]:
         """
         Retrieve conversations with the most turns or messages.
-        
-        Args:
-            limit: Maximum number of conversations to return
-            by: Metric to sort by - "turns" or "messages"
-            
-        Returns:
-            List of tuples (conversation, count) ordered by count descending
+
+        Returns a list of (ChatConversationORM, count) with messages (and turns)
+        eagerly loaded so they can be safely used outside the session.
         """
+
         def op(s):
+            # Base query for conversations with the relationships we care about
+            base_q = (
+                s.query(ChatConversationORM)
+                .options(
+                    # Eager-load plain messages so ScorableFactory.from_orm
+                    # can iterate conv.messages without hitting a detached lazy load
+                    selectinload(ChatConversationORM.messages),
+                    # If you also rely on turns + their user/assistant messages,
+                    # eager-load those too:
+                    selectinload(ChatConversationORM.turns)
+                    .selectinload(ChatTurnORM.user_message),
+                    selectinload(ChatConversationORM.turns)
+                    .selectinload(ChatTurnORM.assistant_message),
+                )
+            )
+
             if by == "messages":
                 q = (
                     s.query(
                         ChatConversationORM,
                         func.count(ChatMessageORM.id).label("message_count"),
                     )
-                    .join(ChatMessageORM)
+                    .select_from(ChatConversationORM)
+                    .options(
+                        selectinload(ChatConversationORM.messages),
+                        selectinload(ChatConversationORM.turns)
+                        .selectinload(ChatTurnORM.user_message),
+                        selectinload(ChatConversationORM.turns)
+                        .selectinload(ChatTurnORM.assistant_message),
+                    )
+                    .join(
+                        ChatMessageORM,
+                        ChatMessageORM.conversation_id == ChatConversationORM.id,
+                    )
                     .group_by(ChatConversationORM.id)
                     .order_by(desc("message_count"))
                     .limit(limit)
@@ -350,16 +374,26 @@ class ChatStore(BaseSQLAlchemyStore):
                         ChatConversationORM,
                         func.count(ChatTurnORM.id).label("count"),
                     )
+                    .select_from(ChatConversationORM)
                     .options(
-                         selectinload(ChatTurnORM.user_message),
-                         selectinload(ChatTurnORM.assistant_message),
-                     )
-                    .join(ChatTurnORM)
+                        selectinload(ChatConversationORM.messages),
+                        selectinload(ChatConversationORM.turns)
+                        .selectinload(ChatTurnORM.user_message),
+                        selectinload(ChatConversationORM.turns)
+                        .selectinload(ChatTurnORM.assistant_message),
+                    )
+                    .join(
+                        ChatTurnORM,
+                        ChatTurnORM.conversation_id == ChatConversationORM.id,
+                    )
                     .group_by(ChatConversationORM.id)
                     .order_by(func.count(ChatTurnORM.id).desc())
                     .limit(limit)
                 )
-            return [(conv, int(count)) for conv, count in q.all()]
+
+            rows = q.all()
+            # rows is List[(ChatConversationORM, count)] with relationships already loaded
+            return [(conv, int(count)) for conv, count in rows]
 
         return self._run(op)
 

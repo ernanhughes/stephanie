@@ -32,6 +32,7 @@ class NexusStore(BaseSQLAlchemyStore):
         self.pgvector_prefix = pgvector_table_prefix
         self.embedding_dim = int(embedding_dim)
 
+
     # ------------------------------------------------------------------ Scorables
     def upsert_scorable(self, row: Dict[str, Any]) -> NexusScorableORM:
         """
@@ -300,3 +301,94 @@ class NexusStore(BaseSQLAlchemyStore):
             deg[e.src] = deg.get(e.src, 0) + 1
             deg[e.dst] = deg.get(e.dst, 0) + 1
         return deg
+
+    def create_or_update_node(
+        self,
+        *,
+        node_id: str,
+        name: str,
+        node_type: str,
+        payload: Dict[str, Any],
+        source_ids: List[str],
+    ) -> NexusScorableORM:
+        """
+        Convenience wrapper to store a Nexus 'node' as a NexusScorableORM.
+
+        - node_id      -> NexusScorableORM.id
+        - node_type    -> NexusScorableORM.target_type
+        - name         -> NexusScorableORM.text   (human-readable label)
+        - domains      -> payload.get("domains", [])
+        - entities     -> payload.get("entities", [])
+        - meta         -> everything else, plus node-specific fields
+
+        This keeps the storage schema unified while letting the higher-level
+        Nexus graph treat nodes as first-class objects.
+        """
+        # Optional fields we know how to surface
+        domains = payload.get("domains") or []
+        entities = payload.get("entities") or []
+
+        # Start meta with any existing meta then enrich
+        base_meta = payload.get("meta") or {}
+        meta: Dict[str, Any] = dict(base_meta)
+
+        # Carry through useful node attributes if present in payload
+        # (these are the LightRAG-style bits / key-value profile)
+        if "index_keys" in payload:
+            meta["index_keys"] = payload["index_keys"]
+        if "value_summary" in payload:
+            meta["value_summary"] = payload["value_summary"]
+        if "attributes" in payload:
+            meta["attributes"] = payload["attributes"]
+
+        # Always stamp core node identity into meta
+        meta.update(
+            {
+                "node_type": node_type,
+                "node_name": name,
+                "source_ids": list(source_ids or []),
+            }
+        )
+
+        row = {
+            "id": node_id,
+            "chat_id": payload.get("chat_id"),       # optional, ok if None
+            "turn_index": payload.get("turn_index"), # optional, ok if None
+            "target_type": node_type,
+            "text": name,
+            "domains": domains,
+            "entities": entities,
+            "meta": meta,
+        }
+
+        return self.upsert_scorable(row)
+
+
+    def get_node(self, node_id: str) -> Optional[NexusScorableORM]:
+        """Alias for get_scorable, but semantically 'node'."""
+        return self.get_scorable(node_id)
+
+    def list_nodes_for_scorable(
+        self,
+        scorable_id: str,
+        limit: int = 200,
+    ) -> List[NexusScorableORM]:
+        """
+        Return nodes whose meta['source_ids'] contains the given scorable_id.
+        This is a simple Python-side filter for now; we can optimize with
+        JSONB queries later if needed.
+        """
+        def op(s: Session):
+            q = s.query(NexusScorableORM).order_by(desc(NexusScorableORM.created_ts))
+            rows = q.limit(5000).all()  # crude but fine for now
+            result: List[NexusScorableORM] = []
+            for row in rows:
+                meta = row.meta or {}
+                src_ids = meta.get("source_ids") or []
+                if scorable_id in src_ids:
+                    result.append(row)
+                    if len(result) >= limit:
+                        break
+            return result
+
+        return self._run(op)

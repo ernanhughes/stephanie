@@ -169,7 +169,7 @@ class PaperImportTask:
         return PaperImportResult(node=node, text=text, raw=raw)
 
     # ------------------------------------------------------------------ #
-    async def _download_pdf(self, url: str, dest_path: Path) -> None:
+    def _download_pdf(self, url: str, dest_path: Path) -> None:
         """
         Download a PDF from URL to dest_path, similar in spirit to
         DocumentLoaderAgent (requests.get(..., stream=True)).
