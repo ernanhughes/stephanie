@@ -8,11 +8,9 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.components.information.data import (
-    ConceptCluster,
     DocumentSection,
     PaperReferenceGraph,
     ReferenceRecord,
-    SectionMatch,
 )
 from stephanie.components.information.tasks.paper_import_task import (
     PaperImportTask,
@@ -32,7 +30,6 @@ from stephanie.components.information.tasks.section_link_task import SectionLink
 # but you may need to tweak exact names / paths.
 from stephanie.tools.summarization_tool import SummarizationTool
 from stephanie.tools.huggingface_tool import recommend_similar_papers
-from stephanie.memory.base_embedding_store import BaseEmbeddingStore
 from stephanie.scoring.scorable import Scorable, ScorableType
 
 log = logging.getLogger(__name__)
@@ -71,7 +68,7 @@ class HFSimilarPaperProvider(SimilarPaperProvider):
 
     def get_similar_for_arxiv(self, arxiv_id: str, limit: int = 10) -> List[ReferenceRecord]:
         limit = min(limit, self.max_limit)
-        url = f"https://arxiv.org/pdf/{arxiv_id}.pdf"
+        url = f"https://arxiv.org/abs/{arxiv_id}"
 
         try:
             hits = recommend_similar_papers(paper_url=url)
@@ -155,7 +152,7 @@ class PaperPipelineAgent(BaseAgent):
         )
 
         if not arxiv_id:
-            arxiv_id = "2511.19900v2"
+            arxiv_id = "2511.19900"
             # raise ValueError("PaperPipelineAgent requires 'arxiv_id' in context")
 
         max_refs: Optional[int] = context.get("max_refs")
@@ -193,7 +190,11 @@ class PaperPipelineAgent(BaseAgent):
         # 2) Build sections (slice text + optional summarization/embedding)
         # ------------------------------------------------------------------
 
-        texts = await self._load_texts_for_graph(graph, papers_root)
+        texts = await self._load_texts_for_graph(
+            graph=graph,
+            papers_root=papers_root,
+            context=context,
+        )
 
         section_cfg = SectionBuildConfig(
             chars_per_section=int(self.cfg.get("section_chars", 2000)),
@@ -233,6 +234,21 @@ class PaperPipelineAgent(BaseAgent):
         context["section_matches"] = matches
         context["concept_clusters"] = clusters
 
+                # 4) Persist into Nexus + KnowledgeGraph (optional but recommended)
+        try:
+            await self._index_sections_into_graphs(
+                arxiv_id=arxiv_id,
+                sections=sections,
+                context=context,
+            )
+        except Exception as e:
+            log.warning(
+                "PaperPipelineGraphIndexError arxiv_id=%s error=%s",
+                arxiv_id,
+                str(e),
+            )
+
+
         return context
 
     # ------------------------------------------------------------------ #
@@ -261,36 +277,124 @@ class PaperPipelineAgent(BaseAgent):
         self,
         graph: PaperReferenceGraph,
         papers_root: Path,
+        context: Dict[str, Any],
     ) -> Dict[str, str]:
         """
         Load full text for each paper in the graph.
 
-        For now, we simply re-use PaperImportTask to re-import each paper.
-        This does a second pass, but it's simple and robust. If you prefer,
-        you can:
-            - cache text on disk, or
-            - load from your DB using node.pdf_path / text_hash.
+        New behavior:
+        - First try to reuse an existing Document from self.memory.documents,
+          keyed by a canonical arxiv PDF URL.
+        - If not present (or text missing), fall back to PaperImportTask and
+          store the resulting Document so subsequent runs are fast and
+          consistent.
         """
-        texts: Dict[str, str] = {}
 
         import_task = PaperImportTask(
             papers_root=papers_root,
         )
 
+        texts: Dict[str, str] = {}
+        stored_documents: List[Dict[str, Any]] = []
+
+        # Optional: pull a goal_id from context if you want it on the Document
+        goal = context.get("goal") or context.get("GOAL") or {}
+        if isinstance(goal, dict):
+            goal_id = goal.get("id")
+        else:
+            goal_id = getattr(goal, "id", None)
+
         for arxiv_id, node in graph.nodes.items():
+            role = node.role
+
+            # Canonical URL we will use as the key into the DocumentStore.
+            # This matches what the HF similar tool uses for arxiv PDFs.
+            url = f"https://arxiv.org/pdf/{arxiv_id}.pdf"
+
+            # ------------------------------------------------------------------
+            # 1) Try memory.documents first (cache hit)
+            # ------------------------------------------------------------------
+            doc_obj = self.memory.documents.get_by_url(url)
+            if doc_obj is not None:
+                doc_dict = doc_obj.to_dict()
+                text = (doc_dict.get("text") or "").strip()
+                if text:
+                    texts[arxiv_id] = text
+                    stored_documents.append(doc_dict)
+                    log.debug(
+                        "PaperPipelineAgent: reused cached document for %s (role=%s)",
+                        arxiv_id,
+                        role,
+                    )
+                    continue  # move on to next paper
+
+            # ------------------------------------------------------------------
+            # 2) Cache miss -> import via PaperImportTask
+            # ------------------------------------------------------------------
             try:
-                res = await import_task.run(
-                    arxiv_id=arxiv_id,
-                    role=node.role,
-                )
-                texts[arxiv_id] = res.text
+                result = await import_task.run(arxiv_id=arxiv_id, role=role)
             except Exception as e:
                 log.warning(
-                    "Failed to load text for %s (role=%s): %s",
+                    "PaperPipelineAgent: import failed for %s (role=%s): %s",
                     arxiv_id,
-                    node.role,
+                    role,
                     e,
                 )
+                continue
+
+            if not result or not getattr(result, "text", None):
+                log.warning(
+                    "PaperPipelineAgent: no text returned for %s (role=%s)",
+                    arxiv_id,
+                    role,
+                )
+                continue
+
+            text = result.text
+            texts[arxiv_id] = text
+
+            # ------------------------------------------------------------------
+            # 3) Persist into DocumentStore so we don't re-import next time
+            # ------------------------------------------------------------------
+            try:
+                doc: Dict[str, Any] = {
+                    "goal_id": goal_id,
+                    "title": getattr(result, "title", None)
+                    or getattr(node, "title", None)
+                    or f"arXiv {arxiv_id}",
+                    "external_id": arxiv_id,
+                    "summary": getattr(result, "summary", None),
+                    "source": "paper_pipeline",
+                    "text": text,
+                    "url": url,
+                }
+
+                stored = self.memory.documents.add_document(doc)
+                stored_dict = stored.to_dict()
+                stored_documents.append(stored_dict)
+
+                log.debug(
+                    "PaperPipelineAgent: stored document for %s (role=%s) into memory.documents",
+                    arxiv_id,
+                    role,
+                )
+
+                # If you want to mirror DocumentLoaderAgent behavior exactly,
+                # you can also ensure a Scorable + embedding here, e.g.:
+                #
+                #   self._ensure_doc_scorable(stored_dict, context)
+                #
+                # (tiny helper method using BaseEmbeddingStore + Scorable)
+
+            except Exception as e:
+                log.warning(
+                    "PaperPipelineAgent: failed to store document for %s: %s",
+                    arxiv_id,
+                    e,
+                )
+
+        # Expose docs back on context so later stages can use them
+        context["paper_documents"] = stored_documents
 
         return texts
 
@@ -343,24 +447,169 @@ class PaperPipelineAgent(BaseAgent):
         to adapt this to your real API. The skeleton below shows the pattern.
         """
 
-        # Example: obtain an existing store from memory
-        # (adjust this to match your own memory / store wiring).
-        store: BaseEmbeddingStore = getattr(self.memory, "embedding_store", None)
-        if store is None:
-            log.warning(
-                "[PaperPipelineAgent] No embedding_store on memory; skipping embeddings"
-            )
-            return None
 
         def embedder(text: str):
-            try:
-                embedding = self.memory.embedding.get_or_create(text)
-            except AttributeError:
-                log.error(
-                    "BaseEmbeddingStore has no 'get_or_create_embedding' method. "
-                    "Please update _get_embedder() to use the correct API."
-                )
-                raise
+            embedding = self.memory.embedding.get_or_create(text)
             return embedding
 
         return embedder
+
+
+    # ------------------------------------------------------------------
+    # Nexus + KnowledgeGraph integration
+    # ------------------------------------------------------------------
+
+    async def _index_sections_into_graphs(
+        self,
+        *,
+        arxiv_id: Optional[str],
+        sections: List[Any],
+        context: Dict[str, Any],
+    ) -> None:
+        """
+        For each DocumentSection:
+          - create/update a Nexus scorable + embedding
+          - emit a knowledge_graph.index_request event so KGService
+            can build entity/claim/relationship nodes.
+        """
+        if not sections:
+            return
+
+        nexus_store = self.memory.nexus
+        bus = self.memory.bus
+        embedding_store = self.memory.embedding
+
+        enable_nexus = bool(self.cfg.get("enable_nexus_index", True) and nexus_store)
+        enable_kg = bool(self.cfg.get("enable_kg_index", True) and bus)
+
+        for idx, sec in enumerate(sections):
+            try:
+                scorable_id = self._make_section_scorable_id(
+                    arxiv_id=arxiv_id, section=sec, index=idx
+                )
+                text = (
+                    getattr(sec, "summary", None)
+                    or getattr(sec, "text", None)
+                    or ""
+                )
+                if not text.strip():
+                    continue
+
+                domains = list(getattr(sec, "domains", []) or [])
+                title = getattr(sec, "title", None)
+                section_idx = getattr(sec, "index", None) or idx
+
+                if enable_nexus:
+                    row = {
+                        "id": scorable_id,
+                        "chat_id": None,        # not chat-derived
+                        "turn_index": None,
+                        "target_type": "document_section",
+                        "text": text,
+                        "domains": domains,
+                        "entities": None,      # KG will fill this over time
+                        "meta": {
+                            "kind": "paper_section",
+                            "arxiv_id": arxiv_id,
+                            "title": title,
+                            "section_index": section_idx,
+                            "paper_pipeline": True,
+                        },
+                    }
+                    nexus_store.upsert_scorable(row)
+
+                    # Optional: store an embedding for fast KNN / LightRAG
+                    if embedding_store and self.cfg.get(
+                        "index_with_embeddings", True
+                    ):
+                        try:
+                            vec = embedding_store.get_or_create(
+                                text
+                            )
+                            if vec is not None:
+                                nexus_store.upsert_embedding(scorable_id, vec)
+                        except Exception as e:
+                            log.warning(
+                                "PaperPipelineEmbeddingError id=%s error=%s",
+                                scorable_id,
+                                str(e),
+                            )
+
+                if enable_kg:
+                    await self._publish_kg_index_event(
+                        bus=bus,
+                        scorable_id=scorable_id,
+                        text=text,
+                        domains=domains,
+                    )
+
+            except Exception as e:
+                log.warning(
+                    "PaperPipelineSectionIndexError arxiv_id=%s idx=%s error=%s",
+                    arxiv_id,
+                    idx,
+                    str(e),
+                )
+
+    def _make_section_scorable_id(
+        self,
+        *,
+        arxiv_id: Optional[str],
+        section: Any,
+        index: int,
+    ) -> str:
+        """
+        Build a stable id for a section.
+
+        Prefers an existing id/section_id on the DocumentSection if present,
+        otherwise falls back to `paper:{arxiv_id}#sec-{index:03d}`.
+        """
+        # If the section already carries an id, re-use it
+        sid = getattr(section, "id", None) or getattr(section, "section_id", None)
+        if sid:
+            return str(sid)
+
+        prefix = (
+            arxiv_id
+            or getattr(section, "paper_id", None)
+            or getattr(section, "source_id", None)
+            or "paper"
+        )
+        return f"{prefix}#sec-{index:03d}"
+
+    async def _publish_kg_index_event(
+        self,
+        *,
+        bus: Any,
+        scorable_id: str,
+        text: str,
+        domains: List[str],
+    ) -> None:
+        """
+        Emit a minimal event that KnowledgeGraphService can consume.
+
+        KG service will:
+          - fetch or use `text`
+          - run entity/claim extraction internally
+          - upsert entity/claim/gap nodes and relationships.
+        """
+        envelope = {
+            "event_type": "knowledge_graph.index_request",
+            "payload": {
+                "scorable_id": scorable_id,
+                "scorable_type": "document_section",
+                "domains": domains,
+                "text": text,
+            },
+        }
+        try:
+            await bus.publish(
+                subject="knowledge_graph.index_request",
+                payload=envelope["payload"],
+            )
+        except Exception as e:
+            log.warning(
+                "KGIndexEventPublishError scorable_id=%s error=%s",
+                scorable_id,
+                str(e),
+            )

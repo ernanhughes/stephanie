@@ -179,7 +179,7 @@ class SectionBuildTask:
             if self.embedder is not None:
                 target = summary or block_text
                 try:
-                    embedding = await self.embedder(target)
+                    embedding = self.embedder(target)
                 except Exception as e:
                     log.warning(
                         "Embedder failed for %s sec %d (parsed): %s",

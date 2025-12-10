@@ -99,7 +99,7 @@ class PaperImportTask:
                 raise ValueError("Could not determine URL for paper import")
 
             pdf_local_path = paper_dir / "paper.pdf"
-            await self._download_pdf(source_url, pdf_local_path)
+            self._download_pdf(source_url, pdf_local_path)
 
         log.info("[PaperImportTask] Importing PDF %s for key=%s", pdf_local_path, key)
 

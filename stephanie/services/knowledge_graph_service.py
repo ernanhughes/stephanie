@@ -383,7 +383,7 @@ class KnowledgeGraphService(Service):
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                 },
             )
-            self.logger.info(
+            log.info(
                 "KG: indexed scorable_id=%s nodes=%d rels=%d",
                 scorable_id,
                 len(fixed_entities),
@@ -391,7 +391,7 @@ class KnowledgeGraphService(Service):
             )
 
         except Exception as e:
-            self.logger.error(f"Indexing failed: {str(e)}", exc_info=True)
+            log.error(f"Indexing failed: {str(e)}", exc_info=True)
             self.publish(
                 "knowledge_graph.index_failed",
                 {"scorable_id": payload.get("scorable_id"), "error": str(e)},
@@ -602,7 +602,7 @@ class KnowledgeGraphService(Service):
             return enriched
 
         except Exception as e:
-            self.logger.log(
+            log.error(
                 "KnowledgeGraphSearchError",
                 {
                     "text": text[:200],
@@ -1243,7 +1243,7 @@ class KnowledgeGraphService(Service):
                 source_ids=[scorable_id],
             )
         except Exception:
-            self.logger.exception("Failed to mirror entity node into Nexus", extra={"node_id": node_id})
+            log.exception("Failed to mirror entity node into Nexus node_id %s", node_id)
 
 
     def _legacy_add_entity_node(
@@ -1368,8 +1368,7 @@ class KnowledgeGraphService(Service):
             with open(self._rel_path, "a", encoding="utf-8") as f:
                 f.write(json.dumps(rel) + "\n")
 
-            if self.logger:
-                self.logger.log("KnowledgeGraphEdgeUpserted", rel)
+            log.info("KnowledgeGraphEdgeUpserted: %s", rel)
 
             self._stats["total_edges"] += 1
             self._track_edge_stats(rel_type)
@@ -1483,8 +1482,8 @@ class KnowledgeGraphService(Service):
                 },
             }
         except Exception as e:
-            self.logger.warning(
-                f"KG get_concept failed for {concept_id}: {str(e)}"
+            log.warning(
+                "KG get_concept failed for %s: %s", concept_id, str(e)
             )
             return {"id": concept_id, "name": concept_id, "summary": ""}
 
@@ -1506,7 +1505,7 @@ class KnowledgeGraphService(Service):
             with open(self._rel_path, "a", encoding="utf-8") as f:
                 f.write(json.dumps(rel) + "\n")
 
-            self.logger.log("KnowledgeGraphRelationshipAdded", rel)
+            log.info("KnowledgeGraphRelationshipAdded: %s", rel)
             self._stats["total_edges"] += 1
             self._track_edge_stats(rel_type)
 
@@ -1594,8 +1593,8 @@ class KnowledgeGraphService(Service):
                         self._stats["total_edges"] += 1
                         self._track_edge_stats(rel["type"])
                     except Exception as e:
-                        self.logger.log(
-                            "KnowledgeGraphLoadError", {"error": str(e)}
+                        log.error(
+                            "KnowledgeGraphLoadError: %s", str(e)
                         )
 
     def _track_edge_stats(self, rel_type: str):
@@ -1644,7 +1643,120 @@ class KnowledgeGraphService(Service):
         proximity_bonus = 0.1 if distance < 20 else 0.0
         return max(min(base_score + domain_bonus + proximity_bonus, 1.0), 0.0)
 
-        # ---------- tiny helpers ----------
+
+    # ------------------------------------------------------------------ Debug / local tree
+
+    def log_local_tree(
+        self,
+        scorable_id: str,
+        *,
+        max_entities: int = 12,
+        max_edges_per_entity: int = 8,
+    ) -> None:
+        """
+        Log a compact ASCII-style tree around one scorable's nodes + edges in Nexus.
+
+        Root:    the scorable_id (virtual root)
+        Level 1: entity nodes (mirrored via create_or_update_node)
+        Level 2: edges from each node to its neighbors in this Nexus run
+
+        This is purely for debugging so you can *see* the graph growing
+        as you index papers / sections.
+        """
+        try:
+            nodes = self.nexus_store.list_nodes_for_scorable(
+                scorable_id, limit=max_entities
+            )
+        except Exception as e:
+            log.warning(
+                "KG log_local_tree: failed to list nodes for scorable_id=%s: %s",
+                scorable_id,
+                e,
+            )
+            return
+
+        if not nodes:
+            log.info(
+                "KG log_local_tree: no Nexus nodes found for scorable_id=%s",
+                scorable_id,
+            )
+            return
+
+        run_id = getattr(self, "nexus_run_id", "unknown")
+        lines: list[str] = []
+        lines.append(
+            f"KG Local Tree — scorable_id={scorable_id} run_id={run_id} "
+            f"(nodes={len(nodes)})"
+        )
+
+        def _fmt_node(node) -> str:
+            meta = getattr(node, "meta", None) or {}
+            node_type = meta.get("node_type") or node.target_type or "UNKNOWN"
+            name = (
+                meta.get("node_name")
+                or node.text
+                or meta.get("text")
+                or node.id
+                or ""
+            )
+
+            if name and len(name) > 80:
+                name = name[:77] + "..."
+
+            return f"{node.id} [{node_type}] {name}"
+
+        for idx, node in enumerate(nodes):
+            is_last_entity = idx == len(nodes) - 1
+            entity_prefix = "└" if is_last_entity else "├"
+            lines.append(f"{entity_prefix}─ {_fmt_node(node)}")
+
+            # Fetch edges touching this node in this Nexus run
+            try:
+                edges = self.nexus_store.list_edges_for_node(
+                    run_id=run_id,
+                    node_id=node.id,
+                    limit=max_edges_per_entity,
+                )
+            except Exception as e:
+                log.warning(
+                    "KG log_local_tree: failed to list edges for node_id=%s: %s",
+                    node.id,
+                    e,
+                )
+                continue
+
+            if not edges:
+                continue
+
+            # Child prefix depends on whether this entity itself is last
+            child_prefix = "   " if is_last_entity else "│  "
+
+            for j, edge in enumerate(edges):
+                is_last_edge = j == len(edges) - 1
+                edge_branch = "└" if is_last_edge else "├"
+
+                other_id = edge.dst if edge.src == node.id else edge.src
+                neighbor = self.nexus_store.get_node(other_id)
+                if neighbor:
+                    neighbor_label = _fmt_node(neighbor)
+                else:
+                    neighbor_label = other_id
+
+                edge_label = edge.type or "rel"
+                if edge.weight is not None:
+                    try:
+                        edge_label += f" (w={float(edge.weight):.2f})"
+                    except Exception:
+                        pass
+
+                lines.append(
+                    f"{child_prefix}{edge_branch}─ {edge_label} → {neighbor_label}"
+                )
+
+        tree_str = "\n".join(lines)
+        log.info("KG_LOCAL_TREE\n%s", tree_str)
+
+    # ---------- tiny helpers ----------
 
     @staticmethod
     def _token_set(s: str) -> set:
@@ -1693,3 +1805,4 @@ class KnowledgeGraphService(Service):
     def _node_id(kind: str, text: str) -> str:
         h = hash_text(kind + "|" + (text or ""))[:16]
         return f"{kind}:{h}"
+

@@ -42,26 +42,39 @@ class KnowledgeGraphIndexerWorker(BaseWorker):
         container: Any,
         logger: Any,
     ) -> None:
-        # BaseWorker wires cfg / memory / container / logger
         super().__init__(cfg=cfg, memory=memory, container=container, logger=logger)
 
-        # Subject can be overridden in cfg["worker"]["subject"]
-        wcfg = self.cfg.get("worker", {})
-        self.subject: str = wcfg.get(
-            "subject",
-            "knowledge_graph.index_request",
+        self.batch_size = cfg.get("batch_size", 1)
+        self.poll_interval = cfg.get("poll_interval", 1.0)
+        self.debug_tree = bool(self.cfg.get("debug_tree", True))
+        self.kg_service: KnowledgeGraphService = KnowledgeGraphService(
+            cfg=cfg,
+            memory=memory,
+            logger=self.logger,
         )
+        self.kg_service.initialize()
 
-        # Created in init_services()
-        self.kg_service: Optional[KnowledgeGraphService] = None
+        self.stats = {
+            "processed": 0,
+            "failed": 0,
+            "last_event_time": None,
+            "uptime_start": datetime.now(timezone.utc).isoformat(),
+        }
 
-        # Extend base stats with KG-specific counters
-        self._stats.update(
-            {
-                "kg_processed": 0,
-                "kg_failed": 0,
-                "kg_last_event_time": None,
-            }
+        self.running = False
+        self.subject = "knowledge_graph.index_request"
+
+        # NEW: enable/disable noisy tree logs via config
+        worker_cfg = cfg.get("worker", {})
+        self.debug_tree = bool(worker_cfg.get("debug_tree", False))
+
+        self.logger.info(
+            "KnowledgeGraphIndexerWorker initialized.",
+            extra={
+                "mode": "bus-subscribe",
+                "subject": self.subject,
+                "debug_tree": self.debug_tree,
+            },
         )
 
     # ------------------------ BaseWorker hooks ----------------------- #
@@ -104,14 +117,18 @@ class KnowledgeGraphIndexerWorker(BaseWorker):
 
     async def handle_job(self, envelope: Dict[str, Any]) -> None:
         """
-        Bus callback for 'knowledge_graph.index_request'.
+        Bus callback for subject='knowledge_graph.index_request'.
         """
         start_time = time.time()
         payload = envelope.get("payload") or {}
         scorable_id = payload.get("scorable_id", "unknown")
 
+        # Snapshot counts *before* we index, so we can log deltas
+        before_nodes = self.kg_service._stats.get("total_nodes", 0)
+        before_edges = self.kg_service._stats.get("total_edges", 0)
+
         try:
-            if not all(k in payload for k in ("entities", "relationships")):
+            if not all(k in payload for k in ["entities", "relationships"]):
                 raise ValueError("Missing required fields in index request")
 
             domains = payload.get("domains") or []
@@ -125,19 +142,54 @@ class KnowledgeGraphIndexerWorker(BaseWorker):
                 await self._add_relationship_with_retry(rel)
 
             duration = time.time() - start_time
+
+            after_nodes = self.kg_service._stats.get("total_nodes", 0)
+            after_edges = self.kg_service._stats.get("total_edges", 0)
+            delta_nodes = after_nodes - before_nodes
+            delta_edges = after_edges - before_edges
+
+            # Compact growth summary
+            self.logger.info(
+                "KGIndexSuccess scorable_id=%s entities=%d relationships=%d "
+                "duration=%.2fs nodes(+%d->%d) edges(+%d->%d)",
+                scorable_id,
+                len(payload["entities"]),
+                len(payload["relationships"]),
+                duration,
+                delta_nodes,
+                after_nodes,
+                delta_edges,
+                after_edges,
+            )
+
+            # Optional: pretty tree view for this event
+            if self.debug_tree:
+                tree = self._format_event_tree(scorable_id, payload)
+                # One multi-line log entry so it reads as a block in the log
+                self.logger.info("\n%s", tree)
+
             log.info(
-                "KnowledgeGraphIndexSuccess scorable_id=%s entities=%d relationships=%d duration=%.2fs",
+                "KnowledgeGraphIndexSuccess scorable_id=%s entities=%d relationships=%d duration=%.2f sec",
                 scorable_id,
                 len(payload["entities"]),
                 len(payload["relationships"]),
                 duration,
             )
+            self.stats["processed"] += 1
+            self.stats["last_event_time"] = datetime.now(timezone.utc).isoformat()
 
-            self._stats["kg_processed"] += 1
-            self._stats["kg_last_event_time"] = datetime.now(
-                timezone.utc
-            ).isoformat()
-
+            if self.debug_tree:
+                try:
+                    self.kg_service.log_local_tree(
+                        scorable_id=scorable_id,
+                        max_entities=self.cfg.get("debug_tree_max_entities", 8),
+                        max_edges_per_entity=self.cfg.get("debug_tree_max_edges_per_entity", 6),
+                    )
+                except Exception:
+                    log.exception(
+                        "Failed to log local KG tree",
+                        extra={"scorable_id": scorable_id},
+                    )
         except Exception as e:
             log.warning(
                 "KnowledgeGraphIndexFailed scorable_id=%s error=%s\n%s",
@@ -145,12 +197,12 @@ class KnowledgeGraphIndexerWorker(BaseWorker):
                 str(e),
                 traceback.format_exc(),
             )
-            self._stats["kg_failed"] += 1
+            self.stats["failed"] += 1
             await self._publish_failure_event(envelope, str(e))
 
     # ----------------------- helpers with retry ---------------------- #
 
-    @retry_with_backoff(max_retries=3, backoff_in_seconds=1.0)
+    @retry_with_backoff(max_retries=3, backoff_in_seconds=1)
     async def _add_entity_with_retry(
         self,
         scorable_id: str,
@@ -159,13 +211,7 @@ class KnowledgeGraphIndexerWorker(BaseWorker):
     ) -> None:
         """
         Add an entity node, tagged with its parent scorable and domains.
-
-        Uses KnowledgeGraphService, which (after the Nexus wiring changes)
-        will also mirror nodes into Nexus via NexusStore.
         """
-        if self.kg_service is None:
-            raise RuntimeError("kg_service is not initialized")
-
         node_id = f"{scorable_id}:{entity['type']}:{entity['start']}-{entity['end']}"
         await self.kg_service._add_entity_node(
             node_id,
@@ -173,20 +219,54 @@ class KnowledgeGraphIndexerWorker(BaseWorker):
             domains,
             scorable_id,
             "document",
+            meta={},  # or pass through extra meta from payload if you like
         )
 
     @retry_with_backoff(max_retries=3, backoff_in_seconds=0.5)
     async def _add_relationship_with_retry(self, rel: Dict[str, Any]) -> None:
         """Add a relationship with retry."""
-        if self.kg_service is None:
-            raise RuntimeError("kg_service is not initialized")
-
         await self.kg_service._add_relationship(
             source_id=rel["source"],
             target_id=rel["target"],
             rel_type=rel["type"],
             confidence=rel.get("confidence", 0.9),
         )
+
+    # ------------------------ pretty tree view ----------------------- #
+
+    def _format_event_tree(self, scorable_id: str, payload: Dict[str, Any]) -> str:
+        """
+        Build a small ASCII "tree" for this index event, purely from the payload.
+
+        This doesn't query Nexus or HNSW – it's just a visual summary of what
+        we *just* added, so you can watch the graph grow in the log.
+        """
+        lines: list[str] = []
+
+        lines.append(f"KGIndex[{scorable_id}]")
+
+        entities = payload.get("entities") or []
+        relationships = payload.get("relationships") or []
+
+        # Entities under the root
+        for ent in entities:
+            etype = str(ent.get("type", "UNKNOWN"))
+            text = str(ent.get("text", ""))[:80].replace("\n", " ")
+            lines.append(f"  • entity {etype:8s}: {text}")
+
+        # Relationships block
+        if relationships:
+            lines.append("  relationships:")
+            for rel in relationships:
+                r_type = rel.get("type", "REL")
+                src = rel.get("source", "?")
+                tgt = rel.get("target", "?")
+                conf = rel.get("confidence", 0.9)
+                lines.append(
+                    f"    - {src} -[{r_type}]-> {tgt} (conf={conf:.2f})"
+                )
+
+        return "\n".join(lines)
 
     async def _publish_failure_event(
         self,
@@ -223,3 +303,30 @@ class KnowledgeGraphIndexerWorker(BaseWorker):
             out["kg_node_count"] = self.kg_service._stats.get("total_nodes", 0)
             out["kg_edge_count"] = self.kg_service._stats.get("total_edges", 0)
         return out
+
+    async def start(self) -> None:
+        """Attach to the bus and subscribe to index events."""
+        if self.running:
+            return
+        self.running = True
+
+        if hasattr(self.memory.bus, "connect") and getattr(self.memory.bus, "is_connected", False) is False:
+            await self.memory.bus.connect()
+
+        await self.memory.bus.subscribe(self.subject, self.handle_job)
+        log.info(
+            "KnowledgeGraphIndexerWorker started and subscribed.",
+            extra={"subject": self.subject},
+        )
+
+    async def stop(self) -> None:
+        """Graceful shutdown."""
+        if not self.running:
+            return
+        self.running = False
+        try:
+            await self.memory.bus.unsubscribe(self.subject, self.handle_job)
+        except Exception:
+            pass
+
+        log.info("KnowledgeGraphIndexerWorker stopped.", extra=self.stats)

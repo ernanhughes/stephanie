@@ -1,3 +1,4 @@
+# config/agents/paper_pipeline.yaml
 paper_pipeline:
   name: paper_pipeline
   enabled: true

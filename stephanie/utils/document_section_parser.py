@@ -12,11 +12,13 @@ from stephanie.utils.string_utils import clean_heading as util_clean_heading
 from stephanie.utils.string_utils import normalize_key, trunc
 from stephanie.utils.text_utils import is_high_quality_section, section_quality
 
+import logging
+log = logging.getLogger(__name__)
 
 class DocumentSectionParser:
     def __init__(self, cfg=None, logger=None):
         self.cfg = cfg or {}
-        self.logger = logger or print
+        self.logger = logger
 
         # Old: min_chars_per_sec
         # New: also allow words-based gating (default 30)
@@ -250,14 +252,10 @@ class DocumentSectionParser:
             else:
                 preview = trunc(text, 200) or ""
                 try:
-                    self.logger.log(
-                        "TrimmingSection",
-                        {
-                            "section": key,
-                            "preview": preview,
-                        },
+                    log.info(
+                        "TrimmingSection section %s: %s", key, preview
                     )
                 except AttributeError:
                     # Fallback if logger is a plain print-like callable
-                    self.logger(f"[TrimmingSection] {key}: {preview}")
+                    log.warning(f"[TrimmingSection] {key}: {preview}")
         return cleaned

@@ -1,9 +1,10 @@
 # stephanie/stores/nexus_store.py
 from __future__ import annotations
 
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple,  Sequence, Union
 
 import numpy as np
+
 from sqlalchemy import and_, desc, or_, text
 from sqlalchemy.orm import Session
 
@@ -64,19 +65,41 @@ class NexusStore(BaseSQLAlchemyStore):
 
     # ------------------------------------------------------------------ Embeddings
 
-    def upsert_embedding(self, scorable_id: str, vec: np.ndarray, *, store_norm: bool = True) -> NexusEmbeddingORM:
+
+    def upsert_embedding(
+        self,
+        scorable_id: str,
+        vec: Union[np.ndarray, Sequence[float]],
+        *,
+        store_norm: bool = True,
+    ) -> NexusEmbeddingORM:
+        """
+        Store or update a global embedding for a scorable.
+
+        Accepts either a NumPy array OR any sequence of floats (list, tuple, etc.).
+        """
+        # Coerce to ndarray so downstream math is consistent
+        arr = np.asarray(vec, dtype=float)
+
         def op(s: Session):
             emb = s.get(NexusEmbeddingORM, scorable_id)
-            data = vec.astype(float).tolist()
-            norm = float(np.linalg.norm(vec)) if store_norm else None
+            data = arr.tolist()
+            norm = float(np.linalg.norm(arr)) if store_norm else None
+
             if emb is None:
-                emb = NexusEmbeddingORM(scorable_id=scorable_id, embed_global=data, norm_l2=norm)
+                emb = NexusEmbeddingORM(
+                    scorable_id=scorable_id,
+                    embed_global=data,
+                    norm_l2=norm,
+                )
                 s.add(emb)
             else:
                 emb.embed_global = data
                 emb.norm_l2 = norm
+
             s.flush()
             return emb
+
         return self._run(op)
 
     def get_embedding_vec(self, scorable_id: str) -> Optional[np.ndarray]:

@@ -1,0 +1,35 @@
+# config/agents/paper_pipeline_report.yaml
+paper_pipeline_report:
+  name: paper_pipeline_report
+  enabled: true
+  save_prompt: false        # no LLM call here, so no prompt to save
+  save_context: true        # keep the report in the final context
+  skip_if_completed: false
+
+  # ---- Inputs (what we expect from PaperPipelineAgent) ----
+  # These names match what PaperPipelineAgent writes into context.
+  input_arxiv_key: arxiv_id
+  input_graph_key: paper_graph
+  input_sections_key: paper_sections
+  input_matches_key: section_matches
+  input_clusters_key: concept_clusters
+  input_documents_key: paper_documents
+
+  # ---- Output ----
+  # Where the agent writes the final markdown report.
+  output_report_key: paper_report_markdown
+
+  # ---- Report formatting options (fed into cfg["report"]) ----
+  report:
+    max_sections: 16              # how many sections to show in the report
+    max_clusters: 8               # how many concept clusters to summarise
+    max_sections_per_cluster: 4   # how many sections to list under each cluster
+    include_kg_hint: true         # show basic Nexus/KG coverage stats
+
+  # ---- Model block (kept for consistency with other agents) ----
+  # PaperPipelineReportAgent doesn’t call an LLM right now, but including
+  # this keeps your agent configs structurally similar.
+  model:
+    name: ollama/qwen3
+    api_base: http://localhost:11434
+    api_key: null
