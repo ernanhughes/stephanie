@@ -19,9 +19,25 @@ paper_blog_generator:
   blog:
     audience: "informed engineer"
     target_length_words: 2200
-    max_sections: 18
+    max_sections: 16
     max_clusters: 6
     max_similar_papers: 4
+
+    # Blog-specific LLM override
+    model:
+      name: "ollama/llama3.1:8b"
+      api_base: "http://localhost:11434"
+      api_key: null
+      params:
+        num_ctx: 16384
+        top_p: 0.9
+        top_k: 40
+        repeat_penalty: 1.05
+
+    # Extra per-call params (override / extend model.params)
+    prompt_params:
+      temperature: 0.65        # more creative prose
+      max_tokens: 3072         # room for a decent-length post
 
   # Model block kept for consistency (PromptService will actually use its own cfg,
   # but this lets you switch things later if you want the agent to call async_call_llm).

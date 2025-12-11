@@ -53,6 +53,14 @@ class PaperBlogGeneratorAgent(BaseAgent):
         self.audience = blog_cfg.get("audience", "informed engineer")
         self.output_key = cfg.get("output_key", "paper_blog_markdown")
 
+        self.blog_model = blog_cfg.get("model")  # dict | str | None
+        # Call-level overrides (merged on top of model.params)
+        self.blog_params = (
+            blog_cfg.get("prompt_params")
+            or blog_cfg.get("params")
+            or {}
+        )
+
         # Optional: where report agent stored markdown; not required here,
         # but we can reuse that summary in the future if you like.
         self.report_key = cfg.get("report_key", "paper_report_markdown")
@@ -107,8 +115,10 @@ class PaperBlogGeneratorAgent(BaseAgent):
             blog_markdown = await self.prompt_service.run_prompt(
                 prompt_text=prompt_text,
                 context=None,
-                role=LLMRole.EXPLAINER,  # uses the EXPLAINER system style :contentReference[oaicite:3]{index=3}
+                model=self.blog_model,
+                role=LLMRole.EXPLAINER,
                 sys_preamble=sys_preamble,
+                params=self.blog_params,
             )
         except Exception as e:
             log.exception("PaperBlogGeneratorAgent: prompt failed: %s", e)

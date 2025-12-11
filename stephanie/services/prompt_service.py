@@ -257,7 +257,7 @@ class PromptService(Service):
         self,
         *,
         prompt: str,
-        model: "ModelSpec",
+        model: ModelSpec,
         sys_preamble: Optional[str] = None,
         params: Optional[Dict[str, Any]] = None,
     ) -> str:
