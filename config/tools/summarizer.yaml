@@ -1,17 +1,16 @@
 # config/tools/section_summarizer.yaml
-tool:
-  name: section_summarizer
-  class_path: stephanie.tools.section_summarization_tool.SectionSummarizationTool
+name: section_summarizer
+class_path: stephanie.tools.section_summarization_tool.SectionSummarizationTool
 
-  # HF model names
-  summary_model_name: google/pegasus-cnn_dailymail
-  title_model_name: sshleifer/distilbart-cnn-12-6
+# HF model names
+summary_model_name: google/pegasus-cnn_dailymail
+title_model_name: sshleifer/distilbart-cnn-12-6
 
-  # Token limits
-  max_input_tokens: 1024     # truncate very long sections
-  max_summary_tokens: 160
-  min_summary_tokens: 40
-  max_title_tokens: 16
-  min_title_tokens: 3
+# Token limits
+max_input_tokens: 1024     # truncate very long sections
+max_summary_tokens: 160
+min_summary_tokens: 40
+max_title_tokens: 16
+min_title_tokens: 3
 
-  force: false
+force: false

@@ -1,0 +1,34 @@
+# config/agents/paper_pipeline.yaml
+paper_spine_builder:
+  name: paper_spine_builder
+  enabled: true
+  save_prompt: true
+  save_context: true
+  skip_if_completed: false
+
+  # ---- Input / output wiring ----
+  # The context key that must contain the arxiv_id of the root paper.
+  # (Your script should set context["arxiv_id"] before calling the agent.)
+  input_key: arxiv_id
+
+  # Where the agent writes its outputs in the context
+
+  force_rebuild_sections: false    # ignore cached sections, always re-build
+  
+  features:
+    enabled: true
+    subject: "nexus.features.index_request"   # NexusFeatureWorker.subject
+    target_type: "document_section"           # scorable_type for sections
+    source: "paper_pipeline"
+
+  # ---- Filesystem / storage ----
+  # Root directory where PDFs and graph.json will be stored.
+  papers_root: "data/papers"
+
+  model:
+    name: ollama/qwen3
+    api_base: http://localhost:11434
+    api_key: null
+    # Extra knobs your SummarizationTool may look for
+    max_tokens: 512
+    temperature: 0.2

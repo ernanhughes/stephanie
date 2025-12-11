@@ -28,12 +28,13 @@ class LLMRole(str, Enum):
     PLANNER = "planner"
     IDEATOR = "ideator"
     SUMMARIZER = "summarizer"
-    EXPLAINER = "explainer"
+    Years = "explainer"
     CRITIC_FEASIBILITY = "critic_feasibility"
     CRITIC_RISK = "critic_risk"
     EXECUTOR = "executor"
+    EXPLAINER = "explainer"
     REFINER = "refiner"
-
+    BLOG = "blog"
 
 DEFAULT_ROLE_SYSTEM_PROMPTS: Dict[LLMRole, str] = {
     LLMRole.CRITIC_FEASIBILITY: (
@@ -124,6 +125,13 @@ DEFAULT_ROLE_SYSTEM_PROMPTS: Dict[LLMRole, str] = {
         "You are a teacher explaining AI/ML concepts to an informed engineer. "
         "Use concise, accurate language and concrete examples."
     ),
+    LLMRole.BLOG: (
+        "You are a technical blog writer for AI/ML research papers. "
+        "Your job is to turn paper summaries, section notes, and graph context into "
+        "clear, trustworthy blog sections for an informed engineer. "
+        "You avoid hype, stay faithful to the provided context, and explain ideas with "
+        "concrete intuition, short paragraphs, and occasional bullet lists."
+    ),
 }
 
 config = """
@@ -156,7 +164,6 @@ class PromptRunnerAgent(BaseAgent):
         prompt = context.get("prompt_text") or self.prompt_loader.from_context(
             self.cfg, context=context
         )
-        # NOTE: This agent’s async_call_llm is used only by PromptService.run_prompt(...)
         response = await asyncio.wait_for(
             self.async_call_llm(prompt, context),
             timeout=self.cfg.get("timeout", 300),
@@ -198,9 +205,6 @@ class PromptService(Service):
         self._subs_ready = False
         self._task_group: set[asyncio.Task] = set()
 
-        # subscribe to results so we can serve wait_many/try_get
-        # (we do the actual subscribe in initialize/start_worker)
-        # Also keeps legacy wildcard for compatibility.
 
     # ---- Low-level LLM calls -------------------------------------------------
 

@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set, Iterable,  Literal, Tuple
 from pathlib import Path
 
 from pyparsing import ABC, abstractmethod
@@ -273,3 +273,153 @@ class SourceProfile:
     max_results_wiki: int
     max_vector_hits: int
     recency_days: int | None
+
+
+
+ElementType = Literal[
+    "figure",
+    "table",
+    "formula_inline",
+    "formula_display",
+    "chart",
+    "text_block",
+]
+
+
+@dataclass
+class BoundingBox:
+    """
+    Simple page-space bounding box.
+
+    Coordinates are in PDF page space (e.g. pixels), with origin (0, 0) at
+    the top-left, x to the right, y downwards (or however PaddleOCR-VL reports).
+    """
+    x1: float
+    y1: float
+    x2: float
+    y2: float
+
+    def height(self) -> float:
+        return max(0.0, self.y2 - self.y1)
+
+    def width(self) -> float:
+        return max(0.0, self.x2 - self.x1)
+
+    def center_y(self) -> float:
+        return (self.y1 + self.y2) / 2.0
+
+    def as_tuple(self) -> Tuple[float, float, float, float]:
+        return (self.x1, self.y1, self.x2, self.y2)
+
+
+@dataclass
+class DocumentElement:
+    """
+    A structured 'visual/structural element' extracted from the PDF.
+
+    This is what your PaddleOCR-VL pass should emit per element.
+    """
+    id: str                     # stable ID (e.g. paper_id:page:type:index)
+    paper_id: str               # arxiv_id or internal paper key
+    page: int                   # 1-based page number
+    type: ElementType
+    bbox: BoundingBox
+
+    # Content payload (only some fields will be used per type)
+    text: Optional[str] = None              # for text_block, captions, inline formulas
+    latex: Optional[str] = None             # for formula_inline / formula_display
+    markdown_table: Optional[str] = None    # for table/chart when converted to md
+    image_path: Optional[str] = None        # cropped image written to disk
+    caption: Optional[str] = None           # human-ish caption text
+
+    meta: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class SectionSpine:
+    """
+    The 'spine' unit: a logical paper section plus all attached elements.
+
+    This becomes the main unit for the blog generator: one SectionSpine in,
+    one blog section out.
+    """
+    section: "DocumentSection"
+    elements: List[DocumentElement] = field(default_factory=list)
+
+    # Optional: convenience fields for downstream logic
+    start_page: Optional[int] = None
+    end_page: Optional[int] = None
+
+
+
+def attach_elements_to_sections(
+    sections: Iterable[DocumentSection],
+    elements: Iterable[DocumentElement],
+) -> List[SectionSpine]:
+    """
+    Build the 'spine' by attaching extracted elements to their logical sections.
+
+    v1 behavior:
+      - For each section, derive (start_page, end_page).
+      - Attach every element with element.page in that range.
+      - No vertical-position logic yet; that's a v2 refinement.
+
+    Returns:
+      List[SectionSpine] in the same order as 'sections'.
+    """
+    # Materialize inputs (they're often generators)
+    section_list = list(sections)
+    element_list = list(elements)
+
+    # Pre-index elements by page for cheap lookup
+    elements_by_page: Dict[int, List[DocumentElement]] = {}
+    for el in element_list:
+        elements_by_page.setdefault(el.page, []).append(el)
+
+    spine: List[SectionSpine] = []
+
+    for sec in section_list:
+        # --- derive the page range for this section ---
+        start_page: Optional[int] = None
+        end_page: Optional[int] = None
+
+        # Option 1: explicit attributes
+        if hasattr(sec, "start_page") or hasattr(sec, "end_page"):
+            sp = getattr(sec, "start_page", None)
+            ep = getattr(sec, "end_page", None)
+            if sp is not None and ep is not None:
+                start_page = int(sp)
+                end_page = int(ep)
+
+        # Option 2: list of pages
+        if start_page is None and hasattr(sec, "pages"):
+            pages = getattr(sec, "pages", None) or []
+            try:
+                pages = list(pages)
+            except TypeError:
+                pages = []
+            if pages:
+                start_page = int(min(pages))
+                end_page = int(max(pages))
+
+        # If we still don't know, we can't sensibly attach by page.
+        if start_page is None or end_page is None:
+            spine.append(SectionSpine(section=sec, elements=[]))
+            continue
+
+        # --- collect elements that fall in [start_page, end_page] ---
+        attached: List[DocumentElement] = []
+        for page in range(start_page, end_page + 1):
+            for el in elements_by_page.get(page, []):
+                attached.append(el)
+
+        spine.append(
+            SectionSpine(
+                section=sec,
+                elements=attached,
+                start_page=start_page,
+                end_page=end_page,
+            )
+        )
+
+    return spine

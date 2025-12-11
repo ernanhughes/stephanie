@@ -12,6 +12,7 @@ defaults:
   - agents/paper_pipeline
   - agents/paper_pipeline_report
   - agents/paper_blog_generator
+  - agents/paper_spine_builder
 
 embeddings:
   backend: hnet
@@ -95,6 +96,14 @@ pipeline:
         URLs, databases) into the system for processing.
       cls: stephanie.components.information.agents.paper_pipeline.PaperPipelineAgent
       enabled: true What
+      iterations: 1
+
+    - name: paper_spine_builder
+      description: >
+        Build a structured spine for the research paper, organizing its
+        content into key sections and concepts.
+      cls: stephanie.components.information.agents.paper_spine_builder.PaperSpineBuilderAgent
+      enabled: true
       iterations: 1
 
     - name: paper_pipeline_report

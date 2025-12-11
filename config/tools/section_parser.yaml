@@ -1,19 +1,18 @@
-section_parser:
-  name: section_parser
-  enabled: true
-  save_prompt: false
-  save_context: false
+name: section_parser
+enabled: true
+save_prompt: false
+save_context: false
 
-  # Where to store results under scorable.meta["sections"]
-  meta_key: "doc_sections"
+# Where to store results under scorable.meta["sections"]
+meta_key: "doc_sections"
 
-  # Optional filtering
-  min_score: 0.0          # drop sections below this quality
-  max_sections: 0         # 0 = no cap
+# Optional filtering
+min_score: 0.0          # drop sections below this quality
+max_sections: 0         # 0 = no cap
 
-  # Underlying DocumentSectionParser settings
-  parser:
-    target_sections_config: "config/domain/target_sections.yaml"
-    enable_target_sections: true
-    min_chars_per_sec: 20
-    min_words_per_sec: 30
+# Underlying DocumentSectionParser settings
+parser:
+  target_sections_config: "config/domain/target_sections.yaml"
+  enable_target_sections: true
+  min_chars_per_sec: 20
+  min_words_per_sec: 30
