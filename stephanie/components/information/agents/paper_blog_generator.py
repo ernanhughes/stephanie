@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from typing import Any, Dict, List, Optional
+from pathlib import Path
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.components.information.data import (
@@ -46,6 +47,7 @@ class PaperBlogGeneratorAgent(BaseAgent):
         # Optional: where report agent stored markdown; not required here,
         # but we can reuse that summary in the future if you like.
         self.report_key = cfg.get("report_key", "paper_report_markdown")
+        self.report_dir = cfg.get("report_dir", f"runs/paper_reports/{self.run_id}")
 
     async def run(self, context: Dict[str, Any]) -> Dict[str, Any]:
         # ------------------- gather inputs -------------------
@@ -107,6 +109,27 @@ class PaperBlogGeneratorAgent(BaseAgent):
             arxiv_id,
             len(blog_markdown or ""),
         )
+
+        # Use a real filesystem Path
+        report_dir = Path(self.report_dir)
+        report_dir.mkdir(parents=True, exist_ok=True)
+
+        report_path = report_dir / f"{arxiv_id}_blog.md"
+        try:
+            with open(report_path, "w", encoding="utf-8") as f:
+                f.write(blog_markdown)
+            log.info(
+                "PaperBlogGeneratorAgent: saved blog markdown to %s", report_path
+            )
+            # optionally expose this path in context too
+            context["paper_blog_path"] = str(report_path)
+        except OSError as e:
+            log.warning(
+                "PaperBlogGeneratorAgent: failed to save blog markdown to %s: %s",
+                report_path,
+                e,
+            )
+
         return context
 
     # ------------------------------------------------------------------ helpers
