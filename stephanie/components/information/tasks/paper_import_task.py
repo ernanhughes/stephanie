@@ -12,7 +12,7 @@ import requests
 from stephanie.components.information.data import PaperNode
 from stephanie.utils.hash_utils import hash_text
 from stephanie.tools.pdf_tool import PDFConverter
-from stephanie.tools.arxiv_tool import fetch_arxiv_metadata  # NEW
+from stephanie.tools.arxiv_tool import fetch_arxiv_metadata
 
 log = logging.getLogger(__name__)
 

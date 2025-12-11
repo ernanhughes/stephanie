@@ -151,7 +151,7 @@ class GraphBuilder:
         } for e in edges]
         n = self.store.write_edges(run_id, payload)
 
-        from stephanie.components.nexus.graph.exporters.pyviz import \
+        from stephanie.components.nexus.graph.exporters.pyvis import \
             export_graph_json
         graph_json = export_graph_json(path=export_path, nodes=nodes, edges=edges, include_channels=True)
 

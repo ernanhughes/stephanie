@@ -1,8 +1,9 @@
-# stephanie/components/information/agents/paper_pipeline_report_agent.py
 from __future__ import annotations
 
-import math
+from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+import logging
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.components.information.data import (
@@ -11,6 +12,11 @@ from stephanie.components.information.data import (
     PaperReferenceGraph,
     SectionMatch,
 )
+from stephanie.components.nexus.graph.exporters.pyvis import (
+    export_pyvis_html,
+)
+
+log = logging.getLogger(__name__)
 
 
 class PaperPipelineReportAgent(BaseAgent):
@@ -27,6 +33,8 @@ class PaperPipelineReportAgent(BaseAgent):
 
     Writes:
       - context["paper_report_markdown"]: str
+      - context["paper_report_path"]: str
+      - context["paper_graph_html_path"]: str (PyVis visualization)
     """
 
     def __init__(self, cfg: Dict[str, Any], memory: Any, container: Any, logger: Any):
@@ -37,6 +45,11 @@ class PaperPipelineReportAgent(BaseAgent):
         self.max_clusters = int(rcfg.get("max_clusters", 8))
         self.max_sections_per_cluster = int(rcfg.get("max_sections_per_cluster", 4))
         self.include_kg_hint = bool(rcfg.get("include_kg_hint", True))
+        self.report_dir = rcfg.get("report_dir", f"runs/paper_reports/{self.run_id}")
+
+        # Keep last data around so preview helpers can see it
+        self._last_sections: List[DocumentSection] = []
+        self._last_clusters: List[ConceptCluster] = []
 
     async def run(self, context: Dict[str, Any]) -> Dict[str, Any]:
         # ---- inputs from upstream pipeline ----
@@ -53,6 +66,10 @@ class PaperPipelineReportAgent(BaseAgent):
         clusters: List[ConceptCluster] = context.get("concept_clusters") or []
         docs: List[Dict[str, Any]] = context.get("paper_documents") or []
 
+        # cache for preview helpers
+        self._last_sections = sections
+        self._last_clusters = clusters
+
         # ---- derive some stats ----
         title = self._infer_root_title(arxiv_id, graph, docs)
         graph_stats = self._summarize_graph(graph)
@@ -65,6 +82,15 @@ class PaperPipelineReportAgent(BaseAgent):
         if self.include_kg_hint:
             kg_hint = self._summarize_kg_for_sections(sections)
 
+        # Optional: PyVis graph export
+        graph_html_path: Optional[str] = None
+        if graph is not None and getattr(graph, "nodes", None):
+            graph_html_path = self._export_graph_pyvis(
+                graph=graph,
+                arxiv_id=arxiv_id,
+                title=title or f"Paper graph {arxiv_id}",
+            )
+
         # ---- build markdown report ----
         md = self._build_markdown_report(
             arxiv_id=arxiv_id,
@@ -76,29 +102,40 @@ class PaperPipelineReportAgent(BaseAgent):
             kg_hint=kg_hint,
         )
 
+        # Append visualization info if we generated one
+        if graph_html_path:
+            md += "\n## Visualizations\n\n"
+            md += f"- PyVis paper graph: `{graph_html_path}`\n"
+
         context["paper_report_markdown"] = md
 
-        # Log a compact event + optionally the report head
-        head_preview = md.split("\n", 40)
-        head_preview = "\n".join(head_preview[:40])
-        if hasattr(self.logger, "log"):
-            self.logger.log(
-                "PaperPipelineReportGenerated",
-                {
-                    "arxiv_id": arxiv_id,
-                    "root_title": title,
-                    "num_sections": section_stats["total_sections"],
-                    "num_clusters": cluster_stats["total_clusters"],
-                    "num_graph_nodes": graph_stats["num_nodes"],
-                    "num_graph_edges": graph_stats["num_edges"],
-                },
-            )
-        else:
-            # Fallback to plain logging
-            self.logger.info(
-                "PaperPipelineReportGenerated arxiv_id=%s\n%s",
-                arxiv_id,
-                head_preview,
+        # ---- save markdown to file ----
+        report_path = Path(self.report_dir) / f"{arxiv_id}_report.md"
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(report_path, "w", encoding="utf-8") as f:
+            f.write(md)
+        context["paper_report_path"] = str(report_path)
+
+        if graph_html_path:
+            context["paper_graph_html_path"] = graph_html_path
+
+        log.info("PaperPipelineReportAgent: saved report to %s", report_path)
+
+        # Log a compact summary
+        log.info(
+            "PaperPipelineReportGenerated arxiv_id: %s title: %s num_sections: %d num_clusters: %d num_graph_nodes: %d num_graph_edges: %d",
+            arxiv_id,
+            title,
+            section_stats["total_sections"],
+            cluster_stats["total_clusters"],
+            graph_stats["num_nodes"],
+            graph_stats["num_edges"],
+        )
+
+        if graph_html_path:
+            log.info(
+                "PaperPipelineReportAgent: PyVis graph saved to %s",
+                graph_html_path,
             )
 
         return context
@@ -120,7 +157,6 @@ class PaperPipelineReportAgent(BaseAgent):
 
         # 2) try graph root node title
         if graph is not None:
-            # root node might be stored as graph.root_id or tagged by role
             root_id = getattr(graph, "root_id", None)
             nodes = getattr(graph, "nodes", {}) or {}
 
@@ -130,7 +166,6 @@ class PaperPipelineReportAgent(BaseAgent):
                 if t:
                     return t
 
-            # otherwise, scan for a node with role "root"
             for node in nodes.values():
                 role = getattr(node, "role", "") or getattr(node, "kind", "")
                 if role == "root":
@@ -178,8 +213,7 @@ class PaperPipelineReportAgent(BaseAgent):
         self, sections: List[DocumentSection]
     ) -> Dict[str, Any]:
         total = len(sections)
-        # basic length stats
-        lengths = []
+        lengths: List[int] = []
         for sec in sections:
             txt = getattr(sec, "summary", None) or getattr(sec, "text", "") or ""
             lengths.append(len(txt))
@@ -201,7 +235,6 @@ class PaperPipelineReportAgent(BaseAgent):
 
         sizes: List[int] = []
         for cl in clusters:
-            # Try a few common patterns for section membership
             sec_ids = (
                 getattr(cl, "section_ids", None)
                 or getattr(cl, "sections", None)
@@ -267,6 +300,47 @@ class PaperPipelineReportAgent(BaseAgent):
             "avg_nodes_per_section": avg_nodes,
         }
 
+    # --------------------------- PyVis export --------------------------- #
+
+    def _export_graph_pyvis(
+        self,
+        *,
+        graph: PaperReferenceGraph,
+        arxiv_id: str,
+        title: str,
+    ) -> Optional[str]:
+        """
+        Export the paper graph (PaperReferenceGraph) as a PyVis HTML.
+
+        Uses your existing export_pyvis_html helper and treats graph.nodes as
+        the node map and graph.edges as the edge list.
+        """
+        try:
+            nodes = getattr(graph, "nodes", {}) or {}
+            edges = list(getattr(graph, "edges", []) or [])
+
+            if not nodes:
+                return None
+
+            out_path = Path(self.report_dir) / f"{arxiv_id}_graph.html"
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+
+            export_pyvis_html(
+                nodes=nodes,
+                edges=edges,
+                output_path=str(out_path),
+                title=title,
+            )
+
+            return str(out_path)
+        except Exception:
+            log.warning(
+                "PaperPipelineReportAgent: failed to export PyVis graph for %s",
+                arxiv_id,
+                exc_info=True,
+            )
+            return None
+
     # ------------------------------------------------------------------ markdown
 
     def _build_markdown_report(
@@ -283,7 +357,7 @@ class PaperPipelineReportAgent(BaseAgent):
         lines: List[str] = []
 
         header = title or f"arXiv {arxiv_id}"
-        lines.append(f"# Paper Knowledge Graph Report")
+        lines.append("# Paper Knowledge Graph Report")
         lines.append("")
         lines.append(f"**Root paper:** `{arxiv_id}`")
         if title:
@@ -318,7 +392,6 @@ class PaperPipelineReportAgent(BaseAgent):
         )
         lines.append("")
 
-        # We only print a subset to keep report readable
         lines.extend(self._render_sections_preview(max_sections=self.max_sections))
         lines.append("")
 
@@ -364,23 +437,124 @@ class PaperPipelineReportAgent(BaseAgent):
 
         return "\n".join(lines)
 
-    # These two are split out so you can customise them easily if
-    # you later want richer previews that use more of your data types.
+    # --------------------- richer previews ---------------------------- #
 
     def _render_sections_preview(self, max_sections: int) -> List[str]:
-        from stephanie.components.information.data import DocumentSection  # local import to avoid cycles
+        """
+        Show a concrete list of the first N sections with title + short summary.
+        """
+        sections = self._last_sections or []
+        if not sections:
+            return [
+                "_(no sections to preview – pipeline may have failed before "
+                "section building.)_"
+            ]
 
-        # We don't have direct access to sections here, so this method is
-        # designed to be overridden or adapted if you want richer details.
-        # For now, a simple note is returned.
-        return [
-            "_(section preview omitted – override `_render_sections_preview` "
-            "if you want detailed section listings here.)_"
-        ]
+        lines: List[str] = []
+        lines.append("### Sample Sections")
+        lines.append("")
+
+        for idx, sec in enumerate(sections[:max_sections]):
+            title = (
+                getattr(sec, "title", None)
+                or getattr(sec, "section_name", None)
+                or f"Section {idx + 1}"
+            )
+            summary = (
+                getattr(sec, "summary", None)
+                or getattr(sec, "text", None)
+                or ""
+            )
+            # normalize whitespace and clip
+            summary = " ".join(str(summary).split())
+            if len(summary) > 220:
+                summary = summary[:200] + "..."
+
+            lines.append(f"- **{idx + 1}. {title}** — {summary}")
+
+        if len(sections) > max_sections:
+            lines.append(
+                f"_... and {len(sections) - max_sections} more sections._"
+            )
+
+        return lines
 
     def _render_clusters_preview(self, max_clusters: int) -> List[str]:
-        return [
-            "_(cluster preview omitted – override `_render_clusters_preview` "
-            "if you want detailed cluster listings here.)_"
-        ]
-All right OK
+        """
+        Show a few clusters with the section titles they touch.
+        """
+        clusters = self._last_clusters or []
+        sections = self._last_sections or []
+
+        if not clusters:
+            return ["_(no clusters to preview.)_"]
+
+        # Map section_id/id -> index into sections list
+        section_index_by_id: Dict[str, int] = {}
+        for idx, sec in enumerate(sections):
+            sid = getattr(sec, "section_id", None) or getattr(sec, "id", None)
+            if sid is not None:
+                section_index_by_id[str(sid)] = idx
+
+        lines: List[str] = []
+        lines.append("### Sample Concept Clusters")
+        lines.append("")
+
+        for i, cl in enumerate(clusters[:max_clusters]):
+            label = (
+                getattr(cl, "label", None)
+                or getattr(cl, "name", None)
+                or f"Cluster {i + 1}"
+            )
+
+            member_ids = (
+                getattr(cl, "section_ids", None)
+                or getattr(cl, "sections", None)
+                or getattr(cl, "members", None)
+                or []
+            )
+
+            member_indices: List[int] = []
+            for mid in member_ids:
+                if mid is None:
+                    continue
+                key = str(getattr(mid, "id", mid))
+                if key in section_index_by_id:
+                    member_indices.append(section_index_by_id[key])
+
+            member_indices = sorted(set(member_indices))
+
+            if not member_indices:
+                lines.append(
+                    f"- **{label}** — _no resolvable member sections_"
+                )
+                continue
+
+            sec_snippets: List[str] = []
+            for j, idx in enumerate(
+                member_indices[: self.max_sections_per_cluster]
+            ):
+                sec = sections[idx]
+                stitle = (
+                    getattr(sec, "title", None)
+                    or getattr(sec, "section_name", None)
+                    or f"S{idx + 1}"
+                )
+                sec_snippets.append(stitle)
+
+            more = ""
+            if len(member_indices) > self.max_sections_per_cluster:
+                more = (
+                    f" (+{len(member_indices) - self.max_sections_per_cluster} more)"
+                )
+
+            lines.append(
+                f"- **{label}** — sections: {', '.join(sec_snippets)}{more}"
+            )
+
+        if len(clusters) > max_clusters:
+            lines.append(
+                f"_... and {len(clusters) - max_clusters} more clusters._"
+            )
+
+        return lines

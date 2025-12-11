@@ -17,6 +17,14 @@ paper_pipeline:
   output_matches_key: section_matches
   output_clusters_key: concept_clusters
 
+  force_rebuild_sections: false    # ignore cached sections, always re-build
+  
+  features:
+    enabled: true
+    subject: "nexus.features.index_request"   # NexusFeatureWorker.subject
+    target_type: "document_section"           # scorable_type for sections
+    source: "paper_pipeline"
+
   # ---- Filesystem / storage ----
   # Root directory where PDFs and graph.json will be stored.
   papers_root: "data/papers"

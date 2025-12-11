@@ -198,6 +198,7 @@ class PaperPipelineAgent(BaseAgent):
 
         section_task = SectionBuildTask(
             cfg=section_cfg,
+            memory=self.memory,
             summarizer=self._get_summarizer(),
             embedder=self._get_embedder(),
         )

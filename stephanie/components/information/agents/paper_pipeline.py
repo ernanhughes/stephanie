@@ -26,11 +26,10 @@ from stephanie.components.information.tasks.section_build_task import (
 )
 from stephanie.components.information.tasks.section_link_task import SectionLinkTask
 
-# Tool + memory imports – these are real modules in your project,
-# but you may need to tweak exact names / paths.
 from stephanie.tools.summarization_tool import SummarizationTool
 from stephanie.tools.huggingface_tool import recommend_similar_papers
 from stephanie.scoring.scorable import Scorable, ScorableType
+from stephanie.constants import PIPELINE_RUN_ID
 
 log = logging.getLogger(__name__)
 
@@ -141,6 +140,12 @@ class PaperPipelineAgent(BaseAgent):
         super().__init__(
             cfg=cfg, memory=memory, container=container, logger=logger
         )
+        self.document_store = memory.documents
+        self.section_store = memory.document_sections
+        # populated by _load_texts_for_graph so we know which Document
+        # corresponds to which arxiv_id
+        self._doc_by_arxiv: Dict[str, Any] = {}
+
 
     async def run(self, context: Dict[str, Any]) -> Dict[str, Any]:
         # ------------------------------------------------------------------
@@ -188,31 +193,52 @@ class PaperPipelineAgent(BaseAgent):
 
         # ------------------------------------------------------------------
         # 2) Build sections (slice text + optional summarization/embedding)
+        #     – but first try to re-use cached sections if we have them.
         # ------------------------------------------------------------------
 
-        texts = await self._load_texts_for_graph(
-            graph=graph,
-            papers_root=papers_root,
-            context=context,
+        texts = await self._load_texts_for_graph(graph, papers_root)
+
+        sections: Optional[List[DocumentSection]] = None
+
+        # Try to reuse sections from the DB for the root paper
+        if self.section_store and self.document_store:
+            sections = self._maybe_load_sections_from_store(arxiv_id)
+
+        if sections is None:
+            section_cfg = SectionBuildConfig(
+                chars_per_section=int(self.cfg.get("section_chars", 2000)),
+                min_chars=int(self.cfg.get("section_min_chars", 400)),
+                overlap=int(self.cfg.get("section_overlap", 200)),
+            )
+
+            section_task = SectionBuildTask(
+                cfg=section_cfg,
+                summarizer=self._get_summarizer(),
+                embedder=self._get_embedder(),
+            )
+
+            sections = await section_task.run(
+                graph=graph,
+                texts=texts,
+            )
+
+            # Persist freshly built sections so future runs can re-use them
+            self._persist_sections_to_store(
+                arxiv_id=arxiv_id,
+                sections=sections,
+            )
+
+        # ------------------------------------------------------------------
+        # 3) Link sections (root vs others) + concept clusters
+        # ------------------------------------------------------------------
+        link_task = SectionLinkTask(
+            root_arxiv_id=arxiv_id,
+            top_k=int(self.cfg.get("section_top_k", 5)),
+            min_sim=float(self.cfg.get("section_min_sim", 0.4)),
         )
 
-        section_cfg = SectionBuildConfig(
-            chars_per_section=int(self.cfg.get("section_chars", 2000)),
-            min_chars=int(self.cfg.get("section_min_chars", 400)),
-            overlap=int(self.cfg.get("section_overlap", 200)),
-        )
-
-        section_task = SectionBuildTask(
-            cfg=section_cfg,
-            summarizer=self._get_summarizer(),
-            embedder=self._get_embedder(),
-        )
-
-        sections: List[DocumentSection] = await section_task.run(
-            graph=graph,
-            texts=texts,
-        )
-
+        matches, clusters = link_task.run(sections)
+        
         # ------------------------------------------------------------------
         # 3) Link sections (root vs others) + concept clusters
         # ------------------------------------------------------------------
@@ -224,6 +250,8 @@ class PaperPipelineAgent(BaseAgent):
         )
 
         matches, clusters = link_task.run(sections)
+        
+        await self._dispatch_feature_jobs(sections, context)
 
         # ------------------------------------------------------------------
         # 4) Write results back to context
@@ -277,126 +305,101 @@ class PaperPipelineAgent(BaseAgent):
         self,
         graph: PaperReferenceGraph,
         papers_root: Path,
-        context: Dict[str, Any],
     ) -> Dict[str, str]:
         """
         Load full text for each paper in the graph.
 
-        New behavior:
-        - First try to reuse an existing Document from self.memory.documents,
-          keyed by a canonical arxiv PDF URL.
-        - If not present (or text missing), fall back to PaperImportTask and
-          store the resulting Document so subsequent runs are fast and
-          consistent.
+        Behaviour now:
+          - If a Document already exists (by URL) and has text, reuse it.
+          - Otherwise, run PaperImportTask, then create a Document row.
+          - Maintain self._doc_by_arxiv[arxiv_id] for later use.
         """
+        texts: Dict[str, str] = {}
+        self._doc_by_arxiv = {}
 
         import_task = PaperImportTask(
             papers_root=papers_root,
         )
 
-        texts: Dict[str, str] = {}
-        stored_documents: List[Dict[str, Any]] = []
-
-        # Optional: pull a goal_id from context if you want it on the Document
-        goal = context.get("goal") or context.get("GOAL") or {}
-        if isinstance(goal, dict):
-            goal_id = goal.get("id")
-        else:
-            goal_id = getattr(goal, "id", None)
-
         for arxiv_id, node in graph.nodes.items():
-            role = node.role
+            text = None
+            doc = None
+            url = self._guess_paper_url(arxiv_id, node)
 
-            # Canonical URL we will use as the key into the DocumentStore.
-            # This matches what the HF similar tool uses for arxiv PDFs.
-            url = f"https://arxiv.org/pdf/{arxiv_id}.pdf"
-
-            # ------------------------------------------------------------------
-            # 1) Try memory.documents first (cache hit)
-            # ------------------------------------------------------------------
-            doc_obj = self.memory.documents.get_by_url(url)
-            if doc_obj is not None:
-                doc_dict = doc_obj.to_dict()
-                text = (doc_dict.get("text") or "").strip()
-                if text:
-                    texts[arxiv_id] = text
-                    stored_documents.append(doc_dict)
-                    log.debug(
-                        "PaperPipelineAgent: reused cached document for %s (role=%s)",
-                        arxiv_id,
-                        role,
+            # 1) Try to reuse stored Document if available
+            if self.document_store:
+                try:
+                    doc = self.document_store.get_by_url(url)
+                except Exception as e:
+                    log.warning(
+                        "PaperPipeline: document lookup failed url=%s error=%s",
+                        url,
+                        e,
                     )
-                    continue  # move on to next paper
+                    doc = None
 
-            # ------------------------------------------------------------------
-            # 2) Cache miss -> import via PaperImportTask
-            # ------------------------------------------------------------------
-            try:
-                result = await import_task.run(arxiv_id=arxiv_id, role=role)
-            except Exception as e:
-                log.warning(
-                    "PaperPipelineAgent: import failed for %s (role=%s): %s",
-                    arxiv_id,
-                    role,
-                    e,
-                )
-                continue
+                if doc is not None and getattr(doc, "text", None):
+                    text = doc.text
 
-            if not result or not getattr(result, "text", None):
-                log.warning(
-                    "PaperPipelineAgent: no text returned for %s (role=%s)",
-                    arxiv_id,
-                    role,
-                )
-                continue
+            # 2) If no stored text, import the paper
+            if text is None:
+                try:
+                    res = await import_task.run(
+                        arxiv_id=arxiv_id,
+                        role=getattr(node, "role", None),
+                    )
+                    text = getattr(res, "text", None)
+                except Exception as e:
+                    log.warning(
+                        "Failed to load text for %s (role=%s): %s",
+                        arxiv_id,
+                        getattr(node, "role", None),
+                        e,
+                    )
+                    continue
 
-            text = result.text
-            texts[arxiv_id] = text
+                # 2b) Persist a Document row if we have a store
+                if self.document_store and text:
+                    try:
+                        if doc is None:
+                            title = getattr(node, "title", None) or arxiv_id
+                            source = getattr(node, "source", None) or "arxiv"
 
-            # ------------------------------------------------------------------
-            # 3) Persist into DocumentStore so we don't re-import next time
-            # ------------------------------------------------------------------
-            try:
-                doc: Dict[str, Any] = {
-                    "goal_id": goal_id,
-                    "title": getattr(result, "title", None)
-                    or getattr(node, "title", None)
-                    or f"arXiv {arxiv_id}",
-                    "external_id": arxiv_id,
-                    "summary": getattr(result, "summary", None),
-                    "source": "paper_pipeline",
-                    "text": text,
-                    "url": url,
-                }
+                            doc_dict = {
+                                "title": title,
+                                "source": source,
+                                "external_id": arxiv_id,
+                                "url": url,
+                                "summary": None,   # let other agents fill this in
+                                "text": text,
+                                "goal_id": None,
+                                "domains": None,
+                            }
+                            doc = self.document_store.add_document(doc_dict)
+                    except Exception as e:
+                        log.warning(
+                            "PaperPipeline: failed to persist Document for %s: %s",
+                            arxiv_id,
+                            e,
+                        )
 
-                stored = self.memory.documents.add_document(doc)
-                stored_dict = stored.to_dict()
-                stored_documents.append(stored_dict)
-
-                log.debug(
-                    "PaperPipelineAgent: stored document for %s (role=%s) into memory.documents",
-                    arxiv_id,
-                    role,
-                )
-
-                # If you want to mirror DocumentLoaderAgent behavior exactly,
-                # you can also ensure a Scorable + embedding here, e.g.:
-                #
-                #   self._ensure_doc_scorable(stored_dict, context)
-                #
-                # (tiny helper method using BaseEmbeddingStore + Scorable)
-
-            except Exception as e:
-                log.warning(
-                    "PaperPipelineAgent: failed to store document for %s: %s",
-                    arxiv_id,
-                    e,
-                )
-
-        # Expose docs back on context so later stages can use them
-        context["paper_documents"] = stored_documents
+            if text:
+                texts[arxiv_id] = text
+            if doc is not None:
+                self._doc_by_arxiv[arxiv_id] = doc
 
         return texts
+
+    def _guess_paper_url(self, arxiv_id: str, node: Any) -> str:
+        """
+        Best-effort reconstruction of a stable URL for this paper.
+        This should line up with what DocumentLoader uses for arxiv PDFs.
+        """
+        url = getattr(node, "pdf_url", None) or getattr(node, "url", None)
+        if not url and arxiv_id:
+            # Default arxiv PDF pattern
+            url = f"https://arxiv.org/pdf/{arxiv_id}.pdf"
+        return url
 
     def _get_summarizer(self):
         """
@@ -613,3 +616,382 @@ class PaperPipelineAgent(BaseAgent):
                 scorable_id,
                 str(e),
             )
+
+    # ------------------------------------------------------------------
+    # Feature indexing helpers (NexusFeatureWorker)
+    # ------------------------------------------------------------------
+
+    def _build_section_scorables_for_features(
+        self,
+        sections: List[DocumentSection],
+        context: Dict[str, Any],
+    ) -> List[Dict[str, Any]]:
+        """
+        Convert DocumentSection objects into Scorable dicts that
+        NexusFeatureWorker / ScorableProcessor can understand.
+        """
+        cfg_features = self.cfg.get("features", {}) or {}
+        target_type = cfg_features.get("target_type", "document_section")
+        source = cfg_features.get("source", "paper_pipeline")
+
+        arxiv_id = (
+            context.get("arxiv_id")
+            or context.get("paper_arxiv_id")
+            or context.get("root_arxiv_id")
+        )
+
+        scorables: List[Dict[str, Any]] = []
+
+        for idx, sec in enumerate(sections):
+            text = getattr(sec, "summary", None) or getattr(sec, "text", None) or ""
+            if not text or not text.strip():
+                continue
+
+            # Try to reuse an existing scorable_id if we already set one
+            scorable_id = (
+                getattr(sec, "scorable_id", None)
+                or getattr(sec, "id", None)
+            )
+            # If your earlier code has a helper like _make_section_scorable_id,
+            # you can fall back to that:
+            if not scorable_id and hasattr(self, "_make_section_scorable_id"):
+                scorable_id = self._make_section_scorable_id(sec, idx)
+
+            if not scorable_id:
+                # last resort: deterministic id from arxiv + index
+                scorable_id = f"{arxiv_id or 'paper'}:sec:{idx}"
+                setattr(sec, "scorable_id", scorable_id)
+
+            domains = getattr(sec, "domains", None) or []
+            title = getattr(sec, "title", None)
+            external_id = getattr(sec, "external_id", None) or arxiv_id
+
+            scorable = {
+                "id": scorable_id,
+                "target_type": target_type,
+                "text": text,
+                "title": title,
+                "external_id": external_id,
+                "order_index": idx,
+                "domains": domains,
+                "source": source,
+            }
+            scorables.append(scorable)
+
+        return scorables
+
+    async def _dispatch_feature_jobs(
+        self,
+        sections: List[DocumentSection],
+        context: Dict[str, Any],
+    ) -> None:
+        """
+        Send section scorables to NexusFeatureWorker so features/embeddings
+        are computed and mirrored into Nexus.
+
+        This uses the bus subject configured in cfg["features"]["subject"].
+        """
+        cfg_features = self.cfg.get("features", {}) or {}
+        if not cfg_features.get("enabled", True):
+            log.debug("PaperPipelineAgent: feature indexing disabled in config")
+            return
+
+        bus = getattr(self.memory, "bus", None)
+        if bus is None:
+            log.warning(
+                "PaperPipelineAgent: memory.bus is missing; "
+                "cannot dispatch feature jobs to NexusFeatureWorker"
+            )
+            return
+
+        scorables = self._build_section_scorables_for_features(sections, context)
+        if not scorables:
+            log.debug(
+                "PaperPipelineAgent: no non-empty sections to index for features"
+            )
+            return
+
+        subject = cfg_features.get("subject", "nexus.features.index_request")
+
+        pipeline_run_id = (
+            context.get(PIPELINE_RUN_ID)
+            or context.get("pipeline_run_id")
+            or context.get("run_id")
+        )
+
+        payload_context = {
+            PIPELINE_RUN_ID: pipeline_run_id,
+            "arxiv_id": (
+                context.get("arxiv_id")
+                or context.get("paper_arxiv_id")
+                or context.get("root_arxiv_id")
+            ),
+            "goal": context.get("goal"),
+        }
+
+        payload = {
+            "scorables": scorables,
+            "context": payload_context,
+        }
+
+        try:
+            await bus.publish(subject=subject, payload=payload)
+            log.info(
+                "PaperPipelineAgent: dispatched %d section scorables "
+                "to NexusFeatureWorker on subject=%s",
+                len(scorables),
+                subject,
+            )
+        except Exception as e:
+            log.exception(
+                "PaperPipelineAgent: failed to publish feature index batch: %s",
+                e,
+            )
+
+    def _maybe_load_sections_from_store(
+        self,
+        arxiv_id: str,
+    ) -> Optional[List[DocumentSection]]:
+        """
+        If we already have stored sections for this paper, reconstruct
+        lightweight DocumentSection objects and return them.
+
+        Returns None if:
+          - there's no Document or no sections yet
+          - or cfg.force_rebuild_sections is True
+        """
+        if not self.document_store or not self.section_store:
+            return None
+
+        doc = self._doc_by_arxiv.get(arxiv_id)
+        if doc is None:
+            return None
+
+        try:
+            orm_sections = self.section_store.get_by_document(doc.id)
+        except Exception as e:
+            log.warning(
+                "PaperPipeline: failed reading sections for doc_id=%s error=%s",
+                getattr(doc, "id", None),
+                e,
+            )
+            return None
+
+        if not orm_sections:
+            return None
+
+        if bool(self.cfg.get("force_rebuild_sections", False)):
+            log.info(
+                "PaperPipeline: force_rebuild_sections=True; ignoring %d cached sections for %s",
+                len(orm_sections),
+                arxiv_id,
+            )
+            return None
+
+        sections = self._sections_from_orm(orm_sections, arxiv_id=arxiv_id)
+        log.info(
+            "PaperPipeline: reusing %d cached sections for %s",
+            len(sections),
+            arxiv_id,
+        )
+        return sections
+
+    def _sections_from_orm(
+        self,
+        orm_sections,
+        *,
+        arxiv_id: str,
+    ) -> List[DocumentSection]:
+        """
+        Convert DocumentSectionORM rows into DocumentSection objects.
+
+        This version explicitly fills the required ctor fields:
+          - paper_arxiv_id
+          - paper_role
+          - section_index
+
+        and then uses signature introspection to only pass args that
+        actually exist on DocumentSection in your codebase.
+        """
+        from inspect import signature, Parameter
+
+        sig = signature(DocumentSection)
+        param_names = [
+            p.name
+            for p in sig.parameters.values()
+            if p.kind in (Parameter.POSITIONAL_OR_KEYWORD, Parameter.KEYWORD_ONLY)
+        ]
+
+        sections: List[DocumentSection] = []
+
+        for idx, orm in enumerate(orm_sections):
+            extra = getattr(orm, "extra_data", None) or {}
+
+            # --- required ctor fields ----------------------------------
+            paper_arxiv_id = (
+                extra.get("paper_arxiv_id")
+                or extra.get("arxiv_id")
+                or arxiv_id
+            )
+            paper_role = extra.get("paper_role") or "root"
+            section_index = (
+                extra.get("section_index")
+                or extra.get("index")
+                or idx
+            )
+
+            # --- common fields we may want to restore ------------------
+            title = getattr(orm, "section_name", None)
+            text = getattr(orm, "section_text", None)
+            summary = getattr(orm, "summary", None)
+            source = getattr(orm, "source", None)
+
+            candidates = {
+                # required ctor args
+                "paper_arxiv_id": paper_arxiv_id,
+                "paper_role": paper_role,
+                "section_index": section_index,
+                # ids
+                "id": orm.id,
+                "section_id": orm.id,
+                "document_id": orm.document_id,
+                # text-ish fields
+                "title": title,
+                "section_name": title,
+                "text": text,
+                "section_text": text,
+                "summary": summary,
+                "source": source,
+                # misc / meta
+                "extra_data": extra,
+                "arxiv_id": arxiv_id,
+                "paper_id": arxiv_id,
+                "index": idx,
+            }
+
+            kwargs = {
+                name: value
+                for name, value in candidates.items()
+                if name in param_names and value is not None
+            }
+
+            try:
+                sec = DocumentSection(**kwargs)
+            except TypeError as e:
+                # Extremely defensive fallback: only pass the 3 required args,
+                # then patch the obvious attributes onto the instance.
+                self.logger.warning(
+                    "PaperPipeline: DocumentSection(**kwargs) failed (%s), "
+                    "falling back to minimal ctor; kwargs=%s",
+                    e,
+                    kwargs,
+                )
+                sec = DocumentSection(
+                    paper_arxiv_id=paper_arxiv_id,
+                    paper_role=paper_role,
+                    section_index=section_index,
+                )
+                # best-effort attribute patching
+                if title is not None and not getattr(sec, "section_name", None):
+                    setattr(sec, "section_name", title)
+                if text is not None and not getattr(sec, "text", None):
+                    setattr(sec, "text", text)
+                if summary is not None and not getattr(sec, "summary", None):
+                    setattr(sec, "summary", summary)
+                if source is not None and not getattr(sec, "source", None):
+                    setattr(sec, "source", source)
+                if extra and not getattr(sec, "extra_data", None):
+                    setattr(sec, "extra_data", extra)
+
+            sections.append(sec)
+
+        return sections
+
+    def _persist_sections_to_store(
+        self,
+        *,
+        arxiv_id: str,
+        sections: List[DocumentSection],
+    ) -> None:
+        """
+        Persist freshly built sections into the DocumentSectionStore.
+
+        - Attaches them to the Document we created/loaded earlier.
+        - Writes minimal metadata into extra_data.
+        - Pushes stored.id back onto the in-memory section (for stable scorable_ids).
+        """
+        if not self.section_store or not self.document_store:
+            return
+        if not sections:
+            return
+
+        doc = self._doc_by_arxiv.get(arxiv_id)
+        if doc is None:
+            log.info(
+                "PaperPipeline: no Document found for %s; skipping section persistence",
+                arxiv_id,
+            )
+            return
+
+        # If sections already exist and we're not forcing, bail early
+        try:
+            existing = self.section_store.get_by_document(doc.id)
+        except Exception:
+            existing = []
+
+        if existing and not bool(self.cfg.get("force_rebuild_sections", False)):
+            log.info(
+                "PaperPipeline: %d sections already stored for doc_id=%s; not overwriting",
+                len(existing),
+                getattr(doc, "id", None),
+            )
+            return
+
+        if existing:
+            self.section_store.delete_by_document(doc.id)
+
+        for idx, sec in enumerate(sections):
+            title = getattr(sec, "title", None) or getattr(sec, "section_name", None)
+            if not title:
+                title = (getattr(sec, "summary", "") or getattr(sec, "text", ""))[:80]
+
+            text = getattr(sec, "text", None) or getattr(sec, "summary", None) or ""
+            summary = getattr(sec, "summary", None) or ""
+
+            extra_data = {
+                "arxiv_id": arxiv_id,
+                "paper_arxiv_id": arxiv_id,
+                "paper_role": getattr(sec, "paper_role", None) or "root",
+                "section_index": getattr(sec, "section_index", None) or idx,
+                "index": getattr(sec, "index", idx),
+                "domains": list(getattr(sec, "domains", []) or []),
+            }
+            meta = getattr(sec, "meta", None)
+            if isinstance(meta, dict):
+                extra_data["meta"] = meta
+
+            section_dict = {
+                "document_id": doc.id,
+                "section_name": title[:255],
+                "section_text": text,
+                "summary": summary,
+                "source": "paper_pipeline",
+                "extra_data": extra_data,
+            }
+
+            try:
+                stored = self.section_store.upsert(section_dict)
+                # Push the DB id back onto the in-memory section so that
+                # _make_section_scorable_id will now use a stable id.
+                if not getattr(sec, "id", None) and not getattr(sec, "section_id", None):
+                    try:
+                        setattr(sec, "id", stored.id)
+                    except Exception:
+                        pass
+            except Exception as e:
+                log.warning(
+                    "PaperPipeline: failed to persist section '%s' idx=%d: %s",
+                    title,
+                    idx,
+                    e,
+                )

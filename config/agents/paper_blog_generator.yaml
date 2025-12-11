@@ -1,0 +1,33 @@
+paper_blog_generator:
+  name: paper_blog_generator
+  enabled: true
+  save_prompt: true
+  save_context: true
+  skip_if_completed: false
+
+  # Where we read inputs from the pipeline context
+  input_arxiv_key: arxiv_id
+  graph_key: paper_graph
+  sections_key: paper_sections
+  clusters_key: concept_clusters
+  documents_key: paper_documents
+  report_key: paper_report_markdown
+
+  # Where we write the final blog
+  output_key: paper_blog_markdown
+
+  blog:
+    audience: "informed engineer"
+    target_length_words: 2200
+    max_sections: 18
+    max_clusters: 6
+    max_similar_papers: 4
+
+  # Model block kept for consistency (PromptService will actually use its own cfg,
+  # but this lets you switch things later if you want the agent to call async_call_llm).
+  model:
+    name: ollama/qwen3
+    api_base: http://localhost:11434
+    api_key: null
+    params:
+      temperature: 0.4

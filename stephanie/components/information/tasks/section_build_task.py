@@ -39,6 +39,7 @@ class SectionBuildTask:
     def __init__(
         self,
         cfg: Optional[SectionBuildConfig] = None,
+        memory: Any = None,
         summarizer: Optional[SummaryFn] = None,
         embedder: Optional[EmbedFn] = None,
         parser: Optional[DocumentSectionParser] = None,

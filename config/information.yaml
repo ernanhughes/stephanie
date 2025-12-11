@@ -11,6 +11,7 @@ defaults:
   # Critic pipeline agents
   - agents/paper_pipeline
   - agents/paper_pipeline_report
+  - agents/paper_blog_generator
 
 embeddings:
   backend: hnet
@@ -103,3 +104,12 @@ pipeline:
       cls: stephanie.components.information.agents.paper_pipeline_report.PaperPipelineReportAgent
       enabled: true
       iterations: 1
+
+    - name: paper_blog_generator
+      description: >
+        Generate a blog post based on the processed paper and the
+        generated report.
+      cls: stephanie.components.information.agents.paper_blog_generator.PaperBlogGeneratorAgent
+      enabled: true
+      iterations: 1
+

@@ -1,4 +1,4 @@
-# stephanie/components/nexus/graph/exporters/pyvis_exporter.py
+# stephanie/components/nexus/graph/exporters/pyvis.py
 from __future__ import annotations
 
 import json
