@@ -50,7 +50,7 @@ class KnowledgeGraphIndexerWorker(BaseWorker):
         self.kg_service: KnowledgeGraphService = KnowledgeGraphService(
             cfg=cfg,
             memory=memory,
-            logger=self.logger,
+            logger=log,
         )
         self.kg_service.initialize()
 
@@ -68,7 +68,7 @@ class KnowledgeGraphIndexerWorker(BaseWorker):
         worker_cfg = cfg.get("worker", {})
         self.debug_tree = bool(worker_cfg.get("debug_tree", False))
 
-        self.logger.info(
+        log.info(
             "KnowledgeGraphIndexerWorker initialized.",
             extra={
                 "mode": "bus-subscribe",
@@ -84,16 +84,13 @@ class KnowledgeGraphIndexerWorker(BaseWorker):
         self.kg_service = KnowledgeGraphService(
             cfg=self.cfg,
             memory=self.memory,
-            logger=self.logger,
+            logger=log,
         )
         self.kg_service.initialize()
 
         log.info(
-            "KnowledgeGraphIndexerWorker initialized.",
-            extra={
-                "mode": "bus-subscribe",
-                "subject": self.subject,
-            },
+            "KnowledgeGraphIndexerWorker initialized.mode bus-subscribe subject=%s",
+            self.subject,
         )
 
     async def register_subjects(self) -> None:
@@ -149,7 +146,7 @@ class KnowledgeGraphIndexerWorker(BaseWorker):
             delta_edges = after_edges - before_edges
 
             # Compact growth summary
-            self.logger.info(
+            log.info(
                 "KGIndexSuccess scorable_id=%s entities=%d relationships=%d "
                 "duration=%.2fs nodes(+%d->%d) edges(+%d->%d)",
                 scorable_id,
@@ -166,7 +163,7 @@ class KnowledgeGraphIndexerWorker(BaseWorker):
             if self.debug_tree:
                 tree = self._format_event_tree(scorable_id, payload)
                 # One multi-line log entry so it reads as a block in the log
-                self.logger.info("\n%s", tree)
+                log.info("\n%s", tree)
 
             log.info(
                 "KnowledgeGraphIndexSuccess scorable_id=%s entities=%d relationships=%d duration=%.2f sec",

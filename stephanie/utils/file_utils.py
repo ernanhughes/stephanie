@@ -3,20 +3,35 @@ from __future__ import annotations
 
 import hashlib
 import logging
-import os
 import re
 from datetime import datetime
 
+from pathlib import Path
+
 log = logging.getLogger(__name__)
 
-def save_to_timestamped_file(data, file_prefix:str = "config", file_extension: str = "yaml", output_dir="logs"):
-    os.makedirs(output_dir, exist_ok=True)
-    timestamped_name = f"{file_prefix}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.{file_extension}"
-    filepath = os.path.join(output_dir, timestamped_name)
-    with open(filepath, "w", encoding="utf-8") as f:  
-        f.write(data)
-    log.debug(f"🔧 Saved config to {filepath}")
-    return filepath
+def save_to_timestamped_file(
+    data: str,
+    file_prefix: str = "config",
+    file_extension: str = "yaml",
+    output_dir: str = "logs",
+) -> str:
+    output_dir_path = Path(output_dir)
+    output_dir_path.mkdir(parents=True, exist_ok=True)
+
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    filename = f"{file_prefix}_{timestamp}.{file_extension}"
+    filepath = output_dir_path / filename
+
+    filepath.write_text(data, encoding="utf-8")
+
+    # Absolute path
+    full_path = filepath.resolve()
+
+    # 1) Plain path (sometimes clickable)
+    log.info("🔧 Saved file to %s", full_path)
+
+    return str(full_path)
 
 
 def camel_to_snake(name):

@@ -158,6 +158,7 @@ class PaperPipelineAgent(BaseAgent):
 
         if not arxiv_id:
             arxiv_id = "2511.19900"
+            context["arxiv_id"] = arxiv_id
             # raise ValueError("PaperPipelineAgent requires 'arxiv_id' in context")
 
         max_refs: Optional[int] = context.get("max_refs")
@@ -262,7 +263,7 @@ class PaperPipelineAgent(BaseAgent):
         context["section_matches"] = matches
         context["concept_clusters"] = clusters
 
-                # 4) Persist into Nexus + KnowledgeGraph (optional but recommended)
+        # 4) Persist into Nexus + KnowledgeGraph (optional but recommended)
         try:
             await self._index_sections_into_graphs(
                 arxiv_id=arxiv_id,

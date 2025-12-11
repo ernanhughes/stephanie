@@ -15,6 +15,8 @@ from stephanie.components.information.data import (
 from stephanie.components.nexus.graph.exporters.pyvis import (
     export_pyvis_html,
 )
+from stephanie.constants import PIPELINE_RUN_ID
+from stephanie.utils.file_utils import save_to_timestamped_file
 
 log = logging.getLogger(__name__)
 
@@ -110,16 +112,16 @@ class PaperPipelineReportAgent(BaseAgent):
         context["paper_report_markdown"] = md
 
         # ---- save markdown to file ----
-        report_path = Path(self.report_dir) / f"{arxiv_id}_report.md"
-        report_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(report_path, "w", encoding="utf-8") as f:
-            f.write(md)
+        report_path = save_to_timestamped_file(
+            data=md,
+            output_dir=self.report_dir,
+            file_prefix=f"{arxiv_id}_report",
+            file_extension="md",
+        )
         context["paper_report_path"] = str(report_path)
 
         if graph_html_path:
             context["paper_graph_html_path"] = graph_html_path
-
-        log.info("PaperPipelineReportAgent: saved report to %s", report_path)
 
         # Log a compact summary
         log.info(
@@ -130,6 +132,13 @@ class PaperPipelineReportAgent(BaseAgent):
             cluster_stats["total_clusters"],
             graph_stats["num_nodes"],
             graph_stats["num_edges"],
+        )
+
+        self.memory.nexus.log_local_tree(
+            run_id=context.get(PIPELINE_RUN_ID),
+            root_id=arxiv_id,        # section / scorable id
+            depth=2,
+            max_per_level=6,
         )
 
         if graph_html_path:

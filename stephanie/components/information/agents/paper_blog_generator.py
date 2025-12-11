@@ -10,7 +10,10 @@ from stephanie.components.information.data import (
     DocumentSection,
     PaperReferenceGraph,
 )
-from stephanie.services.prompt_service import LLMRole  # roles for PromptService :contentReference[oaicite:1]{index=1}
+from stephanie.services.prompt_service import LLMRole
+from stephanie.utils.file_utils import (
+    save_to_timestamped_file,
+)  # roles for PromptService :contentReference[oaicite:1]{index=1}
 
 log = logging.getLogger(__name__)
 
@@ -31,23 +34,31 @@ class PaperBlogGeneratorAgent(BaseAgent):
     """
 
     def __init__(self, cfg, memory, container, logger):
-        super().__init__(cfg=cfg, memory=memory, container=container, logger=logger)
+        super().__init__(
+            cfg=cfg, memory=memory, container=container, logger=logger
+        )
 
         # We always go through your PromptService, not BaseAgent.async_call_llm
-        self.prompt_service = self.container.get("prompt")  # same pattern as ExplainerJudgeAgent :contentReference[oaicite:2]{index=2}
+        self.prompt_service = self.container.get(
+            "prompt"
+        )  # same pattern as ExplainerJudgeAgent :contentReference[oaicite:2]{index=2}
 
         blog_cfg = cfg.get("blog", {}) or {}
         self.max_sections = int(blog_cfg.get("max_sections", 16))
         self.max_clusters = int(blog_cfg.get("max_clusters", 6))
         self.max_similar_papers = int(blog_cfg.get("max_similar_papers", 4))
-        self.target_length_words = int(blog_cfg.get("target_length_words", 2200))
+        self.target_length_words = int(
+            blog_cfg.get("target_length_words", 2200)
+        )
         self.audience = blog_cfg.get("audience", "informed engineer")
         self.output_key = cfg.get("output_key", "paper_blog_markdown")
 
         # Optional: where report agent stored markdown; not required here,
         # but we can reuse that summary in the future if you like.
         self.report_key = cfg.get("report_key", "paper_report_markdown")
-        self.report_dir = cfg.get("report_dir", f"runs/paper_reports/{self.run_id}")
+        self.report_dir = cfg.get(
+            "report_dir", f"runs/paper_reports/{self.run_id}"
+        )
 
     async def run(self, context: Dict[str, Any]) -> Dict[str, Any]:
         # ------------------- gather inputs -------------------
@@ -110,25 +121,13 @@ class PaperBlogGeneratorAgent(BaseAgent):
             len(blog_markdown or ""),
         )
 
-        # Use a real filesystem Path
-        report_dir = Path(self.report_dir)
-        report_dir.mkdir(parents=True, exist_ok=True)
-
-        report_path = report_dir / f"{arxiv_id}_blog.md"
-        try:
-            with open(report_path, "w", encoding="utf-8") as f:
-                f.write(blog_markdown)
-            log.info(
-                "PaperBlogGeneratorAgent: saved blog markdown to %s", report_path
-            )
-            # optionally expose this path in context too
-            context["paper_blog_path"] = str(report_path)
-        except OSError as e:
-            log.warning(
-                "PaperBlogGeneratorAgent: failed to save blog markdown to %s: %s",
-                report_path,
-                e,
-            )
+        report_path = save_to_timestamped_file(
+            data=blog_markdown,
+            output_dir=self.report_dir,
+            file_prefix=f"{arxiv_id}_blog",
+            file_extension="md",
+        )
+        context["paper_blog_path"] = str(report_path)
 
         return context
 
@@ -155,18 +154,18 @@ class PaperBlogGeneratorAgent(BaseAgent):
 
         # 1) DocumentStore
         for d in docs:
-            ext_id = getattr(d, "external_id", None) or getattr(d, "paper_id", None)
+            ext_id = getattr(d, "external_id", None) or getattr(
+                d, "paper_id", None
+            )
             if not ext_id and isinstance(d, dict):
                 ext_id = d.get("external_id") or d.get("paper_id")
 
             if str(ext_id) == str(arxiv_id):
-                title = (
-                    getattr(d, "title", None)
-                    or (d.get("title") if isinstance(d, dict) else None)
+                title = getattr(d, "title", None) or (
+                    d.get("title") if isinstance(d, dict) else None
                 )
-                summary = (
-                    getattr(d, "summary", None)
-                    or (d.get("summary") if isinstance(d, dict) else None)
+                summary = getattr(d, "summary", None) or (
+                    d.get("summary") if isinstance(d, dict) else None
                 )
                 break
 
@@ -202,7 +201,9 @@ class PaperBlogGeneratorAgent(BaseAgent):
 
         roles: Dict[str, List[str]] = {}
         for pid, node in nodes.items():
-            role = getattr(node, "role", None) or getattr(node, "kind", "unknown")
+            role = getattr(node, "role", None) or getattr(
+                node, "kind", "unknown"
+            )
             title = getattr(node, "title", None) or pid
             label = f"{pid} — {title}"
             roles.setdefault(role, []).append(label)
