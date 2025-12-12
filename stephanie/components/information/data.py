@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Literal, Optional
+from typing import Any, Dict, Iterable, List, Literal, Optional, Tuple
 
 from stephanie.components.information_legacy.data import DocumentElement, SectionSpine
 

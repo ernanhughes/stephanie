@@ -1,5 +1,4 @@
 # stephanie/components/information/agents/paper_spine_builder.py
-
 from __future__ import annotations
 
 import logging
@@ -12,9 +11,7 @@ from stephanie.components.information.data import (
     attach_elements_to_sections,
     DocumentElement,
     BoundingBox,
-    ElementType,
 )
-from stephanie.tools.paddle_ocr_tool import PaddleOcrTool
 
 log = logging.getLogger(__name__)
 
@@ -46,6 +43,9 @@ class PaperSpineBuilderAgent(BaseAgent):
     def __init__(self, cfg, memory, container, logger):
         super().__init__(cfg=cfg, memory=memory, container=container, logger=logger)
         self.papers_root = Path(self.cfg.get("papers_root", "data/papers"))
+        self.page_image_root = Path(
+            self.cfg.get("page_image_root", f"runs/paper_blogs/{self.run_id}")
+        )
         self.figures_root = Path(self.cfg.get("figures_root", "runs/paper_figures"))
         self.max_pages: Optional[int] = self.cfg.get("max_pages")
 
@@ -262,7 +262,6 @@ class PaperSpineBuilderAgent(BaseAgent):
           - read scorable.meta["ocr"]["paddle_ocr"],
           - convert each line to a DocumentElement(type="text_block").
         """
-        from stephanie.tools.paddle_ocr_tool import PaddleOcrTool  # just for type hints
 
         if self.ocr_tool is None:
             return []

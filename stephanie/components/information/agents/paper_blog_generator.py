@@ -29,7 +29,7 @@ class PaperBlogGeneratorConfig:
 
     # High-level knobs
     max_sections: int = 8
-    max_references_items: int = 12
+    max_reference_items: int = 12
     intro_words: int = 400
     section_words: int = 900
     conclusion_words: int = 400
@@ -57,8 +57,8 @@ class PaperBlogGeneratorConfig:
         }
         return cls(
             max_sections=int(cfg.get("max_sections", cls.max_sections)),
-            max_references_items=int(
-                cfg.get("max_references_items", cls.max_references_items)
+            max_reference_items=int(
+                cfg.get("max_reference_items", cls.max_reference_items)
             ),
             intro_words=int(cfg.get("intro_words", cls.intro_words)),
             section_words=int(cfg.get("section_words", cls.section_words)),
@@ -103,7 +103,7 @@ class PaperBlogGeneratorAgent(BaseAgent):
         self.prompt_service: PromptService = container.get("prompt")
 
         self.max_sections = self.cfg_obj.max_sections
-        self.max_references_items = self.cfg_obj.max_references_items
+        self.max_reference_items = self.cfg_obj.max_reference_items
         self.intro_words = self.cfg_obj.intro_words
         self.section_words = self.cfg_obj.section_words
         self.conclusion_words = self.cfg_obj.conclusion_words
@@ -112,7 +112,7 @@ class PaperBlogGeneratorAgent(BaseAgent):
         self.section_model = self.cfg_obj.section_model
         self.conclusion_model = self.cfg_obj.conclusion_model
 
-        self.out_root = Path(self.cfg_obj.out_root)
+        self.out_root = Path(f"{self.cfg_obj.out_root}")
 
         self.model = self.cfg_obj.model
 
@@ -779,3 +779,61 @@ Do NOT include any commentary about scores, the GROWS loop, or your process.
                 lines.append(f"- {label}")
 
         return "\n".join(lines)
+
+
+    def _extract_reference_lines_from_sections(
+        self,
+        sections: List[DocumentSection],
+    ) -> List[str]:
+        """
+        Look for sections whose title looks like 'References', 'Bibliography', etc.
+        Then heuristically split their text into per-reference lines.
+
+        This is intentionally simple v1: good enough to get a useful block,
+        and we can swap in GROBID / a dedicated parser later.
+        """
+        ref_texts: List[str] = []
+
+        for sec in sections:
+            title = (
+                getattr(sec, "title", None)
+                or getattr(sec, "section_name", None)
+                or ""
+            )
+            title_l = str(title).lower()
+
+            if any(
+                key in title_l
+                for key in ["references", "bibliography", "citations", "reference"]
+            ):
+                text = (
+                    getattr(sec, "text", None)
+                    or getattr(sec, "summary", None)
+                    or ""
+                )
+                if text:
+                    ref_texts.append(str(text))
+
+        if not ref_texts:
+            return []
+
+        # Merge all reference-text fragments and split into lines
+        raw_lines = []
+        for block in ref_texts:
+            raw_lines.extend(str(block).splitlines())
+
+        cleaned: List[str] = []
+        for ln in raw_lines:
+            ln = ln.strip()
+            if not ln:
+                continue
+
+            # Heuristics: keep lines that look like real references:
+            #   - contain a year, or
+            #   - start with [n], or "n." / "n)"
+            if re.search(r"\b(19|20)\d{2}\b", ln) or re.match(
+                r"^(\[\d+\]|\d+\.\s+|\d+\)\s+)", ln
+            ):
+                cleaned.append(ln)
+
+        return cleaned

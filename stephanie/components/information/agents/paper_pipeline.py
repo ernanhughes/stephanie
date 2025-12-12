@@ -1,11 +1,11 @@
-# stephanie/components/information/agents/paper_pipeline_agent.py
+# stephanie/components/information/agents/paper_pipeline.py
 from __future__ import annotations
 
 import logging
 import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
-
+import json
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.components.information.data import (
     DocumentSection,
@@ -52,6 +52,83 @@ class DummyReferenceProvider(ReferenceProvider):
 
     def get_references_for_arxiv(self, arxiv_id: str) -> List[ReferenceRecord]:
         return []
+
+class LocalJsonReferenceProvider(ReferenceProvider):
+    """
+    Reference provider that reads the references your PaperImportTask
+    already extracted and saved as `papers_root/<key>/references.json`.
+
+    This means:
+      - PaperImportTask remains the *only* place that parses PDFs
+      - The graph/task code just consumes the structured JSON
+    """
+
+    def __init__(self, papers_root: Path, max_refs: int = 256) -> None:
+        self.papers_root = Path(papers_root)
+        self.max_refs = max_refs
+
+    def _references_path_for(self, arxiv_id: str) -> Path:
+        """
+        By convention we store under:
+            papers_root/<key>/references.json
+
+        For arxiv IDs, <key> is just the ID. For local PDFs, it's the stem.
+        """
+        return self.papers_root / arxiv_id / "references.json"
+
+    def get_references_for_arxiv(self, arxiv_id: str) -> List[ReferenceRecord]:
+        path = self._references_path_for(arxiv_id)
+
+        if not path.exists():
+            log.debug(
+                "LocalJsonReferenceProvider: no references.json for %s at %s",
+                arxiv_id,
+                path,
+            )
+            return []
+
+        try:
+            raw_list = json.loads(path.read_text(encoding="utf-8"))
+        except Exception as e:
+            log.warning(
+                "LocalJsonReferenceProvider: failed to read %s for %s: %s",
+                path,
+                arxiv_id,
+                e,
+            )
+            return []
+
+        refs: List[ReferenceRecord] = []
+        for idx, item in enumerate(raw_list[: self.max_refs]):
+            try:
+                refs.append(
+                    ReferenceRecord(
+                        arxiv_id=item.get("arxiv_id"),
+                        doi=item.get("doi"),
+                        title=item.get("title"),
+                        year=item.get("year"),
+                        url=item.get("url"),
+                        raw_citation=item.get("raw_citation"),
+                    )
+                )
+            except TypeError as exc:
+                # In case the JSON has extra keys that don't map cleanly
+                log.warning(
+                    "LocalJsonReferenceProvider: bad ref #%d in %s (%s): %s",
+                    idx,
+                    arxiv_id,
+                    path,
+                    exc,
+                )
+                continue
+
+        log.info(
+            "LocalJsonReferenceProvider: loaded %d references for %s from %s",
+            len(refs),
+            arxiv_id,
+            path,
+        )
+        return refs
 
 
 class HFSimilarPaperProvider(SimilarPaperProvider):
@@ -157,7 +234,8 @@ class PaperPipelineAgent(BaseAgent):
         )
 
         if not arxiv_id:
-            arxiv_id = "2512.04072"
+            arxiv_id = "2506.21734"
+            # arxiv_id = "2512.04072"
             # arxiv_id = "2511.19900"
             context["arxiv_id"] = arxiv_id
             # raise ValueError("PaperPipelineAgent requires 'arxiv_id' in context")
@@ -172,6 +250,9 @@ class PaperPipelineAgent(BaseAgent):
         papers_root = Path(
             self.cfg.get("papers_root", "data/papers")
         )
+        context["papers_root"] = str(papers_root)
+        paper_pdf_path = papers_root / f"{arxiv_id}/paper.pdf"
+        context["paper_pdf_path"] = str(paper_pdf_path) 
 
         ref_provider: ReferenceProvider = self._get_reference_provider()
         sim_provider: Optional[SimilarPaperProvider] = self._get_similar_provider()
@@ -284,15 +365,25 @@ class PaperPipelineAgent(BaseAgent):
     # ------------------------------------------------------------------ #
     # Wiring helpers – you’ll adapt these to your actual services.
     # ------------------------------------------------------------------ #
-
     def _get_reference_provider(self) -> ReferenceProvider:
         """
-        TODO: wire a real provider that returns ReferenceRecord objects.
+        Use references extracted by PaperImportTask and saved under papers_root.
 
-        For now we return DummyReferenceProvider so the pipeline works even
-        if you haven't implemented reference extraction yet.
+        This makes the reference graph *actually* show the bibliography:
+        - Each paper's references.json is canonical
+        - ReferenceGraphTask will see real ReferenceRecord objects
         """
-        return DummyReferenceProvider()
+        papers_root_cfg = self.cfg.get("papers_root")
+        if papers_root_cfg:
+            papers_root = Path(papers_root_cfg)
+        else:
+            # Same default as in run()
+            base_dir = Path(self.cfg.get("base_dir", "data"))
+            papers_root = base_dir / "papers"
+
+        max_refs = int(self.cfg.get("graph", {}).get("max_refs", 12))
+
+        return LocalJsonReferenceProvider(papers_root=papers_root, max_refs=max_refs)
 
     def _get_similar_provider(self) -> Optional[SimilarPaperProvider]:
         """

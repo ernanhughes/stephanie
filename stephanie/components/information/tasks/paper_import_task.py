@@ -253,6 +253,11 @@ class PaperImportTask:
         Download a PDF from URL to dest_path, similar in spirit to
         DocumentLoaderAgent (requests.get(. stream=True)).
         """
+        # Check if file already exists and has reasonable size (> 1KB)
+        if dest_path.exists() and dest_path.stat().st_size > 1024:
+            log.info("[PaperImportTask] File already exists with reasonable size, skipping download: %s", dest_path)
+            return
+            
         log.info("[PaperImportTask] Downloading %s -> %s", url, dest_path)
         resp = requests.get(url, stream=True, timeout=60)
         if resp.status_code != 200:
@@ -264,7 +269,7 @@ class PaperImportTask:
             for chunk in resp.iter_content(chunk_size=8192):
                 if chunk:
                     f.write(chunk)
-
+    
     # ------------------------------------------------------------------ #
     def _derive_arxiv_id_from_url(self, url: Optional[str]) -> Optional[str]:
         """

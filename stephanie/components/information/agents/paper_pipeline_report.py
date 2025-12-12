@@ -1,3 +1,4 @@
+# stephanie/components/information/agents/paper_pipeline_report.py
 from __future__ import annotations
 
 from pathlib import Path
@@ -47,7 +48,7 @@ class PaperPipelineReportAgent(BaseAgent):
         self.max_clusters = int(rcfg.get("max_clusters", 8))
         self.max_sections_per_cluster = int(rcfg.get("max_sections_per_cluster", 4))
         self.include_kg_hint = bool(rcfg.get("include_kg_hint", True))
-        self.report_dir = rcfg.get("report_dir", f"runs/paper_reports/{self.run_id}")
+        self.report_dir = rcfg.get("report_dir", f"runs/paper_blogs/{self.run_id}")
 
         # Keep last data around so preview helpers can see it
         self._last_sections: List[DocumentSection] = []
