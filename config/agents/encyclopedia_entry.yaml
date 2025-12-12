@@ -2,7 +2,7 @@ encyclopedia_entry:
   name: encyclopedia_entry
   enabled: true
   save_prompt: false
-  save_context: true
+  save_context: false
   skip_if_completed: false
 
   # This section is passed to EncyclopediaEntryAgent

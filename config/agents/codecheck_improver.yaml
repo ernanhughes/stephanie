@@ -9,7 +9,7 @@ codecheck_improver:
   output_key: "codecheck_suggestions" # e.g. list of suggestion IDs or a summary
 
   save_prompt: true
-  save_context: true
+  save_context: false
   progress: true
   progress_log_every: 10
   progress_leave: false

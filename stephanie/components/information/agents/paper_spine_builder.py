@@ -46,7 +46,7 @@ class PaperSpineBuilderAgent(BaseAgent):
         self.page_image_root = Path(
             self.cfg.get("page_image_root", f"runs/paper_blogs/{self.run_id}")
         )
-        self.figures_root = Path(self.cfg.get("figures_root", "runs/paper_figures"))
+        self.figures_root = Path(self.cfg.get("figures_root", f"runs/paper_blogs/{self.run_id}/paper_figures"))
         self.max_pages: Optional[int] = self.cfg.get("max_pages")
 
         # minimum fraction of page area for us to consider an image a "figure"

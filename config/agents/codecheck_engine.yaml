@@ -10,7 +10,7 @@ codecheck_engine:
 
   # Base-agent style flags
   save_prompt: false
-  save_context: true
+  save_context: false
   progress: true
   progress_log_every: 50
   progress_leave: true

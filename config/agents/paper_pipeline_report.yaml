@@ -3,7 +3,7 @@ paper_pipeline_report:
   name: paper_pipeline_report
   enabled: true
   save_prompt: false        # no LLM call here, so no prompt to save
-  save_context: true        # keep the report in the final context
+  save_context: false        # keep the report in the final context
   skip_if_completed: false
 
   # ---- Inputs (what we expect from PaperPipelineAgent) ----

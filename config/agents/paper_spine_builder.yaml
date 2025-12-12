@@ -3,7 +3,7 @@ paper_spine_builder:
   name: paper_spine_builder
   enabled: true
   save_prompt: true
-  save_context: true
+  save_context: false
   skip_if_completed: false
 
   # ---- Input / output wiring ----

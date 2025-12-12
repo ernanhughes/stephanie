@@ -381,7 +381,7 @@ class PaperPipelineAgent(BaseAgent):
             base_dir = Path(self.cfg.get("base_dir", "data"))
             papers_root = base_dir / "papers"
 
-        max_refs = int(self.cfg.get("graph", {}).get("max_refs", 12))
+        max_refs = int(self.cfg.get("graph", {}).get("max_refs", 50))
 
         return LocalJsonReferenceProvider(papers_root=papers_root, max_refs=max_refs)
 

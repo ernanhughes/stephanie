@@ -16,7 +16,52 @@ from stephanie.utils.json_sanitize import dumps_safe
 # =============================================================================
 
 
+_NODE_COLOR_BY_ROLE = {
+    "root": "#3b82f6",              # blue
+    "reference": "#22c55e",         # green
+    "similar_root": "#a855f7",      # purple
+    "similar_reference": "#f97316", # orange
+}
 
+_DEFAULT_NODE_COLOR = "#90caf9"    # existing light blue fallback
+
+
+_EDGE_STYLE_BY_KIND = {
+    "similar": {
+        "dashes": True,
+        "color": "rgba(168,85,247,0.70)",
+    },
+    "similar_to": {
+        "dashes": True,
+        "color": "rgba(168,85,247,0.70)",
+    },
+    "cites": {
+        "dashes": False,
+        "color": "rgba(34,197,94,0.65)",
+    },
+}
+
+def _node_role(n: Any) -> Optional[str]:
+    """
+    Safely extract a node role if present.
+    Supports attribute or dict-based nodes.
+    """
+    r = _get(n, "role", "node_role", default=None)
+    if isinstance(r, str):
+        return r
+    return None
+
+
+def _edge_style(etype: str) -> Dict[str, Any]:
+    """
+    Determine edge style overrides based on edge type/kind.
+    Never raises.
+    """
+    et = (etype or "").lower()
+    for key, style in _EDGE_STYLE_BY_KIND.items():
+        if key in et:
+            return style
+    return {}
 
 
 class PyVisGraphExporter(BaseGraphExporter):
@@ -61,25 +106,6 @@ class PyVisGraphExporter(BaseGraphExporter):
         )
 
 
-def export_pyvis_for_graph(
-    graph: Any,
-    output_path: Union[str, Path],
-    *,
-    title: str = "",
-    rich: bool = True,
-    positions: Optional[Dict[str, Tuple[float, float]]] = None,
-) -> str:
-    """
-    Convenience wrapper so existing code can keep using a function-style API.
-
-    Internally just instantiates PyVisGraphExporter and calls .export().
-    """
-    exporter = PyVisGraphExporter(graph, title=title)
-    return exporter.export(
-        output_path=output_path,
-        rich=rich,
-        positions=positions,
-    )
 
 
 def _get(obj: Any, *keys: str, default: Any = None) -> Any:
@@ -245,12 +271,14 @@ def export_pyvis_html_rich(
     j_nodes = []
     for nid, n in nodes.items():
         x, y = positions.get(nid, (None, None))
+        role = _node_role(n)
+        color = _NODE_COLOR_BY_ROLE.get(role, _DEFAULT_NODE_COLOR)
         j_nodes.append(
             {
                 "id": str(nid),
                 "label": _node_label(str(nid), n),
                 "shape": "dot",
-                "color": "#90caf9",
+                "color": color,
                 "value": max(3, min(25, deg.get(str(nid), 1) + 3)),
                 "x": float(x) if x is not None else None,
                 "y": float(y) if y is not None else None,
@@ -263,12 +291,17 @@ def export_pyvis_html_rich(
     for e in edges:
         et = _edge_type(e)
         color, width = _edge_rgba_and_width(et, _edge_weight(e))
+        style = _edge_style(et)
+
+        edge_color = style.get("color", color)
+        edge_dashes = style.get("dashes", False)
         j_edges.append(
             {
                 "from": _get(e, "source", "src", default=""),
                 "to": _get(e, "target", "dst", default=""),
                 "arrows": "to",
-                "color": color,
+                "color": edge_color,
+                "dashes": edge_dashes,
                 "width": width if width else 1,
                 "title": f"{et} ({_edge_weight(e):.3f})",
                 "etype": et,
@@ -445,11 +478,15 @@ def export_pyvis_html(
         label = _node_label(nid_s, n)
         degree = _node_degree(n)
         size = max(6, min(18, int((degree ** 0.5) * 7)))
+        role = _node_role(n)
+        color = _NODE_COLOR_BY_ROLE.get(role, _DEFAULT_NODE_COLOR)
+
         net.add_node(
             nid_s,
             label=label,
-            title=str(_get(n, "target_type", default="node")),
+            title=f"{_get(n, 'target_type', default='node')} ({role})" if role else _get(n, "target_type", default="node"),
             value=size,
+            color=color,
         )
 
     # Edges
@@ -472,13 +509,16 @@ def export_pyvis_html(
 
         color, width = _edge_rgba_and_width(etype, w)
 
+        style = _edge_style(etype)
+
         net.add_edge(
             src_s,
             dst_s,
             title=f"{etype} ({w:.3f})",
-            color=color,
+            color=style.get("color", color),
             width=width,
             arrows="to",
+            dashes=style.get("dashes", False),
         )
 
     net.write_html(str(out), notebook=False)

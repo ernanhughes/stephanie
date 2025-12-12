@@ -113,16 +113,33 @@ class ReferenceGraphTask:
                 edges.append(ReferenceEdge(src=root_arxiv_id, dst=ref_id, kind="cites"))
                 continue
 
+            node: Optional[PaperNode] = None
+
             try:
                 ref_import = await self.import_task.run(arxiv_id=ref_id, role="reference")
+                node = ref_import.node
             except Exception as e:
-                log.warning("Failed to import reference %s: %s", ref_id, e)
-                continue
+                log.warning(
+                    "Failed to import reference PDF %s; creating stub node: %s",
+                    ref_id,
+                    e,
+                )
+                # Create a lightweight stub node
+                node = PaperNode(
+                    arxiv_id=ref_id,
+                    role="reference",
+                    title=rec.title or f"arXiv:{ref_id}",
+                    url=rec.url,
+                    pdf_path=None,
+                    text_hash=None,
+                    meta={},
+                )
 
-            node = ref_import.node
+            # Enrich metadata (both real & stub nodes)
             node.title = node.title or rec.title
             node.url = node.url or rec.url
             node.meta.setdefault("reference_raw", rec.raw)
+            node.meta.setdefault("import_status", "stub" if node.pdf_path is None else "ok")
 
             nodes[ref_id] = node
             edges.append(ReferenceEdge(src=root_arxiv_id, dst=ref_id, kind="cites"))
@@ -191,27 +208,36 @@ class ReferenceGraphTask:
         max_similar: int,
     ) -> None:
         """
-        Use SimilarPaperProvider to enlarge the graph around root + references.
+        Use SimilarPaperProvider to enlarge the graph around the ROOT paper only.
+
+        This intentionally does NOT expand similars of references.
+        That behavior belongs in a separate recursive citation-crawl task.
         """
 
         if self.similar_provider is None:
             return
 
-        # Similar to ROOT
         root_similar = self.similar_provider.get_similar_for_arxiv(
             root_arxiv_id, limit=max_similar
         )
 
         for rec in root_similar:
             aid = rec.arxiv_id
-            if not aid:
+            if not aid or aid == root_arxiv_id:
                 continue
 
             if aid not in graph_nodes:
                 try:
-                    imp = await self.import_task.run(arxiv_id=aid, role="similar_root")
+                    imp = await self.import_task.run(
+                        arxiv_id=aid,
+                        role="similar_root",
+                    )
                 except Exception as e:
-                    log.warning("Failed to import similar(root) %s: %s", aid, e)
+                    log.warning(
+                        "Failed to import similar(root) %s: %s",
+                        aid,
+                        e,
+                    )
                     continue
 
                 node = imp.node
@@ -220,36 +246,10 @@ class ReferenceGraphTask:
                 node.meta.setdefault("similar_raw", rec.raw)
                 graph_nodes[aid] = node
 
-            edges.append(ReferenceEdge(src=root_arxiv_id, dst=aid, kind="similar_to"))
-
-        # Similar to REFERENCES
-        for ref_id, node in list(graph_nodes.items()):
-            if node.role != "reference":
-                continue
-
-            ref_similar = self.similar_provider.get_similar_for_arxiv(
-                ref_id, limit=max_similar
+            edges.append(
+                ReferenceEdge(
+                    src=root_arxiv_id,
+                    dst=aid,
+                    kind="similar_to",
+                )
             )
-
-            for rec in ref_similar:
-                aid = rec.arxiv_id
-                if not aid or aid == root_arxiv_id:
-                    continue
-
-                if aid not in graph_nodes:
-                    try:
-                        imp = await self.import_task.run(
-                            arxiv_id=aid,
-                            role="similar_reference",
-                        )
-                    except Exception as e:
-                        log.warning("Failed to import similar(ref) %s: %s", aid, e)
-                        continue
-
-                    s_node = imp.node
-                    s_node.title = s_node.title or rec.title
-                    s_node.url = s_node.url or rec.url
-                    s_node.meta.setdefault("similar_raw", rec.raw)
-                    graph_nodes[aid] = s_node
-
-                edges.append(ReferenceEdge(src=ref_id, dst=aid, kind="similar_to"))

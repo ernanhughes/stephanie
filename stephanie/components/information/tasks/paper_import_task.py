@@ -255,7 +255,7 @@ class PaperImportTask:
         """
         # Check if file already exists and has reasonable size (> 1KB)
         if dest_path.exists() and dest_path.stat().st_size > 1024:
-            log.info("[PaperImportTask] File already exists with reasonable size, skipping download: %s", dest_path)
+            log.info("⏩ File already exists with reasonable size, skipping download: %s", dest_path)
             return
             
         log.info("[PaperImportTask] Downloading %s -> %s", url, dest_path)

@@ -210,7 +210,18 @@ class PaperBlogGeneratorAgent(BaseAgent):
             ]
         )
 
+        context["paper_blog_markdown_with_refs"] = full_blog
+
+        save_to_timestamped_file(
+            data=full_blog,
+            file_prefix=f"{arxiv_id}_blog_with_refs",
+            file_extension="md",
+            output_dir=f"{self.out_root}/{self.run_id}",
+        )
+
+        full_blog = self._consolidate_references_at_end(full_blog)
         context["paper_blog_markdown"] = full_blog
+
         context["paper_blog_meta"] = {
             "arxiv_id": arxiv_id,
             "title": paper_title,
@@ -289,6 +300,7 @@ Do NOT include a table of contents or section list; you've already used that jus
             context=context,
             max_tokens=1200,
         )
+        context["intro"] = intro_md
         return intro_md
 
     async def _generate_conclusion(
@@ -340,6 +352,7 @@ Write a Markdown section that:
             context=context,
             max_tokens=800,
         )
+        context["conclusion"] = conclusion_md
         return conclusion_md
 
     # ------------------------------------------------------------------
@@ -462,6 +475,7 @@ Do NOT include any commentary about scores, the GROWS loop, or your process.
             context=context,
             max_tokens=max_tokens,
         )
+        context["last_section_generated"] = section_md
 
         section_md = self._clean_text(section_md)
 
@@ -557,12 +571,12 @@ Do NOT include any commentary about scores, the GROWS loop, or your process.
         if ref_block:
             blog_markdown = (blog_markdown or "").rstrip() + "\n\n" + ref_block + "\n"
 
-        context[self.output_key] = blog_markdown
         log.info(
             "PaperBlogGeneratorAgent: generated blog for %s (%d chars)",
             arxiv_id,
             len(blog_markdown or ""),
         )
+        return blog_markdown or ""
 
 
     @staticmethod
@@ -837,3 +851,63 @@ Do NOT include any commentary about scores, the GROWS loop, or your process.
                 cleaned.append(ln)
 
         return cleaned
+
+    def _consolidate_references_at_end(self, markdown: str) -> str:
+        """
+        Consolidate repeated '## References & Further Reading' blocks
+        into a single block at the end of the document.
+
+        Deterministic, idempotent, no content rewriting.
+        """
+        if not markdown.strip():
+            return markdown
+
+        heading = "## References & Further Reading"
+
+        # Match a references block until next level-2 heading or EOF
+        pattern = re.compile(
+            rf"{re.escape(heading)}\n+(.*?)(?=\n## |\Z)",
+            re.DOTALL,
+        )
+
+        all_refs = []
+        for match in pattern.finditer(markdown):
+            block = match.group(1)
+            for line in block.splitlines():
+                line = line.strip()
+                if line.startswith("-"):
+                    all_refs.append(line)
+
+        # Remove all reference blocks from body
+        cleaned = pattern.sub("", markdown).strip()
+
+        if not all_refs:
+            return cleaned
+
+        # Deduplicate references
+        seen = set()
+        deduped = []
+        for ref in all_refs:
+            key = self._normalize_reference_line(ref)
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped.append(ref)
+
+        # Rebuild final references block
+        lines = []
+        lines.append(heading)
+        lines.append("")
+        lines.extend(deduped)
+
+        return cleaned.rstrip() + "\n\n" + "\n".join(lines) + "\n"
+
+    @staticmethod
+    def _normalize_reference_line(line: str) -> str:
+        """
+        Normalize reference lines for deduplication.
+        """
+        line = line.lower()
+        line = re.sub(r"https?://\S+", "", line)  # remove URLs
+        line = re.sub(r"\W+", " ", line)          # collapse punctuation
+        return line.strip()

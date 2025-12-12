@@ -2,7 +2,7 @@ paper_blog_generator:
   name: paper_blog_generator
   enabled: true
   save_prompt: true
-  save_context: true
+  save_context: false
   skip_if_completed: false
 
   # Where we read inputs from the pipeline context
