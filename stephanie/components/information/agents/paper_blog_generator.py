@@ -14,9 +14,12 @@ from stephanie.components.information.data import (
     DocumentSection,
     PaperReferenceGraph,
 )
-from stephanie.utils.file_utils import save_to_timestamped_file
+from stephanie.utils.file_utils import save_to_timestamped_file, write_last_copy
+
 from stephanie.services.prompt_service import LLMRole, PromptService
 from dataclasses import field
+
+from stephanie.components.information.data import BlogConfig
 
 log = logging.getLogger(__name__)
 
@@ -115,11 +118,17 @@ class PaperBlogGeneratorAgent(BaseAgent):
         self.out_root = Path(f"{self.cfg_obj.out_root}")
 
         self.model = self.cfg_obj.model
+        self.blog_cfg = BlogConfig.from_any(cfg, default=BlogConfig())
 
     async def run(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """
         Main entrypoint. Builds a multi-section blog post for the *root* paper.
         """
+        self.blog_cfg = BlogConfig.from_any(context.get("blog_config"), default=self.blog_cfg)
+
+        # Always write it back so downstream stages + DB logging have the exact payload used
+        context["blog_config"] = self.blog_cfg.to_dict()
+        context["blog_config_id"] = self.blog_cfg.fingerprint()
         graph: Optional[PaperReferenceGraph] = context.get("paper_graph")
         sections: List[DocumentSection] = context.get("paper_sections") or []
         clusters: List[ConceptCluster] = context.get("concept_clusters") or []
@@ -164,7 +173,7 @@ class PaperBlogGeneratorAgent(BaseAgent):
         if not root_sections:
             root_sections = sections
 
-        selected_sections = root_sections[: self.max_sections]
+        selected_sections = root_sections[: self.blog_cfg.max_sections]
         selected_spine = spine[: len(selected_sections)] if spine else []
 
         section_tasks = []
@@ -258,7 +267,7 @@ class PaperBlogGeneratorAgent(BaseAgent):
         """
         # Build a tiny "table of contents" of the sections we plan to cover.
         toc_lines: List[str] = []
-        for s in sections[: self.max_sections]:
+        for s in sections[: self.blog_cfg.max_sections]:
             name = getattr(s, "section_name", None) or getattr(s, "title", "")
             if not name:
                 continue
@@ -290,7 +299,7 @@ Goal for this intro:
 Write a Markdown section that:
 - Starts with a level-1 heading with the paper title.
 - Uses short paragraphs and maybe a small bullet list or two.
-- Stays within roughly {self.intro_words} words.
+- Stays within roughly {self.blog_cfg.intro_words} words.
 
 Do NOT include a table of contents or section list; you've already used that just to reason about what to say.
 """.strip()
@@ -316,7 +325,7 @@ Do NOT include a table of contents or section list; you've already used that jus
         Short wrap-up that ties everything together.
         """
         section_titles = []
-        for s in sections[: self.max_sections]:
+        for s in sections[: self.blog_cfg.max_sections]:
             name = getattr(s, "section_name", None) or getattr(s, "title", "")
             if name:
                 section_titles.append(name.strip())
@@ -344,7 +353,7 @@ Goal for this conclusion:
 
 Write a Markdown section that:
 - Starts with a level-2 heading (e.g., "## Wrapping up" or similar).
-- Stays within roughly {self.conclusion_words} words.
+- Stays within roughly {self.blog_cfg.conclusion_words} words.
 """.strip()
 
         conclusion_md = await self._call_llm(
@@ -459,7 +468,7 @@ Write the final section in Markdown.
 
 Start with a level-2 heading: "## {section_title}" (or a slightly improved variant).
 
-Aim for roughly {self.section_words} words (±30%).
+Aim for roughly {self.blog_cfg.section_words} words (±30%).
 
 Use short paragraphs and bullets where it improves readability.
 
@@ -467,7 +476,7 @@ Do NOT include any commentary about scores, the GROWS loop, or your process.
 """.strip()
 
         max_tokens = self._with_length_params(
-            requested_words=self.section_words, default_tokens=1800
+            requested_words=self.blog_cfg.section_words, default_tokens=1800
         )
 
         section_md = await self._call_llm(
@@ -777,7 +786,7 @@ Do NOT include any commentary about scores, the GROWS loop, or your process.
         if not deduped:
             return ""
 
-        deduped = deduped[: self.max_reference_items]
+        deduped = deduped[: self.blog_cfg.max_reference_items]
 
         # ---------- 4) Build Markdown ----------
         lines: List[str] = []

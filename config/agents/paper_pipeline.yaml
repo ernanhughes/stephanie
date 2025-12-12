@@ -31,7 +31,7 @@ paper_pipeline:
 
   # ---- Graph / similar-paper knobs (used by ReferenceGraphTask) ----
   # Max number of references to follow from the root paper (None = no cap).
-  max_refs: null           # e.g. 20 if you want a hard limit
+  max_refs: 100           # e.g. 20 if you want a hard limit
 
   # HuggingFace similar-paper expansion
   enable_hf_similar: true  # set false to disable HF similar papers

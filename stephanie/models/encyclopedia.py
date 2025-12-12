@@ -15,7 +15,7 @@ from sqlalchemy.orm import (Mapped, declarative_base, mapped_column,
 Base = declarative_base()
 
 
-class AIConceptORM(Base):
+class ConceptORM(Base):
     """
     Canonical AI Encyclopedia concept.
 
@@ -136,7 +136,7 @@ class ConceptGemORM(Base):
         DateTime, default=datetime.utcnow, nullable=False
     )
 
-    concept: Mapped[AIConceptORM] = relationship("AIConceptORM", back_populates="gems")
+    concept: Mapped[ConceptORM] = relationship("ConceptORM", back_populates="gems")
 
     __table_args__ = (
         # Avoid accidental duplicates from repeated ingestion
@@ -151,7 +151,7 @@ class ConceptQuizORM(Base):
     """
     A single quiz instance over a span associated with a concept.
 
-    You can store granular info here and aggregate onto AIConceptORM.quiz_* columns.
+    You can store granular info here and aggregate onto ConceptORM.quiz_* columns.
     """
     __tablename__ = "ai_concept_quizzes"
 
@@ -180,7 +180,7 @@ class ConceptQuizORM(Base):
         DateTime, default=datetime.utcnow, nullable=False
     )
 
-    concept: Mapped[AIConceptORM] = relationship("AIConceptORM", back_populates="quizzes")
+    concept: Mapped[ConceptORM] = relationship("ConceptORM", back_populates="quizzes")
 
     __table_args__ = (
         Index("ix_concept_quiz_frontier", "concept_id_fk", "is_frontier"),

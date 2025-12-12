@@ -16,6 +16,33 @@ paper_blog_generator:
   # Where we write the final blog
   output_key: paper_blog_markdown
 
+  # ---------------------------------------------------------------------
+  # Baseline BlogConfig (FROZEN)
+  # - This is the canonical baseline configuration for paper→blog.
+  # - AI exploration later will override per-run by writing context["blog_config"].
+  # ---------------------------------------------------------------------
+  baseline_blog_config:
+    version: v1
+    variant: baseline
+
+    # Retrieval / limits
+    max_sections: 8
+    max_reference_items: 12
+    num_similar_papers: 5
+
+    # Selection weights
+    semantic_match_weight: 1.0
+    domain_match_weight: 0.5
+    entity_match_weight: 0.5
+
+    # Visuals/spine
+    include_visuals: true
+
+    # Generation sizes (words are “targets”; your prompt service still uses max_tokens)
+    intro_words: 400
+    section_words: 900
+    conclusion_words: 400
+
   blog:
     audience: "informed engineer"
     max_sections: 16

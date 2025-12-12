@@ -51,6 +51,7 @@ from stephanie.memory.metric_store import MetricStore
 from stephanie.memory.models_store import ModelsStore
 from stephanie.memory.mrq_store import MRQStore
 from stephanie.memory.nexus_store import NexusStore
+from stephanie.memory.paper_store import PaperStore
 from stephanie.memory.pattern_store import PatternStatStore
 from stephanie.memory.pipeline_reference_store import PipelineReferenceStore
 from stephanie.memory.pipeline_run_store import PipelineRunStore
@@ -224,6 +225,7 @@ class MemoryTool:
         self.register_store(CodeCheckStore(self.session_maker, logger))
         self.register_store(ScorableSummaryStore(self.session_maker, logger))
         self.register_store(EncyclopediaStore(self.session_maker, logger))
+        self.register_store(PaperStore(self.session_maker, logger))
 
         if cfg.get("extra_stores"):
             for store_class in cfg.get("extra_stores", []):

@@ -24,6 +24,15 @@ class PaperStore(BaseSQLAlchemyStore):
 
     # ---------- Reads ----------
 
+    def get_many_by_id(self, paper_ids: list[str], chunk_size: int = 500) -> list[PaperORM]:
+        def op(s):
+            out: list[PaperORM] = []
+            for i in range(0, len(paper_ids), chunk_size):
+                chunk = paper_ids[i:i+chunk_size]
+                out.extend(s.query(PaperORM).filter(PaperORM.id.in_(chunk)).all())
+            return out
+        return self._run(op)
+    
     def get_by_id(self, paper_id: str) -> Optional[PaperORM]:
         def op(s):
             return s.get(PaperORM, paper_id)

@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from stephanie.utils.file_utils import save_to_timestamped_file, write_last_copy
+
 
 import logging
 
@@ -17,7 +19,8 @@ from stephanie.components.nexus.graph.exporters.pyvis import (
     export_pyvis_html,
 )
 from stephanie.constants import PIPELINE_RUN_ID
-from stephanie.utils.file_utils import save_to_timestamped_file
+from stephanie.utils.hash_utils import hash_text 
+import json
 
 log = logging.getLogger(__name__)
 
@@ -53,6 +56,7 @@ class PaperPipelineReportAgent(BaseAgent):
         # Keep last data around so preview helpers can see it
         self._last_sections: List[DocumentSection] = []
         self._last_clusters: List[ConceptCluster] = []
+        self.write_last = bool(rcfg.get("write_last", True))
 
     async def run(self, context: Dict[str, Any]) -> Dict[str, Any]:
         # ---- inputs from upstream pipeline ----
@@ -93,6 +97,12 @@ class PaperPipelineReportAgent(BaseAgent):
                 arxiv_id=arxiv_id,
                 title=title or f"Paper graph {arxiv_id}",
             )
+            context["paper_graph_html_path"] = graph_html_path
+            graph_json_path = self._export_graph_json(
+                graph=graph,
+                arxiv_id=arxiv_id,
+            )
+            context["paper_graph_json_path"] = graph_json_path
 
         # ---- build markdown report ----
         md = self._build_markdown_report(
@@ -110,16 +120,39 @@ class PaperPipelineReportAgent(BaseAgent):
             md += "\n## Visualizations\n\n"
             md += f"- PyVis paper graph: `{graph_html_path}`\n"
 
-        context["paper_report_markdown"] = md
 
-        # ---- save markdown to file ----
-        report_path = save_to_timestamped_file(
-            data=md,
-            output_dir=self.report_dir,
-            file_prefix=f"{arxiv_id}_report",
-            file_extension="md",
+        blog_cfg = (
+            context.get("blog_config")
+            or context.get("paper_blog_config")
+            or (self.cfg.get("blog_config") if isinstance(self.cfg, dict) else None)
         )
-        context["paper_report_path"] = str(report_path)
+
+        if isinstance(blog_cfg, dict) and blog_cfg:
+            # compute a stable id/hash
+            blog_cfg_norm = json.dumps(blog_cfg, sort_keys=True)
+            blog_cfg_hash = hash_text(blog_cfg_norm)
+
+            context["blog_config"] = blog_cfg
+            context["blog_config_hash"] = blog_cfg_hash
+
+            # embed in report
+            md += "\n\n## Blog config snapshot\n"
+            md += f"\n- blog_config_hash: `{blog_cfg_hash}`\n"
+            md += "\n```json\n" + json.dumps(blog_cfg, indent=2, sort_keys=True) + "\n```\n"
+
+            # write dated + last config files
+            cfg_path = save_to_timestamped_file(
+                data=json.dumps(blog_cfg, indent=2, sort_keys=True),
+                output_dir=self.report_dir,
+                file_prefix=f"{arxiv_id}_blog_config",
+                file_extension="json",
+            )
+            context["blog_config_path"] = str(cfg_path)
+
+            if self.write_last:
+                last_cfg_path = Path(self.report_dir) / f"{arxiv_id}_blog_config.last.json"
+                self._write_last_copy(source_path=Path(cfg_path), last_name=last_cfg_path)
+                context["blog_config_path_last"] = str(last_cfg_path)
 
         if graph_html_path:
             context["paper_graph_html_path"] = graph_html_path
@@ -135,18 +168,75 @@ class PaperPipelineReportAgent(BaseAgent):
             graph_stats["num_edges"],
         )
 
-        self.memory.nexus.log_local_tree(
-            run_id=context.get(PIPELINE_RUN_ID),
-            root_id=arxiv_id,        # section / scorable id
-            depth=2,
-            max_per_level=6,
+        # Export a snapshot of the Nexus local tree (best-effort) so each run is reviewable later.
+        nexus_tree_json_path: Optional[str] = None
+        try:
+            local_tree = self.memory.nexus.log_local_tree(
+                run_id=context.get(PIPELINE_RUN_ID),
+                root_id=arxiv_id,        # section / scorable id
+                depth=self.cfg.get("local_tree_depth", 2),
+                max_per_level=self.cfg.get("local_tree_max_per_level", 64),
+            )
+            nexus_tree_json_path = self._export_nexus_tree_json(local_tree, arxiv_id=arxiv_id)
+        except Exception as e:
+            log.exception("PaperPipelineReportAgent: failed to export Nexus local tree: %s", str(e))
+
+        context["paper_report_markdown"] = md
+
+        # Append visualization info if we generated one
+        if graph_html_path or graph_json_path or nexus_tree_json_path:
+            md += "\n## Visualizations\n\n"
+            if graph_html_path:
+                md += f"- PyVis paper graph: `{graph_html_path}`\n"
+            if graph_json_path:
+                md += f"- Paper graph JSON: `{graph_json_path}`\n"
+            if nexus_tree_json_path:
+                md += f"- Nexus local tree JSON: `{nexus_tree_json_path}`\n"
+
+
+        # ---- save markdown to file ----
+        report_path = save_to_timestamped_file(
+            data=md,
+            output_dir=self.report_dir,
+            file_prefix=f"{arxiv_id}_report",
+            file_extension="md",
         )
+        context["paper_report_path"] = str(report_path)
+
+        if self.write_last:
+            last_path = Path(self.report_dir) / f"{arxiv_id}_report.last.md"
+            self._write_last_copy(source_path=Path(report_path), last_name=last_path)
+            context["paper_report_path_last"] = str(last_path)
 
         if graph_html_path:
             log.info(
                 "PaperPipelineReportAgent: PyVis graph saved to %s",
                 graph_html_path,
             )
+
+        # Optional convenience: keep stable 'last' artifacts at the out_root level
+        try:
+            write_last_copy(
+                source_path=report_path,
+                last_path=f"{self.report_dir}/last_paper_report.md",
+            )
+            if graph_html_path:
+                write_last_copy(
+                    source_path=graph_html_path,
+                    last_path=f"{self.report_dir}/last_paper_graph.html",
+                )
+            if graph_json_path:
+                write_last_copy(
+                    source_path=graph_json_path,
+                    last_path=f"{self.report_dir}/last_paper_graph.json",
+                )
+            if nexus_tree_json_path:
+                write_last_copy(
+                    source_path=nexus_tree_json_path,
+                    last_path=f"{self.report_dir}/last_nexus_tree.json",
+                )
+        except Exception:
+            log.exception("PaperPipelineReportAgent: failed to write last-copy artifacts")
 
         return context
 
@@ -371,7 +461,7 @@ class PaperPipelineReportAgent(BaseAgent):
         lines.append("")
         lines.append(f"**Root paper:** `{arxiv_id}`")
         if title:
-            lines.append(f"**Title:** {title}")
+            lines.append(f"**Title:** {header}")
         lines.append("")
 
         # ---- graph overview ----
@@ -568,3 +658,174 @@ class PaperPipelineReportAgent(BaseAgent):
             )
 
         return lines
+
+
+    def _write_last_copy(self, *, source_path: str | Path, last_name: str) -> str | None:
+        try:
+            last_path = Path(self.report_dir) / last_name
+            write_last_copy(source_path=source_path, last_path=last_path)
+            return str(last_path)
+        except Exception:
+            log.warning("Failed to write last copy: %s", source_path, exc_info=True)
+            return None
+
+    def _export_graph_json(
+        self,
+        graph: PaperReferenceGraph,
+        arxiv_id: str,
+    ) -> str:
+        """Export the paper reference graph as JSON into the per-run report directory."""
+        output_path = f"{self.report_dir}/{arxiv_id}_graph.json"
+        payload = self._paper_graph_to_jsonable(graph)
+        try:
+            with open(output_path, "w", encoding="utf-8") as f:
+                json.dump(payload, f, ensure_ascii=False, indent=2)
+            log.info("PaperPipelineReportAgent: Paper graph JSON saved to %s", output_path)
+        except Exception:
+            log.exception("PaperPipelineReportAgent: failed to export paper graph JSON")
+        return output_path
+
+
+    def _paper_graph_to_jsonable(self, graph: PaperReferenceGraph) -> Dict[str, Any]:
+        def _clip(v: Any, max_len: int = 600) -> Any:
+            if v is None:
+                return None
+            if isinstance(v, str):
+                return v if len(v) <= max_len else v[:max_len] + "…"
+            if isinstance(v, (int, float, bool)):
+                return v
+            if isinstance(v, list):
+                return [_clip(x, max_len=max_len) for x in v[:50]]
+            if isinstance(v, dict):
+                out: Dict[str, Any] = {}
+                for k, val in list(v.items())[:50]:
+                    out[str(k)] = _clip(val, max_len=max_len)
+                return out
+            s = str(v)
+            return s if len(s) <= max_len else s[:max_len] + "…"
+
+        nodes = []
+        for n in (graph.nodes or {}).values():
+            meta = getattr(n, "meta", None) or {}
+            nodes.append(
+                {
+                    "id": getattr(n, "id", None),
+                    "role": getattr(n, "role", None),
+                    "title": getattr(n, "title", None),
+                    "url": getattr(n, "url", None),
+                    "summary": _clip(getattr(n, "summary", None), max_len=800),
+                    "meta": _clip(meta, max_len=400),
+                }
+            )
+
+        edges = []
+        for e in (graph.edges or []):
+            edges.append(
+                {
+                    "src_id": getattr(e, "src_id", None),
+                    "dst_id": getattr(e, "dst_id", None),
+                    "rel": getattr(e, "rel", None),
+                    "weight": getattr(e, "weight", None),
+                }
+            )
+
+        return {
+            "root_id": getattr(graph, "root_id", None),
+            "num_nodes": len(nodes),
+            "num_edges": len(edges),
+            "nodes": nodes,
+            "edges": edges,
+        }
+
+
+    def _export_nexus_tree_json(self, local_tree: Any, *, arxiv_id: str) -> str:
+        """Best-effort export of the Nexus local tree snapshot as JSON."""
+        output_path = f"{self.report_dir}/{arxiv_id}_nexus_tree.json"
+        payload = self._nexus_tree_to_jsonable(local_tree)
+        with open(output_path, "w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False, indent=2)
+        log.info("PaperPipelineReportAgent: Nexus local tree JSON saved to %s", output_path)
+        return output_path
+
+
+    def _nexus_tree_to_jsonable(self, local_tree: Any) -> Dict[str, Any]:
+        if hasattr(local_tree, "to_dict") and callable(getattr(local_tree, "to_dict")):
+            try:
+                data = local_tree.to_dict()
+                if isinstance(data, dict):
+                    return data
+            except Exception:
+                pass
+        if hasattr(local_tree, "dict") and callable(getattr(local_tree, "dict")):
+            try:
+                data = local_tree.dict()
+                if isinstance(data, dict):
+                    return data
+            except Exception:
+                pass
+
+        def _clip(v: Any, max_len: int = 600) -> Any:
+            if v is None:
+                return None
+            if isinstance(v, str):
+                return v if len(v) <= max_len else v[:max_len] + "…"
+            if isinstance(v, (int, float, bool)):
+                return v
+            if isinstance(v, list):
+                return [_clip(x, max_len=max_len) for x in v[:100]]
+            if isinstance(v, dict):
+                out: Dict[str, Any] = {}
+                for k, val in list(v.items())[:100]:
+                    out[str(k)] = _clip(val, max_len=max_len)
+                return out
+            s = str(v)
+            return s if len(s) <= max_len else s[:max_len] + "…"
+
+        nodes_raw = getattr(local_tree, "nodes", None)
+        edges_raw = getattr(local_tree, "edges", None)
+
+        if isinstance(nodes_raw, dict):
+            nodes_iter = list(nodes_raw.values())
+        elif isinstance(nodes_raw, list):
+            nodes_iter = nodes_raw
+        else:
+            nodes_iter = []
+
+        nodes = []
+        for n in nodes_iter[:500]:
+            if isinstance(n, dict):
+                nodes.append(_clip(n))
+            else:
+                nodes.append(
+                    {
+                        "id": getattr(n, "id", None) or getattr(n, "node_id", None),
+                        "kind": getattr(n, "kind", None) or getattr(n, "node_type", None),
+                        "label": getattr(n, "label", None) or getattr(n, "name", None),
+                        "meta": _clip(getattr(n, "meta", None) or getattr(n, "attrs", None) or {}),
+                    }
+                )
+
+        if isinstance(edges_raw, list):
+            edges_iter = edges_raw
+        else:
+            edges_iter = []
+
+        edges = []
+        for e in edges_iter[:2000]:
+            if isinstance(e, dict):
+                edges.append(_clip(e))
+            else:
+                edges.append(
+                    {
+                        "src": getattr(e, "src", None) or getattr(e, "src_id", None),
+                        "dst": getattr(e, "dst", None) or getattr(e, "dst_id", None),
+                        "rel": getattr(e, "rel", None) or getattr(e, "relation", None),
+                        "weight": getattr(e, "weight", None),
+                        "meta": _clip(getattr(e, "meta", None) or {}),
+                    }
+                )
+
+        if nodes or edges:
+            return {"nodes": nodes, "edges": edges, "repr": _clip(repr(local_tree), max_len=400)}
+
+        return {"repr": _clip(repr(local_tree), max_len=2000)}

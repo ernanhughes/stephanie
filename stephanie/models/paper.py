@@ -54,12 +54,6 @@ class PaperORM(Base):
         passive_deletes=True,
     )
 
-    blog_runs = relationship(
-        "PaperBlogRunORM",
-        back_populates="paper",
-        cascade="all, delete-orphan",
-        passive_deletes=True,
-    )
 
 
 
@@ -142,7 +136,6 @@ class PaperRunORM(Base):
     ai_prompt_hash = Column(String, nullable=True)
 
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
-
 
 class PaperRunFeatureORM(Base):
     """

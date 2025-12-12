@@ -1,6 +1,7 @@
 # stephanie/components/information/agents/paper_pipeline.py
 from __future__ import annotations
 
+import hashlib
 import logging
 import re
 from pathlib import Path
@@ -24,8 +25,12 @@ from stephanie.components.information.tasks.section_build_task import (
     SectionBuildTask,
     SectionBuildConfig,
 )
-from stephanie.components.information.tasks.section_link_task import SectionLinkTask
+from stephanie.components.information.tasks.section_link_task import (
+    SectionLinkTask,
+)
 
+from stephanie.memory.paper_store import PaperStore, sha256_bytes
+from stephanie.models.paper import PaperORM
 from stephanie.tools.summarization_tool import SummarizationTool
 from stephanie.tools.huggingface_tool import recommend_similar_papers
 from stephanie.scoring.scorable import Scorable, ScorableType
@@ -38,20 +43,6 @@ log = logging.getLogger(__name__)
 # Provider implementations
 # ---------------------------------------------------------------------------
 
-
-class DummyReferenceProvider(ReferenceProvider):
-    """
-    Minimal reference provider: returns no references.
-
-    This is SAFE for local directory runs and lets you get value out of the
-    pipeline immediately. Later, you can replace this with a real provider
-    that uses:
-      - your PDF reference extractor, or
-      - an external API (OpenAlex, arXiv metadata, etc.)
-    """
-
-    def get_references_for_arxiv(self, arxiv_id: str) -> List[ReferenceRecord]:
-        return []
 
 class LocalJsonReferenceProvider(ReferenceProvider):
     """
@@ -142,7 +133,9 @@ class HFSimilarPaperProvider(SimilarPaperProvider):
     def __init__(self, max_limit: int = 16) -> None:
         self.max_limit = max_limit
 
-    def get_similar_for_arxiv(self, arxiv_id: str, limit: int = 10) -> List[ReferenceRecord]:
+    def get_similar_for_arxiv(
+        self, arxiv_id: str, limit: int = 10
+    ) -> List[ReferenceRecord]:
         limit = min(limit, self.max_limit)
         url = f"https://arxiv.org/abs/{arxiv_id}"
 
@@ -213,25 +206,23 @@ class PaperPipelineAgent(BaseAgent):
         - build a small wrapper agent that uses PaperImportTask + SectionBuildTask
           directly for non-arxiv PDFs.
     """
+
     def __init__(self, cfg, memory, container, logger):
         super().__init__(
             cfg=cfg, memory=memory, container=container, logger=logger
         )
         self.document_store = memory.documents
         self.section_store = memory.document_sections
+        self.paper_store: PaperStore = memory.papers
         # populated by _load_texts_for_graph so we know which Document
         # corresponds to which arxiv_id
         self._doc_by_arxiv: Dict[str, Any] = {}
-
 
     async def run(self, context: Dict[str, Any]) -> Dict[str, Any]:
         # ------------------------------------------------------------------
         # 0) Resolve root identifier
         # ------------------------------------------------------------------
-        arxiv_id = (
-            context.get("arxiv_id")
-            or context.get("paper_arxiv_id")
-        )
+        arxiv_id = context.get("arxiv_id") or context.get("paper_arxiv_id")
 
         if not arxiv_id:
             arxiv_id = "2506.21734"
@@ -247,18 +238,18 @@ class PaperPipelineAgent(BaseAgent):
         # 1) Build paper graph (root + references + similar)
         # ------------------------------------------------------------------
 
-        papers_root = Path(
-            self.cfg.get("papers_root", "data/papers")
-        )
+        papers_root = Path(self.cfg.get("papers_root", "data/papers"))
         context["papers_root"] = str(papers_root)
         paper_pdf_path = papers_root / f"{arxiv_id}/paper.pdf"
-        context["paper_pdf_path"] = str(paper_pdf_path) 
+        context["paper_pdf_path"] = str(paper_pdf_path)
 
         ref_provider: ReferenceProvider = self._get_reference_provider()
-        sim_provider: Optional[SimilarPaperProvider] = self._get_similar_provider()
+        sim_provider: Optional[SimilarPaperProvider] = (
+            self._get_similar_provider()
+        )
 
         import_task = PaperImportTask(
-            papers_root=papers_root,
+            self.cfg, self.memory, self.container, self.logger
         )
 
         graph_task = ReferenceGraphTask(
@@ -321,7 +312,7 @@ class PaperPipelineAgent(BaseAgent):
         )
 
         matches, clusters = link_task.run(sections)
-        
+
         # ------------------------------------------------------------------
         # 3) Link sections (root vs others) + concept clusters
         # ------------------------------------------------------------------
@@ -333,7 +324,7 @@ class PaperPipelineAgent(BaseAgent):
         )
 
         matches, clusters = link_task.run(sections)
-        
+
         await self._dispatch_feature_jobs(sections, context)
 
         # ------------------------------------------------------------------
@@ -359,7 +350,6 @@ class PaperPipelineAgent(BaseAgent):
                 str(e),
             )
 
-
         return context
 
     # ------------------------------------------------------------------ #
@@ -383,7 +373,9 @@ class PaperPipelineAgent(BaseAgent):
 
         max_refs = int(self.cfg.get("graph", {}).get("max_refs", 50))
 
-        return LocalJsonReferenceProvider(papers_root=papers_root, max_refs=max_refs)
+        return LocalJsonReferenceProvider(
+            papers_root=papers_root, max_refs=max_refs
+        )
 
     def _get_similar_provider(self) -> Optional[SimilarPaperProvider]:
         """
@@ -392,7 +384,9 @@ class PaperPipelineAgent(BaseAgent):
         """
         if not self.cfg.get("enable_hf_similar", True):
             return None
-        return HFSimilarPaperProvider(max_limit=int(self.cfg.get("hf_similar_max", 16)))
+        return HFSimilarPaperProvider(
+            max_limit=int(self.cfg.get("hf_similar_max", 16))
+        )
 
     async def _load_texts_for_graph(
         self,
@@ -408,15 +402,31 @@ class PaperPipelineAgent(BaseAgent):
           - Maintain self._doc_by_arxiv[arxiv_id] for later use.
         """
         texts: Dict[str, str] = {}
+        self._paper_by_id: dict[str, PaperORM] = {}
         self._doc_by_arxiv = {}
 
+        arxiv_ids = list(graph.nodes.keys())
+        cached = self.paper_store.get_many_by_id(arxiv_ids)
+        for p in cached:
+            self._paper_by_id[p.id] = p
+            if p.text:
+                texts[p.id] = p.text
+
+        log.info(
+            "PaperPipeline: cache hit %d/%d papers", len(texts), len(arxiv_ids)
+        )
+
         import_task = PaperImportTask(
-            papers_root=papers_root,
+            self.cfg, self.memory, self.container, self.logger
         )
 
         for arxiv_id, node in graph.nodes.items():
+            paper = self.paper_store.get_by_id(arxiv_id)
             text = None
             doc = None
+            if paper is not None and getattr(paper, "text", None):
+                texts[arxiv_id] = paper.text
+                continue
             url = self._guess_paper_url(arxiv_id, node)
 
             # 1) Try to reuse stored Document if available
@@ -463,12 +473,29 @@ class PaperPipelineAgent(BaseAgent):
                                 "source": source,
                                 "external_id": arxiv_id,
                                 "url": url,
-                                "summary": None,   # let other agents fill this in
+                                "summary": None,  # let other agents fill this in
                                 "text": text,
                                 "goal_id": None,
                                 "domains": None,
                             }
                             doc = self.document_store.add_document(doc_dict)
+
+                            doc_dict["id"] = arxiv_id
+                            pdf_path = papers_root / arxiv_id / "paper.pdf"
+                            if pdf_path.exists():
+                                pdf_bytes = pdf_path.read_bytes()
+                                doc_dict["pdf_sha256"] = sha256_bytes(
+                                    pdf_bytes
+                                )
+                                doc_dict["pdf_path"] = str(pdf_path)
+                            else:
+                                doc_dict["pdf_sha256"] = None
+                            doc_dict["text_hash"] = hashlib.sha256(
+                                text.encode("utf-8")
+                            ).hexdigest()
+
+                            self.paper_store.upsert_paper(arxiv_id, doc_dict)
+
                     except Exception as e:
                         log.warning(
                             "PaperPipeline: failed to persist Document for %s: %s",
@@ -543,13 +570,11 @@ class PaperPipelineAgent(BaseAgent):
         to adapt this to your real API. The skeleton below shows the pattern.
         """
 
-
         def embedder(text: str):
             embedding = self.memory.embedding.get_or_create(text)
             return embedding
 
         return embedder
-
 
     # ------------------------------------------------------------------
     # Nexus + KnowledgeGraph integration
@@ -575,7 +600,9 @@ class PaperPipelineAgent(BaseAgent):
         bus = self.memory.bus
         embedding_store = self.memory.embedding
 
-        enable_nexus = bool(self.cfg.get("enable_nexus_index", True) and nexus_store)
+        enable_nexus = bool(
+            self.cfg.get("enable_nexus_index", True) and nexus_store
+        )
         enable_kg = bool(self.cfg.get("enable_kg_index", True) and bus)
 
         for idx, sec in enumerate(sections):
@@ -598,12 +625,12 @@ class PaperPipelineAgent(BaseAgent):
                 if enable_nexus:
                     row = {
                         "id": scorable_id,
-                        "chat_id": None,        # not chat-derived
+                        "chat_id": None,  # not chat-derived
                         "turn_index": None,
                         "target_type": "document_section",
                         "text": text,
                         "domains": domains,
-                        "entities": None,      # KG will fill this over time
+                        "entities": None,  # KG will fill this over time
                         "meta": {
                             "kind": "paper_section",
                             "arxiv_id": arxiv_id,
@@ -619,9 +646,7 @@ class PaperPipelineAgent(BaseAgent):
                         "index_with_embeddings", True
                     ):
                         try:
-                            vec = embedding_store.get_or_create(
-                                text
-                            )
+                            vec = embedding_store.get_or_create(text)
                             if vec is not None:
                                 nexus_store.upsert_embedding(scorable_id, vec)
                         except Exception as e:
@@ -661,7 +686,9 @@ class PaperPipelineAgent(BaseAgent):
         otherwise falls back to `paper:{arxiv_id}#sec-{index:03d}`.
         """
         # If the section already carries an id, re-use it
-        sid = getattr(section, "id", None) or getattr(section, "section_id", None)
+        sid = getattr(section, "id", None) or getattr(
+            section, "section_id", None
+        )
         if sid:
             return str(sid)
 
@@ -736,14 +763,17 @@ class PaperPipelineAgent(BaseAgent):
         scorables: List[Dict[str, Any]] = []
 
         for idx, sec in enumerate(sections):
-            text = getattr(sec, "summary", None) or getattr(sec, "text", None) or ""
+            text = (
+                getattr(sec, "summary", None)
+                or getattr(sec, "text", None)
+                or ""
+            )
             if not text or not text.strip():
                 continue
 
             # Try to reuse an existing scorable_id if we already set one
-            scorable_id = (
-                getattr(sec, "scorable_id", None)
-                or getattr(sec, "id", None)
+            scorable_id = getattr(sec, "scorable_id", None) or getattr(
+                sec, "id", None
             )
             # If your earlier code has a helper like _make_section_scorable_id,
             # you can fall back to that:
@@ -786,7 +816,9 @@ class PaperPipelineAgent(BaseAgent):
         """
         cfg_features = self.cfg.get("features", {}) or {}
         if not cfg_features.get("enabled", True):
-            log.debug("PaperPipelineAgent: feature indexing disabled in config")
+            log.debug(
+                "PaperPipelineAgent: feature indexing disabled in config"
+            )
             return
 
         bus = getattr(self.memory, "bus", None)
@@ -797,7 +829,9 @@ class PaperPipelineAgent(BaseAgent):
             )
             return
 
-        scorables = self._build_section_scorables_for_features(sections, context)
+        scorables = self._build_section_scorables_for_features(
+            sections, context
+        )
         if not scorables:
             log.debug(
                 "PaperPipelineAgent: no non-empty sections to index for features"
@@ -912,7 +946,8 @@ class PaperPipelineAgent(BaseAgent):
         param_names = [
             p.name
             for p in sig.parameters.values()
-            if p.kind in (Parameter.POSITIONAL_OR_KEYWORD, Parameter.KEYWORD_ONLY)
+            if p.kind
+            in (Parameter.POSITIONAL_OR_KEYWORD, Parameter.KEYWORD_ONLY)
         ]
 
         sections: List[DocumentSection] = []
@@ -928,9 +963,7 @@ class PaperPipelineAgent(BaseAgent):
             )
             paper_role = extra.get("paper_role") or "root"
             section_index = (
-                extra.get("section_index")
-                or extra.get("index")
-                or idx
+                extra.get("section_index") or extra.get("index") or idx
             )
 
             # --- common fields we may want to restore ------------------
@@ -985,7 +1018,9 @@ class PaperPipelineAgent(BaseAgent):
                     section_index=section_index,
                 )
                 # best-effort attribute patching
-                if title is not None and not getattr(sec, "section_name", None):
+                if title is not None and not getattr(
+                    sec, "section_name", None
+                ):
                     setattr(sec, "section_name", title)
                 if text is not None and not getattr(sec, "text", None):
                     setattr(sec, "text", text)
@@ -1032,7 +1067,9 @@ class PaperPipelineAgent(BaseAgent):
         except Exception:
             existing = []
 
-        if existing and not bool(self.cfg.get("force_rebuild_sections", False)):
+        if existing and not bool(
+            self.cfg.get("force_rebuild_sections", False)
+        ):
             log.info(
                 "PaperPipeline: %d sections already stored for doc_id=%s; not overwriting",
                 len(existing),
@@ -1044,11 +1081,19 @@ class PaperPipelineAgent(BaseAgent):
             self.section_store.delete_by_document(doc.id)
 
         for idx, sec in enumerate(sections):
-            title = getattr(sec, "title", None) or getattr(sec, "section_name", None)
+            title = getattr(sec, "title", None) or getattr(
+                sec, "section_name", None
+            )
             if not title:
-                title = (getattr(sec, "summary", "") or getattr(sec, "text", ""))[:80]
+                title = (
+                    getattr(sec, "summary", "") or getattr(sec, "text", "")
+                )[:80]
 
-            text = getattr(sec, "text", None) or getattr(sec, "summary", None) or ""
+            text = (
+                getattr(sec, "text", None)
+                or getattr(sec, "summary", None)
+                or ""
+            )
             summary = getattr(sec, "summary", None) or ""
 
             extra_data = {
@@ -1076,7 +1121,9 @@ class PaperPipelineAgent(BaseAgent):
                 stored = self.section_store.upsert(section_dict)
                 # Push the DB id back onto the in-memory section so that
                 # _make_section_scorable_id will now use a stable id.
-                if not getattr(sec, "id", None) and not getattr(sec, "section_id", None):
+                if not getattr(sec, "id", None) and not getattr(
+                    sec, "section_id", None
+                ):
                     try:
                         setattr(sec, "id", stored.id)
                     except Exception:

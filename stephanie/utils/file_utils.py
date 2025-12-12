@@ -5,7 +5,9 @@ import hashlib
 import logging
 import re
 from datetime import datetime
-
+import os
+import shutil
+import tempfile
 from pathlib import Path
 
 log = logging.getLogger(__name__)
@@ -15,6 +17,7 @@ def save_to_timestamped_file(
     file_prefix: str = "config",
     file_extension: str = "yaml",
     output_dir: str = "logs",
+    last_filename: str | None = None,  
 ) -> str:
     output_dir_path = Path(output_dir)
     output_dir_path.mkdir(parents=True, exist_ok=True)
@@ -23,15 +26,19 @@ def save_to_timestamped_file(
     filename = f"{file_prefix}_{timestamp}.{file_extension}"
     filepath = output_dir_path / filename
 
-    filepath.write_text(data, encoding="utf-8")
+    write_text_to_file(str(filepath), data)
 
-    # Absolute path
-    full_path = filepath.resolve()
+    # NEW: stable last copy (e.g. "last_report.md", "blog_config_last.yaml")
+    if last_filename:
+        try:
+            write_last_copy(
+                source_path=filepath,
+                last_path=Path(output_dir) / last_filename,
+            )
+        except Exception:
+            log.warning("Failed to write last copy for %s", filepath, exc_info=True)
 
-    # 1) Plain path (sometimes clickable)
-    log.info("🔧 Saved file to %s", full_path)
-
-    return str(full_path)
+    return str(filepath)
 
 
 def camel_to_snake(name):
@@ -82,7 +89,6 @@ def load_json(path: str):
         log.error(f"❌ Failed to decode JSON from {path}: {e}")
         return None
 
-
 def file_hash(path: str) -> str:
     """
     Compute SHA256 hash of a file's contents.
@@ -96,3 +102,79 @@ def file_hash(path: str) -> str:
     with open(path, "rb") as f:
         return hashlib.sha256(f.read()).hexdigest()
 
+def write_last_copy(
+    *,
+    source_path: str | Path,
+    last_path: str | Path,
+    prefer_link: bool = False,
+) -> Path:
+    """
+    Create/replace a stable 'last' copy of an artifact.
+
+    Tries, in order:
+      1) symlink (best, but may require privileges on Windows)
+      2) hardlink (fast, same filesystem)
+      3) copy2 + atomic replace (works everywhere)
+
+    Returns the final last_path.
+    """
+    src = Path(source_path)
+    dst = Path(last_path)
+
+    if not src.exists():
+        raise FileNotFoundError(f"write_last_copy: source does not exist: {src}")
+
+    dst.parent.mkdir(parents=True, exist_ok=True)
+
+    # Remove existing destination (file or symlink)
+    try:
+        if dst.exists() or dst.is_symlink():
+            dst.unlink()
+    except Exception:
+        # If unlink fails (e.g. permission edge-case), try best-effort overwrite later
+        pass
+
+    # 1) Symlink (best if available)
+    if prefer_link:
+        try:
+            # Use absolute path to avoid surprises with CWD changes
+            dst.symlink_to(src.resolve())
+            return dst
+        except Exception:
+            pass
+
+        # 2) Hardlink (fast, but same filesystem)
+        try:
+            os.link(str(src), str(dst))
+            return dst
+        except Exception:
+            pass
+
+    # 3) Copy + atomic replace
+    tmp_fd = None
+    tmp_path = None
+    try:
+        tmp_fd, tmp_path = tempfile.mkstemp(
+            prefix=f".{dst.name}.",
+            suffix=".tmp",
+            dir=str(dst.parent),
+        )
+        os.close(tmp_fd)
+        tmp_fd = None
+
+        shutil.copy2(str(src), str(tmp_path))
+        os.replace(str(tmp_path), str(dst))
+        tmp_path = None
+        return dst
+    finally:
+        # Cleanup temp if something went wrong
+        try:
+            if tmp_fd is not None:
+                os.close(tmp_fd)
+        except Exception:
+            pass
+        try:
+            if tmp_path is not None and Path(tmp_path).exists():
+                Path(tmp_path).unlink()
+        except Exception:
+            pass

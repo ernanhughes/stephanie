@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy import func
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
-from stephanie.models.encyclopedia import (AIConceptORM, ConceptGemORM,
+from stephanie.models.encyclopedia import (ConceptORM, ConceptGemORM,
                                            ConceptQuizORM)
 
 log = logging.getLogger(__name__)
@@ -21,8 +21,8 @@ class EncyclopediaStore(BaseSQLAlchemyStore):
     - This keeps session lifetime small and avoids long-held locks.
     """
 
-    orm_model = AIConceptORM
-    default_order_by = AIConceptORM.id.desc()
+    orm_model = ConceptORM
+    default_order_by = ConceptORM.id.desc()
 
     def __init__(self, session_maker, logger=None):
         super().__init__(session_maker, logger)
@@ -32,19 +32,19 @@ class EncyclopediaStore(BaseSQLAlchemyStore):
     # Concepts
     # ------------------------------------------------------------------
 
-    def get_concept_by_slug(self, concept_id: str) -> Optional[AIConceptORM]:
+    def get_concept_by_slug(self, concept_id: str) -> Optional[ConceptORM]:
         def op(s):
             return (
-                s.query(AIConceptORM)
-                .filter(AIConceptORM.concept_id == concept_id)
+                s.query(ConceptORM)
+                .filter(ConceptORM.concept_id == concept_id)
                 .one_or_none()
             )
 
         return self._run(op)
 
-    def get_concept_by_id(self, concept_row_id: int) -> Optional[AIConceptORM]:
+    def get_concept_by_id(self, concept_row_id: int) -> Optional[ConceptORM]:
         def op(s):
-            return s.get(AIConceptORM, concept_row_id)
+            return s.get(ConceptORM, concept_row_id)
 
         return self._run(op)
 
@@ -57,18 +57,18 @@ class EncyclopediaStore(BaseSQLAlchemyStore):
         wiki_url: Optional[str] = None,
         domains: Optional[List[str]] = None,
         sections: Optional[Dict[str, str]] = None,
-    ) -> AIConceptORM:
+    ) -> ConceptORM:
         """
         Get or create a concept row.
 
         - Updates summary/wiki_url/domains/sections if provided and different.
-        - Returns the persistent AIConceptORM row either way.
+        - Returns the persistent ConceptORM row either way.
         """
 
         def op(s):
             row = (
-                s.query(AIConceptORM)
-                .filter(AIConceptORM.concept_id == concept_id)
+                s.query(ConceptORM)
+                .filter(ConceptORM.concept_id == concept_id)
                 .one_or_none()
             )
             if row:
@@ -89,7 +89,7 @@ class EncyclopediaStore(BaseSQLAlchemyStore):
                     s.add(row)
                 return row
 
-            row = AIConceptORM(
+            row = ConceptORM(
                 concept_id=concept_id,
                 name=name,
                 summary=summary,
@@ -108,18 +108,18 @@ class EncyclopediaStore(BaseSQLAlchemyStore):
         *,
         domain: Optional[str] = None,
         limit: int = 200,
-    ) -> List[AIConceptORM]:
+    ) -> List[ConceptORM]:
         def op(s):
-            q = s.query(AIConceptORM)
+            q = s.query(ConceptORM)
             if domain is not None:
                 # domains is JSONB array; use contains([domain]) as with tags
-                q = q.filter(AIConceptORM.domains.contains([domain]))
+                q = q.filter(ConceptORM.domains.contains([domain]))
 
-            order_col = getattr(AIConceptORM, "last_refreshed_at", None)
+            order_col = getattr(ConceptORM, "last_refreshed_at", None)
             if order_col is not None:
                 q = q.order_by(order_col.desc())
             else:
-                q = q.order_by(AIConceptORM.id.desc())
+                q = q.order_by(ConceptORM.id.desc())
             return q.limit(limit).all()
 
         return self._run(op)
@@ -134,7 +134,7 @@ class EncyclopediaStore(BaseSQLAlchemyStore):
         novelty_max: float = 1.0,
         novelty_min: float = 0.0,
         limit: int = 100,
-    ) -> List[AIConceptORM]:
+    ) -> List[ConceptORM]:
         """
         Concepts where:
           - we have enough quiz history
@@ -145,17 +145,17 @@ class EncyclopediaStore(BaseSQLAlchemyStore):
         """
 
         def op(s):
-            q = s.query(AIConceptORM).filter(
-                AIConceptORM.quiz_total >= min_quiz_total,
-                AIConceptORM.frontier_count >= min_frontier_count,
+            q = s.query(ConceptORM).filter(
+                ConceptORM.quiz_total >= min_quiz_total,
+                ConceptORM.frontier_count >= min_frontier_count,
             )
             # guard against NULL accuracy
-            q = q.filter(AIConceptORM.quiz_accuracy.isnot(None))
-            q = q.filter(AIConceptORM.quiz_accuracy >= min_accuracy)
-            q = q.filter(AIConceptORM.quiz_accuracy <= max_accuracy)
+            q = q.filter(ConceptORM.quiz_accuracy.isnot(None))
+            q = q.filter(ConceptORM.quiz_accuracy >= min_accuracy)
+            q = q.filter(ConceptORM.quiz_accuracy <= max_accuracy)
 
             # prioritize those with lots of frontier activity
-            q = q.order_by(AIConceptORM.frontier_count.desc())
+            q = q.order_by(ConceptORM.frontier_count.desc())
             return q.limit(limit).all()
 
         return self._run(op)
@@ -184,8 +184,8 @@ class EncyclopediaStore(BaseSQLAlchemyStore):
 
         def op(s):
             concept = (
-                s.query(AIConceptORM)
-                .filter(AIConceptORM.concept_id == concept_id)
+                s.query(ConceptORM)
+                .filter(ConceptORM.concept_id == concept_id)
                 .one_or_none()
             )
             if not concept:
@@ -216,8 +216,8 @@ class EncyclopediaStore(BaseSQLAlchemyStore):
     ) -> List[ConceptGemORM]:
         def op(s):
             concept = (
-                s.query(AIConceptORM)
-                .filter(AIConceptORM.concept_id == concept_id)
+                s.query(ConceptORM)
+                .filter(ConceptORM.concept_id == concept_id)
                 .one_or_none()
             )
             if not concept:
@@ -264,8 +264,8 @@ class EncyclopediaStore(BaseSQLAlchemyStore):
 
         def op(s):
             concept = (
-                s.query(AIConceptORM)
-                .filter(AIConceptORM.concept_id == concept_id)
+                s.query(ConceptORM)
+                .filter(ConceptORM.concept_id == concept_id)
                 .one_or_none()
             )
             if not concept:
@@ -298,7 +298,7 @@ class EncyclopediaStore(BaseSQLAlchemyStore):
 
         return self._run(op)
 
-    def recompute_quiz_stats(self, concept_id: str) -> Optional[AIConceptORM]:
+    def recompute_quiz_stats(self, concept_id: str) -> Optional[ConceptORM]:
         """
         Slow but precise: recompute quiz stats from ai_concept_quizzes
         for one concept. Useful if you ever need to repair stats.
@@ -306,8 +306,8 @@ class EncyclopediaStore(BaseSQLAlchemyStore):
 
         def op(s):
             concept = (
-                s.query(AIConceptORM)
-                .filter(AIConceptORM.concept_id == concept_id)
+                s.query(ConceptORM)
+                .filter(ConceptORM.concept_id == concept_id)
                 .one_or_none()
             )
             if not concept:
