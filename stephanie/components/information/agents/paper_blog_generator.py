@@ -1,6 +1,6 @@
 # stephanie/components/information/agents/paper_blog_generator.py
 from __future__ import annotations
-
+import re
 import asyncio
 import json
 import logging
@@ -29,6 +29,7 @@ class PaperBlogGeneratorConfig:
 
     # High-level knobs
     max_sections: int = 8
+    max_references_items: int = 12
     intro_words: int = 400
     section_words: int = 900
     conclusion_words: int = 400
@@ -56,6 +57,9 @@ class PaperBlogGeneratorConfig:
         }
         return cls(
             max_sections=int(cfg.get("max_sections", cls.max_sections)),
+            max_references_items=int(
+                cfg.get("max_references_items", cls.max_references_items)
+            ),
             intro_words=int(cfg.get("intro_words", cls.intro_words)),
             section_words=int(cfg.get("section_words", cls.section_words)),
             conclusion_words=int(
@@ -99,6 +103,7 @@ class PaperBlogGeneratorAgent(BaseAgent):
         self.prompt_service: PromptService = container.get("prompt")
 
         self.max_sections = self.cfg_obj.max_sections
+        self.max_references_items = self.cfg_obj.max_references_items
         self.intro_words = self.cfg_obj.intro_words
         self.section_words = self.cfg_obj.section_words
         self.conclusion_words = self.cfg_obj.conclusion_words
@@ -147,6 +152,7 @@ class PaperBlogGeneratorAgent(BaseAgent):
             paper_title=paper_title,
             paper_summary=paper_summary,
             sections=sections,
+            context=context,
         )
 
         # 2) Section blocks (root paper only, limited to max_sections)
@@ -180,6 +186,7 @@ class PaperBlogGeneratorAgent(BaseAgent):
                     neighbor_block=neighbor_block,
                     clusters=clusters,
                     section_spine=section_spine,
+                    context=context,
                 )
             )
 
@@ -191,6 +198,7 @@ class PaperBlogGeneratorAgent(BaseAgent):
             paper_title=paper_title,
             paper_summary=paper_summary,
             sections=selected_sections,
+            context=context,
         )
 
         # 4) Assemble + save
@@ -230,6 +238,7 @@ class PaperBlogGeneratorAgent(BaseAgent):
         paper_title: str,
         paper_summary: str,
         sections: List[DocumentSection],
+        context: Dict[str, Any],
     ) -> str:
         """
         Generate a blog-style introduction that orients the reader.
@@ -277,6 +286,7 @@ Do NOT include a table of contents or section list; you've already used that jus
 
         intro_md = await self._call_llm(
             prompt=prompt,
+            context=context,
             max_tokens=1200,
         )
         return intro_md
@@ -288,6 +298,7 @@ Do NOT include a table of contents or section list; you've already used that jus
         paper_title: str,
         paper_summary: str,
         sections: List[DocumentSection],
+        context: Dict[str, Any],
     ) -> str:
         """
         Short wrap-up that ties everything together.
@@ -326,6 +337,7 @@ Write a Markdown section that:
 
         conclusion_md = await self._call_llm(
             prompt=prompt,
+            context=context,
             max_tokens=800,
         )
         return conclusion_md
@@ -344,6 +356,7 @@ Write a Markdown section that:
         neighbor_block: str,
         clusters: List[ConceptCluster],
         section_spine: Optional[Any] = None,
+        context: Dict[str, Any],
     ) -> str:
         """
         Generate a single blog section for a given DocumentSection.
@@ -446,6 +459,7 @@ Do NOT include any commentary about scores, the GROWS loop, or your process.
 
         section_md = await self._call_llm(
             prompt=prompt,
+            context=context,
             max_tokens=max_tokens,
         )
 
@@ -508,6 +522,7 @@ Do NOT include any commentary about scores, the GROWS loop, or your process.
         self,
         *,
         prompt: str,
+        context: Dict[str, Any],
         max_tokens: int,
         temperature: float = 0.7,
         top_p: float = 0.9,
@@ -522,14 +537,33 @@ Do NOT include any commentary about scores, the GROWS loop, or your process.
             "top_p": top_p,
         }
 
-        return await self.prompt_service.run_prompt(
+        blog_markdown = await self.prompt_service.run_prompt(
             prompt_text=prompt,
             context=None,
             model=self.model,  # use default model from prompt_service.cfg
-            role=LLMRole.BLOG,  # <-- now valid
-            sys_preamble=None,  # we bake style into the role + prompt
-            params=params,
+            role=LLMRole.BLOG,  # or EXPLAINER if you're still using that
+            sys_preamble=None,
+            params=params,  # if you wired params
         )
+
+        arxiv_id = context.get("arxiv_id") or context.get("paper_arxiv_id")
+        graph: Optional[PaperReferenceGraph] = context.get("paper_graph")
+        sections: List[DocumentSection] = context.get("paper_sections") or []
+        ref_block = self._build_references_markdown(
+            arxiv_id=arxiv_id,
+            graph=graph,
+            sections=sections,
+        )
+        if ref_block:
+            blog_markdown = (blog_markdown or "").rstrip() + "\n\n" + ref_block + "\n"
+
+        context[self.output_key] = blog_markdown
+        log.info(
+            "PaperBlogGeneratorAgent: generated blog for %s (%d chars)",
+            arxiv_id,
+            len(blog_markdown or ""),
+        )
+
 
     @staticmethod
     def _clean_text(text: str) -> str:
@@ -675,3 +709,73 @@ Do NOT include any commentary about scores, the GROWS loop, or your process.
             log.warning(
                 "PaperBlogGeneratorAgent failed to save debug files: %s", e
             )
+
+    def _build_references_markdown(
+        self,
+        *,
+        arxiv_id: str,
+        graph: Optional[PaperReferenceGraph],
+        sections: List[DocumentSection],
+    ) -> str:
+        """
+        Build a Markdown 'References & Further Reading' block.
+
+        v1 strategy:
+          - Use graph nodes with role in {"reference", "ref", "similar", "candidate"}
+          - Plus anything we can mine from a 'References' / 'Bibliography' section
+            in DocumentSection.
+        """
+        items: List[Dict[str, str]] = []
+
+        # ---------- 1) Graph-based references / similar ----------
+        if graph is not None:
+            nodes = getattr(graph, "nodes", {}) or {}
+            for pid, node in nodes.items():
+                role = getattr(node, "role", None) or getattr(
+                    node, "kind", None
+                )
+                if role not in {"reference", "ref", "similar", "candidate"}:
+                    continue
+
+                title = getattr(node, "title", None) or pid
+                url = getattr(node, "url", None) or f"https://arxiv.org/abs/{pid}"
+                label = f"{pid} — {title}"
+                items.append({"label": label, "url": url})
+
+        # ---------- 2) Section-based reference lines ----------
+        section_lines = self._extract_reference_lines_from_sections(sections)
+        for line in section_lines:
+            # try to detect an arXiv ID in the line
+            m = re.search(r"\b(\d{4}\.\d{4,5}(v\d+)?)\b", line)
+            url = f"https://arxiv.org/abs/{m.group(1)}" if m else ""
+            items.append({"label": line, "url": url})
+
+        # ---------- 3) Deduplicate ----------
+        deduped: List[Dict[str, str]] = []
+        seen = set()
+        for item in items:
+            key = item["label"]
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped.append(item)
+
+        if not deduped:
+            return ""
+
+        deduped = deduped[: self.max_reference_items]
+
+        # ---------- 4) Build Markdown ----------
+        lines: List[str] = []
+        lines.append("## References & Further Reading")
+        lines.append("")
+
+        for item in deduped:
+            label = item["label"].strip()
+            url = (item.get("url") or "").strip()
+            if url:
+                lines.append(f"- [{label}]({url})")
+            else:
+                lines.append(f"- {label}")
+
+        return "\n".join(lines)

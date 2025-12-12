@@ -3,25 +3,37 @@ from __future__ import annotations
 
 import logging
 import re
+import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, List
 
 import requests
 
-from stephanie.components.information.data import PaperNode
+from stephanie.components.information.data import PaperNode, ReferenceRecord
 from stephanie.utils.hash_utils import hash_text
 from stephanie.tools.pdf_tool import PDFConverter
 from stephanie.tools.arxiv_tool import fetch_arxiv_metadata
 
 log = logging.getLogger(__name__)
 
+ARXIV_INLINE_PATTERN = re.compile(
+    r"arxiv[: ]\s*(\d{4}\.\d{4,5})",
+    re.IGNORECASE,
+)
+
+ARXIV_URL_PATTERN = re.compile(
+    r"arxiv\.org/(?:abs|pdf)/(\d{4}\.\d{4,5})",
+    re.IGNORECASE,
+)
 
 @dataclass
 class PaperImportResult:
     node: PaperNode
     text: str
     raw: Dict[str, Any]
+    # NEW: references extracted from the References/Bibliography section
+    references: Optional[List[ReferenceRecord]] = None
 
 
 class PaperImportTask:
@@ -41,6 +53,7 @@ class PaperImportTask:
         - PaperNode (with arxiv_id/key, role, pdf_path, text_hash, metadata)
         - text (full extracted text)
         - raw (debug metadata dict)
+        - references (list[ReferenceRecord])
     """
 
     def __init__(
@@ -59,7 +72,7 @@ class PaperImportTask:
         role: str = "root",
     ) -> PaperImportResult:
         """
-        Import a single paper and return (PaperNode, text).
+        Import a single paper and return (PaperNode, text, references).
 
         You can call this with:
             - arxiv_id="2501.01234"
@@ -76,7 +89,9 @@ class PaperImportTask:
         elif pdf_path is not None:
             key = pdf_path.stem
         else:
-            key = self._derive_arxiv_id_from_url(url) or self._sanitize_filename(url or "paper")
+            key = self._derive_arxiv_id_from_url(url) or self._sanitize_filename(
+                url or "paper"
+            )
 
         paper_dir = self.papers_root / (key or "unknown")
         paper_dir.mkdir(parents=True, exist_ok=True)
@@ -113,6 +128,13 @@ class PaperImportTask:
         text_hash = hash_text(text or "")
 
         # ------------------------------------------------------------------
+        # 2b) Extract references (block + arXiv IDs)
+        # ------------------------------------------------------------------
+        ref_info = self._extract_references_from_text(text)
+        ref_lines = ref_info["lines"]
+        ref_arxiv_ids = ref_info["arxiv_ids"]
+
+        # ------------------------------------------------------------------
         # 3) Optional: fetch arXiv metadata (title, summary, authors)
         # ------------------------------------------------------------------
         arxiv_meta: Optional[Dict[str, Any]] = None
@@ -135,7 +157,17 @@ class PaperImportTask:
                 )
 
         # ------------------------------------------------------------------
-        # 4) Build PaperNode + raw metadata
+        # 4) Extract references from the full text and persist them
+        # ------------------------------------------------------------------
+        references: List[ReferenceRecord] = self._extract_references_from_text2(
+            text or "", key
+        )
+        references_path: Optional[Path] = None
+        if references:
+            references_path = self._persist_references_json(paper_dir, references)
+
+        # ------------------------------------------------------------------
+        # 5) Build PaperNode + raw metadata
         # ------------------------------------------------------------------
         metadata: Dict[str, Any] = {
             "source_url": source_url,
@@ -144,6 +176,9 @@ class PaperImportTask:
 
         if arxiv_meta:
             metadata["arxiv"] = arxiv_meta
+        if references_path is not None:
+            metadata["references_path"] = str(references_path)
+            metadata["references_count"] = len(references)
 
         node = PaperNode(
             arxiv_id=key,
@@ -157,6 +192,9 @@ class PaperImportTask:
             text_hash=text_hash,
             meta={
                 "pdf_metadata": metadata,
+                "references_block": ref_info["raw_block"],
+                "references_lines": ref_lines,
+                "reference_arxiv_ids": ref_arxiv_ids,
             },
         )
 
@@ -164,15 +202,26 @@ class PaperImportTask:
             "pdf_path": str(pdf_local_path),
             "source_url": source_url,
             "arxiv_metadata": arxiv_meta,
+            "references": {
+                "lines": ref_lines,
+                "arxiv_ids": ref_arxiv_ids,
+            },
         }
 
-        return PaperImportResult(node=node, text=text, raw=raw)
+        log.info(
+            "[PaperImportTask] Imported paper key=%s, text_length=%d, references=%d",
+            key,
+            len(text or ""),
+            len(references),
+        )
+
+        return PaperImportResult(node=node, text=text, raw=raw, references=references)
 
     # ------------------------------------------------------------------ #
     def _download_pdf(self, url: str, dest_path: Path) -> None:
         """
         Download a PDF from URL to dest_path, similar in spirit to
-        DocumentLoaderAgent (requests.get(..., stream=True)).
+        DocumentLoaderAgent (requests.get(. stream=True)).
         """
         log.info("[PaperImportTask] Downloading %s -> %s", url, dest_path)
         resp = requests.get(url, stream=True, timeout=60)
@@ -211,3 +260,279 @@ class PaperImportTask:
         if not name:
             name = "document"
         return name[:100]
+
+    def _extract_references_from_text2(
+        self,
+        text: str,
+        root_key: str,
+        max_refs: int = 256,
+    ) -> List[ReferenceRecord]:
+        """
+        Heuristic extraction of the References/Bibliography section from full text.
+
+        Strategy:
+          1) Try to find a 'References' / 'Bibliography' heading near the end and
+             parse numbered citations under it.
+          2) If that fails, fall back to a global arXiv-ID regex sweep and build
+             minimal ReferenceRecord entries from those IDs.
+        """
+        if not text:
+            return []
+
+        # --- 1) Try to parse an explicit References/Bibliography block ---
+        lower = text.lower()
+        start_search = int(len(lower) * 0.66)
+        block = lower[start_search:]
+
+        heading_match = None
+        for pattern in (r"(?mi)^\s*references\s*$", r"(?mi)^\s*bibliography\s*$"):
+            matches = list(re.finditer(pattern, block))
+            if matches:
+                heading_match = matches[-1]
+                break
+
+        if heading_match:
+            abs_start = start_search + heading_match.end()
+            refs_block = text[abs_start:]
+
+            lines = [ln.rstrip() for ln in refs_block.splitlines()]
+            entries: List[str] = []
+            buf: List[str] = []
+
+            def flush_buf():
+                if buf:
+                    merged = " ".join(buf).strip()
+                    if len(merged) > 30:  # drop tiny junk lines
+                        entries.append(merged)
+                buf.clear()
+
+            # Group lines into individual citations
+            for ln in lines:
+                stripped = ln.strip()
+                if not stripped:
+                    flush_buf()
+                    continue
+
+                # Start of a new numbered ref: [n], "n." or "n)"
+                if re.match(r"^\s*(\[\d+\]|\d+[\.\)]\s+)", stripped) and buf:
+                    flush_buf()
+                    buf.append(stripped)
+                else:
+                    buf.append(stripped)
+
+            flush_buf()
+
+            if len(entries) > max_refs:
+                entries = entries[:max_refs]
+
+            records: List[ReferenceRecord] = []
+            for entry in entries:
+                # arXiv ID inside the citation
+                arxiv_match = re.search(
+                    r"(?:arxiv[: ]*)?(\d{4}\.\d{4,5})(?:v\d+)?",
+                    entry,
+                    flags=re.IGNORECASE,
+                )
+                arxiv_id = arxiv_match.group(1) if arxiv_match else None
+
+                # DOI
+                doi_match = re.search(r"\b10\.\d{4,9}/\S+\b", entry)
+                doi = doi_match.group(0) if doi_match else None
+
+                # Year
+                year_match = re.search(r"\b(19|20)\d{2}\b", entry)
+                year = int(year_match.group(0)) if year_match else None
+
+                # URL
+                url_match = re.search(r"https?://\S+", entry)
+                url = url_match.group(0) if url_match else None
+                if not url and arxiv_id:
+                    url = f"https://arxiv.org/abs/{arxiv_id}"
+
+                records.append(
+                    ReferenceRecord(
+                        arxiv_id=arxiv_id,
+                        doi=doi,
+                        title=None,
+                        year=year,
+                        url=url,
+                        raw_citation=entry,
+                    )
+                )
+
+            log.info(
+                "[PaperImportTask] Extracted %d references for key=%s via References block",
+                len(records),
+                root_key,
+            )
+            return records
+
+        # --- 2) Fallback: no explicit References block, use arXiv-ID sweep ---
+        arxiv_ids = self._extract_arxiv_ids_from_text(text)
+        if not arxiv_ids:
+            log.info(
+                "[PaperImportTask] No references found for key=%s (no block, no arxiv IDs)",
+                root_key,
+            )
+            return []
+
+        records: List[ReferenceRecord] = []
+        for arxiv_id in arxiv_ids[:max_refs]:
+            url = f"https://arxiv.org/abs/{arxiv_id}"
+            records.append(
+                ReferenceRecord(
+                    arxiv_id=arxiv_id,
+                    doi=None,
+                    title=None,
+                    year=None,
+                    url=url,
+                    raw_citation=f"arXiv:{arxiv_id}",
+                )
+            )
+
+        log.info(
+            "[PaperImportTask] Extracted %d references for key=%s via arxiv-ID fallback",
+            len(records),
+            root_key,
+        )
+        return records
+
+    def _persist_references_json(
+        self,
+        paper_dir: Path,
+        references: List[ReferenceRecord],
+    ) -> Path:
+        """
+        Save references as JSON so a ReferenceProvider can load them later.
+
+        File: papers_root/<key>/references.json
+        """
+        refs_path = paper_dir / "references.json"
+        try:
+            payload = [
+                {
+                    "arxiv_id": r.arxiv_id,
+                    "doi": r.doi,
+                    "title": r.title,
+                    "year": r.year,
+                    "url": r.url,
+                    "raw_citation": r.raw_citation,
+                }
+                for r in references
+            ]
+            refs_path.write_text(
+                json.dumps(payload, indent=2, ensure_ascii=False),
+                encoding="utf-8",
+            )
+        except Exception as e:
+            log.warning(
+                "[PaperImportTask] Failed to write references.json in %s: %s",
+                paper_dir,
+                e,
+            )
+        return refs_path
+
+    # ------------------------------------------------------------------ #
+    # Reference extraction
+    # ------------------------------------------------------------------ #
+
+    def _slice_references_block(self, text: str) -> Optional[str]:
+        """
+        Try to slice out the References/Bibliography section.
+
+        This is a *best effort* heuristic. If it fails, we fall back to a
+        global arXiv-ID regex sweep.
+        """
+        if not text:
+            return None
+
+        lower = text.lower()
+
+        # Look for common headings near the end of the document.
+        # We use rfind() so we get the *last* occurrence.
+        headings = [
+            "\nreferences\n",
+            "\nreferences\r\n",
+            "\n# references",
+            "\n## references",
+            "\nbibliography\n",
+            "\nreferences\n\n",
+        ]
+
+        start_idx = -1
+        for h in headings:
+            idx = lower.rfind(h)
+            if idx != -1:
+                start_idx = idx + len(h)
+                break
+
+        if start_idx == -1:
+            return None
+
+        # Optionally trim off appendices if present
+        tail = text[start_idx:]
+        for stopper in ["\nappendix", "\nacknowledgments", "\nacknowledgements"]:
+            stop_idx = tail.lower().find(stopper)
+            if stop_idx != -1:
+                tail = tail[:stop_idx]
+                break
+
+        return tail.strip() or None
+
+    def _extract_arxiv_ids_from_text(self, text: str) -> list[str]:
+        """
+        Fallback: scan the *entire* document for arXiv IDs like
+        'arxiv:2504.21318' or 'https://arxiv.org/abs/2110.14168'.
+
+        Returns a sorted, de-duplicated list of bare IDs like '2504.21318'.
+        """
+        if not text:
+            return []
+
+        ids: set[str] = set()
+
+        for pat in (ARXIV_INLINE_PATTERN, ARXIV_URL_PATTERN):
+            for m in pat.findall(text):
+                ids.add(m.strip())
+
+        if not ids:
+            return []
+
+        # Log once so you can see this kicking in
+        log.info(
+            "[PaperImportTask] Fallback arXiv-ID extraction found %d ids: %s",
+            len(ids),
+            ", ".join(sorted(ids)),
+        )
+
+        return sorted(ids)
+
+    def _extract_references_from_text(self, text: str) -> Dict[str, Any]:
+        """
+        Main entrypoint for reference extraction.
+
+        Strategy:
+        1) Try to slice a 'References' block and return raw lines.
+        2) If that fails or yields nothing, fall back to arXiv-ID regex sweep.
+        """
+        if not text:
+            return {"raw_block": None, "lines": [], "arxiv_ids": []}
+
+        # 1) Try to slice explicit references section
+        block = self._slice_references_block(text)
+        lines: list[str] = []
+        if block:
+            for line in block.splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                lines.append(line)
+
+        # 2) Fallback if nothing usable
+        arxiv_ids = self._extract_arxiv_ids_from_text(text) if not lines else []
+
+        return {
+            "raw_block": block,
+            "lines": lines,
+            "arxiv_ids": arxiv_ids,
+        }

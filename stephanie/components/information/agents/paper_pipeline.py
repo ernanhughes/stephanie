@@ -157,7 +157,8 @@ class PaperPipelineAgent(BaseAgent):
         )
 
         if not arxiv_id:
-            arxiv_id = "2511.19900"
+            arxiv_id = "2512.04072"
+            # arxiv_id = "2511.19900"
             context["arxiv_id"] = arxiv_id
             # raise ValueError("PaperPipelineAgent requires 'arxiv_id' in context")
 

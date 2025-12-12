@@ -23,7 +23,10 @@ class ReferenceRecord:
 
     arxiv_id: str
     title: Optional[str] = None
+    doi: Optional[str] = None
+    year: Optional[str] = None
     url: Optional[str] = None
+    raw_citation: Optional[str] = None
     source: str = "unknown"  # e.g. "arxiv", "openalex", "parsed_pdf"
     raw: Dict[str, Any] = field(default_factory=dict)
 
