@@ -45,7 +45,7 @@ class PaperORM(Base):
         back_populates="paper",
         cascade="all, delete-orphan",
         passive_deletes=True,
-    )
+    ) 
 
     similars = relationship(
         "PaperSimilarORM",
@@ -53,6 +53,14 @@ class PaperORM(Base):
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
+
+    blog_runs = relationship(
+        "PaperBlogRunORM",
+        back_populates="paper",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
 
 
 class PaperReferenceORM(Base):
@@ -108,3 +116,100 @@ class PaperSimilarORM(Base):
         UniqueConstraint("paper_id", "provider", "similar_arxiv_id", name="uq_paper_similar_unique"),
         Index("ix_paper_similar_paper_rank", "paper_id", "rank"),
     )
+
+class PaperRunORM(Base):
+    __tablename__ = "paper_runs"
+
+    id = Column(String, primary_key=True)  # your universal ID
+    paper_id = Column(
+        String,
+        ForeignKey("papers.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+
+    run_type = Column(String, nullable=False)  
+    # e.g. "blog", "analysis", "summary"
+
+    config = Column(JSONB, nullable=False)      # BlogConfig dump
+    stats = Column(JSONB, nullable=True)        # graph stats, section counts, etc.
+
+    artifact_path = Column(String, nullable=True)  # markdown / output path
+
+    ai_score = Column(Float, nullable=True)
+    ai_rationale = Column(String, nullable=True)
+    ai_judge = Column(String, nullable=True)
+    ai_prompt_hash = Column(String, nullable=True)
+
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+
+
+class PaperRunFeatureORM(Base):
+    """
+    Stores extracted features for a paper run.
+    Features are stored as JSONB to allow flexible evolution.
+    """
+    __tablename__ = "paper_run_features"
+
+    id = Column(String, primary_key=True)
+    run_id = Column(
+        String,
+        ForeignKey("paper_runs.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+
+    features = Column(JSONB, nullable=False)
+    extractor = Column(String, nullable=True)      # e.g. "v1_basic"
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+class PaperRunComparisonORM(Base):
+    """
+    Pairwise comparison between two runs of the same paper.
+    Used for ranking / preference learning.
+    """
+    __tablename__ = "paper_run_comparisons"
+
+    id = Column(String, primary_key=True)
+
+    paper_id = Column(String, index=True, nullable=False)
+
+    run_a_id = Column(
+        String,
+        ForeignKey("paper_runs.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    run_b_id = Column(
+        String,
+        ForeignKey("paper_runs.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+
+    # preference: +1 means A preferred, -1 means B preferred
+    preference = Column(Float, nullable=False)
+
+    judge = Column(String, nullable=True)
+    rationale = Column(String, nullable=True)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class PaperRunEventORM(Base):
+    """
+    Step-level trace events for a paper run.
+    Used for debugging, analysis, and future HRM / RL training.
+    """
+    __tablename__ = "paper_run_events"
+
+    id = Column(String, primary_key=True)
+    run_id = Column(
+        String,
+        ForeignKey("paper_runs.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+
+    event_type = Column(String, nullable=False)   # e.g. "retrieve", "score", "generate"
+    payload = Column(JSONB, nullable=True)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
