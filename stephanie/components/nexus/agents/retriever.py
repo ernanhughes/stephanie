@@ -18,8 +18,6 @@ from stephanie.services.scoring_service import ScoringService
 from stephanie.utils.progress_mixin import ProgressMixin
 
 
-
-
 class NexusLightRAGRetriever(BaseAgent):
     """
     Graph-first retrieval over Nexus, LightRAG-style.

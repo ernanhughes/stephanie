@@ -6,8 +6,8 @@ import logging
 import os
 from typing import Any, Dict, List, Optional, Union
 
-from stephanie.tools.base_tool import BaseTool
 from stephanie.scoring.scorable import Scorable
+from stephanie.tools.base_tool import BaseTool
 
 log = logging.getLogger(__name__)
 

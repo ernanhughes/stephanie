@@ -4,8 +4,8 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import (ARRAY, JSON, DateTime, Float, ForeignKey, Integer,
-                        String, Text)
+from sqlalchemy import (ARRAY, JSON, Column, DateTime, Float, ForeignKey,
+                        Integer, String, Text)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from stephanie.models.base import Base
@@ -16,7 +16,6 @@ from stephanie.models.evaluation import \
 from stephanie.models.goal import GoalORM
 from stephanie.models.pipeline_run import PipelineRunORM
 from stephanie.models.plan_trace_revision import PlanTraceRevisionORM
-from sqlalchemy import Column
 
 
 class PlanTraceORM(Base):

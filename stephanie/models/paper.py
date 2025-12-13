@@ -1,9 +1,8 @@
 # stephanie/models/paper.py
 from __future__ import annotations
 
-from sqlalchemy import (
-    Column, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, Index, Float
-)
+from sqlalchemy import (BigInteger, Column, DateTime, Float, ForeignKey, Index,
+                        Integer, String, Text, UniqueConstraint)
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -54,7 +53,38 @@ class PaperORM(Base):
         passive_deletes=True,
     )
 
+    sections = relationship(
+        "PaperSectionORM",
+        back_populates="paper",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
 
+class PaperSectionORM(Base):
+    __tablename__ = "paper_sections"
+    
+    id = Column(String, primary_key=True)  # e.g. "2505.08827::sec-0"
+    paper_id = Column(String, ForeignKey("papers.id", ondelete="CASCADE"), nullable=False, index=True)
+    
+    section_index = Column(Integer, nullable=False)  # 0-based index within paper
+    start_char = Column(Integer, nullable=True)      # character offset in original text
+    end_char = Column(Integer, nullable=True)        # character offset in original text
+    
+    start_page = Column(Integer, nullable=True)      # page number in original document
+    end_page = Column(Integer, nullable=True)        # page number in original document
+    
+    text = Column(Text, nullable=True)               # section text content
+    title = Column(String, nullable=True)            # section title
+    summary = Column(Text, nullable=True)            # AI-generated summary
+    
+    # Additional metadata
+    meta = Column(JSONB, nullable=True)
+    
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+    
+    # Relationship to PaperORM
+    paper = relationship("PaperORM", back_populates="sections")
 
 
 class PaperReferenceORM(Base):
@@ -124,6 +154,7 @@ class PaperRunORM(Base):
 
     run_type = Column(String, nullable=False)  
     # e.g. "blog", "analysis", "summary"
+    variant = Column(String, nullable=True)       # e.g. "v1", "with_images", "no_references"
 
     config = Column(JSONB, nullable=False)      # BlogConfig dump
     stats = Column(JSONB, nullable=True)        # graph stats, section counts, etc.
@@ -155,6 +186,7 @@ class PaperRunFeatureORM(Base):
     features = Column(JSONB, nullable=False)
     extractor = Column(String, nullable=True)      # e.g. "v1_basic"
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
 class PaperRunComparisonORM(Base):
     """
@@ -185,6 +217,13 @@ class PaperRunComparisonORM(Base):
     rationale = Column(String, nullable=True)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+
+    paper_id = Column(String, ForeignKey("papers.id", ondelete="CASCADE"), index=True, nullable=False)
+    winner_run_id = Column(String, ForeignKey("paper_runs.id", ondelete="SET NULL"), nullable=True)
+ 
+    scores = Column(JSONB, nullable=True)            # {left:..., right:..., breakdown:...}
+    meta = Column(JSONB, nullable=True)
 
 
 class PaperRunEventORM(Base):
@@ -194,7 +233,7 @@ class PaperRunEventORM(Base):
     """
     __tablename__ = "paper_run_events"
 
-    id = Column(String, primary_key=True)
+    id = Column(Integer, primary_key=True)
     run_id = Column(
         String,
         ForeignKey("paper_runs.id", ondelete="CASCADE"),
@@ -206,3 +245,7 @@ class PaperRunEventORM(Base):
     payload = Column(JSONB, nullable=True)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    stage = Column(String, nullable=True)        # "paper_import", "paper_pipeline", "paper_blog_generator"
+    event_type = Column(String, nullable=True)   # "info"|"metric"|"warn"|"error"
+    message = Column(Text, nullable=True)
+    data = Column(JSONB, nullable=True)

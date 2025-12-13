@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 from pathlib import Path
 
@@ -12,7 +13,6 @@ from stephanie.utils.string_utils import clean_heading as util_clean_heading
 from stephanie.utils.string_utils import normalize_key, trunc
 from stephanie.utils.text_utils import is_high_quality_section, section_quality
 
-import logging
 log = logging.getLogger(__name__)
 
 class DocumentSectionParser:

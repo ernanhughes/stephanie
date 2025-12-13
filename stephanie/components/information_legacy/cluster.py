@@ -1,12 +1,11 @@
+import math
+import uuid
 from collections import defaultdict
-
 from typing import Dict, List, Optional, Set
 
 from stephanie.components.information_legacy.data import DocumentSection
-import math
-import uuid
-
 from stephanie.utils.similarity_utils import cosine
+
 
 class ConceptClusterTask:
     """

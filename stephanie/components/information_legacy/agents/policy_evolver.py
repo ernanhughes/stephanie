@@ -9,10 +9,10 @@ from typing import Any, Dict, List
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.memory.idea_store import IdeaStore
 from stephanie.memory.memcube_store import MemCubeStore
-from stephanie.types.idea import Idea
 from stephanie.models.memcube import MemCubeORM
 from stephanie.scoring.metrics.scorable_processor import ScorableProcessor
 from stephanie.services.knowledge_graph_service import KnowledgeGraphService
+from stephanie.types.idea import Idea
 from stephanie.utils.date_utils import iso_now
 
 log = logging.getLogger(__name__)

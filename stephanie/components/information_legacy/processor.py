@@ -8,8 +8,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from stephanie.components.information_legacy.data import (InformationRequest,
-                                                   InformationResult,
-                                                   InformationSource)
+                                                          InformationResult,
+                                                          InformationSource)
 from stephanie.tools.arxiv_tool import search_arxiv
 from stephanie.tools.web_search import WebSearchTool
 from stephanie.tools.wikipedia_tool import WikipediaTool

@@ -1,12 +1,11 @@
 # stephanie/core/ids.py
 from __future__ import annotations
 
+import re
+import secrets
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Optional
-import secrets
-import re
-
 
 _TIMESTAMP_RE = re.compile(r"^(\d{17})-([A-Z0-9_]+)-([0-9a-f]{8})$")
 

@@ -1,25 +1,21 @@
 # stephanie/components/information/agents/paper_blog_generator.py
 from __future__ import annotations
-import re
+
 import asyncio
 import json
 import logging
-from dataclasses import dataclass
+import re
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.components.information.data import (
-    ConceptCluster,
-    PaperSection,
-    PaperReferenceGraph,
-)
-from stephanie.utils.file_utils import save_to_timestamped_file, write_last_copy
-
+from stephanie.components.information.data import (BlogConfig, ConceptCluster,
+                                                   PaperReferenceGraph,
+                                                   PaperSection)
 from stephanie.services.prompt_service import LLMRole, PromptService
-from dataclasses import field
-
-from stephanie.components.information.data import BlogConfig
+from stephanie.utils.file_utils import (save_to_timestamped_file,
+                                        write_last_copy)
 
 log = logging.getLogger(__name__)
 

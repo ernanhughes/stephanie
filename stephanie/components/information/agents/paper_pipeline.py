@@ -2,39 +2,30 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
-import json
-from stephanie.agents.base_agent import BaseAgent
-from stephanie.components.information.data import (
-    PaperSection,
-    PaperReferenceGraph,
-    ReferenceRecord,
-)
-from stephanie.components.information.tasks.paper_import_task import (
-    PaperImportTask,
-)
-from stephanie.components.information.tasks.reference_graph_task import (
-    ReferenceGraphTask,
-    ReferenceProvider,
-    SimilarPaperProvider,
-)
-from stephanie.components.information.tasks.section_build_task import (
-    SectionBuildTask,
-    SectionBuildConfig,
-)
-from stephanie.components.information.tasks.section_link_task import (
-    SectionLinkTask,
-)
 
+from stephanie.agents.base_agent import BaseAgent
+from stephanie.components.information.data import (PaperReferenceGraph,
+                                                   PaperSection,
+                                                   ReferenceRecord)
+from stephanie.components.information.tasks.paper_import_task import \
+    PaperImportTask
+from stephanie.components.information.tasks.reference_graph_task import (
+    ReferenceGraphTask, ReferenceProvider, SimilarPaperProvider)
+from stephanie.components.information.tasks.section_build_task import (
+    SectionBuildConfig, SectionBuildTask)
+from stephanie.components.information.tasks.section_link_task import \
+    SectionLinkTask
+from stephanie.constants import PIPELINE_RUN_ID
 from stephanie.memory.paper_store import PaperStore, sha256_bytes
 from stephanie.models.paper import PaperORM
-from stephanie.tools.summarization_tool import SummarizationTool
-from stephanie.tools.huggingface_tool import recommend_similar_papers
 from stephanie.scoring.scorable import Scorable, ScorableType
-from stephanie.constants import PIPELINE_RUN_ID
+from stephanie.tools.huggingface_tool import recommend_similar_papers
+from stephanie.tools.summarization_tool import SummarizationTool
 
 log = logging.getLogger(__name__)
 
@@ -419,6 +410,7 @@ class PaperPipelineAgent(BaseAgent):
         )
 
         for arxiv_id, node in graph.nodes.items():
+            # 1) Try to reuse stored Paper if available
             paper = self.paper_store.get_by_id(arxiv_id)
             text = None
             doc = None
@@ -427,20 +419,6 @@ class PaperPipelineAgent(BaseAgent):
                 continue
             url = self._guess_paper_url(arxiv_id, node)
 
-            # 1) Try to reuse stored Document if available
-            if self.document_store:
-                try:
-                    doc = self.document_store.get_by_url(url)
-                except Exception as e:
-                    log.warning(
-                        "PaperPipeline: document lookup failed url=%s error=%s",
-                        url,
-                        e,
-                    )
-                    doc = None
-
-                if doc is not None and getattr(doc, "text", None):
-                    text = doc.text
 
             # 2) If no stored text, import the paper
             if text is None:
@@ -459,52 +437,30 @@ class PaperPipelineAgent(BaseAgent):
                     )
                     continue
 
-                # 2b) Persist a Document row if we have a store
-                if self.document_store and text:
-                    try:
-                        if doc is None:
-                            title = getattr(node, "title", None) or arxiv_id
-                            source = getattr(node, "source", None) or "arxiv"
+            # 3) Store the text + Document mapping
 
-                            doc_dict = {
-                                "title": title,
-                                "source": source,
-                                "external_id": arxiv_id,
-                                "url": url,
-                                "summary": None,  # let other agents fill this in
-                                "text": text,
-                                "goal_id": None,
-                                "domains": None,
-                            }
-                            doc = self.document_store.add_document(doc_dict)
+            fields = {
+                "id": arxiv_id,
+                "source": "arxiv",
+                "url": url,
+                "title": getattr(node, "title", None),
+                "summary": getattr(node, "summary", None),
+                "authors": getattr(node, "authors", None),
+                "published": getattr(node, "published", None),
+                "text": text,   
+            }
 
-                            doc_dict["id"] = arxiv_id
-                            pdf_path = papers_root / arxiv_id / "paper.pdf"
-                            if pdf_path.exists():
-                                pdf_bytes = pdf_path.read_bytes()
-                                doc_dict["pdf_sha256"] = sha256_bytes(
-                                    pdf_bytes
-                                )
-                                doc_dict["pdf_path"] = str(pdf_path)
-                            else:
-                                doc_dict["pdf_sha256"] = None
-                            doc_dict["text_hash"] = hashlib.sha256(
-                                text.encode("utf-8")
-                            ).hexdigest()
+            self.paper_store.upsert_paper( 
+                paper_id=arxiv_id,
+                fields=fields,
+                url=url,
+            )
 
-                            self.paper_store.upsert_paper(arxiv_id, doc_dict)
-
-                    except Exception as e:
-                        log.warning(
-                            "PaperPipeline: failed to persist Document for %s: %s",
-                            arxiv_id,
-                            e,
-                        )
 
             if text:
                 texts[arxiv_id] = text
-            if doc is not None:
-                self._doc_by_arxiv[arxiv_id] = doc
+            if paper is not None:
+                self._doc_by_arxiv[arxiv_id] = paper
 
         return texts
 
@@ -586,7 +542,7 @@ class PaperPipelineAgent(BaseAgent):
         context: Dict[str, Any],
     ) -> None:
         """
-        For each DocumentSection:
+        For each PaperSection:
           - create/update a Nexus scorable + embedding
           - emit a knowledge_graph.index_request event so KGService
             can build entity/claim/relationship nodes.
@@ -680,7 +636,7 @@ class PaperPipelineAgent(BaseAgent):
         """
         Build a stable id for a section.
 
-        Prefers an existing id/section_id on the DocumentSection if present,
+        Prefers an existing id/section_id on the PaperSection if present,
         otherwise falls back to `paper:{arxiv_id}#sec-{index:03d}`.
         """
         # If the section already carries an id, re-use it
@@ -745,7 +701,7 @@ class PaperPipelineAgent(BaseAgent):
         context: Dict[str, Any],
     ) -> List[Dict[str, Any]]:
         """
-        Convert DocumentSection objects into Scorable dicts that
+        Convert PaperSection objects into Scorable dicts that
         NexusFeatureWorker / ScorableProcessor can understand.
         """
         cfg_features = self.cfg.get("features", {}) or {}
@@ -879,25 +835,24 @@ class PaperPipelineAgent(BaseAgent):
     ) -> Optional[List[PaperSection]]:
         """
         If we already have stored sections for this paper, reconstruct
-        lightweight DocumentSection objects and return them.
+        lightweight PaperSection objects and return them.
 
         Returns None if:
-          - there's no Document or no sections yet
-          - or cfg.force_rebuild_sections is True
+        - there's no Document or no sections yet
+        - or cfg.force_rebuild_sections is True
         """
-        if not self.document_store or not self.section_store:
-            return None
-
-        doc = self._doc_by_arxiv.get(arxiv_id)
-        if doc is None:
+        # Get the paper from paper_store
+        paper = self.paper_store.get_by_id(arxiv_id)
+        if paper is None:
             return None
 
         try:
-            orm_sections = self.section_store.get_by_document(doc.id)
+            # Get sections for this paper from paper_sections table
+            orm_sections = self.paper_store.get_sections_for_paper(arxiv_id)
         except Exception as e:
             log.warning(
-                "PaperPipeline: failed reading sections for doc_id=%s error=%s",
-                getattr(doc, "id", None),
+                "PaperPipeline: failed reading sections for paper_id=%s error=%s",
+                arxiv_id,
                 e,
             )
             return None
@@ -928,17 +883,17 @@ class PaperPipelineAgent(BaseAgent):
         arxiv_id: str,
     ) -> List[PaperSection]:
         """
-        Convert DocumentSectionORM rows into DocumentSection objects.
+        Convert PaperSectionORM rows into PaperSection objects.
 
         This version explicitly fills the required ctor fields:
-          - paper_arxiv_id
-          - paper_role
-          - section_index
+        - paper_arxiv_id
+        - paper_role
+        - section_index
 
         and then uses signature introspection to only pass args that
-        actually exist on DocumentSection in your codebase.
+        actually exist on PaperSection in your codebase.
         """
-        from inspect import signature, Parameter
+        from inspect import Parameter, signature
 
         sig = signature(PaperSection)
         param_names = [
@@ -951,24 +906,18 @@ class PaperPipelineAgent(BaseAgent):
         sections: List[PaperSection] = []
 
         for idx, orm in enumerate(orm_sections):
-            extra = getattr(orm, "extra_data", None) or {}
-
             # --- required ctor fields ----------------------------------
-            paper_arxiv_id = (
-                extra.get("paper_arxiv_id")
-                or extra.get("arxiv_id")
-                or arxiv_id
-            )
-            paper_role = extra.get("paper_role") or "root"
-            section_index = (
-                extra.get("section_index") or extra.get("index") or idx
-            )
+            paper_arxiv_id = arxiv_id
+            paper_role = "root"
+            section_index = getattr(orm, "section_index", idx)
 
             # --- common fields we may want to restore ------------------
-            title = getattr(orm, "section_name", None)
-            text = getattr(orm, "section_text", None)
+            title = getattr(orm, "title", None)
+            text = getattr(orm, "text", None)
             summary = getattr(orm, "summary", None)
-            source = getattr(orm, "source", None)
+            start_char = getattr(orm, "start_char", None)
+            end_char = getattr(orm, "end_char", None)
+            meta = getattr(orm, "meta", None) or {}
 
             candidates = {
                 # required ctor args
@@ -978,19 +927,25 @@ class PaperPipelineAgent(BaseAgent):
                 # ids
                 "id": orm.id,
                 "section_id": orm.id,
-                "document_id": orm.document_id,
                 # text-ish fields
                 "title": title,
                 "section_name": title,
                 "text": text,
                 "section_text": text,
                 "summary": summary,
-                "source": source,
+                # character offsets
+                "start_char": start_char,
+                "end_char": end_char,
                 # misc / meta
-                "extra_data": extra,
-                "arxiv_id": arxiv_id,
-                "paper_id": arxiv_id,
-                "index": idx,
+                "extra_data": {
+                    "arxiv_id": arxiv_id,
+                    "paper_arxiv_id": arxiv_id,
+                    "paper_role": paper_role,
+                    "section_index": section_index,
+                    "index": idx,
+                    "meta": meta,
+                },
+                "meta": meta,
             }
 
             kwargs = {
@@ -1005,7 +960,7 @@ class PaperPipelineAgent(BaseAgent):
                 # Extremely defensive fallback: only pass the 3 required args,
                 # then patch the obvious attributes onto the instance.
                 self.logger.warning(
-                    "PaperPipeline: DocumentSection(**kwargs) failed (%s), "
+                    "PaperPipeline: PaperSection(**kwargs) failed (%s), "
                     "falling back to minimal ctor; kwargs=%s",
                     e,
                     kwargs,
@@ -1016,18 +971,18 @@ class PaperPipelineAgent(BaseAgent):
                     section_index=section_index,
                 )
                 # best-effort attribute patching
-                if title is not None and not getattr(
-                    sec, "section_name", None
-                ):
+                if title is not None and not getattr(sec, "section_name", None):
                     setattr(sec, "section_name", title)
                 if text is not None and not getattr(sec, "text", None):
                     setattr(sec, "text", text)
                 if summary is not None and not getattr(sec, "summary", None):
                     setattr(sec, "summary", summary)
-                if source is not None and not getattr(sec, "source", None):
-                    setattr(sec, "source", source)
-                if extra and not getattr(sec, "extra_data", None):
-                    setattr(sec, "extra_data", extra)
+                if start_char is not None and not getattr(sec, "start_char", None):
+                    setattr(sec, "start_char", start_char)
+                if end_char is not None and not getattr(sec, "end_char", None):
+                    setattr(sec, "end_char", end_char)
+                if meta and not getattr(sec, "meta", None):
+                    setattr(sec, "meta", meta)
 
             sections.append(sec)
 
@@ -1040,44 +995,13 @@ class PaperPipelineAgent(BaseAgent):
         sections: List[PaperSection],
     ) -> None:
         """
-        Persist freshly built sections into the DocumentSectionStore.
+        Persist freshly built sections into the paper_sections table.
 
-        - Attaches them to the Document we created/loaded earlier.
-        - Writes minimal metadata into extra_data.
+        - Writes minimal metadata into meta.
         - Pushes stored.id back onto the in-memory section (for stable scorable_ids).
         """
-        if not self.section_store or not self.document_store:
-            return
-        if not sections:
-            return
-
-        doc = self._doc_by_arxiv.get(arxiv_id)
-        if doc is None:
-            log.info(
-                "PaperPipeline: no Document found for %s; skipping section persistence",
-                arxiv_id,
-            )
-            return
-
-        # If sections already exist and we're not forcing, bail early
-        try:
-            existing = self.section_store.get_by_document(doc.id)
-        except Exception:
-            existing = []
-
-        if existing and not bool(
-            self.cfg.get("force_rebuild_sections", False)
-        ):
-            log.info(
-                "PaperPipeline: %d sections already stored for doc_id=%s; not overwriting",
-                len(existing),
-                getattr(doc, "id", None),
-            )
-            return
-
-        if existing:
-            self.section_store.delete_by_document(doc.id)
-
+        # Prepare section data for storage
+        section_data_list = []
         for idx, sec in enumerate(sections):
             title = getattr(sec, "title", None) or getattr(
                 sec, "section_name", None
@@ -1094,42 +1018,33 @@ class PaperPipelineAgent(BaseAgent):
             )
             summary = getattr(sec, "summary", None) or ""
 
-            extra_data = {
-                "arxiv_id": arxiv_id,
-                "paper_arxiv_id": arxiv_id,
-                "paper_role": getattr(sec, "paper_role", None) or "root",
-                "section_index": getattr(sec, "section_index", None) or idx,
-                "index": getattr(sec, "index", idx),
-                "domains": list(getattr(sec, "domains", []) or []),
-            }
-            meta = getattr(sec, "meta", None)
-            if isinstance(meta, dict):
-                extra_data["meta"] = meta
-
-            section_dict = {
-                "document_id": doc.id,
-                "section_name": title[:255],
-                "section_text": text,
+            # Create section data dictionary for storage
+            section_data = {
+                "id": getattr(sec, "id", None) or f"{arxiv_id}::sec-{idx}",
+                "paper_id": arxiv_id,
+                "section_index": getattr(sec, "section_index", idx),
+                "start_char": getattr(sec, "start_char", None),
+                "end_char": getattr(sec, "end_char", None),
+                "start_page": getattr(sec, "start_page", None),
+                "end_page": getattr(sec, "end_page", None),
+                "text": text,
+                "title": title,
                 "summary": summary,
-                "source": "paper_pipeline",
-                "extra_data": extra_data,
+                "meta": getattr(sec, "meta", None) or {},
             }
+            section_data_list.append(section_data)
 
-            try:
-                stored = self.section_store.upsert(section_dict)
-                # Push the DB id back onto the in-memory section so that
-                # _make_section_scorable_id will now use a stable id.
-                if not getattr(sec, "id", None) and not getattr(
-                    sec, "section_id", None
-                ):
-                    try:
-                        setattr(sec, "id", stored.id)
-                    except Exception:
-                        pass
-            except Exception as e:
-                log.warning(
-                    "PaperPipeline: failed to persist section '%s' idx=%d: %s",
-                    title,
-                    idx,
-                    e,
-                )
+        # Replace all sections for this paper with new ones
+        try:
+            self.paper_store.replace_sections_for_paper(arxiv_id, section_data_list)
+            log.info(
+                "PaperPipeline: persisted %d sections for %s to paper_sections table",
+                len(sections),
+                arxiv_id,
+            )
+        except Exception as e:
+            log.warning(
+                "PaperPipeline: failed to persist sections for %s: %s",
+                arxiv_id,
+                e,
+            )

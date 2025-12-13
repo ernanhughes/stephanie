@@ -12,8 +12,8 @@ import litellm
 from litellm import ModelResponse
 
 from stephanie.services.service_protocol import Service
-from stephanie.utils.llm_utils import remove_think_blocks
 from stephanie.types.model import ModelSpec
+from stephanie.utils.llm_utils import remove_think_blocks
 
 log = logging.getLogger(__name__)
 

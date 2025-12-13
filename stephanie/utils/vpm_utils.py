@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional
 
 import numpy as np
 from PIL import Image
+
 from stephanie.scoring.scorable import Scorable
 from stephanie.utils.hash_utils import hash_text
 

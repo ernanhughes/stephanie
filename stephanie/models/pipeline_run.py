@@ -11,7 +11,6 @@ from stephanie.models.base import Base
 from stephanie.utils.date_utils import iso_now
 
 
-
 class PipelineRunORM(Base):
     __tablename__ = "pipeline_runs"
 

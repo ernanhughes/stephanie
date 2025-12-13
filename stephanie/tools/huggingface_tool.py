@@ -1,6 +1,7 @@
 # stephanie/tools/huggingface_tool.py
 from __future__ import annotations
 
+import logging
 import pickle
 import re
 from pathlib import Path
@@ -10,8 +11,6 @@ from gradio_client import Client
 from huggingface_hub import HfApi
 
 from stephanie.utils.hash_utils import hash_text
-
-import logging
 
 log = logging.getLogger(__name__)
 

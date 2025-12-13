@@ -1,26 +1,20 @@
 # stephanie/components/information/agents/paper_pipeline_report.py
 from __future__ import annotations
 
+import json
+import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-from stephanie.utils.file_utils import save_to_timestamped_file, write_last_copy
-
-
-import logging
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.components.information.data import (
-    ConceptCluster,
-    PaperSection,
-    PaperReferenceGraph,
-    SectionMatch,
-)
-from stephanie.components.nexus.graph.exporters.pyvis import (
-    export_pyvis_html,
-)
+from stephanie.components.information.data import (ConceptCluster,
+                                                   PaperReferenceGraph,
+                                                   PaperSection, SectionMatch)
+from stephanie.components.nexus.graph.exporters.pyvis import export_pyvis_html
 from stephanie.constants import PIPELINE_RUN_ID
-from stephanie.utils.hash_utils import hash_text 
-import json
+from stephanie.utils.file_utils import (save_to_timestamped_file,
+                                        write_last_copy)
+from stephanie.utils.hash_utils import hash_text
 
 log = logging.getLogger(__name__)
 

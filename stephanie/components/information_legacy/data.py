@@ -2,10 +2,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Set, Iterable,  Literal, Tuple
 from pathlib import Path
+from typing import Any, Dict, Iterable, List, Literal, Optional, Set, Tuple
 
 from pyparsing import ABC, abstractmethod
+
 
 @dataclass
 class ReferenceRecord:

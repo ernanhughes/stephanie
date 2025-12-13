@@ -5,8 +5,8 @@ import logging
 from typing import Any, Dict, List, Optional
 
 from stephanie.components.information_legacy.data import (InformationRequest,
-                                                   InformationResult,
-                                                   InformationSource)
+                                                          InformationResult,
+                                                          InformationSource)
 from stephanie.services.knowledge_graph_service import KnowledgeGraphService
 from stephanie.utils.date_utils import iso_now
 

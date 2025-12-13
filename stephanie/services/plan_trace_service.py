@@ -5,10 +5,10 @@ import json
 import os
 import time
 import traceback
+import uuid
+from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Any, Dict, Optional
-import uuid
-
 
 from stephanie.agents.agent_scorer import AgentScorerAgent
 from stephanie.agents.plan_trace_scorer import PlanTraceScorerAgent
@@ -18,7 +18,6 @@ from stephanie.models.plan_trace import PlanTraceORM, StepRunORM
 from stephanie.scoring.scorable import ScorableFactory
 from stephanie.services.service_protocol import Service
 from stephanie.utils.serialization import default_serializer
-from contextlib import asynccontextmanager
 
 
 class PlanTraceService(Service):

@@ -1,23 +1,18 @@
 # stephanie/stores/nexus_store.py
 from __future__ import annotations
 
-from typing import Any, Dict, Iterable, List, Optional, Tuple, Sequence, Union
+import logging
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
-
 from sqlalchemy import and_, desc, or_, text
 from sqlalchemy.orm import Session
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
-from stephanie.models.nexus import (
-    NexusEdgeORM,
-    NexusEmbeddingORM,
-    NexusMetricsORM,
-    NexusPulseORM,
-    NexusScorableORM,
-)
+from stephanie.models.nexus import (NexusEdgeORM, NexusEmbeddingORM,
+                                    NexusMetricsORM, NexusPulseORM,
+                                    NexusScorableORM)
 from stephanie.utils.similarity_utils import cosine
-import logging
 
 log = logging.getLogger(__name__)
 

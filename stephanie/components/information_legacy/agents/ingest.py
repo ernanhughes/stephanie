@@ -10,12 +10,13 @@ from stephanie.components.information_legacy.builder.graph import \
     InformationGraphBuilder
 # These are the new Information component types we designed earlier.
 # Adjust the import paths if you put them somewhere else.
-from stephanie.components.information_legacy.data import (InformationRequest,
-                                                   InformationResult,
-                                                   InformationSource,
-                                                   InformationTargetConfig)
-from stephanie.components.information_legacy.processor import InformationProcessor
-from stephanie.components.information_legacy.quality import InformationQualityPass
+from stephanie.components.information_legacy.data import (
+    InformationRequest, InformationResult, InformationSource,
+    InformationTargetConfig)
+from stephanie.components.information_legacy.processor import \
+    InformationProcessor
+from stephanie.components.information_legacy.quality import \
+    InformationQualityPass
 from stephanie.models.casebook import CaseBookORM, CaseORM
 from stephanie.scoring.scorable import ScorableType
 from stephanie.utils.casebook_utils import generate_casebook_name

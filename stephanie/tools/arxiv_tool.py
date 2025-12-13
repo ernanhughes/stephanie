@@ -3,12 +3,12 @@ from __future__ import annotations
 
 import re
 import xml.etree.ElementTree as ET
+from dataclasses import dataclass
+from typing import Dict, List, Optional
 from urllib.parse import urlparse
 
 import arxiv
 import requests
-from dataclasses import dataclass
-from typing import List, Optional, Dict
 
 
 def search_arxiv(queries: list[str], max_results: int = 5) -> list[dict]:

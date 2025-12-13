@@ -17,8 +17,8 @@ from stephanie.constants import (BUS_STREAM, SUBJ_RESULT_LEG_W,
                                  SUBJ_SUBMIT, SUBJ_SUBMIT_LEG, SUBJ_SUBMIT_NS)
 from stephanie.services.bus.events.prompt_job import PromptJob
 from stephanie.services.service_protocol import Service
-from stephanie.utils.llm_utils import remove_think_blocks
 from stephanie.types.model import ModelSpec
+from stephanie.utils.llm_utils import remove_think_blocks
 
 log = logging.getLogger(__name__)
 

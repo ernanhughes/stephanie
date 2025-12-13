@@ -8,8 +8,9 @@ from dataclasses import asdict, dataclass, field
 from enum import Enum
 from typing import Any, Dict, List, Literal, Optional, Tuple
 
-from stephanie.utils.hash_utils import hash_text
 import z3  # pip install z3-solver
+
+from stephanie.utils.hash_utils import hash_text
 
 Status = Literal["valid", "contradiction", "ungrounded", "untranslatable"]
 UngroundedDetail = Literal[

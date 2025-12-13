@@ -38,6 +38,7 @@ Notes:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 import traceback
@@ -46,7 +47,6 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from time import time
 from typing import Any, Dict, List, Optional
-import asyncio
 
 from tqdm import tqdm
 

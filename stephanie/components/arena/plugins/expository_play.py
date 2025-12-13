@@ -3,11 +3,9 @@ from __future__ import annotations
 
 from stephanie.components.arena.plugins.interfaces import JobCtx, PlayResult
 from stephanie.components.arena.plugins.registry import register_play
-from stephanie.memory.expository_store import (
-    BlogDraftStore,
-    ExpositoryBufferStore,
-)
 from stephanie.components.arena.plugins.stictcher import BlogStitcher
+from stephanie.memory.expository_store import (BlogDraftStore,
+                                               ExpositoryBufferStore)
 
 
 @register_play

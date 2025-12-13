@@ -6,10 +6,12 @@ import logging
 from typing import Any, Dict, List
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.components.information_legacy.agents.critic import IdeaCriticHead
+from stephanie.components.information_legacy.agents.critic import \
+    IdeaCriticHead
 from stephanie.components.information_legacy.agents.fast_encyclopedia import \
     FastEncyclopediaAgent
-from stephanie.components.information_legacy.agents.idea import IdeaGenerationHead
+from stephanie.components.information_legacy.agents.idea import \
+    IdeaGenerationHead
 from stephanie.components.information_legacy.agents.ingest import \
     InformationIngestAgent
 from stephanie.components.information_legacy.agents.section_research import \

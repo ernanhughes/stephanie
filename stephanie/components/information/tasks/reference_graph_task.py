@@ -5,16 +5,12 @@ import logging
 from pathlib import Path
 from typing import Dict, List, Optional, Protocol
 
-from stephanie.components.information.data import (
-    PaperNode,
-    PaperReferenceGraph,
-    ReferenceEdge,
-    ReferenceRecord,
-)
+from stephanie.components.information.data import (PaperNode,
+                                                   PaperReferenceGraph,
+                                                   ReferenceEdge,
+                                                   ReferenceRecord)
 from stephanie.components.information.tasks.paper_import_task import (
-    PaperImportTask,
-    PaperImportResult,
-)
+    PaperImportResult, PaperImportTask)
 
 log = logging.getLogger(__name__)
 

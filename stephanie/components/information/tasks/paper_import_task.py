@@ -4,7 +4,8 @@ import logging
 from pathlib import Path
 from typing import Optional
 
-from stephanie.tools.paper_import_tool import PaperImportTool, PaperImportResult
+from stephanie.tools.paper_import_tool import (PaperImportResult,
+                                               PaperImportTool)
 
 log = logging.getLogger(__name__)
 
@@ -47,6 +48,6 @@ class PaperImportTask:
             local_pdf_path=local_pdf_path,
             role=role,
             source=source,
-            force=force,
+            force=True,
             force_references=force_references,
         )

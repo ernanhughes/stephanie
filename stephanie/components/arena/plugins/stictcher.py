@@ -2,11 +2,9 @@
 from typing import List, Optional
 
 from sqlalchemy.orm import sessionmaker
-from stephanie.memory.expository_store import (
-    ExpositoryBuffer,
-    ExpositorySnippet,
-    BlogDraft,
-)
+
+from stephanie.memory.expository_store import (BlogDraft, ExpositoryBuffer,
+                                               ExpositorySnippet)
 
 
 class BlogStitcher:

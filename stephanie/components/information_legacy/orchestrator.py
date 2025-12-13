@@ -8,10 +8,12 @@ from stephanie.components.information_legacy.adapters.info_casebook_adapter impo
     InfoCaseBookAdapter
 from stephanie.components.information_legacy.adapters.info_scorable_adapter import \
     score_memcube_and_attach_attributes
-from stephanie.components.information_legacy.builder.bucket import BucketBuilder
-from stephanie.components.information_legacy.builder.memcube import MemCubeBuilder
-from stephanie.components.information_legacy.data import (InformationBuildResult,
-                                                   SourceProfile)
+from stephanie.components.information_legacy.builder.bucket import \
+    BucketBuilder
+from stephanie.components.information_legacy.builder.memcube import \
+    MemCubeBuilder
+from stephanie.components.information_legacy.data import (
+    InformationBuildResult, SourceProfile)
 
 
 @dataclass

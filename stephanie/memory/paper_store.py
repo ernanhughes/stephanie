@@ -2,11 +2,17 @@
 from __future__ import annotations
 
 import hashlib
-from typing import Optional, List, Dict, Any
+import json
 import uuid
+from typing import Any, Dict, List, Optional
+
+from sqlalchemy import insert
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
-from stephanie.models.paper import PaperORM, PaperReferenceORM, PaperRunComparisonORM, PaperRunEventORM, PaperRunFeatureORM, PaperRunORM, PaperSimilarORM
+from stephanie.models.paper import (PaperORM, PaperReferenceORM,
+                                    PaperRunComparisonORM, PaperRunEventORM,
+                                    PaperRunFeatureORM, PaperRunORM,
+                                    PaperSectionORM, PaperSimilarORM)
 
 
 def sha256_bytes(b: bytes) -> str:
@@ -21,6 +27,7 @@ class PaperStore(BaseSQLAlchemyStore):
         self.name = "papers"        
         self._refs = PaperReferenceStore(session_or_maker, logger)
         self._similar = PaperSimilarStore(session_or_maker, logger)
+        self._sections = PaperSectionStore(session_or_maker, logger)  # NEW
 
     # ---------- Reads ----------
 
@@ -62,6 +69,19 @@ class PaperStore(BaseSQLAlchemyStore):
             return row
         return self._run(op)
 
+    # ---------- Sections ----------
+
+    def get_sections_for_paper(self, paper_id: str) -> List[PaperSectionORM]:
+        """Get all sections for a specific paper."""
+        return self._sections.get_by_paper_id(paper_id)
+
+    def replace_sections_for_paper(self, paper_id: str, sections: List[Dict[str, Any]]) -> List[PaperSectionORM]:
+        """Replace all sections for a paper with new ones."""
+        return self._sections.replace_for_paper(paper_id, sections)
+
+    def upsert_section(self, section_data: Dict[str, Any]) -> PaperSectionORM:
+        """Upsert a single section."""
+        return self._sections.upsert(section_data)
 
     # ---------- References ----------
 
@@ -91,6 +111,7 @@ class PaperStore(BaseSQLAlchemyStore):
         config: dict,
         stats: dict | None = None,
         artifact_path: str | None = None,
+        variant: str | None = None,
     ) -> PaperRunORM:
         def op(s):
             run = PaperRunORM(
@@ -100,6 +121,7 @@ class PaperStore(BaseSQLAlchemyStore):
                 config=config,
                 stats=stats or {},
                 artifact_path=artifact_path,
+                variant=variant,
             )
             s.add(run)
             s.flush()
@@ -251,13 +273,214 @@ class PaperStore(BaseSQLAlchemyStore):
             )
         return self._run(op)
 
+    # ---------------------------
+    # Runs
+    # ---------------------------
 
+    def mark_run_error(self, run_id: str, error: str) -> None:
+        def op(s):
+            r = s.get(PaperRunORM, run_id)
+            if not r:
+                return
+            r.status = "error"
+            r.error = error
+        self._run(op)
 
+    def set_run_judge(
+        self,
+        *,
+        run_id: str,
+        ai_score: float,
+        ai_scores: Optional[Dict[str, Any]] = None,
+        ai_rationale: Optional[str] = None,
+        judge_meta: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        def op(s):
+            r = s.get(PaperRunORM, run_id)
+            if not r:
+                return
+            r.ai_score = float(ai_score)
+            r.ai_scores = ai_scores or {}
+            r.ai_rationale = ai_rationale
+            r.judge_meta = judge_meta or {}
+        self._run(op)
+
+    # ---------------------------
+    # Run features
+    # ---------------------------
+
+    def upsert_run_features(self, run_id: str, features: Dict[str, Any]) -> None:
+        def op(s):
+            stmt = insert(PaperRunFeatureORM).values(run_id=run_id, features=features)
+            stmt = stmt.on_conflict_do_update(
+                index_elements=[PaperRunFeatureORM.run_id],
+                set_={"features": stmt.excluded.features},
+            )
+            s.execute(stmt)
+        self._run(op)
+
+    # ---------------------------
+    # Comparisons
+    # ---------------------------
+
+    def add_comparison(
+        self,
+        *,
+        paper_id: str,
+        left_run_id: str,
+        right_run_id: str,
+        winner_run_id: Optional[str],
+        preference: str,
+        rationale: Optional[str] = None,
+        judge_source: str = "llm",
+        scores: Optional[Dict[str, Any]] = None,
+        meta: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        def op(s):
+            obj = PaperRunComparisonORM(
+                paper_id=paper_id,
+                left_run_id=left_run_id,
+                right_run_id=right_run_id,
+                winner_run_id=winner_run_id,
+                preference=preference,
+                rationale=rationale,
+                judge_source=judge_source,
+                scores=scores or {},
+                meta=meta or {},
+            )
+            s.add(obj)
+        self._run(op)
+
+    # ---------------------------
+    # Events
+    # ---------------------------
+
+    def add_event(
+        self,
+        *,
+        run_id: str,
+        stage: str,
+        event_type: str,
+        message: str,
+        data: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        def op(s):
+            s.add(
+                PaperRunEventORM(
+                    run_id=run_id,
+                    stage=stage,
+                    event_type=event_type,
+                    message=message,
+                    data=data or {},
+                )
+            )
+        self._run(op)
+
+    # ---------------------------
+    # Helpers
+    # ---------------------------
+
+    @staticmethod
+    def hash_config(config: Dict[str, Any], keys: Optional[List[str]] = None) -> str:
+        """
+        Stable hash of the subset of config that matters.
+        """
+        if keys:
+            payload = {k: config.get(k) for k in keys}
+        else:
+            payload = config
+        s = json.dumps(payload, sort_keys=True, default=str)
+        return hashlib.sha256(s.encode("utf-8")).hexdigest()[:16]
 
 
 # ---------------------------------------------------------------------------
 
 
+class PaperSectionStore(BaseSQLAlchemyStore):
+    orm_model = PaperSectionORM
+    default_order_by = "section_index"
+
+    def __init__(self, session_or_maker, logger=None):
+        super().__init__(session_or_maker, logger)
+        self.name = "paper_sections"
+
+    def get_by_paper_id(self, paper_id: str) -> List[PaperSectionORM]:
+        """Get all sections for a specific paper."""
+        def op(s):
+            return (
+                s.query(PaperSectionORM)
+                .filter_by(paper_id=paper_id)
+                .order_by(PaperSectionORM.section_index.asc())
+                .all()
+            )
+        return self._run(op)
+    
+    def delete_by_paper_id(self, paper_id: str) -> int:
+        """Delete all sections for a paper."""
+        def op(s):
+            q = s.query(PaperSectionORM).filter_by(paper_id=paper_id)
+            n = q.count()
+            q.delete(synchronize_session=False)
+            return n
+        return self._run(op)
+    
+    def replace_for_paper(self, paper_id: str, sections: List[Dict[str, Any]]) -> List[PaperSectionORM]:
+        """
+        Replace all sections for a paper with new ones.
+        First deletes existing sections, then inserts new ones.
+        """
+        def op(s):
+            # Delete existing sections for this paper
+            self.delete_by_paper_id(paper_id)
+            
+            # Insert new sections
+            rows: List[PaperSectionORM] = []
+            for idx, section in enumerate(sections):
+                # Create a new PaperSectionORM instance
+                row = PaperSectionORM(
+                    id=section.get("id", f"{paper_id}::sec-{idx}"),
+                    paper_id=paper_id,
+                    section_index=section.get("section_index", idx),
+                    start_char=section.get("start_char"),
+                    end_char=section.get("end_char"),
+                    start_page=section.get("start_page"),
+                    end_page=section.get("end_page"),
+                    text=section.get("text"),
+                    title=section.get("title"),
+                    summary=section.get("summary"),
+                    meta=section.get("meta", {}),
+                )
+                rows.append(row)
+            
+            s.add_all(rows)
+            s.flush()
+            return rows
+        return self._run(op)
+    
+    def upsert(self, section_data: Dict[str, Any]) -> PaperSectionORM:
+        """
+        Upsert a single section based on its id.
+        If section with given id exists, update it; otherwise create new.
+        """
+        def op(s):
+            section_id = section_data.get("id")
+            if not section_id:
+                raise ValueError("section_data must have an 'id' field")
+            
+            # Check if section exists
+            row = s.query(PaperSectionORM).get(section_id)
+            if row is None:
+                row = PaperSectionORM(id=section_id)
+                s.add(row)
+            
+            # Update fields
+            for key, value in section_data.items():
+                if key != "id":
+                    setattr(row, key, value)
+            
+            s.flush()
+            return row
+        return self._run(op)
 
 class PaperReferenceStore(BaseSQLAlchemyStore):
     orm_model = PaperReferenceORM

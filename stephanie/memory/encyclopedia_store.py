@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy import func
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
-from stephanie.models.encyclopedia import (ConceptORM, ConceptGemORM,
+from stephanie.models.encyclopedia import (ConceptGemORM, ConceptORM,
                                            ConceptQuizORM)
 
 log = logging.getLogger(__name__)

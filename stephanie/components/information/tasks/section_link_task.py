@@ -5,11 +5,8 @@ from typing import Dict, List, Sequence, Tuple
 
 import numpy as np
 
-from stephanie.components.information.data import (
-    ConceptCluster,
-    PaperSection,
-    SectionMatch,
-)
+from stephanie.components.information.data import (ConceptCluster,
+                                                   PaperSection, SectionMatch)
 
 log = logging.getLogger(__name__)
 

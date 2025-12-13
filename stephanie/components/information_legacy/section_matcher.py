@@ -1,8 +1,10 @@
-from typing import List, Dict, DefaultDict, Optional
-from stephanie.utils.similarity_utils import cosine
 from collections import defaultdict
+from typing import DefaultDict, Dict, List, Optional
 
-from stephanie.components.information_legacy.data import DocumentSection, SectionMatch
+from stephanie.components.information_legacy.data import (DocumentSection,
+                                                          SectionMatch)
+from stephanie.utils.similarity_utils import cosine
+
 
 class SectionMatcherTask:
     """

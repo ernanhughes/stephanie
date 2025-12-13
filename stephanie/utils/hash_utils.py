@@ -5,6 +5,7 @@ import hashlib
 import json
 from typing import Any, List
 
+
 def _hash(data: bytes, algo: str = "sha256") -> str:
     """Internal helper that does the actual hashing."""
     hasher = hashlib.new(algo)

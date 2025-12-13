@@ -9,8 +9,8 @@ from typing import Any, Dict, List, Optional
 
 import numpy as np
 
-from stephanie.services.workers.base_worker import BaseWorker
 from stephanie.scoring.metrics.scorable_processor import ScorableProcessor
+from stephanie.services.workers.base_worker import BaseWorker
 
 log = logging.getLogger(__name__)
 

@@ -3,7 +3,8 @@ from __future__ import annotations
 import json
 import logging
 import re
-from dataclasses import dataclass, asdict
+import uuid
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -11,8 +12,8 @@ import requests
 
 from stephanie.components.information.data import PaperNode, ReferenceRecord
 from stephanie.memory.paper_store import PaperStore
-from stephanie.tools.pdf_tool import PDFConverter
 from stephanie.tools.arxiv_tool import fetch_arxiv_metadata
+from stephanie.tools.pdf_tool import PDFConverter
 from stephanie.utils.hash_utils import hash_text
 
 log = logging.getLogger(__name__)
@@ -61,6 +62,8 @@ class PaperImportTool:
         self.logger = logger
 
         self.papers_root = Path(self.cfg.get("papers_root", "data/papers"))
+        self.papers_root.mkdir(parents=True, exist_ok=True)
+
         self.max_refs = int(self.cfg.get("max_refs", 256))
         self.timeout_s = float(self.cfg.get("http_timeout_s", 30.0))
         self.user_agent = str(self.cfg.get("user_agent", "stephanie-paper-import/1.0"))
@@ -70,6 +73,13 @@ class PaperImportTool:
         # Optional DB stores (if wired into memory)
         self.paper_store: PaperStore = memory.papers
 
+
+    def _new_run_id(self) -> str:
+        return uuid.uuid4().hex  # swap to UniversalID if you want
+
+    def _pdf_url(self, arxiv_id: str) -> str:
+        return f"https://arxiv.org/abs/{arxiv_id}"
+    
     async def import_paper(
         self,
         *,
@@ -78,7 +88,7 @@ class PaperImportTool:
         local_pdf_path: str | Path = "data/papers",
         role: Optional[str] = "root",
         source: str = "arxiv",
-        force: bool = False,
+        force: bool = True,
         force_references: bool = False,
         max_refs: int = 100,
     ) -> PaperImportResult:
@@ -93,6 +103,30 @@ class PaperImportTool:
         """
         if not arxiv_id and url:
             arxiv_id = self._infer_arxiv_id(url)
+
+        store: PaperStore = self.memory.papers  # <-- single interface
+        run_id = self._new_run_id()
+
+        # 1) Fast path: already in DB (skip import unless forced)
+        existing = store.get_by_id(arxiv_id)
+        if existing and getattr(existing, "text", None) and not force:
+            store.create_run(
+                paper_id=arxiv_id,
+                run_type="paper_import",
+                variant="cache_hit",
+                stats={"cached": True},
+            )
+            return PaperImportResult(paper_id=arxiv_id, run_id=run_id)
+
+        # 2) Create run row early (so we can attach events/errors)
+        paper_run = store.create_run(
+            paper_id=arxiv_id,
+            run_type="paper_import",
+            variant="fresh",
+            stats={"cached": False},
+            config={}
+        )
+        store.add_event(run_id=paper_run.id, stage="paper_import", event_type="info", message="starting import")
 
         paper_id = arxiv_id or self._slugify(url or (str(local_pdf_path) if local_pdf_path else "paper"))
         paper_dir = self.papers_root / paper_id
@@ -169,6 +203,19 @@ class PaperImportTool:
             },
         )
 
+        store.upsert_paper(
+            arxiv_id,
+            {
+                "id": paper_id,
+                "external_id": arxiv_id or paper_id,
+                "url": pdf_url,
+                "pdf_path": pdf_path,
+                "text": text,
+                "text_hash": text_hash,
+                "meta": meta,
+            }
+        )
+
         # 7) Upsert to DB if stores exist
         self._maybe_upsert_to_store(
             paper_id=paper_id,
@@ -191,6 +238,17 @@ class PaperImportTool:
             "reference_count": len(refs),
         }
 
+        # 5) Upsert references (v0 placeholder)
+        refs = self._extract_references_v0(text)
+        n_refs = store.replace_references(arxiv_id, refs)
+
+        store.add_event(
+            run_id=run_id,
+            stage="paper_import",
+            event_type="info",
+            message=f"import complete: {len(text)} chars, {n_refs} refs",
+            data={"chars": len(text), "n_refs": n_refs, "pdf_path": str(pdf_path)},
+        )
         return PaperImportResult(
             node=node,
             text=text,

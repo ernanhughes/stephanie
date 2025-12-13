@@ -4,7 +4,8 @@ import logging
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
 
-from stephanie.components.information.data import PaperSection, PaperReferenceGraph
+from stephanie.components.information.data import (PaperReferenceGraph,
+                                                   PaperSection)
 from stephanie.utils.document_section_parser import DocumentSectionParser
 
 log = logging.getLogger(__name__)

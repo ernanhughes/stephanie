@@ -1,10 +1,14 @@
 import json
 import logging
 from pathlib import Path
-from typing import Optional, Dict, Any, List
+from typing import Any, Dict, List, Optional
 
-from stephanie.components.information_legacy.data import PaperNode, PaperReferenceGraph, ReferenceEdge, ReferenceRecord
-from stephanie.components.information_legacy.reference_provider import ReferenceProvider
+from stephanie.components.information_legacy.data import (PaperNode,
+                                                          PaperReferenceGraph,
+                                                          ReferenceEdge,
+                                                          ReferenceRecord)
+from stephanie.components.information_legacy.reference_provider import \
+    ReferenceProvider
 
 log = logging.getLogger(__name__)
 
