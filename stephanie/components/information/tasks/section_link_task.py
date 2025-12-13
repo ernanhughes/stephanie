@@ -7,7 +7,7 @@ import numpy as np
 
 from stephanie.components.information.data import (
     ConceptCluster,
-    DocumentSection,
+    PaperSection,
     SectionMatch,
 )
 
@@ -39,7 +39,7 @@ class SectionLinkTask:
     # ------------------------------------------------------------------ #
     def run(
         self,
-        sections: Sequence[DocumentSection],
+        sections: Sequence[PaperSection],
     ) -> Tuple[List[SectionMatch], List[ConceptCluster]]:
         root_secs = [s for s in sections if s.paper_arxiv_id == self.root_arxiv_id]
         other_secs = [s for s in sections if s.paper_arxiv_id != self.root_arxiv_id]

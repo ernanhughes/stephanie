@@ -13,6 +13,7 @@ defaults:
   - agents/paper_pipeline_report
   - agents/paper_blog_generator
   - agents/paper_spine_builder
+  - agents/paper_blog_judge
 
 embeddings:
   backend: hnet
@@ -122,3 +123,10 @@ pipeline:
       enabled: true
       iterations: 1
 
+    - name: paper_blog_judge
+      description: >
+        Evaluate the quality of the generated blog post, providing
+        feedback and suggestions for improvement.
+      cls: stephanie.components.information.agents.paper_blog_judge.PaperBlogJudgeAgent
+      enabled: true
+      iterations: 1

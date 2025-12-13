@@ -11,7 +11,7 @@ import logging
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.components.information.data import (
     ConceptCluster,
-    DocumentSection,
+    PaperSection,
     PaperReferenceGraph,
     SectionMatch,
 )
@@ -54,7 +54,7 @@ class PaperPipelineReportAgent(BaseAgent):
         self.report_dir = rcfg.get("report_dir", f"runs/paper_blogs/{self.run_id}")
 
         # Keep last data around so preview helpers can see it
-        self._last_sections: List[DocumentSection] = []
+        self._last_sections: List[PaperSection] = []
         self._last_clusters: List[ConceptCluster] = []
         self.write_last = bool(rcfg.get("write_last", True))
 
@@ -68,7 +68,7 @@ class PaperPipelineReportAgent(BaseAgent):
         )
 
         graph: Optional[PaperReferenceGraph] = context.get("paper_graph")
-        sections: List[DocumentSection] = context.get("paper_sections") or []
+        sections: List[PaperSection] = context.get("paper_sections") or []
         matches: List[SectionMatch] = context.get("section_matches") or []
         clusters: List[ConceptCluster] = context.get("concept_clusters") or []
         docs: List[Dict[str, Any]] = context.get("paper_documents") or []
@@ -310,7 +310,7 @@ class PaperPipelineReportAgent(BaseAgent):
         }
 
     def _summarize_sections(
-        self, sections: List[DocumentSection]
+        self, sections: List[PaperSection]
     ) -> Dict[str, Any]:
         total = len(sections)
         lengths: List[int] = []
@@ -328,7 +328,7 @@ class PaperPipelineReportAgent(BaseAgent):
     def _summarize_clusters(
         self,
         clusters: List[ConceptCluster],
-        sections: List[DocumentSection],
+        sections: List[PaperSection],
     ) -> Dict[str, Any]:
         if not clusters:
             return {"total_clusters": 0, "cluster_sizes": []}
@@ -361,7 +361,7 @@ class PaperPipelineReportAgent(BaseAgent):
 
     def _summarize_kg_for_sections(
         self,
-        sections: List[DocumentSection],
+        sections: List[PaperSection],
     ) -> Optional[Dict[str, Any]]:
         """
         Optional: rough signal of how much KG/Nexus material we have

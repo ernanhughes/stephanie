@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import json
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.components.information.data import (
-    DocumentSection,
+    PaperSection,
     PaperReferenceGraph,
     ReferenceRecord,
 )
@@ -211,8 +211,6 @@ class PaperPipelineAgent(BaseAgent):
         super().__init__(
             cfg=cfg, memory=memory, container=container, logger=logger
         )
-        self.document_store = memory.documents
-        self.section_store = memory.document_sections
         self.paper_store: PaperStore = memory.papers
         # populated by _load_texts_for_graph so we know which Document
         # corresponds to which arxiv_id
@@ -231,7 +229,7 @@ class PaperPipelineAgent(BaseAgent):
             context["arxiv_id"] = arxiv_id
             # raise ValueError("PaperPipelineAgent requires 'arxiv_id' in context")
 
-        max_refs: Optional[int] = context.get("max_refs")
+        max_refs: Optional[int] = context.get("max_refs", 100)
         max_similar: int = int(context.get("max_similar", 8))
 
         # ------------------------------------------------------------------
@@ -272,10 +270,10 @@ class PaperPipelineAgent(BaseAgent):
 
         texts = await self._load_texts_for_graph(graph, papers_root)
 
-        sections: Optional[List[DocumentSection]] = None
+        sections: Optional[List[PaperSection]] = None
 
         # Try to reuse sections from the DB for the root paper
-        if self.section_store and self.document_store:
+        if self.paper_store:
             sections = self._maybe_load_sections_from_store(arxiv_id)
 
         if sections is None:
@@ -743,7 +741,7 @@ class PaperPipelineAgent(BaseAgent):
 
     def _build_section_scorables_for_features(
         self,
-        sections: List[DocumentSection],
+        sections: List[PaperSection],
         context: Dict[str, Any],
     ) -> List[Dict[str, Any]]:
         """
@@ -805,7 +803,7 @@ class PaperPipelineAgent(BaseAgent):
 
     async def _dispatch_feature_jobs(
         self,
-        sections: List[DocumentSection],
+        sections: List[PaperSection],
         context: Dict[str, Any],
     ) -> None:
         """
@@ -878,7 +876,7 @@ class PaperPipelineAgent(BaseAgent):
     def _maybe_load_sections_from_store(
         self,
         arxiv_id: str,
-    ) -> Optional[List[DocumentSection]]:
+    ) -> Optional[List[PaperSection]]:
         """
         If we already have stored sections for this paper, reconstruct
         lightweight DocumentSection objects and return them.
@@ -928,7 +926,7 @@ class PaperPipelineAgent(BaseAgent):
         orm_sections,
         *,
         arxiv_id: str,
-    ) -> List[DocumentSection]:
+    ) -> List[PaperSection]:
         """
         Convert DocumentSectionORM rows into DocumentSection objects.
 
@@ -942,7 +940,7 @@ class PaperPipelineAgent(BaseAgent):
         """
         from inspect import signature, Parameter
 
-        sig = signature(DocumentSection)
+        sig = signature(PaperSection)
         param_names = [
             p.name
             for p in sig.parameters.values()
@@ -950,7 +948,7 @@ class PaperPipelineAgent(BaseAgent):
             in (Parameter.POSITIONAL_OR_KEYWORD, Parameter.KEYWORD_ONLY)
         ]
 
-        sections: List[DocumentSection] = []
+        sections: List[PaperSection] = []
 
         for idx, orm in enumerate(orm_sections):
             extra = getattr(orm, "extra_data", None) or {}
@@ -1002,7 +1000,7 @@ class PaperPipelineAgent(BaseAgent):
             }
 
             try:
-                sec = DocumentSection(**kwargs)
+                sec = PaperSection(**kwargs)
             except TypeError as e:
                 # Extremely defensive fallback: only pass the 3 required args,
                 # then patch the obvious attributes onto the instance.
@@ -1012,7 +1010,7 @@ class PaperPipelineAgent(BaseAgent):
                     e,
                     kwargs,
                 )
-                sec = DocumentSection(
+                sec = PaperSection(
                     paper_arxiv_id=paper_arxiv_id,
                     paper_role=paper_role,
                     section_index=section_index,
@@ -1039,7 +1037,7 @@ class PaperPipelineAgent(BaseAgent):
         self,
         *,
         arxiv_id: str,
-        sections: List[DocumentSection],
+        sections: List[PaperSection],
     ) -> None:
         """
         Persist freshly built sections into the DocumentSectionStore.

@@ -4,7 +4,7 @@ import logging
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
 
-from stephanie.components.information.data import DocumentSection, PaperReferenceGraph
+from stephanie.components.information.data import PaperSection, PaperReferenceGraph
 from stephanie.utils.document_section_parser import DocumentSectionParser
 
 log = logging.getLogger(__name__)
@@ -54,8 +54,8 @@ class SectionBuildTask:
         self,
         graph: PaperReferenceGraph,
         texts: Dict[str, str],  # arxiv_id -> full text
-    ) -> List[DocumentSection]:
-        sections: List[DocumentSection] = []
+    ) -> List[PaperSection]:
+        sections: List[PaperSection] = []
 
         for arxiv_id, node in graph.nodes.items():
             text = texts.get(arxiv_id, "") or ""
@@ -79,7 +79,7 @@ class SectionBuildTask:
         arxiv_id: str,
         role: str,
         text: str,
-    ) -> List[DocumentSection]:
+    ) -> List[PaperSection]:
         """
         Try parser-based sections first; if that fails, fall back to chunking.
         """
@@ -110,7 +110,7 @@ class SectionBuildTask:
         full_text: str,
         parsed_secs: Dict[str, str],
         scores: Dict[str, float],
-    ) -> List[DocumentSection]:
+    ) -> List[PaperSection]:
         """
         Build DocumentSection objects from parser output.
 
@@ -118,7 +118,7 @@ class SectionBuildTask:
         - We merge adjacent small sections until we reach cfg.min_chars.
         """
         cfg = self.cfg
-        sections: List[DocumentSection] = []
+        sections: List[PaperSection] = []
 
         # Dicts preserve insertion order in modern Python, so this keeps layout.
         items = list(parsed_secs.items())
@@ -197,7 +197,7 @@ class SectionBuildTask:
             end_char = start_char + len(block_text)
             running_char = end_char
 
-            sec = DocumentSection(
+            sec = PaperSection(
                 id=section_id,
                 paper_arxiv_id=arxiv_id,
                 paper_role=role,
@@ -219,7 +219,7 @@ class SectionBuildTask:
         arxiv_id: str,
         role: str,
         text: str,
-    ) -> List[DocumentSection]:
+    ) -> List[PaperSection]:
         """
         Original char-based sliding window implementation kept as a fallback.
         """
@@ -238,7 +238,7 @@ class SectionBuildTask:
                     break
                 start = end - cfg.overlap
 
-        sections: List[DocumentSection] = []
+        sections: List[PaperSection] = []
 
         for idx, (start, end) in enumerate(chunks):
             chunk_text = text[start:end]
@@ -262,7 +262,7 @@ class SectionBuildTask:
 
             section_id = f"{arxiv_id}::sec-{idx}"
 
-            sec = DocumentSection(
+            sec = PaperSection(
                 id=section_id,
                 paper_arxiv_id=arxiv_id,
                 paper_role=role,

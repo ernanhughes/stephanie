@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Optional
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.components.information.data import (
     ConceptCluster,
-    DocumentSection,
+    PaperSection,
     PaperReferenceGraph,
 )
 from stephanie.utils.file_utils import save_to_timestamped_file, write_last_copy
@@ -130,7 +130,7 @@ class PaperBlogGeneratorAgent(BaseAgent):
         context["blog_config"] = self.blog_cfg.to_dict()
         context["blog_config_id"] = self.blog_cfg.fingerprint()
         graph: Optional[PaperReferenceGraph] = context.get("paper_graph")
-        sections: List[DocumentSection] = context.get("paper_sections") or []
+        sections: List[PaperSection] = context.get("paper_sections") or []
         clusters: List[ConceptCluster] = context.get("concept_clusters") or []
         spine: List[Any] = context.get("paper_spine") or []
         docs: List[Dict[str, Any]] = context.get("paper_documents") or []
@@ -257,7 +257,7 @@ class PaperBlogGeneratorAgent(BaseAgent):
         arxiv_id: str,
         paper_title: str,
         paper_summary: str,
-        sections: List[DocumentSection],
+        sections: List[PaperSection],
         context: Dict[str, Any],
     ) -> str:
         """
@@ -318,7 +318,7 @@ Do NOT include a table of contents or section list; you've already used that jus
         arxiv_id: str,
         paper_title: str,
         paper_summary: str,
-        sections: List[DocumentSection],
+        sections: List[PaperSection],
         context: Dict[str, Any],
     ) -> str:
         """
@@ -374,7 +374,7 @@ Write a Markdown section that:
         arxiv_id: str,
         paper_title: str,
         paper_summary: str,
-        section: DocumentSection,
+        section: PaperSection,
         neighbor_block: str,
         clusters: List[ConceptCluster],
         section_spine: Optional[Any] = None,
@@ -500,7 +500,7 @@ Do NOT include any commentary about scores, the GROWS loop, or your process.
         *,
         context: Dict[str, Any],
         graph: Optional[PaperReferenceGraph],
-        sections: List[DocumentSection],
+        sections: List[PaperSection],
         docs: List[Dict[str, Any]],
     ) -> tuple[str, str, str]:
         """
@@ -571,7 +571,7 @@ Do NOT include any commentary about scores, the GROWS loop, or your process.
 
         arxiv_id = context.get("arxiv_id") or context.get("paper_arxiv_id")
         graph: Optional[PaperReferenceGraph] = context.get("paper_graph")
-        sections: List[DocumentSection] = context.get("paper_sections") or []
+        sections: List[PaperSection] = context.get("paper_sections") or []
         ref_block = self._build_references_markdown(
             arxiv_id=arxiv_id,
             graph=graph,
@@ -594,8 +594,8 @@ Do NOT include any commentary about scores, the GROWS loop, or your process.
 
     @staticmethod
     def _get_neighbor_sections(
-        section: DocumentSection,
-        sections: List[DocumentSection],
+        section: PaperSection,
+        sections: List[PaperSection],
         window: int = 1,
     ) -> str:
         """
@@ -738,7 +738,7 @@ Do NOT include any commentary about scores, the GROWS loop, or your process.
         *,
         arxiv_id: str,
         graph: Optional[PaperReferenceGraph],
-        sections: List[DocumentSection],
+        sections: List[PaperSection],
     ) -> str:
         """
         Build a Markdown 'References & Further Reading' block.
@@ -806,7 +806,7 @@ Do NOT include any commentary about scores, the GROWS loop, or your process.
 
     def _extract_reference_lines_from_sections(
         self,
-        sections: List[DocumentSection],
+        sections: List[PaperSection],
     ) -> List[str]:
         """
         Look for sections whose title looks like 'References', 'Bibliography', etc.

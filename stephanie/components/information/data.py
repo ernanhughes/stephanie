@@ -291,7 +291,7 @@ class PaperReferenceGraph:
 # =============================================================================
 
 @dataclass
-class DocumentSection:
+class PaperSection:
     """
     A semantically coherent chunk of text from a paper.
     
@@ -461,7 +461,7 @@ class BoundingBox:
 # =============================================================================
 
 def attach_elements_to_sections(
-    sections: Iterable[DocumentSection],
+    sections: Iterable[PaperSection],
     elements: Iterable[DocumentElement],
 ) -> List[SectionSpine]:
     """

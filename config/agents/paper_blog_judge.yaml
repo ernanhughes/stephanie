@@ -1,0 +1,6 @@
+paper_blog_judge:
+  name: paper_blog_judge
+
+  model_name: ollama/llama3.1:8b
+  max_blog_chars: 18000
+  max_report_chars: 6000
