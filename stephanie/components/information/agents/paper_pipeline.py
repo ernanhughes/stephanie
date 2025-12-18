@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.components.information.data import (PaperReferenceGraph,
                                                    PaperSection,
-                                                   ReferenceRecord)
+                                                   PaperReferenceRecord)
 from stephanie.components.information.tasks.paper_import_task import \
     PaperImportTask
 from stephanie.components.information.tasks.reference_graph_task import (
@@ -58,7 +58,7 @@ class LocalJsonReferenceProvider(ReferenceProvider):
         """
         return self.papers_root / arxiv_id / "references.json"
 
-    def get_references_for_arxiv(self, arxiv_id: str) -> List[ReferenceRecord]:
+    def get_references_for_arxiv(self, arxiv_id: str) -> List[PaperReferenceRecord]:
         path = self._references_path_for(arxiv_id)
 
         if not path.exists():
@@ -80,11 +80,11 @@ class LocalJsonReferenceProvider(ReferenceProvider):
             )
             return []
 
-        refs: List[ReferenceRecord] = []
+        refs: List[PaperReferenceRecord] = []
         for idx, item in enumerate(raw_list[: self.max_refs]):
             try:
                 refs.append(
-                    ReferenceRecord(
+                    PaperReferenceRecord(
                         arxiv_id=item.get("arxiv_id"),
                         doi=item.get("doi"),
                         title=item.get("title"),
@@ -126,7 +126,7 @@ class HFSimilarPaperProvider(SimilarPaperProvider):
 
     def get_similar_for_arxiv(
         self, arxiv_id: str, limit: int = 10
-    ) -> List[ReferenceRecord]:
+    ) -> List[PaperReferenceRecord]:
         limit = min(limit, self.max_limit)
         url = f"https://arxiv.org/abs/{arxiv_id}"
 
@@ -136,7 +136,7 @@ class HFSimilarPaperProvider(SimilarPaperProvider):
             log.warning("HF similar papers failed for %s: %s", arxiv_id, e)
             return []
 
-        recs: List[ReferenceRecord] = []
+        recs: List[PaperReferenceRecord] = []
         for h in hits[:limit]:
             h_url = h.get("url") or h.get("paper_url") or ""
             if not h_url:
@@ -158,7 +158,7 @@ class HFSimilarPaperProvider(SimilarPaperProvider):
                 pid = m.group(1)
 
             recs.append(
-                ReferenceRecord(
+                PaperReferenceRecord(
                     arxiv_id=pid,
                     title=h.get("title"),
                     url=h_url,

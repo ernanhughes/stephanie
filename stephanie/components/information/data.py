@@ -130,7 +130,7 @@ class BlogConfig:
 # =============================================================================
 
 @dataclass
-class ReferenceRecord:
+class PaperReferenceRecord:
     """
     Lightweight representation of a reference to an academic paper.
     
@@ -147,14 +147,18 @@ class ReferenceRecord:
         source: Source of this record ("arxiv", "openalex", "parsed_pdf", etc.)
         raw: Raw response data from the source API (for debugging/extensibility)
     """
-    
     arxiv_id: str
+    paper_id: Optional[str] = None
     title: Optional[str] = None
     doi: Optional[str] = None
     year: Optional[str] = None
     url: Optional[str] = None
     raw_citation: Optional[str] = None
     source: str = "unknown"
+    publised_date: Optional[str] = None
+    summary: Optional[str] = None
+    authors: Optional[List[str]] = None
+    order_idx: Optional[int] = None
     raw: Dict[str, Any] = field(default_factory=dict)
 
 

@@ -8,7 +8,7 @@ from typing import Dict, List, Optional, Protocol
 from stephanie.components.information.data import (PaperNode,
                                                    PaperReferenceGraph,
                                                    ReferenceEdge,
-                                                   ReferenceRecord)
+                                                   PaperReferenceRecord)
 from stephanie.components.information.tasks.paper_import_task import (
     PaperImportResult, PaperImportTask)
 
@@ -21,12 +21,12 @@ log = logging.getLogger(__name__)
 
 
 class ReferenceProvider(Protocol):
-    def get_references_for_arxiv(self, arxiv_id: str) -> List[ReferenceRecord]:
+    def get_references_for_arxiv(self, arxiv_id: str) -> List[PaperReferenceRecord]:
         ...
 
 
 class SimilarPaperProvider(Protocol):
-    def get_similar_for_arxiv(self, arxiv_id: str, limit: int = 10) -> List[ReferenceRecord]:
+    def get_similar_for_arxiv(self, arxiv_id: str, limit: int = 10) -> List[PaperReferenceRecord]:
         ...
 
 
@@ -112,7 +112,7 @@ class ReferenceGraphTask:
             node: Optional[PaperNode] = None
 
             try:
-                ref_import = await self.import_task.run(arxiv_id=ref_id, role="reference")
+                ref_import = await self.import_task.run(arxiv_id=ref_id, role="reference", force=True)
                 node = ref_import.node
             except Exception as e:
                 log.warning(

@@ -10,6 +10,9 @@ from urllib.parse import urlparse
 import arxiv
 import requests
 
+import logging
+log = logging.getLogger(__name__)
+
 
 def search_arxiv(queries: list[str], max_results: int = 5) -> list[dict]:
     results = []
@@ -74,7 +77,8 @@ def fetch_arxiv_metadata(arxiv_id: str) -> dict:
     entry = root.find("atom:entry", ns)
 
     if entry is None:
-        raise ValueError(f"No entry found for arXiv ID {arxiv_id}")
+        log.warning(f"No entry found for arXiv ID {arxiv_id}")
+        return {}
 
     title = entry.find("atom:title", ns).text.strip().replace("\n", " ")
     summary = entry.find("atom:summary", ns).text.strip().replace("\n", " ")

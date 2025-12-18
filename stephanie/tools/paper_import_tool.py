@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import requests
 
-from stephanie.components.information.data import PaperNode, ReferenceRecord
+from stephanie.components.information.data import PaperNode, PaperReferenceRecord
 from stephanie.memory.paper_store import PaperStore
 from stephanie.tools.arxiv_tool import fetch_arxiv_metadata
 from stephanie.tools.pdf_tool import PDFConverter
@@ -39,7 +39,7 @@ class PaperImportResult:
     text_hash: str
     pdf_path: Optional[str] = None
     references_path: Optional[str] = None
-    references: Optional[List[ReferenceRecord]] = None
+    references: Optional[List[PaperReferenceRecord]] = None
     raw: Optional[Dict[str, Any]] = None
 
 
@@ -118,16 +118,7 @@ class PaperImportTool:
             )
             return PaperImportResult(paper_id=arxiv_id, run_id=run_id)
 
-        # 2) Create run row early (so we can attach events/errors)
-        paper_run = store.create_run(
-            paper_id=arxiv_id,
-            run_type="paper_import",
-            variant="fresh",
-            stats={"cached": False},
-            config={}
-        )
-        store.add_event(run_id=paper_run.id, stage="paper_import", event_type="info", message="starting import")
-
+ 
         paper_id = arxiv_id or self._slugify(url or (str(local_pdf_path) if local_pdf_path else "paper"))
         paper_dir = self.papers_root / paper_id
         paper_dir.mkdir(parents=True, exist_ok=True)
@@ -171,7 +162,7 @@ class PaperImportTool:
                 log.warning("fetch_arxiv_metadata failed arxiv_id=%s err=%s", arxiv_id, e)
 
         # 5) References (only meaningful for root papers usually, but caller decides)
-        refs: List[ReferenceRecord] = []
+        refs: List[PaperReferenceRecord] = []
         references_path: Optional[str] = None
         if self.persist_references_json:
             # Load from DB if possible unless forced
@@ -181,12 +172,41 @@ class PaperImportTool:
                 except Exception as e:
                     log.warning("ReferenceStore load failed arxiv_id=%s err=%s", arxiv_id, e)
 
-            if not refs or (force or force_references):
-                refs = self._extract_reference_records(text, max_refs=max_refs or self.max_refs)
-                references_path = str(paper_dir / "references.json")
-                self._write_references_json(Path(references_path), refs)
+ 
+ 
+        store.upsert_paper(
+            arxiv_id,
+            {
+                "id": arxiv_id,
+                "external_id": arxiv_id,
+                "url": pdf_url,
+                "pdf_path": pdf_path,
+                "text": text,
+                "text_hash": text_hash,
+                "meta": meta,
+            }
+        )
 
-        # 6) Construct node
+        n_refs = 0
+        if not refs or (force or force_references):
+            refs = self._extract_reference_records(text, max_refs=max_refs or self.max_refs, 
+                                                    require_arxiv_id=True)
+            references_path = str(paper_dir / "references.json")
+            self._write_references_json(Path(references_path), refs)
+            refs = [asdict(r) for r in refs]
+            n_refs = store.replace_references(arxiv_id, refs)
+
+        # 2) Create run row early (so we can attach events/errors)
+        paper_run = store.create_run(
+            paper_id=arxiv_id,
+            run_type="paper_import",
+            variant="fresh",
+            stats={"cached": False},
+            config={}
+        )
+        store.add_event(run_id=paper_run.id, stage="paper_import", event_type="info", message="starting import")
+
+       # 6) Construct node
         node = PaperNode(
             arxiv_id=arxiv_id or paper_id,
             role=role or "unknown",
@@ -198,35 +218,9 @@ class PaperImportTool:
                 "text_hash": text_hash,
                 "references_path": references_path,
                 "reference_count": len(refs),
-                "ref_arxiv_ids": [r.arxiv_id for r in refs if r.arxiv_id],
+                "ref_arxiv_ids": [r.get("arxiv_id") for r in refs if r.get("arxiv_id") ],
                 **meta,
             },
-        )
-
-        store.upsert_paper(
-            arxiv_id,
-            {
-                "id": paper_id,
-                "external_id": arxiv_id or paper_id,
-                "url": pdf_url,
-                "pdf_path": pdf_path,
-                "text": text,
-                "text_hash": text_hash,
-                "meta": meta,
-            }
-        )
-
-        # 7) Upsert to DB if stores exist
-        self._maybe_upsert_to_store(
-            paper_id=paper_id,
-            arxiv_id=arxiv_id,
-            pdf_url=pdf_url,
-            pdf_path=str(paper_dir / "paper.pdf") if (paper_dir / "paper.pdf").exists() else None,
-            text=text,
-            text_hash=text_hash,
-            meta=node.meta,
-            references=refs,
-            force=force,
         )
 
         raw = {
@@ -239,15 +233,13 @@ class PaperImportTool:
         }
 
         # 5) Upsert references (v0 placeholder)
-        refs = self._extract_references_v0(text)
-        n_refs = store.replace_references(arxiv_id, refs)
 
         store.add_event(
-            run_id=run_id,
+            run_id=paper_run.id,
             stage="paper_import",
             event_type="info",
-            message=f"import complete: {len(text)} chars, {n_refs} refs",
-            data={"chars": len(text), "n_refs": n_refs, "pdf_path": str(pdf_path)},
+            message=f"import complete: {len(text)} chars, {len(refs)} refs",
+            data={"chars": len(text), "n_refs": len(refs), "pdf_path": str(pdf_path)},
         )
         return PaperImportResult(
             node=node,
@@ -274,12 +266,12 @@ class PaperImportTool:
             log.warning("PaperStore get_by_id failed paper_id=%s err=%s", paper_id, e)
         return None, None
 
-    def _load_references_from_store(self, arxiv_id: str) -> List[ReferenceRecord]:
-        refs: List[ReferenceRecord] = []
+    def _load_references_from_store(self, arxiv_id: str) -> List[PaperReferenceRecord]:
+        refs: List[PaperReferenceRecord] = []
         rows = self.paper_store.get_references(arxiv_id)  # expects your PaperReferenceStore API
         for r in rows or []:
             refs.append(
-                ReferenceRecord(
+                PaperReferenceRecord(
                     arxiv_id=getattr(r, "ref_arxiv_id", None),
                     doi=getattr(r, "doi", None),
                     title=getattr(r, "title", None),
@@ -300,7 +292,7 @@ class PaperImportTool:
         text: str,
         text_hash: str,
         meta: Dict[str, Any],
-        references: List[ReferenceRecord],
+        references: List[PaperReferenceRecord],
         force: bool,
     ) -> None:
         if not self.paper_store:
@@ -329,14 +321,14 @@ class PaperImportTool:
                     ref_dicts.append(
                         {
                             "order_idx": idx,
-                            "ref_arxiv_id": rr.arxiv_id,
-                            "doi": rr.doi,
-                            "title": rr.title,
-                            "year": rr.year,
-                            "url": rr.url,
-                            "raw_citation": rr.raw_citation,
+                            "ref_arxiv_id": rr.get("arxiv_id"),
+                            "doi": rr.get("doi"),
+                            "title": rr.get("title"),
+                            "year": rr.get("year"),
+                            "url": rr.get("url"),
+                            "raw_citation": rr.get("raw_citation"),
                             "source": "paper_import",
-                            "raw": asdict(rr),  # JSON-safe
+                            "raw": rr,  # JSON-safe
                         }
                     )
                 self.paper_store.replace_references(arxiv_id, ref_dicts)
@@ -392,7 +384,7 @@ class PaperImportTool:
     # References
     # -------------------------
 
-    def _write_references_json(self, path: Path, refs: List[ReferenceRecord]) -> None:
+    def _write_references_json(self, path: Path, refs: List[PaperReferenceRecord]) -> None:
         # Provider compatibility: "arxiv_id" key
         items = []
         for rr in refs:
@@ -402,13 +394,13 @@ class PaperImportTool:
             items.append(d)
         path.write_text(json.dumps(items, indent=2, ensure_ascii=False), encoding="utf-8")
 
-    def _extract_reference_records(self, text: str, *, max_refs: int) -> List[ReferenceRecord]:
+    def _extract_reference_records(self, text: str, *, max_refs: int, require_arxiv_id: bool = False) -> List[PaperReferenceRecord]:
         block = self._slice_references_block(text)
         if not block:
             return []
 
         lines = [ln.strip() for ln in block.splitlines() if ln.strip()]
-        refs: List[ReferenceRecord] = []
+        refs: List[PaperReferenceRecord] = []
 
         for ln in lines:
             # grab an arxiv id if present
@@ -420,14 +412,22 @@ class PaperImportTool:
                 m2 = ARXIV_ABS_PATTERN.search(ln)
                 if m2:
                     aid = m2.group(1)
-
+            if require_arxiv_id and not aid:
+                continue
+            else:
+                meta_data = fetch_arxiv_metadata(aid)
+            idx = len(refs) + 1
             refs.append(
-                ReferenceRecord(
+                PaperReferenceRecord(
+                    paper_id=aid,
                     arxiv_id=aid,
-                    doi=None,
-                    title=None,
-                    year=None,
-                    url=None,
+                    doi=meta_data.get("doi"),
+                    order_idx=idx,
+                    title=meta_data.get("title"),
+                    year=meta_data.get("published_year"),
+                    url=meta_data.get("url"),
+                    summary=meta_data.get("summary"),
+                    authors=meta_data.get("authors"),
                     raw_citation=ln,
                 )
             )
