@@ -204,7 +204,7 @@ class PaperImportTool:
             stats={"cached": False},
             config={}
         )
-        store.add_event(run_id=paper_run.id, stage="paper_import", event_type="info", message="starting import")
+        store.add_event(run_id=paper_run.id, stage=self.name, event_type="info", message="starting import")
 
        # 6) Construct node
         node = PaperNode(

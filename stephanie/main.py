@@ -64,7 +64,7 @@ def run(cfg: DictConfig):
 
         result = await supervisor.run_pipeline_config(context)
         if cfg.report.get("save_context_result", False):
-            save_json_result(log_path, result)
+            save_context_result(log_path, result)
 
         if cfg.report.generate_report:
             supervisor.generate_report(result)
@@ -82,12 +82,28 @@ def save_yaml_result(log_path: str, result: dict):
 
 def default_serializer(obj):
     import numpy as np
+    from dataclasses import is_dataclass, asdict
+    from enum import Enum
+    from pathlib import Path
+    from datetime import datetime, date
+
+    if isinstance(obj, (datetime, date)):
+        return obj.isoformat()
+    if isinstance(obj, Path):
+        return str(obj)
+    if isinstance(obj, Enum):
+        return obj.value if isinstance(obj.value, (str, int, float, bool)) else str(obj.value)
+
     if isinstance(obj, np.bool_):
         return bool(obj)
     elif isinstance(obj, (np.integer, np.floating)):
         return obj.item()
     elif isinstance(obj, np.ndarray):
         return obj.tolist()
+
+    if is_dataclass(obj):
+        return asdict(obj)
+
     elif hasattr(obj, 'to_dict'):
         return obj.to_dict()
     elif isinstance(obj, ExecutionStep):
@@ -101,8 +117,8 @@ def default_serializer(obj):
     # If we still can't serialize, raise the error
     raise TypeError(f"Type {type(obj)} not serializable")
 
-def save_json_result(log_path: str, result: dict):
-    report_path = log_path.replace(".jsonl", "_report.json")
+def save_context_result(log_path: str, result: dict):
+    report_path = log_path.replace(".jsonl", "_context.json")
     with open(report_path, "w", encoding="utf-8") as f:
         json.dump(result, f, ensure_ascii=False, indent=2, default=default_serializer)
     logger.info(f"✅ JSON result saved to: {report_path}")

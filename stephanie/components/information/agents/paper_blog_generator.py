@@ -40,6 +40,7 @@ class PaperBlogGeneratorConfig:
 
     # Where to drop debug markdown
     out_root: str = "runs/paper_blogs"
+    save_sections: bool = False
 
     model: Dict[str, Any] = field(
         default_factory=lambda: {
@@ -115,6 +116,7 @@ class PaperBlogGeneratorAgent(BaseAgent):
 
         self.model = self.cfg_obj.model
         self.blog_cfg = BlogConfig.from_any(cfg, default=BlogConfig())
+        self.save_sections = self.cfg_obj.save_sections
 
     async def run(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -301,6 +303,7 @@ Do NOT include a table of contents or section list; you've already used that jus
 """.strip()
 
         intro_md = await self._call_llm(
+            section="Introduction",
             prompt=prompt,
             context=context,
             max_tokens=1200,
@@ -353,6 +356,7 @@ Write a Markdown section that:
 """.strip()
 
         conclusion_md = await self._call_llm(
+            section="Conclusion",
             prompt=prompt,
             context=context,
             max_tokens=800,
@@ -476,6 +480,7 @@ Do NOT include any commentary about scores, the GROWS loop, or your process.
         )
 
         section_md = await self._call_llm(
+            section=section_title,
             prompt=prompt,
             context=context,
             max_tokens=max_tokens,
@@ -540,6 +545,7 @@ Do NOT include any commentary about scores, the GROWS loop, or your process.
     async def _call_llm(
         self,
         *,
+        section: str,
         prompt: str,
         context: Dict[str, Any],
         max_tokens: int,
@@ -575,9 +581,13 @@ Do NOT include any commentary about scores, the GROWS loop, or your process.
         )
         if ref_block:
             blog_markdown = (blog_markdown or "").rstrip() + "\n\n" + ref_block + "\n"
+        
+        if self.save_sections:
+            save_to_timestamped_file(blog_markdown, file_prefix=f"{arxiv_id}_section_", file_extension="md", output_dir=f"{self.out_root}/{self.run_id}")
 
         log.info(
-            "PaperBlogGeneratorAgent: generated blog for %s (%d chars)",
+            "PaperBlogGeneratorAgent: generated blog section '%s...' for %s (%d chars)",
+            section[:20],
             arxiv_id,
             len(blog_markdown or ""),
         )

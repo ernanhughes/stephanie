@@ -1,16 +1,22 @@
 # stephanie/components/information/agents/paper_blog_judge.py
 from __future__ import annotations
 
-import json
 import logging
+import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from statistics import median
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from stephanie.agents.base_agent import BaseAgent
+from stephanie.services.prompt_service import LLMRole
 
 log = logging.getLogger(__name__)
 
+
+# ----------------------------
+# IO helpers
+# ----------------------------
 
 def _safe_read_text(path: str, max_chars: int) -> str:
     try:
@@ -23,191 +29,595 @@ def _safe_read_text(path: str, max_chars: int) -> str:
         return ""
 
 
-def _extract_json_obj(raw: str) -> Optional[dict]:
-    """
-    Robust-ish JSON extraction:
-    - If model wraps JSON in text, we try to grab first {...} block.
-    """
-    raw = raw.strip()
-    if not raw:
-        return None
-    # Fast path
-    try:
-        return json.loads(raw)
-    except Exception:
-        pass
+_KV_LINE_RE = re.compile(r"^\s*([a-zA-Z_][a-zA-Z0-9_\- ]*)\s*[:\-]\s*(.*?)\s*$")
 
-    # Bracket carve-out
-    l = raw.find("{")
-    r = raw.rfind("}")
-    if l >= 0 and r > l:
-        candidate = raw[l : r + 1]
-        try:
-            return json.loads(candidate)
-        except Exception:
-            return None
-    return None
+
+def _parse_kv_block(raw: str) -> Dict[str, str]:
+    """
+    Robust KV parser.
+    Accepts:
+      key: value
+      key - value
+    Ignores non-matching lines.
+    """
+    raw = (raw or "").strip()
+    out: Dict[str, str] = {}
+    if not raw:
+        return out
+    for line in raw.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        m = _KV_LINE_RE.match(line)
+        if not m:
+            continue
+        k = m.group(1).strip().lower().replace(" ", "_")
+        v = m.group(2).strip()
+        if k:
+            out[k] = v
+    return out
+
+
+def _parse_score(fields: Dict[str, str], key: str = "score") -> float:
+    s = (fields.get(key) or "").strip()
+    if not s:
+        return 0.0
+    m = re.search(r"(-?\d+(?:\.\d+)?)", s)
+    if not m:
+        return 0.0
+    try:
+        val = float(m.group(1))
+    except Exception:
+        val = 0.0
+    return max(0.0, min(100.0, val))
+
+
+def _parse_winner(fields: Dict[str, str]) -> str:
+    w = (fields.get("winner") or "").strip().lower()
+    if w in {"a", "b", "tie"}:
+        return w
+    # tolerate variants
+    if "a" == w[:1]:
+        return "a"
+    if "b" == w[:1]:
+        return "b"
+    if "tie" in w:
+        return "tie"
+    return "tie"
+
+
+def _pick_rationale(fields: Dict[str, str]) -> str:
+    return (fields.get("rationale") or "").strip()
+
+
+# ----------------------------
+# Judge specs
+# ----------------------------
+
+@dataclass(frozen=True)
+class JudgeDimension:
+    name: str
+    weight: float
+    goal_text: str
 
 
 @dataclass
-class BlogJudgeResult:
-    overall_score: float
-    dims: Dict[str, float]
+class DimResult:
+    score: float
     rationale: str
-    critical_issues: list[str]
-    rewrite_instructions: str
-    confidence: float
+    per_model: Dict[str, Dict[str, Any]]  # model_key -> {score, rationale, extras, raw}
 
-    def to_dict(self) -> dict:
-        return {
-            "overall_score": self.overall_score,
-            "dims": self.dims,
-            "rationale": self.rationale,
-            "critical_issues": self.critical_issues,
-            "rewrite_instructions": self.rewrite_instructions,
-            "confidence": self.confidence,
-        }
 
+# ----------------------------
+# Agent
+# ----------------------------
 
 class PaperBlogJudgeAgent(BaseAgent):
     """
-    Stage: paper_blog_judge
-    Reads the generated blog from disk (path in context), scores it with LLM,
-    returns a compact JSON result, and (optionally) persists to PaperStore.
+    Best-of-breed judge stack:
+      1) Pairwise tournament (order-swap to reduce bias)
+      2) Multi-dimension rubric scoring (faithfulness/coverage/clarity/usefulness)
+      3) Faithfulness gate (threshold) to block hallucination-y drafts
+
+    Output format from judge models is ALWAYS plain key/value lines:
+      rationale: ...
+      score: 0-100
+
+    Pairwise judge returns:
+      winner: A|B|tie
+      rationale: ...
+      score: 0-100   (optional, tolerated)
     """
 
     def __init__(self, cfg, memory, container, logger=None):
         super().__init__(cfg, memory, container, logger=logger)
-        self.prompt = container.get("prompt")  # PromptService
-        self.model_name = cfg.get("model_name", "ollama/llama3.1:8b")
+
+        self.prompt = container.get("prompt")
+
+        # --- judge model(s)
+        # Accept either:
+        #   cfg["judge_models"] = [...]
+        # or:
+        #   cfg["model"] / cfg["model_name"] for single
+        jm = cfg.get("judge_models")
+        if isinstance(jm, list) and jm:
+            self.judge_models: List[Union[str, Dict[str, Any]]] = jm
+        else:
+            self.judge_models = [cfg.get("model") or cfg.get("model_name", "ollama/llama3.1:8b")]
+
+        # --- reading limits
         self.max_blog_chars = int(cfg.get("max_blog_chars", 18000))
         self.max_report_chars = int(cfg.get("max_report_chars", 6000))
 
-    def _build_prompt(
-        self,
-        *,
-        arxiv_id: str,
-        title: str,
-        paper_summary: str,
-        blog_md: str,
-        pipeline_report_md: str,
-    ) -> str:
-        # Keep it simple + strict JSON return
-        return f"""
-You are a strict evaluator for an AI-generated technical blog post.
+        # --- generation controls for judge calls
+        self.role = cfg.get("judge_role", LLMRole.CRITIC)
+        self.max_tokens = int(cfg.get("max_tokens", 350))
+        self.temperature = float(cfg.get("temperature", 0.2))
+        self.top_p = float(cfg.get("top_p", 0.9))
 
-Paper:
-- arXiv: {arxiv_id}
-- Title: {title}
-- Summary (may be empty): {paper_summary}
+        # --- tournament / selection
+        self.enable_pairwise = bool(cfg.get("enable_pairwise", True))
+        self.pairwise_top_k = int(cfg.get("pairwise_top_k", 3))
+        self.order_swap = bool(cfg.get("pairwise_order_swap", True))
 
-Context report (may be empty, truncated):
-{pipeline_report_md}
+        # --- faithfulness gate
+        self.gate_dimension = str(cfg.get("gate_dimension", "faithfulness"))
+        self.gate_min_score = float(cfg.get("gate_min_score", 70.0))
+        self.gate_mode = str(cfg.get("gate_mode", "disqualify"))  # "disqualify" | "penalize"
+        self.gate_penalty = float(cfg.get("gate_penalty", 40.0))  # used if gate_mode="penalize"
 
-Blog markdown to evaluate (truncated):
-{blog_md}
+        # --- rubric dimensions (editable)
+        # You can override by providing cfg["dimensions"] as list of dicts
+        dims_cfg = cfg.get("dimensions")
+        if isinstance(dims_cfg, list) and dims_cfg:
+            dims: List[JudgeDimension] = []
+            for d in dims_cfg:
+                if not isinstance(d, dict):
+                    continue
+                dims.append(
+                    JudgeDimension(
+                        name=str(d.get("name", "")),
+                        weight=float(d.get("weight", 1.0)),
+                        goal_text=str(d.get("goal_text", "")),
+                    )
+                )
+            self.dimensions = [d for d in dims if d.name and d.goal_text]
+        else:
+            self.dimensions = [
+                JudgeDimension(
+                    name="faithfulness",
+                    weight=0.45,
+                    goal_text=(
+                        "Evaluate faithfulness to the paper. Penalize ANY unsupported claim, invented result, "
+                        "fabricated citation, or confident statement not grounded in the provided paper evidence."
+                    ),
+                ),
+                JudgeDimension(
+                    name="coverage",
+                    weight=0.25,
+                    goal_text=(
+                        "Evaluate coverage of the paper's key contributions, method, results, and limitations. "
+                        "Reward capturing the main ideas without missing crucial constraints."
+                    ),
+                ),
+                JudgeDimension(
+                    name="clarity",
+                    weight=0.20,
+                    goal_text=(
+                        "Evaluate clarity & structure for a blog audience. Reward good narrative flow, headings, "
+                        "and explanations that reduce jargon while staying accurate."
+                    ),
+                ),
+                JudgeDimension(
+                    name="usefulness",
+                    weight=0.10,
+                    goal_text=(
+                        "Evaluate usefulness to the intended reader. Reward concrete takeaways, correct framing "
+                        "of when/why the method matters, and what to do next."
+                    ),
+                ),
+            ]
 
-Rubric (0-10 each):
-- clarity
-- faithfulness (no hallucinated claims/citations)
-- structure
-- usefulness
-- technical_accuracy
+    # ----------------------------
+    # Prompt builders (your format)
+    # ----------------------------
 
-Return ONLY valid JSON with this schema:
-{{
-  "overall_score": <0-100 number>,
-  "dims": {{
-    "clarity": <0-10>,
-    "faithfulness": <0-10>,
-    "structure": <0-10>,
-    "usefulness": <0-10>,
-    "technical_accuracy": <0-10>
-  }},
-  "rationale": "<short explanation>",
-  "critical_issues": ["..."],
-  "rewrite_instructions": "<very actionable bullet-like instructions to improve the blog>",
-  "confidence": <0.0-1.0>
-}}
-""".strip()
+    def _prompt_kv(self, *, goal_text: str, input_text: str, extra_return_fields: Optional[str] = None) -> str:
+        base = f"""### Goal
+{goal_text}
 
-    async def run(self, context: Dict[str, Any]) -> Dict[str, Any]:
+### Text
+{input_text}
+
+Does this text align with the goal's intent and the system's broader values (e.g. accuracy, fairness, constructive purpose)?
+
+Return your review in the exact structured format below. Do not include headings, markdown, or additional commentary. Use only plain text fields as shown:
+
+rationale: <brief explanation>
+score: <0–100>""".strip()
+
+        if extra_return_fields:
+            base += "\n" + extra_return_fields.strip()
+        return base
+
+    def _prompt_pairwise(self, *, goal_text: str, paper_pack: str, a_text: str, b_text: str) -> str:
+        return f"""### Goal
+{goal_text}
+
+### Text
+PAPER PACK:
+{paper_pack}
+
+CANDIDATE A:
+{a_text}
+
+CANDIDATE B:
+{b_text}
+
+Pick which candidate is better for the goal. If both are similarly good or similarly bad, choose tie.
+
+Return your decision in the exact structured format below. Do not include headings, markdown, or additional commentary. Use only plain text fields as shown:
+
+winner: <A|B|tie>
+rationale: <brief explanation>
+score: <0–100>""".strip()
+
+    # ----------------------------
+    # Core judge execution
+    # ----------------------------
+
+    async def _run_one_model(self, prompt_text: str, model: Union[str, Dict[str, Any]]) -> str:
+        return await self.prompt.run_prompt(
+            prompt_text=prompt_text,
+            context=None,
+            model=model,
+            role=self.role,
+            sys_preamble=None,
+            params={"max_tokens": self.max_tokens, "temperature": self.temperature, "top_p": self.top_p},
+        )
+
+    async def _run_ensemble(self, prompt_text: str) -> Dict[str, str]:
+        # Uses your PromptService's parallel multi-call
+        if len(self.judge_models) == 1:
+            m = self.judge_models[0]
+            out = await self._run_one_model(prompt_text, m)
+            key = m["name"] if isinstance(m, dict) and "name" in m else str(m)
+            return {key: out}
+
+        res = await self.prompt.run_prompt_multi(
+            prompt_text=prompt_text,
+            models=self.judge_models,
+            judge=None,
+            role=self.role,
+            sys_preamble=None,
+            params={"max_tokens": self.max_tokens, "temperature": self.temperature, "top_p": self.top_p},
+            context=None,
+            timeout=None,
+            dimension="blog_judge",
+            goal_id=None,
+            pipeline_run_id=None,
+            agent_name="paper_blog_judge",
+        )
+        outputs = (res or {}).get("outputs") or {}
+        return {str(k): (v or "") for k, v in outputs.items()}
+
+    async def _judge_dimension(self, *, dim: JudgeDimension, input_text: str) -> DimResult:
+        prompt_text = self._prompt_kv(goal_text=dim.goal_text, input_text=input_text)
+
+        outputs = await self._run_ensemble(prompt_text)
+
+        # parse each model output
+        per_model: Dict[str, Dict[str, Any]] = {}
+        scores: List[float] = []
+        for mk, raw in outputs.items():
+            fields = _parse_kv_block(raw)
+            sc = _parse_score(fields, "score")
+            rat = _pick_rationale(fields)
+            extras = {k: v for k, v in fields.items() if k not in {"score", "rationale"}}
+            per_model[mk] = {"score": sc, "rationale": rat, "extras": extras, "raw": raw}
+            scores.append(sc)
+
+        agg = float(median(scores)) if scores else 0.0
+
+        # pick rationale from the model whose score is closest to median
+        best_key = None
+        best_dist = 1e9
+        for mk, info in per_model.items():
+            dist = abs(float(info.get("score", 0.0)) - agg)
+            if dist < best_dist:
+                best_dist = dist
+                best_key = mk
+        rationale = (per_model.get(best_key, {}).get("rationale") or "") if best_key else ""
+
+        return DimResult(score=agg, rationale=rationale, per_model=per_model)
+
+    async def _pairwise_compare(self, *, goal_text: str, paper_pack: str, a_text: str, b_text: str) -> Dict[str, Any]:
+        prompt_text = self._prompt_pairwise(goal_text=goal_text, paper_pack=paper_pack, a_text=a_text, b_text=b_text)
+        outs = await self._run_ensemble(prompt_text)
+
+        votes = {"a": 0, "b": 0, "tie": 0}
+        per_model: Dict[str, Dict[str, Any]] = {}
+
+        for mk, raw in outs.items():
+            fields = _parse_kv_block(raw)
+            w = _parse_winner(fields)
+            votes[w] += 1
+            per_model[mk] = {
+                "winner": w,
+                "rationale": _pick_rationale(fields),
+                "score": _parse_score(fields, "score"),
+                "raw": raw,
+            }
+
+        # majority
+        winner = max(votes.items(), key=lambda kv: kv[1])[0]
+        # if tied vote counts, declare tie
+        top = sorted(votes.values(), reverse=True)
+        if len(top) >= 2 and top[0] == top[1]:
+            winner = "tie"
+
+        return {"winner": winner, "votes": votes, "per_model": per_model}
+
+    async def _pairwise_compare_with_order_swap(self, *, goal_text: str, paper_pack: str, a_text: str, b_text: str) -> Dict[str, Any]:
+        r1 = await self._pairwise_compare(goal_text=goal_text, paper_pack=paper_pack, a_text=a_text, b_text=b_text)
+        if not self.order_swap:
+            return {"winner": r1["winner"], "rounds": [r1]}
+
+        r2 = await self._pairwise_compare(goal_text=goal_text, paper_pack=paper_pack, a_text=b_text, b_text=a_text)
+
+        # invert r2 winner back into original frame
+        inv = r2["winner"]
+        if inv == "a":
+            inv = "b"
+        elif inv == "b":
+            inv = "a"
+
+        # reconcile
+        w1 = r1["winner"]
+        w2 = inv
+        if w1 == w2:
+            final = w1
+        elif "tie" in (w1, w2):
+            final = w1 if w2 == "tie" else w2
+        else:
+            final = "tie"
+
+        return {"winner": final, "rounds": [r1, r2], "swap_inverted_winner": w2}
+
+    # ----------------------------
+    # Evidence pack builder
+    # ----------------------------
+
+    def _build_paper_pack(self, context: Dict[str, Any]) -> str:
         arxiv_id = context.get("arxiv_id") or context.get("paper_arxiv_id") or ""
         title = context.get("paper_title") or context.get("title") or arxiv_id
-        paper_summary = context.get("paper_summary") or ""
-
-        # Prefer file paths (keeps DB context small)
-        blog_path = context.get("paper_blog_path") or context.get("blog_path")
+        summary = context.get("paper_summary") or ""
         report_path = context.get("paper_pipeline_report_path") or context.get("pipeline_report_path")
+        report_md = _safe_read_text(report_path, self.max_report_chars) if report_path else ""
+        # If you have richer “paper pack” already prepared, you can pass it via context["paper_pack_md"]
+        paper_pack_md = context.get("paper_pack_md") or ""
 
-        blog_md = ""
-        if blog_path:
-            blog_md = _safe_read_text(blog_path, self.max_blog_chars)
-        else:
-            # fallback (avoid huge)
-            blog_md = (context.get("paper_blog_markdown") or "")[: self.max_blog_chars]
+        parts = [
+            f"arXiv: {arxiv_id}",
+            f"Title: {title}",
+            f"Summary: {summary}",
+        ]
+        if paper_pack_md:
+            parts.append("Paper pack (provided):\n" + str(paper_pack_md)[: self.max_report_chars])
+        if report_md:
+            parts.append("Pipeline report (truncated):\n" + report_md)
+        return "\n\n".join([p for p in parts if p.strip()])
 
-        pipeline_report_md = ""
-        if report_path:
-            pipeline_report_md = _safe_read_text(report_path, self.max_report_chars)
+    def _load_candidate_texts(self, context: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """
+        Candidate formats supported:
+          - context["blog_candidates"] = [{"path": "...", "name": "x"}, {"text": "..."}]
+          - fallback to single blog via paper_blog_path/blog_path or paper_blog_markdown
+        """
+        cands = context.get("blog_candidates")
+        out: List[Dict[str, Any]] = []
 
-        if not blog_md.strip():
-            log.warning("[PaperBlogJudgeAgent] No blog content found (path=%s).", blog_path)
+        if isinstance(cands, list) and cands:
+            for i, c in enumerate(cands):
+                if not isinstance(c, dict):
+                    continue
+                path = c.get("path") or c.get("blog_path")
+                text = c.get("text") or c.get("markdown")
+                name = c.get("name") or f"cand_{i}"
+                if path and not text:
+                    text = _safe_read_text(str(path), self.max_blog_chars)
+                if (text or "").strip():
+                    out.append({"name": name, "path": path, "text": text[: self.max_blog_chars]})
+            if out:
+                return out
+
+        # single fallback
+        blog_path = context.get("paper_blog_path") or context.get("blog_path")
+        blog_md = _safe_read_text(blog_path, self.max_blog_chars) if blog_path else (context.get("paper_blog_markdown") or "")
+        blog_md = (blog_md or "")[: self.max_blog_chars]
+        if (blog_md or "").strip():
+            out.append({"name": "single", "path": blog_path, "text": blog_md})
+        return out
+
+    # ----------------------------
+    # Main run
+    # ----------------------------
+
+    async def run(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        candidates = self._load_candidate_texts(context)
+        if not candidates:
             context["paper_blog_judge"] = {"error": "no_blog_content"}
             return context
 
-        prompt = self._build_prompt(
-            arxiv_id=arxiv_id,
-            title=title,
-            paper_summary=paper_summary,
-            blog_md=blog_md,
-            pipeline_report_md=pipeline_report_md,
-        )
+        paper_pack = self._build_paper_pack(context)
 
-        raw = await self.prompt.complete(prompt=prompt, model=self.model_name)
-        data = _extract_json_obj(raw) or {}
+        # ---- Layer A: Pairwise tournament to pick top-K
+        idxs = list(range(len(candidates)))
+        if self.enable_pairwise and len(candidates) > 1:
+            goal_text = "Choose the better blog post overall, prioritizing faithfulness to the paper, then coverage, then clarity."
+            wins = {i: 0.0 for i in idxs}
+            pair_meta: List[Dict[str, Any]] = []
 
-        # Safe defaults (backward compatible / never crash)
-        res = BlogJudgeResult(
-            overall_score=float(data.get("overall_score", 0.0) or 0.0),
-            dims=dict(data.get("dims") or {}),
-            rationale=str(data.get("rationale", "") or ""),
-            critical_issues=list(data.get("critical_issues") or []),
-            rewrite_instructions=str(data.get("rewrite_instructions", "") or ""),
-            confidence=float(data.get("confidence", 0.0) or 0.0),
-        )
+            for i in range(len(idxs)):
+                for j in range(i + 1, len(idxs)):
+                    a = idxs[i]
+                    b = idxs[j]
+                    ra = candidates[a]["text"]
+                    rb = candidates[b]["text"]
+                    cmp_res = await self._pairwise_compare_with_order_swap(
+                        goal_text=goal_text,
+                        paper_pack=paper_pack,
+                        a_text=ra,
+                        b_text=rb,
+                    )
+                    w = cmp_res.get("winner", "tie")
+                    if w == "a":
+                        wins[a] += 1.0
+                    elif w == "b":
+                        wins[b] += 1.0
+                    else:
+                        wins[a] += 0.5
+                        wins[b] += 0.5
+                    pair_meta.append({"a": a, "b": b, "result": cmp_res})
 
-        context["paper_blog_judge"] = res.to_dict()
-        context["ai_blog_score"] = res.overall_score
-        context["ai_blog_rationale"] = res.rationale
-        context["blog_rewrite_instructions"] = res.rewrite_instructions
+            ranked = sorted(idxs, key=lambda i: wins[i], reverse=True)
+            top_k = ranked[: max(1, min(self.pairwise_top_k, len(ranked)))]
+        else:
+            wins = {i: 0.0 for i in idxs}
+            pair_meta = []
+            top_k = idxs[:1]
 
-        log.info(
-            "[PaperBlogJudgeAgent] Judged blog arxiv_id=%s overall=%.1f conf=%.2f",
-            arxiv_id,
-            res.overall_score,
-            res.confidence,
-        )
+        # ---- Layer B/C: Rubric scoring + gate on top-K
+        cand_results: List[Dict[str, Any]] = []
+        best_idx = None
+        best_final = -1e9
 
-        # Optional persistence (only if your PaperStore has these methods)
+        wsum = sum(max(0.0, d.weight) for d in self.dimensions) or 1.0
+
+        for i in idxs:
+            cand = candidates[i]
+            full_input = f"""PAPER PACK:
+{paper_pack}
+
+BLOG CANDIDATE:
+{cand["text"]}""".strip()
+
+            # If not in top_k, you can skip heavy scoring and keep tournament score only
+            if i not in top_k:
+                cand_results.append(
+                    {
+                        "idx": i,
+                        "name": cand.get("name"),
+                        "path": cand.get("path"),
+                        "wins": wins.get(i, 0.0),
+                        "scored": False,
+                    }
+                )
+                continue
+
+            dim_out: Dict[str, Any] = {}
+            weighted_total = 0.0
+
+            for d in self.dimensions:
+                r = await self._judge_dimension(dim=d, input_text=full_input)
+                dim_out[d.name] = {
+                    "score": r.score,
+                    "rationale": r.rationale,
+                    "per_model": r.per_model,
+                    "weight": d.weight,
+                }
+                weighted_total += (max(0.0, d.weight) * r.score)
+
+            weighted_total = weighted_total / wsum
+
+            # Gate (faithfulness by default)
+            gate_score = float(dim_out.get(self.gate_dimension, {}).get("score", 0.0))
+            failed_gate = gate_score < self.gate_min_score
+
+            if failed_gate and self.gate_mode == "disqualify":
+                final_score = -1.0
+            elif failed_gate and self.gate_mode == "penalize":
+                final_score = weighted_total - self.gate_penalty
+            else:
+                final_score = weighted_total
+
+            cand_record = {
+                "idx": i,
+                "name": cand.get("name"),
+                "path": cand.get("path"),
+                "wins": wins.get(i, 0.0),
+                "scored": True,
+                "dimensions": dim_out,
+                "weighted_total": weighted_total,
+                "gate_dimension": self.gate_dimension,
+                "gate_score": gate_score,
+                "failed_gate": failed_gate,
+                "final_score": final_score,
+            }
+            cand_results.append(cand_record)
+
+            if final_score > best_final:
+                best_final = final_score
+                best_idx = i
+
+        # If everything disqualified, fall back to highest weighted_total among scored
+        if best_idx is None:
+            scored = [c for c in cand_results if c.get("scored")]
+            if scored:
+                scored.sort(key=lambda x: float(x.get("weighted_total", 0.0)), reverse=True)
+                best_idx = int(scored[0]["idx"])
+                best_final = float(scored[0].get("weighted_total", 0.0))
+            else:
+                best_idx = 0
+                best_final = 0.0
+
+        winner = candidates[best_idx]
+
+        result = {
+            "method": "judge_stack_v1",
+            "winner_idx": best_idx,
+            "winner_name": winner.get("name"),
+            "winner_path": winner.get("path"),
+            "winner_final_score": best_final,
+            "pairwise": {
+                "enabled": self.enable_pairwise and len(candidates) > 1,
+                "wins": wins,
+                "comparisons": pair_meta,
+            },
+            "candidates": cand_results,
+        }
+
+        context["paper_blog_judge"] = result
+        context["ai_blog_score"] = float(best_final)
+        # pick a readable rationale: faithfulness rationale if available, else first dimension rationale
+        best_cand = next((c for c in cand_results if c.get("idx") == best_idx and c.get("scored")), None)
+        rationale = ""
+        if isinstance(best_cand, dict):
+            dims = best_cand.get("dimensions") or {}
+            rationale = (dims.get(self.gate_dimension, {}) or {}).get("rationale") or ""
+            if not rationale and dims:
+                first = next(iter(dims.values()))
+                rationale = (first or {}).get("rationale") or ""
+        context["ai_blog_rationale"] = rationale
+
+        # Optional: preference pairs for DPO (winner vs everyone else)
         try:
-            run_id = context.get("run_id") or context.get("pipeline_run_id")
-            if getattr(self.memory, "papers", None) and run_id:
-                # Pick one of these patterns depending on what you implemented:
-                if hasattr(self.memory.papers, "save_run_event"):
-                    self.memory.papers.save_run_event(
-                        run_id=run_id,
-                        paper_id=arxiv_id,
-                        event_type="blog_judge",
-                        payload=res.to_dict(),
+            pairs = []
+            win_txt = winner.get("text") or ""
+            for i, c in enumerate(candidates):
+                if i == best_idx:
+                    continue
+                lose_txt = c.get("text") or ""
+                if win_txt.strip() and lose_txt.strip():
+                    pairs.append(
+                        {
+                            "chosen": win_txt,
+                            "rejected": lose_txt,
+                            "meta": {"winner_idx": best_idx, "loser_idx": i},
+                        }
                     )
-                elif hasattr(self.memory.papers, "update_run"):
-                    self.memory.papers.update_run(
-                        run_id=run_id,
-                        paper_id=arxiv_id,
-                        patch={"ai_blog_score": res.overall_score, "ai_blog_rationale": res.rationale},
-                    )
-        except Exception as e:
-            log.warning("[PaperBlogJudgeAgent] Persist failed (non-fatal): %s", e)
+            context["blog_preference_pairs"] = pairs
+        except Exception:
+            pass
 
         return context

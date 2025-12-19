@@ -118,7 +118,7 @@ class PaperStore(BaseSQLAlchemyStore):
                 id=uuid.uuid4().hex,
                 paper_id=paper_id,
                 run_type=run_type,
-                config=config,
+                config=config or {},
                 stats=stats or {},
                 artifact_path=artifact_path,
                 variant=variant,
@@ -244,14 +244,14 @@ class PaperStore(BaseSQLAlchemyStore):
     def add_run_event(
         self,
         *,
-        event_id: str,
+        stage: str,
         run_id: str,
         event_type: str,
         payload: dict | None = None,
     ):
         def op(s):
             row = PaperRunEventORM(
-                id=event_id,
+                stage=stage,
                 run_id=run_id,
                 event_type=event_type,
                 payload=payload,

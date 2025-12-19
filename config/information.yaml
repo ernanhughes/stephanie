@@ -73,6 +73,7 @@ paths:
   prompts: ${hydra:runtime.cwd}/prompts
 
 report:
+  save_context_result: true
   generate_report: true
   path: ${hydra:runtime.cwd}/reports
 
