@@ -81,43 +81,67 @@ def save_yaml_result(log_path: str, result: dict):
 
 
 def default_serializer(obj):
+    """Custom JSON serializer for objects that aren't natively JSON serializable.
+    
+    Handles datetime, numpy types, dataclasses, and custom objects with to_dict methods.
+    
+    Args:
+        obj: Object to serialize
+        
+    Returns:
+        JSON-serializable representation
+        
+    Raises:
+        TypeError: If the object cannot be serialized
+    """
     import numpy as np
     from dataclasses import is_dataclass, asdict
     from enum import Enum
     from pathlib import Path
     from datetime import datetime, date
 
+    # Handle datetime objects
     if isinstance(obj, (datetime, date)):
         return obj.isoformat()
+    
+    # Handle path objects
     if isinstance(obj, Path):
         return str(obj)
+    
+    # Handle enum objects
     if isinstance(obj, Enum):
         return obj.value if isinstance(obj.value, (str, int, float, bool)) else str(obj.value)
 
+    # Handle numpy types
     if isinstance(obj, np.bool_):
         return bool(obj)
-    elif isinstance(obj, (np.integer, np.floating)):
+    if isinstance(obj, (np.integer, np.floating)):
         return obj.item()
-    elif isinstance(obj, np.ndarray):
+    if isinstance(obj, np.ndarray):
         return obj.tolist()
 
+    # Handle dataclasses
     if is_dataclass(obj):
         return asdict(obj)
 
-    elif hasattr(obj, 'to_dict'):
+    # Handle custom objects with to_dict method (includes ExecutionStep, PlanTrace, etc.)
+    if hasattr(obj, 'to_dict'):
         return obj.to_dict()
-    elif isinstance(obj, ExecutionStep):
-        return obj.to_dict()
-    # Handle PlanTrace objects
-    elif isinstance(obj, PlanTrace):
-        return obj.to_dict()
+    
     # Handle DictConfig objects from Hydra
-    elif hasattr(obj, '_get_node'):
+    if hasattr(obj, '_get_node'):
         return OmegaConf.to_container(obj, resolve=True, enum_to_str=True)
+    
     # If we still can't serialize, raise the error
     raise TypeError(f"Type {type(obj)} not serializable")
 
 def save_context_result(log_path: str, result: dict):
+    """Save the execution context result to a JSON file.
+    
+    Args:
+        log_path: Path to the log file (will be modified to create JSON path)
+        result: Dictionary containing the context result to save
+    """
     report_path = log_path.replace(".jsonl", "_context.json")
     with open(report_path, "w", encoding="utf-8") as f:
         json.dump(result, f, ensure_ascii=False, indent=2, default=default_serializer)
@@ -127,9 +151,22 @@ def save_context_result(log_path: str, result: dict):
 
 
 if __name__ == "__main__":
-    # Suppress HTTPX logs
-    logging.getLogger().addFilter(lambda record: len(record.getMessage().strip()) > 10)
-    for name in ("numba", "httpcore", "httpcore.http11", "httpx", "LiteLLM", "transformers", "zeromodel", "zeromodel.config", "hnswlib", "matplotlib", "urllib3", "asyncio","PIL", "pdfminer"):
+    # Constants for log suppression
+    SUPPRESSED_LOGGERS = (
+        "numba", "httpcore", "httpcore.http11", "httpx", "LiteLLM", 
+        "transformers", "zeromodel", "zeromodel.config", "hnswlib", 
+        "matplotlib", "urllib3", "asyncio", "PIL", "pdfminer"
+    )
+    MIN_LOG_MESSAGE_LENGTH = 10
+    
+    # Suppress short log messages
+    logging.getLogger().addFilter(
+        lambda record: len(record.getMessage().strip()) > MIN_LOG_MESSAGE_LENGTH
+    )
+    
+    # Suppress verbose library loggers
+    for name in SUPPRESSED_LOGGERS:
         logging.getLogger(name).setLevel(logging.CRITICAL)
         logging.getLogger(name).propagate = False
+    
     run()
