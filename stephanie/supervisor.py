@@ -10,7 +10,7 @@ from omegaconf import DictConfig, OmegaConf
 from tabulate import tabulate
 
 from stephanie.constants import (GOAL, NAME, PIPELINE, PIPELINE_RUN_ID,
-                                 PROMPT_DIR, RUN_ID, SAVE_CONTEXT,
+                                 PROMPT_DIR, REPORTS, RUN_ID, SAVE_CONTEXT,
                                  SCORABLE_DETAILS, SKIP_IF_COMPLETED, STAGE)
 from stephanie.core.context.context_manager import ContextManager
 from stephanie.core.logging.json_logger import JSONLogger
@@ -233,7 +233,7 @@ class Supervisor:
             }
             self.context().setdefault("STAGE_DETAILS", []).append(stage_details)
             stage_report = get_stage_details(stage, status="⏳ running")
-            context.setdefault("REPORTS", []).append(stage_report)
+            context.setdefault(REPORTS, []).append(stage_report)
 
             # Record stage start
             plan_trace_monitor.start_stage(stage.name, context, stage_idx)
@@ -280,8 +280,8 @@ class Supervisor:
 
                 try:
                     stage_entries = agent.get_report(context)   # get agent-level events
-                    if context["REPORTS"]:
-                        context["REPORTS"][-1].setdefault("entries", []).extend(stage_entries)
+                    if context[REPORTS]:
+                        context[REPORTS][-1].setdefault("entries", []).extend(stage_entries)
                 except Exception as rep_e:
                     self.logger.log("StageReportFail Right well that should work but it didn't ed", {
                         "stage": stage.name,
@@ -351,7 +351,7 @@ class Supervisor:
 
         }
         self.context().setdefault("STAGE_DETAILS", []).append(stage_details)
-        context.setdefault("REPORTS", []).append(get_stage_details(stage))
+        context.setdefault(REPORTS, []).append(get_stage_details(stage))
 
         if not stage.enabled:
             self.logger.log("PipelineStageSkipped", {STAGE: stage.name})
@@ -583,7 +583,7 @@ class Supervisor:
             "model_config": pipeline_run.run_config,
             PROMPT_DIR: self.cfg.paths.prompts,
             "trace": [],
-            "REPORTS": [],
+            REPORTS: [],
             "LOGS": [],
             "METRICS": [],
             "metadata": {

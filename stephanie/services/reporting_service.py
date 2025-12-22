@@ -10,6 +10,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
+from stephanie.constants import REPORTS
 from stephanie.services.service_protocol import Service
 from stephanie.utils.time_utils import now_iso
 
@@ -283,7 +284,7 @@ class ReportingService(Service):
         summary: Optional[str],
         finalize: bool
     ):
-        reports = ctx.setdefault("REPORTS", [])
+        reports = ctx.setdefault(REPORTS, [])
         stage_name = event.get("stage") or "stage"
         agent = event.get("agent") or "UnknownAgent"
 

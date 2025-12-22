@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from stephanie.components.information.utils.spine_dump import SpineDumper
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.components.information.data import (
     BoundingBox,
@@ -77,7 +78,7 @@ class PaperSpineBuilderAgent(BaseAgent):
         # minimum fraction of page area for us to consider an image a "figure"
         self.min_figure_area_frac: float = float(self.cfg.get("min_figure_area_frac", 0.02))
 
-        # NEW: processor config
+        # processor config
         self.processor_cfgs: List[Dict[str, Any]] = list(self.cfg.get("processors", []) or [])
         self.signals_cfg: Dict[str, Any] = dict(self.cfg.get("signals", {}) or {})
         self.routing_cfg: Dict[str, Any] = dict(self.cfg.get("routing", {}) or {})

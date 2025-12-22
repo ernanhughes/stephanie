@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 import os
 import re
@@ -9,6 +10,11 @@ import shutil
 import tempfile
 from datetime import datetime
 from pathlib import Path
+
+from omegaconf import OmegaConf
+import yaml
+
+from stephanie.data.plan_trace import ExecutionStep, PlanTrace
 
 log = logging.getLogger(__name__)
 
@@ -44,6 +50,55 @@ def save_to_timestamped_file(
 def camel_to_snake(name):
     s1 = re.sub("(.)([A-Z][a-z]+)", r"\1_\2", name)
     return re.sub("([a-z0-9])([A-Z])", r"\1_\2", s1).lower()
+
+def save_yaml_result(log_path: str, result: dict):
+    report_path = log_path.replace(".jsonl", ".yaml")
+    with open(report_path, "w", encoding="utf-8") as f:
+        yaml.dump(result, f, allow_unicode=True, sort_keys=False)
+    log.info(f"✅ Result saved to: {report_path}")
+
+def default_serializer(obj):
+    import numpy as np
+    from dataclasses import is_dataclass, asdict
+    from enum import Enum
+    from pathlib import Path
+    from datetime import datetime, date
+
+    if isinstance(obj, (datetime, date)):
+        return obj.isoformat()
+    if isinstance(obj, Path):
+        return str(obj)
+    if isinstance(obj, Enum):
+        return obj.value if isinstance(obj.value, (str, int, float, bool)) else str(obj.value)
+
+    if isinstance(obj, np.bool_):
+        return bool(obj)
+    elif isinstance(obj, (np.integer, np.floating)):
+        return obj.item()
+    elif isinstance(obj, np.ndarray):
+        return obj.tolist()
+
+    if is_dataclass(obj):
+        return asdict(obj)
+
+    elif hasattr(obj, 'to_dict'):
+        return obj.to_dict()
+    elif isinstance(obj, ExecutionStep):
+        return obj.to_dict()
+    # Handle PlanTrace objects
+    elif isinstance(obj, PlanTrace):
+        return obj.to_dict()
+    # Handle DictConfig objects from Hydra
+    elif hasattr(obj, '_get_node'):
+        return OmegaConf.to_container(obj, resolve=True, enum_to_str=True)
+    # If we still can't serialize, raise the error
+    raise TypeError(f"Type {type(obj)} not serializable")
+
+def save_context_result(log_path: str, result: dict):
+    report_path = log_path.replace(".jsonl", "_context.json")
+    with open(report_path, "w", encoding="utf-8") as f:
+        json.dump(result, f, ensure_ascii=False, indent=2, default=default_serializer)
+    log.info(f"✅ JSON result saved to: {report_path}")
 
 
 def get_text_from_file(file_path: str) -> str:
