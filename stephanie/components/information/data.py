@@ -18,10 +18,8 @@ import hashlib
 import json
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Literal, Optional, Tuple
+from typing import Any, Dict, List, Literal, Optional, Tuple
 
-from stephanie.components.information_legacy.data import (DocumentElement,
-                                                          SectionSpine)
 
 # =============================================================================
 # TYPE ALIASES & CONSTANTS
@@ -44,6 +42,67 @@ PaperRole = Literal[
 ]
 
 EdgeKind = Literal["cites", "similar_to"]
+
+@dataclass
+class DocumentElement:
+    """
+    A structured 'visual/structural element' extracted from the PDF.
+
+    This is what your PaddleOCR-VL pass should emit per element.
+    """
+    id: str                     # stable ID (e.g. paper_id:page:type:index)
+    paper_id: str               # arxiv_id or internal paper key
+    page: int                   # 1-based page number
+    type: ElementType
+    bbox: BoundingBox
+
+    # Content payload (only some fields will be used per type)
+    text: Optional[str] = None              # for text_block, captions, inline formulas
+    latex: Optional[str] = None             # for formula_inline / formula_display
+    markdown_table: Optional[str] = None    # for table/chart when converted to md
+    image_path: Optional[str] = None        # cropped image written to disk
+    caption: Optional[str] = None           # human-ish caption text
+
+    meta: Dict[str, Any] = field(default_factory=dict)
+
+@dataclass
+class DocumentSection:
+    section_id: str
+    paper_arxiv_id: Optional[str]
+    paper_role: str
+    section_index: int
+    text: str
+
+    title: Optional[str] = None
+    summary: Optional[str] = None
+
+    text_embedding: Optional[list[float]] = None
+    title_embedding: Optional[list[float]] = None
+    summary_embedding: Optional[list[float]] = None
+
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+    # NEW:
+    concept_cluster_id: Optional[str] = None
+    concept_cluster_strength: float = 0.0  # how “central” this section is to a shared concept
+
+
+
+@dataclass
+class SectionSpine:
+    """
+    The 'spine' unit: a logical paper section plus all attached elements.
+
+    This becomes the main unit for the blog generator: one SectionSpine in,
+    one blog section out.
+    """
+    section: "DocumentSection"
+    elements: List[DocumentElement] = field(default_factory=list)
+
+    # Optional: convenience fields for downstream logic
+    start_page: Optional[int] = None
+    end_page: Optional[int] = None
+
 
 
 
@@ -464,55 +523,51 @@ class BoundingBox:
 # SPINE CONSTRUCTION FUNCTIONS
 # =============================================================================
 
-def attach_elements_to_sections(
-    sections: Iterable[PaperSection],
-    elements: Iterable[DocumentElement],
-) -> List[SectionSpine]:
-    """
-    Attach visual elements (figures, tables, formulas) to document sections.
-    
-    This is the core spine construction algorithm (v1). It uses page-based
-    heuristics: elements are attached to sections based on shared page ranges.
-    
-    Args:
-        sections: Iterable of DocumentSection objects
-        elements: Iterable of DocumentElement objects (from PaddleOCR-VL)
-    
-    Returns:
-        List of SectionSpine objects in same order as input sections
-    
-    Note:
-        v1 uses simple page range matching. v2 will incorporate vertical
-        positioning and semantic relationships for more accurate attachment.
-    """
-    
-    # Materialize inputs (they're often generators)
+def attach_elements_to_sections(sections, elements):
     section_list = list(sections)
     element_list = list(elements)
-    
-    # Index elements by page for efficient lookup
+
     elements_by_page: Dict[int, List[DocumentElement]] = {}
     for element in element_list:
         elements_by_page.setdefault(element.page, []).append(element)
-    
+
     spines: List[SectionSpine] = []
-    
+
     for section in section_list:
-        # ---------------------------------------------------------------------
-        # DETERMINE PAGE RANGE FOR THIS SECTION
-        # ---------------------------------------------------------------------
         start_page: Optional[int] = None
         end_page: Optional[int] = None
-        
-        # Method 1: Check for explicit page attributes
-        if hasattr(section, "start_page") or hasattr(section, "end_page"):
-            start_page = getattr(section, "start_page", None)
-            end_page = getattr(section, "end_page", None)
-            if start_page is not None and end_page is not None:
-                start_page = int(start_page)
-                end_page = int(end_page)
-        
-        # Method 2: Check for pages list attribute
+
+        # Method 0: ✅ read from section.meta (your PaperSection supports this)
+        meta = getattr(section, "meta", None) or {}
+        if isinstance(meta, dict):
+            # explicit
+            if meta.get("start_page") is not None and meta.get("end_page") is not None:
+                try:
+                    start_page = int(meta["start_page"])
+                    end_page = int(meta["end_page"])
+                except (TypeError, ValueError):
+                    pass
+
+            # pages list
+            if start_page is None and meta.get("pages") is not None:
+                try:
+                    page_numbers = list(meta["pages"])
+                    if page_numbers:
+                        start_page = int(min(page_numbers))
+                        end_page = int(max(page_numbers))
+                except (TypeError, ValueError):
+                    pass
+
+        # Method 1: existing attributes
+        if (start_page is None or end_page is None) and (
+            hasattr(section, "start_page") or hasattr(section, "end_page")
+        ):
+            sp = getattr(section, "start_page", None)
+            ep = getattr(section, "end_page", None)
+            if sp is not None and ep is not None:
+                start_page, end_page = int(sp), int(ep)
+
+        # Method 2: existing "pages"
         if start_page is None and hasattr(section, "pages"):
             pages = getattr(section, "pages", None) or []
             try:
@@ -521,44 +576,17 @@ def attach_elements_to_sections(
                     start_page = int(min(page_numbers))
                     end_page = int(max(page_numbers))
             except (TypeError, ValueError):
-                # pages attribute exists but isn't iterable or contains non-ints
                 pass
-        
-        # If we can't determine page range, create spine without elements
+
         if start_page is None or end_page is None:
             spines.append(SectionSpine(section=section, elements=[]))
             continue
-        
-        # ---------------------------------------------------------------------
-        # COLLECT ELEMENTS IN PAGE RANGE
-        # ---------------------------------------------------------------------
+
         attached_elements: List[DocumentElement] = []
         for page in range(start_page, end_page + 1):
             attached_elements.extend(elements_by_page.get(page, []))
-        
-        # Create the spine for this section
-        spines.append(
-            SectionSpine(
-                section=section,
-                elements=attached_elements,
-                start_page=start_page,
-                end_page=end_page,
-            )
-        )
-    
+
+        spines.append(SectionSpine(section=section, elements=attached_elements, start_page=start_page, end_page=end_page))
+
     return spines
 
-
-# =============================================================================
-# SERIALIZATION UTILITIES (Optional - could be added later)
-# =============================================================================
-#
-# def to_dict(obj: Any) -> Dict[str, Any]:
-#     """Convert dataclass to dictionary, handling Path objects and non-serializable fields."""
-#     # Implementation would go here
-#     pass
-#
-# def from_dict(data: Dict[str, Any], cls: Type) -> Any:
-#     """Reconstruct dataclass from dictionary."""
-#     # Implementation would go here
-#     pass

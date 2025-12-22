@@ -12,9 +12,11 @@ from stephanie.agents.base_agent import BaseAgent
 from stephanie.components.information.data import (
     BoundingBox,
     DocumentElement,
+    PaperSection,
     attach_elements_to_sections,
 )
 from stephanie.scoring.scorable import Scorable
+from stephanie.tools.pdf_tool import extract_page_texts
 
 log = logging.getLogger(__name__)
 
@@ -89,6 +91,15 @@ class PaperSpineBuilderAgent(BaseAgent):
         self._docling_processor = None
         self._docling_device = "cpu"
 
+        # inside __init__ of PaperSpineBuilderAgent
+        self.dump_cfg: Dict[str, Any] = dict(self.cfg.get("dump", {}) or {})
+        self.run_dir = f"runs/paper_blogs/{self.run_id}"
+        self._spine_dumper = SpineDumper(
+            run_dir=self.run_dir,
+            enabled=bool(self.dump_cfg.get("enabled", True)),
+            max_text_chars=int(self.dump_cfg.get("max_text_chars", 240)),
+        )
+
         log.info(
             "PaperSpineBuilderAgent:init run_id=%s papers_root=%s max_pages=%s processors=%s",
             getattr(self, "run_id", None),
@@ -99,10 +110,6 @@ class PaperSpineBuilderAgent(BaseAgent):
 
     async def run(self, context: Dict[str, Any]) -> Dict[str, Any]:
         sections = context.get("paper_sections") or []
-        if not sections:
-            log.warning("PaperSpineBuilderAgent: no paper_sections in context.")
-            context["paper_spine"] = []
-            return context
 
         arxiv_id, pdf_path = self._resolve_paper_identity(context)
 
@@ -137,8 +144,42 @@ class PaperSpineBuilderAgent(BaseAgent):
 
         # Update context and build spine
         context["paper_elements"] = elements
+        spine_sections = list(sections)
+
+        if _needs_page_fallback(spine_sections):
+            # best source of page count is the rendered page PNGs you already write:
+            # e.g. runs/.../2506.21734/2506.21734_p001.png ... _p024.png
+            pages_dir = Path(self.page_image_root) / arxiv_id
+            page_pngs = sorted(pages_dir.glob(f"{arxiv_id}_p*.png"))
+            num_pages = len(page_pngs) or max((e.page for e in elements), default=0)
+
+            page_texts = extract_page_texts(str(pdf_path))
+
+            spine_sections = _make_page_sections(arxiv_id=arxiv_id, paper_role="root", num_pages=num_pages, page_text_by_page=page_texts)
+
+        spine = attach_elements_to_sections(spine_sections, elements)
+
+        context["paper_sections"] = sections          # keep real sections for NLP pipeline
+        context["paper_spine_sections"] = spine_sections  # optional: so the dumper can show them
+        context["paper_spine"] = spine
+
+
         spine = attach_elements_to_sections(sections=sections, elements=elements)
         context["paper_spine"] = spine
+
+        # near the end of run(), AFTER context["paper_spine"]=spine and signals emitted
+        try:
+            dumped = self._spine_dumper.dump(
+                arxiv_id=arxiv_id,
+                sections=sections,
+                elements=elements,
+                spine=spine,
+                proc_results=proc_results,
+            )
+            context.setdefault("paper_processing_signals", {}).setdefault("spine_dump", {})["files"] = dumped
+            log.info("PaperSpineBuilderAgent: spine dumped files=%s", dumped)
+        except Exception as e:
+            log.exception("PaperSpineBuilderAgent: spine dump failed: %s", e)
 
         log.info(
             "PaperSpineBuilderAgent: built spine sections=%d total_elements=%d processors_ran=%s",
@@ -688,22 +729,36 @@ class PaperSpineBuilderAgent(BaseAgent):
                 if not rects:
                     continue
 
-                img = doc.extract_image(xref)
-                img_bytes = img.get("image")
-                img_ext = img.get("ext", "png")
-
-                file_stem = f"{arxiv_id}_p{page_num:03d}_img{img_idx:02d}"
-                img_filename = f"{file_stem}.{img_ext}"
-                img_path = figures_dir / img_filename
-
-                if not img_path.exists():
-                    with open(img_path, "wb") as f:
-                        f.write(img_bytes)
-
+                # Filter rects BEFORE extracting/saving bytes (prevents tons of tiny files)
+                min_side_pts = float(self.cfg.get("min_figure_side_pts", 30.0))
+                keep: list[tuple[int, Any, float]] = []
                 for rect_i, r in enumerate(rects):
                     rect_area = float(r.width * r.height)
                     if page_area > 0 and rect_area / page_area < self.min_figure_area_frac:
                         continue
+                    # Optional: drop very thin strips (gridlines, tick marks)
+                    if min(float(r.width), float(r.height)) < min_side_pts:
+                        continue
+                    keep.append((rect_i, r, rect_area))
+
+                if not keep:
+                    continue
+
+                img = doc.extract_image(xref)
+                img_bytes = img.get("image")
+                img_ext = img.get("ext", "png")
+
+                # Use xref in filename so it’s stable and debuggable
+                img_path = figures_dir / f"{arxiv_id}_p{page_num:03d}_xref{xref}.{img_ext}"
+                if not img_path.exists():
+                    img_path.write_bytes(img_bytes)
+
+                for rect_i, r, rect_area in keep:
+                    bbox = BoundingBox(
+                         x1=float(r.x0), y1=float(r.y0), x2=float(r.x1), y2=float(r.y1)
+                     )
+                    elem_id = f"{arxiv_id}:p{page_num}:xref{xref}:{rect_i}"
+
 
                     bbox = BoundingBox(
                         x1=float(r.x0), y1=float(r.y0), x2=float(r.x1), y2=float(r.y1)
@@ -784,7 +839,7 @@ class PaperSpineBuilderAgent(BaseAgent):
             lines = ocr_meta.get(getattr(self.ocr_tool, "name", "paddle_ocr"), [])
 
             for line_idx, line in enumerate(lines):
-                bbox_poly = line.get("bbox") or [[0.0, 0.0]] * 4
+                bbox_poly = line.get("bbox") or [[0.0, 0.0]] *  None4
                 xs = [float(p[0]) for p in bbox_poly]
                 ys = [float(p[1]) for p in bbox_poly]
                 x1, y1, x2, y2 = min(xs), min(ys), max(xs), max(ys)
@@ -807,3 +862,38 @@ class PaperSpineBuilderAgent(BaseAgent):
 
         log.info("PaperSpineBuilderAgent: OCR created=%d elements pages=%d", len(elements), len(page_image_paths))
         return elements
+
+def _needs_page_fallback(sections: list) -> bool:
+    for s in sections:
+        meta = getattr(s, "meta", None) or {}
+        if getattr(s, "start_page", None) is not None or getattr(s, "end_page", None) is not None:
+            return False
+        if hasattr(s, "pages") and getattr(s, "pages", None):
+            return False
+        if isinstance(meta, dict) and (meta.get("start_page") is not None or meta.get("pages") is not None):
+            return False
+    return True
+
+def _make_page_sections(
+    *,
+    arxiv_id: str,
+    paper_role: str,
+    num_pages: int,
+    page_text_by_page: dict[int, str] | None = None,
+) -> list[PaperSection]:
+    out = []
+    page_text_by_page = page_text_by_page or {}
+
+    for p in range(1, num_pages + 1):
+        out.append(
+            PaperSection(
+                id=f"{arxiv_id}::page-{p:03d}",
+                paper_arxiv_id=arxiv_id,
+                paper_role=paper_role,
+                section_index=p - 1,
+                text=page_text_by_page.get(p, ""),  # ✅ page text if available
+                title=f"Page {p}",
+                meta={"start_page": p, "end_page": p, "kind": "spine_page"},
+            )
+        )
+    return out

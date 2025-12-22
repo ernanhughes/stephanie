@@ -321,7 +321,7 @@ class PaperPipelineAgent(BaseAgent):
         # ------------------------------------------------------------------
 
         context["paper_graph"] = graph
-        context["paper_sections"] = sections
+        context["paper_sections_old"] = sections
         context["section_matches"] = matches
         context["concept_clusters"] = clusters
 
