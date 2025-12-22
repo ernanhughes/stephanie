@@ -24,6 +24,9 @@ from stephanie.services.scoring_service import ScoringService
 from stephanie.services.service_container import ServiceContainer
 from stephanie.utils.report_utils import get_stage_details
 
+# Constants for time formatting
+TIME_FORMAT = "%H:%M:%S"
+
 
 class PipelineStage:
     def __init__(self, name: str, cfg: dict, stage_dict: dict):
@@ -220,17 +223,78 @@ class Supervisor:
             if name in self.cfg.agents
         ]
 
+    def _initialize_stage_details(self, stage: PipelineStage, stage_idx: int = None) -> dict:
+        """Create initial stage details dictionary for tracking.
+        
+        Args:
+            stage: The pipeline stage to initialize
+            stage_idx: Optional index of the stage in the pipeline
+            
+        Returns:
+            Dictionary with stage tracking details
+        """
+        details = {
+            STAGE: stage.name,
+            "agent": stage.cls.split(".")[-1],
+            "status": "⏳ running",
+            "start_time": datetime.now().strftime(TIME_FORMAT)
+        }
+        if stage_idx is not None:
+            details["index"] = stage_idx
+        return details
+
+    def _create_agent_instance(self, stage: PipelineStage, stage_dict: dict):
+        """Create an agent instance for the given stage.
+        
+        Args:
+            stage: The pipeline stage configuration
+            stage_dict: The stage configuration dictionary
+            
+        Returns:
+            Instantiated agent object
+        """
+        cls = hydra.utils.get_class(stage.cls)
+        agent_args = {
+            "cfg": stage_dict,
+            "memory": self.memory,
+            "container": self.container,
+            "logger": self.logger
+        }
+        if "full_cfg" in cls.__init__.__code__.co_varnames:
+            agent_args["full_cfg"] = self.cfg
+        agent = cls(**agent_args)
+        agent.container = self.container  # Inject container into agent
+        return agent
+
+    async def _execute_stage_iterations(self, agent, stage: PipelineStage, context: dict) -> dict:
+        """Execute all iterations for a stage.
+        
+        Args:
+            agent: The agent instance to execute
+            stage: The pipeline stage configuration
+            context: The execution context
+            
+        Returns:
+            Updated context after all iterations
+        """
+        for i in range(stage.iterations or 1):
+            self.logger.log("PipelineIterationStart", {STAGE: stage.name, "iteration": i + 1})
+            agent_input_context = context.copy()
+            context = await agent.run(agent_input_context)
+            self.context.log_action(
+                agent=agent,
+                inputs=agent_input_context,
+                outputs=context,
+                description=f"Iteration {i + 1} of {stage.name}"
+            )
+            self.logger.log("PipelineIterationEnd", {STAGE: stage.name, "iteration": i + 1})
+        return context
+
     async def _run_pipeline_stages(self, context: dict) -> dict:
         plan_trace_monitor: PlanTraceService = self.container.get("plan_trace")
         final_output_key = ""
         for stage_idx, stage in enumerate(self.pipeline_stages):
-            stage_details = {
-                "index": stage_idx, 
-                STAGE: stage.name,
-                "agent": stage.cls.split(".")[-1],
-                "status": "⏳ running", 
-                "start_time": datetime.now().strftime("%H:%M:%S")
-            }
+            stage_details = self._initialize_stage_details(stage, stage_idx)
             self.context().setdefault("STAGE_DETAILS", []).append(stage_details)
             stage_report = get_stage_details(stage, status="⏳ running")
             context.setdefault("REPORTS", []).append(stage_report)
@@ -244,35 +308,16 @@ class Supervisor:
                 continue
             
             try:
-                cls = hydra.utils.get_class(stage.cls)
                 stage_dict = OmegaConf.to_container(stage.stage_dict, resolve=True)
                 stage_dict[PIPELINE_RUN_ID] = context.get(PIPELINE_RUN_ID)
                 final_output_key = stage_dict.get("output_key", final_output_key)
                 rules: RulesService = self.container.get("rules")
                 rules.apply_to_agent(stage_dict, context)
-                agent_args = {
-                    "cfg": stage_dict,
-                    "memory": self.memory,
-                    "container": self.container,
-                    "logger": self.logger
-                }
-                if "full_cfg" in cls.__init__.__code__.co_varnames:
-                    agent_args["full_cfg"] = self.cfg
-                agent = cls(**agent_args)
-                agent.container = self.container  # Inject container into agent
+                
+                agent = self._create_agent_instance(stage, stage_dict)
                 self.logger.log("PipelineStageStart", {STAGE: stage.name})
                 
-                for i in range(stage.iterations or 1): 
-                    self.logger.log("PipelineIterationStart", {STAGE: stage.name, "iteration": i + 1})
-                    agent_input_context = context.copy()
-                    context = await agent.run(agent_input_context)
-                    self.context.log_action(
-                        agent=agent,
-                        inputs=agent_input_context,
-                        outputs=context,
-                        description=f"Iteration {i + 1} of {stage.name}"
-                    )
-                    self.logger.log("PipelineIterationEnd", {STAGE: stage.name, "iteration": i + 1})
+                context = await self._execute_stage_iterations(agent, stage, context)
                 
                 # Saving context after stage
                 if stage_dict.get(SAVE_CONTEXT, False):
@@ -283,13 +328,10 @@ class Supervisor:
                     if context["REPORTS"]:
                         context["REPORTS"][-1].setdefault("entries", []).extend(stage_entries)
                 except Exception as rep_e:
-                    self.logger.log("StageReportFail Right well that should work but it didn't ed", {
+                    self.logger.log("StageReportFailed", {
                         "stage": stage.name,
                         "error": str(rep_e)
                     })
-
-                # self.context.save_to_file(prefix=f"context_{stage.name}")
-
 
                 self._save_pipeline_stage(stage, context, stage_dict)
                 self.logger.log("PipelineStageEnd", {STAGE: stage.name})
@@ -300,7 +342,7 @@ class Supervisor:
                 await plan_trace_monitor.complete_stage(stage.name, context, stage_idx)
                 
                 stage_details["status"] = "✅ completed"
-                stage_details["end_time"] = datetime.now().strftime("%H:%M:%S")
+                stage_details["end_time"] = datetime.now().strftime(TIME_FORMAT)
                 
             except Exception as e:
                 plan_trace_monitor.handle_stage_error(stage.name, e, stage_idx)
@@ -308,7 +350,7 @@ class Supervisor:
                 self.logger.log("PipelineStageFailed", {"stage": stage.name, "error": str(e)})
                 stage_details["status"] = "💀 failed"
                 stage_details["error"] = str(e)
-                stage_details["end_time"] = datetime.now().strftime("%H:%M:%S")
+                stage_details["end_time"] = datetime.now().strftime(TIME_FORMAT)
                 raise  # Re-raise the exception to be caught by the outer handler
         
         # After finishing all stages
@@ -343,13 +385,16 @@ class Supervisor:
 
 
     async def _run_single_stage(self, stage: PipelineStage, context: dict) -> dict:
-        stage_details = {
-            STAGE: stage.name,
-            "agent": stage.cls.split(".")[-1],
-            "status": "⏳ running", 
-            "start_time": datetime.now().strftime("%H:%M:%S")
-
-        }
+        """Execute a single pipeline stage (simplified without plan trace monitoring).
+        
+        Args:
+            stage: The pipeline stage to execute
+            context: The execution context
+            
+        Returns:
+            Updated context after stage execution
+        """
+        stage_details = self._initialize_stage_details(stage)
         self.context().setdefault("STAGE_DETAILS", []).append(stage_details)
         context.setdefault("REPORTS", []).append(get_stage_details(stage))
 
@@ -359,36 +404,14 @@ class Supervisor:
             return context
 
         try:
-            cls = hydra.utils.get_class(stage.cls)
             stage_dict = OmegaConf.to_container(stage.stage_dict, resolve=True)
             rules: RulesService = self.container.get("rules")
             rules.apply_to_agent(stage_dict, context)
-            agent_args = {
-                "cfg": stage_dict,
-                "memory": self.memory,
-                "logger": self.logger,
-            }
-            if "full_cfg" in cls.__init__.__code__.co_varnames:
-                agent_args["full_cfg"] = self.cfg
-
-            agent = cls(**agent_args)
-            agent.container = self.container  # Inject container into agent
+            
+            agent = self._create_agent_instance(stage, stage_dict)
             self.logger.log("PipelineStageStart", {STAGE: stage.name})
 
-            for i in range(stage.iterations or 1): 
-                self.logger.log("PipelineIterationStart", {STAGE: stage.name, "iteration": i + 1})
-                
-                agent_input_context = context.copy()
-                context = await agent.run(agent_input_context)
-                
-                self.context.log_action(
-                    agent=agent,
-                    inputs=agent_input_context,
-                    outputs=context,
-                    description=f"Iteration {i + 1} of {stage.name}"
-                )
-
-                self.logger.log("PipelineIterationEnd", {STAGE: stage.name, "iteration": i + 1})
+            context = await self._execute_stage_iterations(agent, stage, context)
 
             # Saving context after stage
             if stage_dict.get(SAVE_CONTEXT, False):
@@ -397,14 +420,14 @@ class Supervisor:
             self.logger.log("PipelineStageEnd", {STAGE: stage.name})
 
             stage_details["status"] = "✅ completed"
-            stage_details["end_time"] = datetime.now().strftime("%H%M%S")
+            stage_details["end_time"] = datetime.now().strftime(TIME_FORMAT)
             return context
 
         except Exception as e:
             self.logger.log("PipelineStageFailed", {"stage": stage.name, "error": str(e)})
             stage_details["status"] = "💀 failed"
             stage_details["error"] = str(e)
-            stage_details["end_time"] = datetime.now().strftime("%H%M%S")
+            stage_details["end_time"] = datetime.now().strftime(TIME_FORMAT)
             return context
         
     def _save_pipeline_stage(self, stage: PipelineStage, context: dict, stage_dict: dict):
