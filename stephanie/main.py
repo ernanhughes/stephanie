@@ -124,12 +124,8 @@ def default_serializer(obj):
     if is_dataclass(obj):
         return asdict(obj)
 
-    # Handle custom objects with to_dict method
+    # Handle custom objects with to_dict method (includes ExecutionStep, PlanTrace, etc.)
     if hasattr(obj, 'to_dict'):
-        return obj.to_dict()
-    
-    # Handle PlanTrace and ExecutionStep (already covered by to_dict but kept for clarity)
-    if isinstance(obj, (ExecutionStep, PlanTrace)):
         return obj.to_dict()
     
     # Handle DictConfig objects from Hydra
