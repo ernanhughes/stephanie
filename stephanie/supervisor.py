@@ -29,7 +29,26 @@ TIME_FORMAT = "%H:%M:%S"
 
 
 class PipelineStage:
+    """Represents a single stage in the pipeline execution.
+    
+    Attributes:
+        name: The unique name of the stage
+        agent_role: The role description for the agent
+        description: Human-readable description of what the stage does
+        cls: Fully qualified class name of the agent to instantiate
+        enabled: Whether this stage should be executed
+        iterations: Number of times to execute this stage
+        stage_dict: Complete configuration dictionary for the stage
+    """
+    
     def __init__(self, name: str, cfg: dict, stage_dict: dict):
+        """Initialize a pipeline stage.
+        
+        Args:
+            name: The stage identifier
+            cfg: Stage configuration from pipeline config
+            stage_dict: Complete agent configuration dictionary
+        """
         self.name = name
         self.agent_role = cfg.get("agent_role", "")
         self.description = cfg.get("description", "")
