@@ -1,4 +1,4 @@
-# config/agents/paper_pipeline.yaml
+# config/agents/paper_spine_builder.yaml
 paper_spine_builder:
   name: paper_spine_builder
   enabled: true
@@ -7,28 +7,124 @@ paper_spine_builder:
   skip_if_completed: false
 
   # ---- Input / output wiring ----
-  # The context key that must contain the arxiv_id of the root paper.
-  # (Your script should set context["arxiv_id"] before calling the agent.)
   input_key: arxiv_id
 
-  # Where the agent writes its outputs in the context
-
-  force_rebuild_sections: false    # ignore cached sections, always re-build
-  
-  features:
-    enabled: true
-    subject: "nexus.features.index_request"   # NexusFeatureWorker.subject
-    target_type: "document_section"           # scorable_type for sections
-    source: "paper_pipeline"
+  # If true, ignore cached sections from DB and rebuild (unchanged)
+  force_rebuild_sections: false
 
   # ---- Filesystem / storage ----
-  # Root directory where PDFs and graph.json will be stored.
   papers_root: "data/papers"
 
+  # -------------------------------------------------------------------
+  # Processor orchestration (NEW)
+  #
+  # SpineBuilder becomes a processor router:
+  # - It starts with context["paper_elements"] (if any)
+  # - It runs enabled processors to enrich elements/artifacts
+  # - It attaches elements to sections to build context["paper_spine"]
+  # -------------------------------------------------------------------
+  processors:
+    # Keep your current behavior, but make it explicit
+    - name: pdf_figures
+      enabled: true
+      max_figures: 64
+      prefer_existing: true          # if artifacts already exist in DB, skip extraction
+      store_as_artifacts: true       # store outputs in paper_artifacts when possible
+
+    # SmolDocling processor (NEW)
+    - name: smol_docling
+      enabled: true
+      # quick guardrails to keep it cheap at first
+      max_pages: 12                  # run on first N pages unless routing escalates
+      dpi: 144
+      model_name: "ds4sd/SmolDocling-256M-preview"
+      prompt: "Convert to Docling."
+      max_new_tokens: 4096
+      batch_size: 1
+
+      # what to extract into elements (drives spine enrichment)
+      extract:
+        tables: true                 # <otsl> / table tags -> elements/artifacts
+        code: true                   # <code> blocks
+        equations: true              # <formula> blocks
+        captions: true               # <caption>
+        headings: true               # <section_header>/<title> as elements (optional)
+        paragraphs: false            # keep false to avoid duplicating existing text pipeline
+
+      # persistence toggles (choose what to store)
+      persist:
+        doctags_pages: true          # store per-page doctags cache (recommended)
+        derived_sections: false      # later: parse doctags into PaperSectionORM blocks
+        artifacts: true              # store table/code/equation as PaperArtifactORM (recommended)
+        include_doctags_snippets_in_meta: false  # avoid huge JSON in meta
+
+  # -------------------------------------------------------------------
+  # Routing / learning signals (NEW)
+  #
+  # For now: simple heuristics. Later: learned policy.
+  # -------------------------------------------------------------------
+  routing:
+    enabled: true
+
+    # If enabled, spine builder will run processors only when signals indicate value.
+    # If false, it runs processors as per "processors[].enabled".
+    use_heuristics: true
+
+    # Cheap early sampling: run smol_docling on first K pages,
+    # look for tag counts, then decide whether to continue to max_pages/full doc.
+    docling_probe_pages: 3
+
+    # Continue docling if at least one of these thresholds met in probe pages
+    docling_continue_if:
+      min_table_tags: 1
+      min_code_tags: 1
+      min_formula_tags: 1
+
+    # If the paper looks "dense", allow docling to extend beyond max_pages
+    docling_escalate:
+      enabled: true
+      max_pages_hard_cap: 32
+      escalate_if_tables: 3
+      escalate_if_code: 3
+      escalate_if_formulas: 5
+
+  # -------------------------------------------------------------------
+  # Signals emitted to context + optionally stored as PaperRunFeature rows (NEW)
+  # -------------------------------------------------------------------
+  signals:
+    enabled: true
+    context_key: paper_processing_signals
+
+    # What to compute
+    compute:
+      processor_list: true
+      element_counts: true
+      section_coverage: true
+      error_counts: true
+      docling_tag_counts: true
+
+    # Optional: store these signals as features on the run (if you wire it)
+    persist_as_features: true
+    feature_source: "paper_spine_builder"
+
+  # -------------------------------------------------------------------
+  # Existing features block (kept, but enhanced meaning)
+  #
+  # You can keep your current "nexus.features.index_request" usage; now
+  # you can also emit features from signals above, if desired.
+  # -------------------------------------------------------------------
+  features:
+    enabled: true
+    subject: "nexus.features.index_request"
+    target_type: "document_section"
+    source: "paper_pipeline"
+
+  # -------------------------------------------------------------------
+  # Model config (unchanged; used by LLM-based spine reasoning if any)
+  # -------------------------------------------------------------------
   model:
     name: ollama/qwen3
     api_base: http://localhost:11434
     api_key: null
-    # Extra knobs your SummarizationTool may look for
     max_tokens: 512
     temperature: 0.2

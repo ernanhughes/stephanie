@@ -1,6 +1,77 @@
 paper_blog_judge:
   name: paper_blog_judge
 
+  # --- core judge model(s)
+  # you can still use a single model via model_name
   model_name: ollama/llama3.1:8b
+  # or specify an explicit ensemble:
+  # judge_models:
+  #   - name: ollama/llama3.1:8b
+  #     provider: ollama
+
+  # --- IO limits
   max_blog_chars: 18000
   max_report_chars: 6000
+
+  # --- generation controls for judge calls
+  judge_role: critic          # maps to LLMRole.CRITIC
+  max_tokens: 350
+  temperature: 0.2
+  top_p: 0.9
+
+  # --- pairwise tournament controls (Layer A)
+  enable_pairwise: true
+  pairwise_top_k: 3
+  pairwise_order_swap: true
+
+  # --- faithfulness gate (Layer C, applied on rubric faithfulness)
+  gate_dimension: faithfulness
+  gate_min_score: 70.0
+  gate_mode: disqualify      # "disqualify" or "penalize"
+  gate_penalty: 40.0         # only used when gate_mode="penalize"
+
+  # --- rubric dimensions (Layer B)
+  dimensions:
+    - name: faithfulness
+      weight: 0.45
+      goal_text: >
+        Evaluate faithfulness to the paper. Penalize ANY unsupported claim,
+        invented result, fabricated citation, or confident statement not grounded
+        in the provided paper evidence.
+    - name: coverage
+      weight: 0.25
+      goal_text: >
+        Evaluate coverage of the paper's key contributions, method, results,
+        and limitations. Reward capturing the main ideas without missing crucial
+        constraints.
+    - name: clarity
+      weight: 0.20
+      goal_text: >
+        Evaluate clarity & structure for a blog audience. Reward good narrative
+        flow, headings, and explanations that reduce jargon while staying accurate.
+    - name: usefulness
+      weight: 0.10
+      goal_text: >
+        Evaluate usefulness to the intended reader. Reward concrete takeaways,
+        correct framing of when/why the method matters, and what to do next.
+
+  # --- high-level policy for the new JudgeStack
+  judge_stack:
+    pairrm:
+      enabled: true
+      top_k: 3         # can mirror pairwise_top_k, or be independent
+
+    rubric:
+      enabled: true
+
+    factuality:
+      enabled: true
+      min_score: 70.0
+      gate_dimension: factuality     # for the factuality stage
+      gate_mode: disqualify
+      gate_penalty: 40.0
+
+    weights:
+      pairrm: 0.20
+      rubric: 0.60
+      factuality: 0.20

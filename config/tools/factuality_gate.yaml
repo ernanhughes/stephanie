@@ -1,0 +1,21 @@
+# config/tools/factuality_gate.yaml
+name: factuality_gate
+class_path: stephanie.tools.factuality_gate_tool.FactualityGateTool
+
+# Backend options:
+#   - "summac"  (implemented)
+#   - "alignscore" (future extension if you want)
+backend: summac
+
+# SummaCConv settings (good defaults)
+summac_model_name: vitc
+bins: percentile
+granularity: sentence
+nli_labels: e
+start_file: default
+agg: mean
+
+# Device + gating
+device: auto          # "auto" | "cuda" | "cpu"
+threshold: 0.75       # pass if factuality_score >= threshold
+min_chars: 200        # skip factuality check for very short candidates

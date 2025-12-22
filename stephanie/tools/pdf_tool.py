@@ -90,18 +90,52 @@ class PDFConverter:
         """
         file_path = Path(file_path)
         if not file_path.exists():
-            raise FileNotFoundError(f"File not found: {file_path}")
-
+            log.error("[pdf_to_text] File not found: %s", file_path)
+            return ""
         try:
             text = extract_text(str(file_path))
             # Remove null characters and trim
             clean_text = text.replace("\x00", "")
             return clean_text.strip()
         except PDFSyntaxError as e:
-            raise ValueError(f"Error parsing PDF file: {e}") from e
+            log.error("[pdf_to_text] PDFSyntaxError for file %s: %s", file_path, e)
+            return ""
         except Exception as e:
-            raise RuntimeError(f"Failed to extract text from PDF {file_path}: {e}") from e
+            log.exception("[pdf_to_text] Exception while extracting text from %s: %s", file_path, e)
+            return ""
 
+
+    @staticmethod
+    def render_to_images(file_path: Union[str, Path], dpi: int = 144, out_dir: Union[str, Path] | None = None) -> List[Path]:
+        """
+        Render PDF pages to PNG images. Requires PyMuPDF (fitz).
+        If you prefer pdf2image/poppler, we can swap later.
+        """
+        try:
+            import fitz  # PyMuPDF
+        except Exception as e:
+            raise RuntimeError("PyMuPDF (fitz) is required for render_to_images(). Install pymupdf.") from e
+
+        file_path = Path(file_path)
+        if out_dir is None:
+            out_dir = Path(tempfile.mkdtemp(prefix="pdf_pages_"))
+        else:
+            out_dir = Path(out_dir)
+            out_dir.mkdir(parents=True, exist_ok=True)
+
+        doc = fitz.open(str(file_path))
+        zoom = dpi / 72.0
+        mat = fitz.Matrix(zoom, zoom)
+
+        paths: List[Path] = []
+        for i in range(doc.page_count):
+            page = doc.load_page(i)
+            pix = page.get_pixmap(matrix=mat, alpha=False)
+            out_path = out_dir / f"page_{i+1:04d}.png"
+            pix.save(str(out_path))
+            paths.append(out_path)
+
+        return paths
 
 _converter = PDFConverter()  # module-level singleton; easy to swap in tests
 
@@ -296,3 +330,5 @@ def import_any(
         return [import_pdf_from_path(path)]
     else:
         raise FileNotFoundError(f"Input path does not exist or is not a URL: {s}")
+
+

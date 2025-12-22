@@ -6,7 +6,8 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 from statistics import median
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Union
+from stephanie.components.information.learning.judge_stack import JudgeStack
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.services.prompt_service import LLMRole
@@ -17,6 +18,7 @@ log = logging.getLogger(__name__)
 # ----------------------------
 # IO helpers
 # ----------------------------
+
 
 def _safe_read_text(path: str, max_chars: int) -> str:
     try:
@@ -29,7 +31,9 @@ def _safe_read_text(path: str, max_chars: int) -> str:
         return ""
 
 
-_KV_LINE_RE = re.compile(r"^\s*([a-zA-Z_][a-zA-Z0-9_\- ]*)\s*[:\-]\s*(.*?)\s*$")
+_KV_LINE_RE = re.compile(
+    r"^\s*([a-zA-Z_][a-zA-Z0-9_\- ]*)\s*[:\-]\s*(.*?)\s*$"
+)
 
 
 def _parse_kv_block(raw: str) -> Dict[str, str]:
@@ -94,6 +98,7 @@ def _pick_rationale(fields: Dict[str, str]) -> str:
 # Judge specs
 # ----------------------------
 
+
 @dataclass(frozen=True)
 class JudgeDimension:
     name: str
@@ -105,12 +110,15 @@ class JudgeDimension:
 class DimResult:
     score: float
     rationale: str
-    per_model: Dict[str, Dict[str, Any]]  # model_key -> {score, rationale, extras, raw}
+    per_model: Dict[
+        str, Dict[str, Any]
+    ]  # model_key -> {score, rationale, extras, raw}
 
 
 # ----------------------------
 # Agent
 # ----------------------------
+
 
 class PaperBlogJudgeAgent(BaseAgent):
     """
@@ -143,7 +151,9 @@ class PaperBlogJudgeAgent(BaseAgent):
         if isinstance(jm, list) and jm:
             self.judge_models: List[Union[str, Dict[str, Any]]] = jm
         else:
-            self.judge_models = [cfg.get("model") or cfg.get("model_name", "ollama/llama3.1:8b")]
+            self.judge_models = [
+                cfg.get("model") or cfg.get("model_name", "ollama/llama3.1:8b")
+            ]
 
         # --- reading limits
         self.max_blog_chars = int(cfg.get("max_blog_chars", 18000))
@@ -163,11 +173,28 @@ class PaperBlogJudgeAgent(BaseAgent):
         # --- faithfulness gate
         self.gate_dimension = str(cfg.get("gate_dimension", "faithfulness"))
         self.gate_min_score = float(cfg.get("gate_min_score", 70.0))
-        self.gate_mode = str(cfg.get("gate_mode", "disqualify"))  # "disqualify" | "penalize"
-        self.gate_penalty = float(cfg.get("gate_penalty", 40.0))  # used if gate_mode="penalize"
+        self.gate_mode = str(
+            cfg.get("gate_mode", "disqualify")
+        )  # "disqualify" | "penalize"
+        self.gate_penalty = float(
+            cfg.get("gate_penalty", 40.0)
+        )  # used if gate_mode="penalize"
 
         # --- rubric dimensions (editable)
         # You can override by providing cfg["dimensions"] as list of dicts
+
+        self.stack_cfg = cfg.get("judge_stack", {}) or {}
+        self.judge_stack = JudgeStack(
+            cfg=self.stack_cfg,
+            tools={
+                # You can wrap your existing methods here:
+                # "pairrm": self._pairrm_pairwise_tournament,  # async wrapper
+                # "rubric": self._rubric_score_one_candidate,
+                # "factuality": self._factuality_gate_one_candidate,
+            },
+            logger=log,
+        )
+
         dims_cfg = cfg.get("dimensions")
         if isinstance(dims_cfg, list) and dims_cfg:
             dims: List[JudgeDimension] = []
@@ -222,7 +249,13 @@ class PaperBlogJudgeAgent(BaseAgent):
     # Prompt builders (your format)
     # ----------------------------
 
-    def _prompt_kv(self, *, goal_text: str, input_text: str, extra_return_fields: Optional[str] = None) -> str:
+    def _prompt_kv(
+        self,
+        *,
+        goal_text: str,
+        input_text: str,
+        extra_return_fields: Optional[str] = None,
+    ) -> str:
         base = f"""### Goal
 {goal_text}
 
@@ -240,7 +273,9 @@ score: <0–100>""".strip()
             base += "\n" + extra_return_fields.strip()
         return base
 
-    def _prompt_pairwise(self, *, goal_text: str, paper_pack: str, a_text: str, b_text: str) -> str:
+    def _prompt_pairwise(
+        self, *, goal_text: str, paper_pack: str, a_text: str, b_text: str
+    ) -> str:
         return f"""### Goal
 {goal_text}
 
@@ -266,14 +301,20 @@ score: <0–100>""".strip()
     # Core judge execution
     # ----------------------------
 
-    async def _run_one_model(self, prompt_text: str, model: Union[str, Dict[str, Any]]) -> str:
+    async def _run_one_model(
+        self, prompt_text: str, model: Union[str, Dict[str, Any]]
+    ) -> str:
         return await self.prompt.run_prompt(
             prompt_text=prompt_text,
             context=None,
             model=model,
             role=self.role,
             sys_preamble=None,
-            params={"max_tokens": self.max_tokens, "temperature": self.temperature, "top_p": self.top_p},
+            params={
+                "max_tokens": self.max_tokens,
+                "temperature": self.temperature,
+                "top_p": self.top_p,
+            },
         )
 
     async def _run_ensemble(self, prompt_text: str) -> Dict[str, str]:
@@ -290,7 +331,11 @@ score: <0–100>""".strip()
             judge=None,
             role=self.role,
             sys_preamble=None,
-            params={"max_tokens": self.max_tokens, "temperature": self.temperature, "top_p": self.top_p},
+            params={
+                "max_tokens": self.max_tokens,
+                "temperature": self.temperature,
+                "top_p": self.top_p,
+            },
             context=None,
             timeout=None,
             dimension="blog_judge",
@@ -301,8 +346,12 @@ score: <0–100>""".strip()
         outputs = (res or {}).get("outputs") or {}
         return {str(k): (v or "") for k, v in outputs.items()}
 
-    async def _judge_dimension(self, *, dim: JudgeDimension, input_text: str) -> DimResult:
-        prompt_text = self._prompt_kv(goal_text=dim.goal_text, input_text=input_text)
+    async def _judge_dimension(
+        self, *, dim: JudgeDimension, input_text: str
+    ) -> DimResult:
+        prompt_text = self._prompt_kv(
+            goal_text=dim.goal_text, input_text=input_text
+        )
 
         outputs = await self._run_ensemble(prompt_text)
 
@@ -313,8 +362,17 @@ score: <0–100>""".strip()
             fields = _parse_kv_block(raw)
             sc = _parse_score(fields, "score")
             rat = _pick_rationale(fields)
-            extras = {k: v for k, v in fields.items() if k not in {"score", "rationale"}}
-            per_model[mk] = {"score": sc, "rationale": rat, "extras": extras, "raw": raw}
+            extras = {
+                k: v
+                for k, v in fields.items()
+                if k not in {"score", "rationale"}
+            }
+            per_model[mk] = {
+                "score": sc,
+                "rationale": rat,
+                "extras": extras,
+                "raw": raw,
+            }
             scores.append(sc)
 
         agg = float(median(scores)) if scores else 0.0
@@ -327,12 +385,23 @@ score: <0–100>""".strip()
             if dist < best_dist:
                 best_dist = dist
                 best_key = mk
-        rationale = (per_model.get(best_key, {}).get("rationale") or "") if best_key else ""
+        rationale = (
+            (per_model.get(best_key, {}).get("rationale") or "")
+            if best_key
+            else ""
+        )
 
         return DimResult(score=agg, rationale=rationale, per_model=per_model)
 
-    async def _pairwise_compare(self, *, goal_text: str, paper_pack: str, a_text: str, b_text: str) -> Dict[str, Any]:
-        prompt_text = self._prompt_pairwise(goal_text=goal_text, paper_pack=paper_pack, a_text=a_text, b_text=b_text)
+    async def _pairwise_compare(
+        self, *, goal_text: str, paper_pack: str, a_text: str, b_text: str
+    ) -> Dict[str, Any]:
+        prompt_text = self._prompt_pairwise(
+            goal_text=goal_text,
+            paper_pack=paper_pack,
+            a_text=a_text,
+            b_text=b_text,
+        )
         outs = await self._run_ensemble(prompt_text)
 
         votes = {"a": 0, "b": 0, "tie": 0}
@@ -358,12 +427,24 @@ score: <0–100>""".strip()
 
         return {"winner": winner, "votes": votes, "per_model": per_model}
 
-    async def _pairwise_compare_with_order_swap(self, *, goal_text: str, paper_pack: str, a_text: str, b_text: str) -> Dict[str, Any]:
-        r1 = await self._pairwise_compare(goal_text=goal_text, paper_pack=paper_pack, a_text=a_text, b_text=b_text)
+    async def _pairwise_compare_with_order_swap(
+        self, *, goal_text: str, paper_pack: str, a_text: str, b_text: str
+    ) -> Dict[str, Any]:
+        r1 = await self._pairwise_compare(
+            goal_text=goal_text,
+            paper_pack=paper_pack,
+            a_text=a_text,
+            b_text=b_text,
+        )
         if not self.order_swap:
             return {"winner": r1["winner"], "rounds": [r1]}
 
-        r2 = await self._pairwise_compare(goal_text=goal_text, paper_pack=paper_pack, a_text=b_text, b_text=a_text)
+        r2 = await self._pairwise_compare(
+            goal_text=goal_text,
+            paper_pack=paper_pack,
+            a_text=b_text,
+            b_text=a_text,
+        )
 
         # invert r2 winner back into original frame
         inv = r2["winner"]
@@ -382,18 +463,30 @@ score: <0–100>""".strip()
         else:
             final = "tie"
 
-        return {"winner": final, "rounds": [r1, r2], "swap_inverted_winner": w2}
+        return {
+            "winner": final,
+            "rounds": [r1, r2],
+            "swap_inverted_winner": w2,
+        }
 
     # ----------------------------
     # Evidence pack builder
     # ----------------------------
 
     def _build_paper_pack(self, context: Dict[str, Any]) -> str:
-        arxiv_id = context.get("arxiv_id") or context.get("paper_arxiv_id") or ""
+        arxiv_id = (
+            context.get("arxiv_id") or context.get("paper_arxiv_id") or ""
+        )
         title = context.get("paper_title") or context.get("title") or arxiv_id
         summary = context.get("paper_summary") or ""
-        report_path = context.get("paper_pipeline_report_path") or context.get("pipeline_report_path")
-        report_md = _safe_read_text(report_path, self.max_report_chars) if report_path else ""
+        report_path = context.get("paper_pipeline_report_path") or context.get(
+            "pipeline_report_path"
+        )
+        report_md = (
+            _safe_read_text(report_path, self.max_report_chars)
+            if report_path
+            else ""
+        )
         # If you have richer “paper pack” already prepared, you can pass it via context["paper_pack_md"]
         paper_pack_md = context.get("paper_pack_md") or ""
 
@@ -403,12 +496,17 @@ score: <0–100>""".strip()
             f"Summary: {summary}",
         ]
         if paper_pack_md:
-            parts.append("Paper pack (provided):\n" + str(paper_pack_md)[: self.max_report_chars])
+            parts.append(
+                "Paper pack (provided):\n"
+                + str(paper_pack_md)[: self.max_report_chars]
+            )
         if report_md:
             parts.append("Pipeline report (truncated):\n" + report_md)
         return "\n\n".join([p for p in parts if p.strip()])
 
-    def _load_candidate_texts(self, context: Dict[str, Any]) -> List[Dict[str, Any]]:
+    def _load_candidate_texts(
+        self, context: Dict[str, Any]
+    ) -> List[Dict[str, Any]]:
         """
         Candidate formats supported:
           - context["blog_candidates"] = [{"path": "...", "name": "x"}, {"text": "..."}]
@@ -427,13 +525,23 @@ score: <0–100>""".strip()
                 if path and not text:
                     text = _safe_read_text(str(path), self.max_blog_chars)
                 if (text or "").strip():
-                    out.append({"name": name, "path": path, "text": text[: self.max_blog_chars]})
+                    out.append(
+                        {
+                            "name": name,
+                            "path": path,
+                            "text": text[: self.max_blog_chars],
+                        }
+                    )
             if out:
                 return out
 
         # single fallback
         blog_path = context.get("paper_blog_path") or context.get("blog_path")
-        blog_md = _safe_read_text(blog_path, self.max_blog_chars) if blog_path else (context.get("paper_blog_markdown") or "")
+        blog_md = (
+            _safe_read_text(blog_path, self.max_blog_chars)
+            if blog_path
+            else (context.get("paper_blog_markdown") or "")
+        )
         blog_md = (blog_md or "")[: self.max_blog_chars]
         if (blog_md or "").strip():
             out.append({"name": "single", "path": blog_path, "text": blog_md})
@@ -526,12 +634,14 @@ BLOG CANDIDATE:
                     "per_model": r.per_model,
                     "weight": d.weight,
                 }
-                weighted_total += (max(0.0, d.weight) * r.score)
+                weighted_total += max(0.0, d.weight) * r.score
 
             weighted_total = weighted_total / wsum
 
             # Gate (faithfulness by default)
-            gate_score = float(dim_out.get(self.gate_dimension, {}).get("score", 0.0))
+            gate_score = float(
+                dim_out.get(self.gate_dimension, {}).get("score", 0.0)
+            )
             failed_gate = gate_score < self.gate_min_score
 
             if failed_gate and self.gate_mode == "disqualify":
@@ -564,7 +674,10 @@ BLOG CANDIDATE:
         if best_idx is None:
             scored = [c for c in cand_results if c.get("scored")]
             if scored:
-                scored.sort(key=lambda x: float(x.get("weighted_total", 0.0)), reverse=True)
+                scored.sort(
+                    key=lambda x: float(x.get("weighted_total", 0.0)),
+                    reverse=True,
+                )
                 best_idx = int(scored[0]["idx"])
                 best_final = float(scored[0].get("weighted_total", 0.0))
             else:
@@ -590,11 +703,20 @@ BLOG CANDIDATE:
         context["paper_blog_judge"] = result
         context["ai_blog_score"] = float(best_final)
         # pick a readable rationale: faithfulness rationale if available, else first dimension rationale
-        best_cand = next((c for c in cand_results if c.get("idx") == best_idx and c.get("scored")), None)
+        best_cand = next(
+            (
+                c
+                for c in cand_results
+                if c.get("idx") == best_idx and c.get("scored")
+            ),
+            None,
+        )
         rationale = ""
         if isinstance(best_cand, dict):
             dims = best_cand.get("dimensions") or {}
-            rationale = (dims.get(self.gate_dimension, {}) or {}).get("rationale") or ""
+            rationale = (dims.get(self.gate_dimension, {}) or {}).get(
+                "rationale"
+            ) or ""
             if not rationale and dims:
                 first = next(iter(dims.values()))
                 rationale = (first or {}).get("rationale") or ""

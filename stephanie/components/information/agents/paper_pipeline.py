@@ -21,7 +21,7 @@ from stephanie.components.information.tasks.section_build_task import (
 from stephanie.components.information.tasks.section_link_task import \
     SectionLinkTask
 from stephanie.constants import PIPELINE_RUN_ID
-from stephanie.memory.paper_store import PaperStore, sha256_bytes
+from stephanie.memory.paper_store import PaperStore
 from stephanie.models.paper import PaperORM
 from stephanie.scoring.scorable import Scorable, ScorableType
 from stephanie.tools.huggingface_tool import recommend_similar_papers
@@ -453,7 +453,6 @@ class PaperPipelineAgent(BaseAgent):
             self.paper_store.upsert_paper( 
                 paper_id=arxiv_id,
                 fields=fields,
-                url=url,
             )
 
 
