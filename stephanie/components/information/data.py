@@ -1,3 +1,4 @@
+# stephanie/components/information/data.py
 """
 Core Data Structures for the Information Pipeline.
 
@@ -16,6 +17,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional, Tuple
@@ -590,3 +592,65 @@ def attach_elements_to_sections(sections, elements):
 
     return spines
 
+
+def _norm(s: str) -> str:
+    s = s or ""
+    s = s.replace("\u00ad", "")  # soft hyphen
+    s = re.sub(r"\s+", " ", s)
+    return s.strip().lower()
+
+def assign_page_ranges_to_semantic_sections(
+    sections: List[PaperSection],
+    page_texts: Dict[int, str],
+    *,
+    anchor_chars: int = 120,
+) -> None:
+    """
+    Mutates sections in-place, adding meta.start_page/end_page and pages[].
+    Uses a naive anchor search: first N chars of section.text must appear in a page.
+    """
+    # pre-normalize pages
+    pages = sorted(page_texts.keys())
+    norm_pages = {p: _norm(page_texts[p]) for p in pages}
+
+    # find start page for each section
+    starts: List[Optional[int]] = []
+    for sec in sections:
+        text = getattr(sec, "text", "") or ""
+        anchor = _norm(text[:anchor_chars])
+        if not anchor:
+            starts.append(None)
+            continue
+
+        found = None
+        for p in pages:
+            if anchor in norm_pages[p]:
+                found = p
+                break
+        starts.append(found)
+
+    # infer end pages using next known start
+    for i, sec in enumerate(sections):
+        sp = starts[i]
+        if sp is None:
+            continue
+
+        # find next section start after this one
+        next_sp = None
+        for j in range(i + 1, len(sections)):
+            if starts[j] is not None:
+                next_sp = starts[j]
+                break
+
+        ep = (next_sp - 1) if next_sp is not None else max(pages)
+
+        meta = getattr(sec, "meta", None) or {}
+        meta["start_page"] = int(sp)
+        meta["end_page"] = int(max(sp, ep))
+        sec.meta = meta
+
+        # also add attribute 'pages' if your PaperSection doesn’t have it in the ctor
+        try:
+            sec.pages = list(range(int(sp), int(max(sp, ep)) + 1))
+        except Exception:
+            pass

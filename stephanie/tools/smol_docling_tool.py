@@ -138,245 +138,244 @@ class SmolDoclingTool(BaseTool):
             sec_idx += 1
         return sections
 
+    @staticmethod
+    def build_semantic_sections(
+        *,
+        arxiv_id: str,
+        paper_role: str,
+        pages: List[Dict[str, Any]],  # [{"page_num": 1, "doctags": "...", ...}, ...]
+        run_id: Optional[str] = None,
+        heading_tags: Optional[List[str]] = None,
+        text_tags: Optional[List[str]] = None,
+        min_heading_chars: int = 3,
+        merge_small_sections_to_prev_if_under_chars: int = 200,
+        fallback_to_page_sections: bool = True,
+    ) -> List[PaperSection]:
+        """
+        Build semantic-ish sections from Docling doctags.
 
-def build_semantic_sections(
-    self,
-    *,
-    arxiv_id: str,
-    paper_role: str,
-    pages: List[Dict[str, Any]],  # [{"page_num": 1, "doctags": "...", ...}, ...]
-    run_id: Optional[str] = None,
-    heading_tags: Optional[List[str]] = None,
-    text_tags: Optional[List[str]] = None,
-    min_heading_chars: int = 3,
-    merge_small_sections_to_prev_if_under_chars: int = 200,
-    fallback_to_page_sections: bool = True,
-) -> List[PaperSection]:
-    """
-    Build semantic-ish sections from Docling doctags.
+        Output: List[PaperSection] where each section has start_page/end_page,
+        and (usually) text aggregated from doctags.
 
-    Output: List[PaperSection] where each section has start_page/end_page,
-    and (usually) text aggregated from doctags.
+        v1 heuristic:
+        - parse doctags in-order for heading tags and text tags
+        - start a new section when heading tag encountered
+        - accumulate text blocks under current section
+        - fallback: one section per page (if no headings found)
+        """
+        from stephanie.components.information.data import PaperSection  # local import to avoid cycles
 
-    v1 heuristic:
-      - parse doctags in-order for heading tags and text tags
-      - start a new section when heading tag encountered
-      - accumulate text blocks under current section
-      - fallback: one section per page (if no headings found)
-    """
-    from stephanie.components.information.data import PaperSection  # local import to avoid cycles
+        heading_tags = heading_tags or ["section_header", "heading", "title"]
+        text_tags = text_tags or ["text", "paragraph", "p"]
 
-    heading_tags = heading_tags or ["section_header", "heading", "title"]
-    text_tags = text_tags or ["text", "paragraph", "p"]
-
-    # compile regex once (order-preserving)
-    tag_union = "|".join(re.escape(t) for t in (heading_tags + text_tags + ["caption"]))
-    block_re = re.compile(
-        rf"<(?P<tag>{tag_union})\b[^>]*>(?P<content>.*?)</(?P=tag)>",
-        flags=re.IGNORECASE | re.DOTALL,
-    )
-
-    def _clean(s: str) -> str:
-        s = html.unescape(s or "")
-        # collapse whitespace
-        s = re.sub(r"[ \t]+\n", "\n", s)
-        s = re.sub(r"\n{3,}", "\n\n", s)
-        s = re.sub(r"[ \t]{2,}", " ", s)
-        return s.strip()
-
-    def _strip_tags(s: str) -> str:
-        s = html.unescape(s or "")
-        s = re.sub(r"<[^>]+>", " ", s)
-        s = re.sub(r"[ \t]{2,}", " ", s)
-        s = re.sub(r"\n{3,}", "\n\n", s)
-        return s.strip()
-
-    def _new_section(**kwargs) -> "PaperSection":
-        # Create PaperSection using signature introspection (like your PaperPipeline does)
-        sig = signature(PaperSection)
-        param_names = [
-            p.name
-            for p in sig.parameters.values()
-            if p.kind in (Parameter.POSITIONAL_OR_KEYWORD, Parameter.KEYWORD_ONLY)
-        ]
-        ctor_kwargs = {k: v for k, v in kwargs.items() if k in param_names and v is not None}
-        sec = PaperSection(**ctor_kwargs)
-
-        # best-effort attribute patching (for fields not in ctor)
-        for k, v in kwargs.items():
-            if v is None:
-                continue
-            if not hasattr(sec, k):
-                continue
-            try:
-                setattr(sec, k, v)
-            except Exception:
-                pass
-        return sec
-
-    # ---- build sections -------------------------------------------------
-    built: List["PaperSection"] = []
-    cur_title: Optional[str] = None
-    cur_text_parts: List[str] = []
-    cur_start_page: Optional[int] = None
-    cur_end_page: Optional[int] = None
-
-    def _flush():
-        nonlocal cur_title, cur_text_parts, cur_start_page, cur_end_page
-        if cur_start_page is None or cur_end_page is None:
-            return
-        text = _clean("\n\n".join(cur_text_parts))
-        title = (cur_title or "").strip() or f"Pages {cur_start_page}-{cur_end_page}"
-
-        idx = len(built)
-        sec_id = f"{arxiv_id}::docling::{run_id or 'run'}::sec-{idx:03d}"
-
-        meta = {
-            "source": "smol_docling",
-            "kind": "semantic_section_v1",
-            "start_page": cur_start_page,
-            "end_page": cur_end_page,
-            "run_id": run_id,
-        }
-
-        sec = _new_section(
-            id=sec_id,
-            paper_arxiv_id=arxiv_id,
-            paper_role=paper_role,
-            section_index=idx,
-            title=title,
-            text=text,
-            meta=meta,
-            start_page=cur_start_page,
-            end_page=cur_end_page,
-            pages=list(range(cur_start_page, cur_end_page + 1)),
+        # compile regex once (order-preserving)
+        tag_union = "|".join(re.escape(t) for t in (heading_tags + text_tags + ["caption"]))
+        block_re = re.compile(
+            rf"<(?P<tag>{tag_union})\b[^>]*>(?P<content>.*?)</(?P=tag)>",
+            flags=re.IGNORECASE | re.DOTALL,
         )
-        built.append(sec)
 
-        cur_title = None
-        cur_text_parts = []
-        cur_start_page = None
-        cur_end_page = None
+        def _clean(s: str) -> str:
+            s = html.unescape(s or "")
+            # collapse whitespace
+            s = re.sub(r"[ \t]+\n", "\n", s)
+            s = re.sub(r"\n{3,}", "\n\n", s)
+            s = re.sub(r"[ \t]{2,}", " ", s)
+            return s.strip()
 
-    saw_any_heading = False
+        def _strip_tags(s: str) -> str:
+            s = html.unescape(s or "")
+            s = re.sub(r"<[^>]+>", " ", s)
+            s = re.sub(r"[ \t]{2,}", " ", s)
+            s = re.sub(r"\n{3,}", "\n\n", s)
+            return s.strip()
 
-    for p in pages:
-        page_num = int(p.get("page_num") or 0)
-        doctags = p.get("doctags") or ""
-        if page_num <= 0:
-            continue
+        def _new_section(**kwargs) -> "PaperSection":
+            # Create PaperSection using signature introspection (like your PaperPipeline does)
+            sig = signature(PaperSection)
+            param_names = [
+                p.name
+                for p in sig.parameters.values()
+                if p.kind in (Parameter.POSITIONAL_OR_KEYWORD, Parameter.KEYWORD_ONLY)
+            ]
+            ctor_kwargs = {k: v for k, v in kwargs.items() if k in param_names and v is not None}
+            sec = PaperSection(**ctor_kwargs)
 
-        blocks = list(block_re.finditer(doctags))
-        if not blocks:
-            # no structured tags found — fallback to plain text for this page
-            page_text = _strip_tags(doctags)
-            if page_text:
-                if cur_start_page is None:
-                    cur_start_page = page_num
-                cur_end_page = page_num
-                cur_text_parts.append(page_text)
-            continue
+            # best-effort attribute patching (for fields not in ctor)
+            for k, v in kwargs.items():
+                if v is None:
+                    continue
+                if not hasattr(sec, k):
+                    continue
+                try:
+                    setattr(sec, k, v)
+                except Exception:
+                    pass
+            return sec
 
-        for m in blocks:
-            tag = (m.group("tag") or "").lower()
-            content = _clean(m.group("content") or "")
-            if not content:
-                continue
+        # ---- build sections -------------------------------------------------
+        built: List["PaperSection"] = []
+        cur_title: Optional[str] = None
+        cur_text_parts: List[str] = []
+        cur_start_page: Optional[int] = None
+        cur_end_page: Optional[int] = None
 
-            if tag in (t.lower() for t in heading_tags):
-                # Start new section on heading
-                if len(content) >= min_heading_chars:
-                    saw_any_heading = True
-                    # close current section before starting another
-                    if cur_start_page is not None:
-                        _flush()
-                    cur_title = content
-                    cur_start_page = page_num
-                    cur_end_page = page_num
-                continue
+        def _flush():
+            nonlocal cur_title, cur_text_parts, cur_start_page, cur_end_page
+            if cur_start_page is None or cur_end_page is None:
+                return
+            text = _clean("\n\n".join(cur_text_parts))
+            title = (cur_title or "").strip() or f"Pages {cur_start_page}-{cur_end_page}"
 
-            if tag in (t.lower() for t in text_tags):
-                if cur_start_page is None:
-                    cur_start_page = page_num
-                cur_end_page = page_num
-                cur_text_parts.append(content)
+            idx = len(built)
+            sec_id = f"{arxiv_id}::docling::{run_id or 'run'}::sec-{idx:03d}"
 
-            # captions are optional; include if you want
-            # elif tag == "caption": ...
+            meta = {
+                "source": "smol_docling",
+                "kind": "semantic_section_v1",
+                "start_page": cur_start_page,
+                "end_page": cur_end_page,
+                "run_id": run_id,
+            }
 
-        # keep page range correct even if the page had only headings
-        if cur_start_page is not None:
-            cur_end_page = page_num
+            sec = _new_section(
+                id=sec_id,
+                paper_arxiv_id=arxiv_id,
+                paper_role=paper_role,
+                section_index=idx,
+                title=title,
+                text=text,
+                meta=meta,
+                start_page=cur_start_page,
+                end_page=cur_end_page,
+                pages=list(range(cur_start_page, cur_end_page + 1)),
+            )
+            built.append(sec)
 
-    # flush last
-    if cur_start_page is not None:
-        _flush()
+            cur_title = None
+            cur_text_parts = []
+            cur_start_page = None
+            cur_end_page = None
 
-    # ---- fallback: no headings -> per-page sections ---------------------
-    if fallback_to_page_sections and (not built or not saw_any_heading):
-        built = []
+        saw_any_heading = False
+
         for p in pages:
             page_num = int(p.get("page_num") or 0)
             doctags = p.get("doctags") or ""
             if page_num <= 0:
                 continue
-            text = _strip_tags(doctags)
 
-            idx = len(built)
-            sec_id = f"{arxiv_id}::docling::{run_id or 'run'}::page-{page_num:03d}"
-            meta = {
-                "source": "smol_docling",
-                "kind": "page_section_fallback",
-                "start_page": page_num,
-                "end_page": page_num,
-                "run_id": run_id,
-            }
+            blocks = list(block_re.finditer(doctags))
+            if not blocks:
+                # no structured tags found — fallback to plain text for this page
+                page_text = _strip_tags(doctags)
+                if page_text:
+                    if cur_start_page is None:
+                        cur_start_page = page_num
+                    cur_end_page = page_num
+                    cur_text_parts.append(page_text)
+                continue
 
-            built.append(
-                _new_section(
-                    id=sec_id,
-                    paper_arxiv_id=arxiv_id,
-                    paper_role=paper_role,
-                    section_index=idx,
-                    title=f"Page {page_num}",
-                    text=text,
-                    meta=meta,
-                    start_page=page_num,
-                    end_page=page_num,
-                    pages=[page_num],
+            for m in blocks:
+                tag = (m.group("tag") or "").lower()
+                content = _clean(m.group("content") or "")
+                if not content:
+                    continue
+
+                if tag in (t.lower() for t in heading_tags):
+                    # Start new section on heading
+                    if len(content) >= min_heading_chars:
+                        saw_any_heading = True
+                        # close current section before starting another
+                        if cur_start_page is not None:
+                            _flush()
+                        cur_title = content
+                        cur_start_page = page_num
+                        cur_end_page = page_num
+                    continue
+
+                if tag in (t.lower() for t in text_tags):
+                    if cur_start_page is None:
+                        cur_start_page = page_num
+                    cur_end_page = page_num
+                    cur_text_parts.append(content)
+
+                # captions are optional; include if you want
+                # elif tag == "caption": ...
+
+            # keep page range correct even if the page had only headings
+            if cur_start_page is not None:
+                cur_end_page = page_num
+
+        # flush last
+        if cur_start_page is not None:
+            _flush()
+
+        # ---- fallback: no headings -> per-page sections ---------------------
+        if fallback_to_page_sections and (not built or not saw_any_heading):
+            built = []
+            for p in pages:
+                page_num = int(p.get("page_num") or 0)
+                doctags = p.get("doctags") or ""
+                if page_num <= 0:
+                    continue
+                text = _strip_tags(doctags)
+
+                idx = len(built)
+                sec_id = f"{arxiv_id}::docling::{run_id or 'run'}::page-{page_num:03d}"
+                meta = {
+                    "source": "smol_docling",
+                    "kind": "page_section_fallback",
+                    "start_page": page_num,
+                    "end_page": page_num,
+                    "run_id": run_id,
+                }
+
+                built.append(
+                    _new_section(
+                        id=sec_id,
+                        paper_arxiv_id=arxiv_id,
+                        paper_role=paper_role,
+                        section_index=idx,
+                        title=f"Page {page_num}",
+                        text=text,
+                        meta=meta,
+                        start_page=page_num,
+                        end_page=page_num,
+                        pages=[page_num],
+                    )
                 )
-            )
 
-    # ---- merge tiny sections into previous (optional) -------------------
-    if merge_small_sections_to_prev_if_under_chars and built:
-        merged: List[PaperSection] = []
-        for sec in built:
-            t = (getattr(sec, "text", None) or "").strip()
-            if merged and len(t) < merge_small_sections_to_prev_if_under_chars:
-                prev = merged[-1]
-                prev_text = (getattr(prev, "text", None) or "").rstrip()
-                join = "\n\n" if prev_text and t else ""
-                try:
-                    setattr(prev, "text", f"{prev_text}{join}{t}".strip())
-                except Exception:
-                    pass
-                # extend end_page if possible
-                try:
-                    prev_end = getattr(prev, "end_page", None)
-                    sec_end = getattr(sec, "end_page", None)
-                    if prev_end is not None and sec_end is not None:
-                        setattr(prev, "end_page", max(int(prev_end), int(sec_end)))
-                except Exception:
-                    pass
-            else:
-                merged.append(sec)
-        built = merged
+        # ---- merge tiny sections into previous (optional) -------------------
+        if merge_small_sections_to_prev_if_under_chars and built:
+            merged: List[PaperSection] = []
+            for sec in built:
+                t = (getattr(sec, "text", None) or "").strip()
+                if merged and len(t) < merge_small_sections_to_prev_if_under_chars:
+                    prev = merged[-1]
+                    prev_text = (getattr(prev, "text", None) or "").rstrip()
+                    join = "\n\n" if prev_text and t else ""
+                    try:
+                        setattr(prev, "text", f"{prev_text}{join}{t}".strip())
+                    except Exception:
+                        pass
+                    # extend end_page if possible
+                    try:
+                        prev_end = getattr(prev, "end_page", None)
+                        sec_end = getattr(sec, "end_page", None)
+                        if prev_end is not None and sec_end is not None:
+                            setattr(prev, "end_page", max(int(prev_end), int(sec_end)))
+                    except Exception:
+                        pass
+                else:
+                    merged.append(sec)
+            built = merged
 
-    # reindex section_index
-    for i, sec in enumerate(built):
-        try:
-            setattr(sec, "section_index", i)
-        except Exception:
-            pass
+        # reindex section_index
+        for i, sec in enumerate(built):
+            try:
+                setattr(sec, "section_index", i)
+            except Exception:
+                pass
 
-    return built
+        return built

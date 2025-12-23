@@ -302,18 +302,6 @@ class PaperPipelineAgent(BaseAgent):
 
         matches, clusters = link_task.run(sections)
 
-        # ------------------------------------------------------------------
-        # 3) Link sections (root vs others) + concept clusters
-        # ------------------------------------------------------------------
-
-        link_task = SectionLinkTask(
-            root_arxiv_id=arxiv_id,
-            top_k=int(self.cfg.get("section_top_k", 5)),
-            min_sim=float(self.cfg.get("section_min_sim", 0.4)),
-        )
-
-        matches, clusters = link_task.run(sections)
-
         await self._dispatch_feature_jobs(sections, context)
 
         # ------------------------------------------------------------------
@@ -321,7 +309,7 @@ class PaperPipelineAgent(BaseAgent):
         # ------------------------------------------------------------------
 
         context["paper_graph"] = graph
-        context["paper_sections_old"] = sections
+        context["paper_sections"] = sections
         context["section_matches"] = matches
         context["concept_clusters"] = clusters
 
