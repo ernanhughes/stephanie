@@ -15,6 +15,7 @@ from stephanie.services.knowledge_graph.subgraphs.seed_finder import EmbeddingSe
 from stephanie.services.knowledge_graph.subgraphs.subgraph_builder import SubgraphBuilder, SubgraphConfig
 from stephanie.services.knowledge_graph.graph_indexer import GraphIndexer
 from stephanie.services.knowledge_graph.entity_canonicalizer import EntityCanonicalizer
+from stephanie.tools.ner_tool import NerTool
 
 
 log = logging.getLogger(__name__)
@@ -49,6 +50,7 @@ class KnowledgeGraphService(Service):
         self._subgraph_builder = None
         self._graph_indexer = None
         self._canonicalizer = EntityCanonicalizer()
+        self._entity_tool = NerTool(self.cfg, self.memory, self.container, self.logger)
 
         # Paths
         kg_cfg = cfg.get("knowledge_graph", {})
@@ -134,7 +136,7 @@ class KnowledgeGraphService(Service):
             self._stats["node_types"][node_type] = int(self._stats["node_types"].get(node_type, 0)) + 1
             return True
         except Exception as e:
-            self.logger.warning("KG: failed to upsert node %s: %s", node_id, e)
+            log.warning("KG: failed to upsert node %s: %s", node_id, e)
             return False
 
     def upsert_edge(
@@ -170,7 +172,7 @@ class KnowledgeGraphService(Service):
             self._stats["edge_types"][edge_type] = int(self._stats["edge_types"].get(edge_type, 0)) + 1
             return True
         except Exception as e:
-            self.logger.warning("KG: failed to upsert edge %s→%s: %s", source_id, target_id, e)
+            log.warning("KG: failed to upsert edge %s→%s: %s", source_id, target_id, e)
             return False
 
     def search_entities(self, query: str, k: int = 10) -> List[Tuple[str, float, Dict]]:
@@ -180,12 +182,12 @@ class KnowledgeGraphService(Service):
             results = self.embedding_store.search(query, k=k)
             return [(r["node_id"], r["score"], r) for r in results]
         except Exception as e:
-            self.logger.warning("KG: search_entities failed: %s", e)
+            log.warning("KG: search_entities failed: %s", e)
             return []
 
     def detect_entities(self, text: str) -> List[Dict]:
         # Fallback: empty (requires external NER)
-        return []
+        return self._entity_tool.detect(text)
 
     def build_query_subgraph(self, *, query: str, cfg: SubgraphConfig | None = None) -> dict:
         cfg = cfg or SubgraphConfig()
@@ -263,14 +265,4 @@ class KnowledgeGraphService(Service):
         }
 
     async def shutdown(self) -> None:
-        if not self._initialized:
-            return
-        try:
-            if self.nexus_store:
-                await self.nexus_store.shutdown()
-            if self.embedding_store:
-                await self.embedding_store.shutdown()
-        except Exception as e:
-            self.logger.error("KG shutdown error: %s", e)
-        self._initialized = False
         log.info("KnowledgeGraphService shutdown complete")

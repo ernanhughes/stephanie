@@ -17,7 +17,7 @@ class GraphIndexer:
     def _normalize_text(self, t: str) -> str:
         return (t or "").replace("\u200b", "").strip()
 
-    def _locate_sentence_ix(self, sent_spans, start, end) -> int:
+    def _locate_sentence_ix(self, sent_spans, start: int, end: int) -> int:
         for i, (s, e) in enumerate(sent_spans):
             if not (end <= s or start >= e):
                 return i
@@ -48,6 +48,9 @@ class GraphIndexer:
         # 3) fallback
         return payload_text
 
+    def _mention_id(self, scorable_id: str, ent: Dict[str, Any]) -> str:
+        return f"{scorable_id}:{ent['type']}:{ent['start']}-{ent['end']}"
+
     def _repair_entities(
         self,
         *,
@@ -56,8 +59,11 @@ class GraphIndexer:
         sent_spans,
         doc_hash: str,
     ) -> List[Dict[str, Any]]:
-        fixed = []
+        fixed: List[Dict[str, Any]] = []
         for ent in (entities or []):
+            etype = (ent.get("type") or "UNKNOWN").strip() or "UNKNOWN"
+            surface = ent.get("text")
+
             try:
                 start = int(ent.get("start", -1))
                 end = int(ent.get("end", -1))
@@ -73,8 +79,9 @@ class GraphIndexer:
                     pos = text.find(surface)
                     if pos >= 0:
                         start, end = pos, pos + len(surface)
+                    else:
+                        continue
                 else:
-                    # drop unrecoverable entity
                     continue
 
             derived = safe_slice(text, start, end)
@@ -82,6 +89,7 @@ class GraphIndexer:
                 surface = derived
 
             sentence_ix = self._locate_sentence_ix(sent_spans, start, end)
+
             if 0 <= sentence_ix < len(sent_spans):
                 s0, s1 = sent_spans[sentence_ix]
                 context = text[s0:s1]
@@ -101,6 +109,42 @@ class GraphIndexer:
                 }
             )
         return fixed
+
+    def _cooccur_edges(
+        self,
+        *,
+        scorable_id: str,
+        scorable_type: str,
+        doc_hash: str,
+        fixed_entities: List[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        by_sent: Dict[int, List[Dict[str, Any]]] = {}
+        for e in fixed_entities:
+            by_sent.setdefault(int(e.get("sentence_ix", -1)), []).append(e)
+
+        rels: List[Dict[str, Any]] = []
+        for s_ix, ents in by_sent.items():
+            if s_ix < 0 or len(ents) < 2:
+                continue
+            for i in range(len(ents)):
+                for j in range(i + 1, len(ents)):
+                    a, b = ents[i], ents[j]
+                    rels.append(
+                        {
+                            "source": self._mention_id(scorable_id, a),
+                            "target": self._mention_id(scorable_id, b),
+                            "type": "CO_OCCURS_IN_SENTENCE",
+                            "confidence": 1.0,
+                            "doc_hash": doc_hash,
+                            "sentence_ix": s_ix,
+                            "scorable_id": scorable_id,
+                            "scorable_type": scorable_type,
+                            "evidence_type": "sentence_cooccurrence",
+                        }
+                    )
+        return rels
+
+
 
     def _build_relationships(
         self,
@@ -167,7 +211,7 @@ class GraphIndexer:
 
     async def handle_index_request(self, payload: Dict[str, Any]) -> None:
         scorable_id = payload["scorable_id"]
-        scorable_type = payload["scorable_type"]
+        scorable_type = payload.get("scorable_type", "unknown")
         entities = payload.get("entities") or []
         domains = payload.get("domains") or []
 
@@ -182,36 +226,39 @@ class GraphIndexer:
 
         fixed_entities = self._repair_entities(entities=entities, text=text, sent_spans=sent_spans, doc_hash=doc_hash)
 
-        # nodes + canonical
+        # upsert mention + canonical + MENTIONS edge
         for ent in fixed_entities:
             mention_id = self._mention_id(scorable_id, ent)
 
-            # mention node (delegate to service)
-            self.kg._add_entity_node(
+            # mention node
+            self.kg.upsert_node(
                 node_id=mention_id,
-                entity=ent,
-                domains=domains,
-                scorable_id=scorable_id,
-                scorable_type=scorable_type,
-                meta={
-                    "surface": ent["text"],
-                    "sentence_ix": ent["sentence_ix"],
-                    "context": ent["context"],
+                properties={
+                    "type": "entity_mention",
+                    "text": ent["text"],
+                    "entity_type": ent.get("type", "UNKNOWN"),
+                    "scorable_id": scorable_id,
+                    "scorable_type": scorable_type,
                     "doc_hash": doc_hash,
+                    "sentence_ix": ent.get("sentence_ix"),
+                    "context": ent.get("context"),
+                    "start": ent.get("start"),
+                    "end": ent.get("end"),
+                    "domains": [d.get("domain") for d in domains if isinstance(d, dict)],
                 },
             )
 
-            # canonical linkage (prefer extracted canonicalizer if you wire it later)
-            canon_id = self.kg._canonical_entity_id(ent)  # keep as-is for now
+            canon_id = self.kg._canonical_entity_id(ent)
             self.kg.upsert_node(
                 node_id=canon_id,
                 properties={
                     "type": "canonical_entity",
                     "text": ent["text"],
-                    "normalized_surface": self.kg._normalize_entity_surface(ent["text"]),
+                    "entity_type": ent.get("type", "UNKNOWN"),
                     "domains": [d.get("domain") for d in domains if isinstance(d, dict)],
                 },
             )
+
             self.kg.upsert_edge(
                 source_id=mention_id,
                 target_id=canon_id,
@@ -219,29 +266,25 @@ class GraphIndexer:
                 properties={
                     "confidence": 0.95,
                     "doc_hash": doc_hash,
-                    "sentence_ix": ent["sentence_ix"],
+                    "sentence_ix": ent.get("sentence_ix"),
                     "scorable_id": scorable_id,
                     "scorable_type": scorable_type,
                     "evidence_type": "entity_mention_link",
                 },
             )
 
-        relationships = self._build_relationships(
-            fixed_entities=fixed_entities,
-            domains=domains,
+        # co-occurrence edges
+        for rel in self._cooccur_edges(
             scorable_id=scorable_id,
             scorable_type=scorable_type,
             doc_hash=doc_hash,
-        )
-
-        for rel in relationships:
-            # IMPORTANT: call the service edge writer; keep one contract
-            self.kg._add_relationship(
+            fixed_entities=fixed_entities,
+        ):
+            self.kg.upsert_edge(
                 source_id=rel["source"],
                 target_id=rel["target"],
                 rel_type=rel["type"],
-                confidence=float(rel["confidence"]),
-                properties=rel.get("properties") or {},
+                properties={k: v for k, v in rel.items() if k not in ("source", "target", "type")},
             )
 
         await self.kg.publish(
@@ -249,7 +292,7 @@ class GraphIndexer:
             {
                 "scorable_id": scorable_id,
                 "node_count": len(fixed_entities),
-                "relationship_count": len(relationships),
+                "relationship_count": max(0, len(fixed_entities) - 1),
                 "doc_hash": doc_hash,
             },
         )
