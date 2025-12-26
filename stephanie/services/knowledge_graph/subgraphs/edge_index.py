@@ -1,10 +1,10 @@
-# stephanie/services/subgraphs/edge_index.py
+# stephanie/services/knowledge_graph/subgraphs/edge_index.py
 from __future__ import annotations
 
 import json
 from collections import defaultdict
 from pathlib import Path
-from typing import Any, DefaultDict, Dict, Iterable, List, Optional
+from typing import Any, DefaultDict, Dict, Iterable, List
 
 
 def _rel_get(rel: Dict[str, Any], *keys: str, default=None) -> Any:
@@ -86,3 +86,10 @@ class JSONLEdgeIndex:
     def edge_count(self) -> int:
         self.ensure_loaded()
         return self._edge_count
+
+    def invalidate(self) -> None:
+        """Force a reload on next query (call after appending edges)."""
+        self._loaded = False
+        self._by_src.clear()
+        self._by_dst.clear()
+        self._edge_count = 0

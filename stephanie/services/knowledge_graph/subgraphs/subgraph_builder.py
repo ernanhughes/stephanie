@@ -1,4 +1,4 @@
-# stephanie/services/subgraphs/subgraph_builder.py
+# stephanie/services/knowledge_graph/subgraphs/subgraph_builder.py
 from __future__ import annotations
 
 from collections import Counter
@@ -6,8 +6,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Set, Tuple
 
-from stephanie.services.subgraphs.edge_index import JSONLEdgeIndex, _rel_get
-from stephanie.services.subgraphs.seed_finder import EmbeddingSeedFinder
+from stephanie.services.knowledge_graph.subgraphs.edge_index import JSONLEdgeIndex, _rel_get
+from stephanie.services.knowledge_graph.subgraphs.seed_finder import EmbeddingSeedFinder
 
 
 @dataclass(frozen=True)

@@ -1,4 +1,4 @@
-# stephanie/services/subgraphs/seed_finder.py
+# stephanie/services/knowledge_graph/subgraphs/seed_finder.py
 from __future__ import annotations
 
 from typing import Any, Callable, Dict, List, Tuple
