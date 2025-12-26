@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy import insert
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
-from stephanie.models.paper import (PaperORM, PaperReferenceORM,
+from stephanie.models.paper import (PaperORM, PaperReferenceGraphSnapshotORM, PaperReferenceORM,
                                     PaperRunComparisonORM, PaperRunEventORM,
                                     PaperRunFeatureORM, PaperRunORM,
                                     PaperSectionORM, PaperSimilarORM)
@@ -587,3 +587,31 @@ class PaperSimilarStore(BaseSQLAlchemyStore):
                 .all()
             )
         return self._run(op)
+
+class PaperReferenceGraphSnapshotStore(BaseSQLAlchemyStore):
+    orm_model = PaperReferenceGraphSnapshotORM
+    id_attr = "id"
+    default_order_by = PaperReferenceGraphSnapshotORM.created_at
+
+    def save_snapshot(
+        self,
+        *,
+        run_id: str,
+        root_arxiv_id: str,
+        graph: Dict[str, Any],
+        stats: Optional[Dict[str, Any]] = None,
+        meta: Optional[Dict[str, Any]] = None,
+        graph_hash: Optional[str] = None,
+    ) -> PaperReferenceGraphSnapshotORM:
+        obj = PaperReferenceGraphSnapshotORM(
+            run_id=run_id,
+            root_arxiv_id=root_arxiv_id,
+            graph=graph,
+            stats=stats or {},
+            meta=meta or {},
+            graph_hash=graph_hash,
+        )
+        return self.save(obj)
+
+    def latest_for_root(self, *, root_arxiv_id: str) -> Optional[PaperReferenceGraphSnapshotORM]:
+        return self.get_one(root_arxiv_id=root_arxiv_id)

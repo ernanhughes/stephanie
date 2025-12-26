@@ -17,7 +17,7 @@ from stephanie.data.plan_trace import ExecutionStep, PlanTrace
 from stephanie.models.plan_trace import PlanTraceORM, StepRunORM
 from stephanie.scoring.scorable import ScorableFactory
 from stephanie.services.service_protocol import Service
-from stephanie.utils.serialization import default_serializer
+from stephanie.utils.file_utils import default_serializer
 
 
 class PlanTraceService(Service):

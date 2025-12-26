@@ -21,6 +21,10 @@ from stephanie.services.service_protocol import Service
 from stephanie.tools.scorable_classifier import ScorableClassifier
 from stephanie.utils.hash_utils import hash_text
 from stephanie.utils.text_utils import safe_slice, sentences
+from stephanie.services.subgraphs.edge_index import JSONLEdgeIndex
+from stephanie.services.subgraphs.seed_finder import EmbeddingSeedFinder
+from stephanie.services.subgraphs.subgraph_builder import SubgraphBuilder, SubgraphConfig
+
 
 log = logging.getLogger(__name__)
 
@@ -61,6 +65,10 @@ class KnowledgeGraphService(Service):
         self._entity_detector = None
         self._retriever = None
         self._classifier = None
+
+        self._edge_index = None
+        self._seed_finder = None
+        self._subgraph_builder = None
 
         # Paths for persistence
         self._rel_path = self.cfg.get(
@@ -128,10 +136,41 @@ class KnowledgeGraphService(Service):
         }
 
 
-
     @property
     def name(self) -> str:
         return "knowledge-graph"
+
+    @property
+    def edge_index(self) -> JSONLEdgeIndex:
+        if self._edge_index is None:
+            self._edge_index = JSONLEdgeIndex(rel_path=self._rel_path, logger=self.logger)
+        return self._edge_index
+
+    @property
+    def seed_finder(self) -> EmbeddingSeedFinder:
+        if self._seed_finder is None:
+            self._seed_finder = EmbeddingSeedFinder(
+                search_entities_fn=self.search_entities,
+                detect_entities_fn=self.detect_entities,
+                logger=self.logger,
+            )
+        return self._seed_finder
+
+    @property
+    def subgraph_builder(self) -> SubgraphBuilder:
+        if self._subgraph_builder is None:
+            self._subgraph_builder = SubgraphBuilder(
+                seed_finder=self.seed_finder,
+                edge_index=self.edge_index,
+                nexus_store=self.nexus_store,
+                logger=self.logger,
+            )
+        return self._subgraph_builder
+
+    def build_query_subgraph(self, *, query: str, cfg: SubgraphConfig | None = None) -> dict:
+        cfg = cfg or SubgraphConfig()
+        sg = self.subgraph_builder.build(query=query, cfg=cfg)
+        return sg
 
     def initialize(self, **kwargs) -> None:
         if self._initialized or not self.enabled:

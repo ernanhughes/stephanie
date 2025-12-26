@@ -1,7 +1,7 @@
 # stephanie/models/paper.py
 from __future__ import annotations
 
-from sqlalchemy import (BigInteger, Column, DateTime, Float, ForeignKey, Index,
+from sqlalchemy import (Column, DateTime, Float, ForeignKey, Index,
                         Integer, String, Text, UniqueConstraint)
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import relationship
@@ -408,3 +408,21 @@ class PaperDoclingPageORM(Base):
         UniqueConstraint("paper_id", "run_id", "page_num", name="uq_docling_paper_run_page"),
         Index("ix_docling_pages_paper_run", "paper_id", "run_id"),
     )
+
+class PaperReferenceGraphSnapshotORM(Base):
+    __tablename__ = "paper_reference_graph_snapshots"
+
+    id = Column(Integer, primary_key=True)
+
+    run_id = Column(String, index=True, nullable=False)        # pipeline run
+    root_arxiv_id = Column(String, index=True, nullable=False) # seed paper
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    # store the full graph + lightweight stats
+    graph = Column(JSONB, nullable=False)  # {"nodes":[...], "edges":[...]}
+    stats = Column(JSONB, nullable=False, default=dict)
+    meta  = Column(JSONB, nullable=False, default=dict)
+
+    # optional: dedupe / audit
+    graph_hash = Column(String, index=True, nullable=True)
