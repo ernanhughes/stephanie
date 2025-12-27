@@ -1,0 +1,637 @@
+{
+    "run_id": "c31c473e-37fa-4dcd-a3b5-4a51508a2715",
+    "pipeline_run_id": "9756",
+    "pipeline": [
+        "paper_pipeline",
+        "paper_spine_builder",
+        "paper_pipeline_report",
+        "paper_blog_generator",
+        "paper_blog_judge"
+    ],
+    "blog_config_id": "f6fb54a5353a58eb94431777bacfc18bb073847e",
+    "metadata": {
+        "run_id": "695fde69-a338-4e91-977a-a822fa89b490",
+        "start_time": "2025-12-19T03:54:42.826093",
+        "last_modified": "2025-12-19T03:58:35.167046",
+        "token_count": 106.5,
+        "components": {}
+    },
+    "goal": {
+        "id": "2868",
+        "goal_type": "tactical",
+        "goal_category": "visual_graph_memory",
+        "source": "driver",
+        "strategy": [
+            "cohort_metric_analysis",
+            "critic_training",
+            "model_evaluation",
+            "visual_reasoning",
+            "feedback_integration"
+        ],
+        "scorer_signals": [
+            "SICQL",
+            "EBT",
+            "HRM"
+        ],
+        "success_criteria": {
+            "min_goal_alignment_improvement": "0.05",
+            "min_signal_lift_p80": "0.05",
+            "require_cross_model_agreement": "True",
+            "prefer_low_variance_visicalc_features": "True"
+        },
+        "expected_formats": [
+            "visicalc_report_json",
+            "visicalc_feature_matrix",
+            "critic_dataset_csv",
+            "critic_model_joblib",
+            "critic_cross_validation_md",
+            "ab_vpm_filmstrip",
+            "model_quality_metrics_json"
+        ],
+        "goal_text": "Evaluate and refine Stephanie’s internal critic by constructing a VisiCalc-based cohort analysis across chat turns, identifying stable high-signal behavioral features, training a compact critic model, and validating its predictive power via HRM/SICQL/EBT agreement. Produce a full lifecycle artifact set (raw → metrics → VPM → cohort summaries → critic model → improvement deltas) that together form a self-improving feedback loop.\n"
+    },
+    "trace": [
+        {
+            "agent": "PaperPipelineAgent",
+            "run_id": "c31c473e-37fa-4dcd-a3b5-4a51508a2715",
+            "pipeline_run_id": "9756",
+            "pipeline": [
+                "paper_pipeline",
+                "paper_spine_builder",
+                "paper_pipeline_report",
+                "paper_blog_generator",
+                "paper_blog_judge"
+            ],
+            "metadata": {
+                "run_id": "695fde69-a338-4e91-977a-a822fa89b490",
+                "start_time": "2025-12-19T03:54:42.826093",
+                "last_modified": "2025-12-19T03:54:43.207220",
+                "token_count": 106.5,
+                "components": {}
+            },
+            "goal": {
+                "id": "2868",
+                "goal_type": "tactical",
+                "goal_category": "visual_graph_memory",
+                "source": "driver",
+                "strategy": [
+                    "cohort_metric_analysis",
+                    "critic_training",
+                    "model_evaluation",
+                    "visual_reasoning",
+                    "feedback_integration"
+                ],
+                "scorer_signals": [
+                    "SICQL",
+                    "EBT",
+                    "HRM"
+                ],
+                "success_criteria": {
+                    "min_goal_alignment_improvement": "0.05",
+                    "min_signal_lift_p80": "0.05",
+                    "require_cross_model_agreement": "True",
+                    "prefer_low_variance_visicalc_features": "True"
+                },
+                "expected_formats": [
+                    "visicalc_report_json",
+                    "visicalc_feature_matrix",
+                    "critic_dataset_csv",
+                    "critic_model_joblib",
+                    "critic_cross_validation_md",
+                    "ab_vpm_filmstrip",
+                    "model_quality_metrics_json"
+                ],
+                "goal_text": "Evaluate and refine Stephanie’s internal critic by constructing a VisiCalc-based cohort analysis across chat turns, identifying stable high-signal behavioral features, training a compact critic model, and validating its predictive power via HRM/SICQL/EBT agreement. Produce a full lifecycle artifact set (raw → metrics → VPM → cohort summaries → critic model → improvement deltas) that together form a self-improving feedback loop.\n"
+            },
+            "REPORTS": [
+                {
+                    "stage": "paper_pipeline",
+                    "agent": "PaperPipelineAgent",
+                    "status": "⏳ running",
+                    "start_time": "03:54:43",
+                    "end_time": "",
+                    "error": "",
+                    "summary": "Load input documents from specified sources (e.g., local files, URLs, databases) into the system for processing.\n",
+                    "metrics": {},
+                    "outputs": {
+                        "__dropped__": true,
+                        "type": "dict",
+                        "len": 0
+                    }
+                }
+            ],
+            "METRICS": []
+        },
+        {
+            "agent": "PaperSpineBuilderAgent",
+            "run_id": "c31c473e-37fa-4dcd-a3b5-4a51508a2715",
+            "pipeline_run_id": "9756",
+            "pipeline": [
+                "paper_pipeline",
+                "paper_spine_builder",
+                "paper_pipeline_report",
+                "paper_blog_generator",
+                "paper_blog_judge"
+            ],
+            "metadata": {
+                "run_id": "695fde69-a338-4e91-977a-a822fa89b490",
+                "start_time": "2025-12-19T03:54:42.826093",
+                "last_modified": "2025-12-19T03:55:43.773539",
+                "token_count": 106.5,
+                "components": {}
+            },
+            "goal": {
+                "id": "2868",
+                "goal_type": "tactical",
+                "goal_category": "visual_graph_memory",
+                "source": "driver",
+                "strategy": [
+                    "cohort_metric_analysis",
+                    "critic_training",
+                    "model_evaluation",
+                    "visual_reasoning",
+                    "feedback_integration"
+                ],
+                "scorer_signals": [
+                    "SICQL",
+                    "EBT",
+                    "HRM"
+                ],
+                "success_criteria": {
+                    "min_goal_alignment_improvement": "0.05",
+                    "min_signal_lift_p80": "0.05",
+                    "require_cross_model_agreement": "True",
+                    "prefer_low_variance_visicalc_features": "True"
+                },
+                "expected_formats": [
+                    "visicalc_report_json",
+                    "visicalc_feature_matrix",
+                    "critic_dataset_csv",
+                    "critic_model_joblib",
+                    "critic_cross_validation_md",
+                    "ab_vpm_filmstrip",
+                    "model_quality_metrics_json"
+                ],
+                "goal_text": "Evaluate and refine Stephanie’s internal critic by constructing a VisiCalc-based cohort analysis across chat turns, identifying stable high-signal behavioral features, training a compact critic model, and validating its predictive power via HRM/SICQL/EBT agreement. Produce a full lifecycle artifact set (raw → metrics → VPM → cohort summaries → critic model → improvement deltas) that together form a self-improving feedback loop.\n"
+            },
+            "REPORTS": [
+                {
+                    "stage": "paper_pipeline",
+                    "agent": "PaperPipelineAgent",
+                    "status": "⏳ running",
+                    "start_time": "03:54:43",
+                    "end_time": "",
+                    "error": "",
+                    "summary": "Load input documents from specified sources (e.g., local files, URLs, databases) into the system for processing.\n",
+                    "metrics": {},
+                    "outputs": {
+                        "__dropped__": true,
+                        "type": "dict",
+                        "len": 0
+                    }
+                },
+                {
+                    "stage": "paper_spine_builder",
+                    "agent": "PaperSpineBuilderAgent",
+                    "status": "⏳ running",
+                    "start_time": "03:55:43",
+                    "end_time": "",
+                    "error": "",
+                    "summary": "Build a structured spine for the research paper, organizing its content into key sections and concepts.\n",
+                    "metrics": {},
+                    "outputs": {
+                        "__dropped__": true,
+                        "type": "dict",
+                        "len": 0
+                    }
+                }
+            ],
+            "METRICS": []
+        },
+        {
+            "agent": "PaperPipelineReportAgent",
+            "run_id": "c31c473e-37fa-4dcd-a3b5-4a51508a2715",
+            "pipeline_run_id": "9756",
+            "pipeline": [
+                "paper_pipeline",
+                "paper_spine_builder",
+                "paper_pipeline_report",
+                "paper_blog_generator",
+                "paper_blog_judge"
+            ],
+            "metadata": {
+                "run_id": "695fde69-a338-4e91-977a-a822fa89b490",
+                "start_time": "2025-12-19T03:54:42.826093",
+                "last_modified": "2025-12-19T03:55:44.703519",
+                "token_count": 106.5,
+                "components": {}
+            },
+            "goal": {
+                "id": "2868",
+                "goal_type": "tactical",
+                "goal_category": "visual_graph_memory",
+                "source": "driver",
+                "strategy": [
+                    "cohort_metric_analysis",
+                    "critic_training",
+                    "model_evaluation",
+                    "visual_reasoning",
+                    "feedback_integration"
+                ],
+                "scorer_signals": [
+                    "SICQL",
+                    "EBT",
+                    "HRM"
+                ],
+                "success_criteria": {
+                    "min_goal_alignment_improvement": "0.05",
+                    "min_signal_lift_p80": "0.05",
+                    "require_cross_model_agreement": "True",
+                    "prefer_low_variance_visicalc_features": "True"
+                },
+                "expected_formats": [
+                    "visicalc_report_json",
+                    "visicalc_feature_matrix",
+                    "critic_dataset_csv",
+                    "critic_model_joblib",
+                    "critic_cross_validation_md",
+                    "ab_vpm_filmstrip",
+                    "model_quality_metrics_json"
+                ],
+                "goal_text": "Evaluate and refine Stephanie’s internal critic by constructing a VisiCalc-based cohort analysis across chat turns, identifying stable high-signal behavioral features, training a compact critic model, and validating its predictive power via HRM/SICQL/EBT agreement. Produce a full lifecycle artifact set (raw → metrics → VPM → cohort summaries → critic model → improvement deltas) that together form a self-improving feedback loop.\n"
+            },
+            "REPORTS": [
+                {
+                    "stage": "paper_pipeline",
+                    "agent": "PaperPipelineAgent",
+                    "status": "⏳ running",
+                    "start_time": "03:54:43",
+                    "end_time": "",
+                    "error": "",
+                    "summary": "Load input documents from specified sources (e.g., local files, URLs, databases) into the system for processing.\n",
+                    "metrics": {},
+                    "outputs": {
+                        "__dropped__": true,
+                        "type": "dict",
+                        "len": 0
+                    }
+                },
+                {
+                    "stage": "paper_spine_builder",
+                    "agent": "PaperSpineBuilderAgent",
+                    "status": "⏳ running",
+                    "start_time": "03:55:43",
+                    "end_time": "",
+                    "error": "",
+                    "summary": "Build a structured spine for the research paper, organizing its content into key sections and concepts.\n",
+                    "metrics": {},
+                    "outputs": {
+                        "__dropped__": true,
+                        "type": "dict",
+                        "len": 0
+                    }
+                },
+                {
+                    "stage": "paper_pipeline_report",
+                    "agent": "PaperPipelineReportAgent",
+                    "status": "⏳ running",
+                    "start_time": "03:55:44",
+                    "end_time": "",
+                    "error": "",
+                    "summary": "Generate a markdown report summarizing the processed papers, including key sections and concept clusters.\n",
+                    "metrics": {},
+                    "outputs": {
+                        "__dropped__": true,
+                        "type": "dict",
+                        "len": 0
+                    }
+                }
+            ],
+            "METRICS": []
+        },
+        {
+            "agent": "PaperBlogGeneratorAgent",
+            "run_id": "c31c473e-37fa-4dcd-a3b5-4a51508a2715",
+            "pipeline_run_id": "9756",
+            "pipeline": [
+                "paper_pipeline",
+                "paper_spine_builder",
+                "paper_pipeline_report",
+                "paper_blog_generator",
+                "paper_blog_judge"
+            ],
+            "metadata": {
+                "run_id": "695fde69-a338-4e91-977a-a822fa89b490",
+                "start_time": "2025-12-19T03:54:42.826093",
+                "last_modified": "2025-12-19T03:56:07.471783",
+                "token_count": 106.5,
+                "components": {}
+            },
+            "goal": {
+                "id": "2868",
+                "goal_type": "tactical",
+                "goal_category": "visual_graph_memory",
+                "source": "driver",
+                "strategy": [
+                    "cohort_metric_analysis",
+                    "critic_training",
+                    "model_evaluation",
+                    "visual_reasoning",
+                    "feedback_integration"
+                ],
+                "scorer_signals": [
+                    "SICQL",
+                    "EBT",
+                    "HRM"
+                ],
+                "success_criteria": {
+                    "min_goal_alignment_improvement": "0.05",
+                    "min_signal_lift_p80": "0.05",
+                    "require_cross_model_agreement": "True",
+                    "prefer_low_variance_visicalc_features": "True"
+                },
+                "expected_formats": [
+                    "visicalc_report_json",
+                    "visicalc_feature_matrix",
+                    "critic_dataset_csv",
+                    "critic_model_joblib",
+                    "critic_cross_validation_md",
+                    "ab_vpm_filmstrip",
+                    "model_quality_metrics_json"
+                ],
+                "goal_text": "Evaluate and refine Stephanie’s internal critic by constructing a VisiCalc-based cohort analysis across chat turns, identifying stable high-signal behavioral features, training a compact critic model, and validating its predictive power via HRM/SICQL/EBT agreement. Produce a full lifecycle artifact set (raw → metrics → VPM → cohort summaries → critic model → improvement deltas) that together form a self-improving feedback loop.\n"
+            },
+            "REPORTS": [
+                {
+                    "stage": "paper_pipeline",
+                    "agent": "PaperPipelineAgent",
+                    "status": "⏳ running",
+                    "start_time": "03:54:43",
+                    "end_time": "",
+                    "error": "",
+                    "summary": "Load input documents from specified sources (e.g., local files, URLs, databases) into the system for processing.\n",
+                    "metrics": {},
+                    "outputs": {
+                        "__dropped__": true,
+                        "type": "dict",
+                        "len": 0
+                    }
+                },
+                {
+                    "stage": "paper_spine_builder",
+                    "agent": "PaperSpineBuilderAgent",
+                    "status": "⏳ running",
+                    "start_time": "03:55:43",
+                    "end_time": "",
+                    "error": "",
+                    "summary": "Build a structured spine for the research paper, organizing its content into key sections and concepts.\n",
+                    "metrics": {},
+                    "outputs": {
+                        "__dropped__": true,
+                        "type": "dict",
+                        "len": 0
+                    }
+                },
+                {
+                    "stage": "paper_pipeline_report",
+                    "agent": "PaperPipelineReportAgent",
+                    "status": "⏳ running",
+                    "start_time": "03:55:44",
+                    "end_time": "",
+                    "error": "",
+                    "summary": "Generate a markdown report summarizing the processed papers, including key sections and concept clusters.\n",
+                    "metrics": {},
+                    "outputs": {
+                        "__dropped__": true,
+                        "type": "dict",
+                        "len": 0
+                    }
+                },
+                {
+                    "stage": "paper_blog_generator",
+                    "agent": "PaperBlogGeneratorAgent",
+                    "status": "⏳ running",
+                    "start_time": "03:56:07",
+                    "end_time": "",
+                    "error": "",
+                    "summary": "Generate a blog post based on the processed paper and the generated report.\n",
+                    "metrics": {},
+                    "outputs": {
+                        "__dropped__": true,
+                        "type": "dict",
+                        "len": 0
+                    }
+                }
+            ],
+            "METRICS": []
+        },
+        {
+            "agent": "PaperBlogJudgeAgent",
+            "run_id": "c31c473e-37fa-4dcd-a3b5-4a51508a2715",
+            "pipeline_run_id": "9756",
+            "pipeline": [
+                "paper_pipeline",
+                "paper_spine_builder",
+                "paper_pipeline_report",
+                "paper_blog_generator",
+                "paper_blog_judge"
+            ],
+            "metadata": {
+                "run_id": "695fde69-a338-4e91-977a-a822fa89b490",
+                "start_time": "2025-12-19T03:54:42.826093",
+                "last_modified": "2025-12-19T03:58:17.559209",
+                "token_count": 106.5,
+                "components": {}
+            },
+            "goal": {
+                "id": "2868",
+                "goal_type": "tactical",
+                "goal_category": "visual_graph_memory",
+                "source": "driver",
+                "strategy": [
+                    "cohort_metric_analysis",
+                    "critic_training",
+                    "model_evaluation",
+                    "visual_reasoning",
+                    "feedback_integration"
+                ],
+                "scorer_signals": [
+                    "SICQL",
+                    "EBT",
+                    "HRM"
+                ],
+                "success_criteria": {
+                    "min_goal_alignment_improvement": "0.05",
+                    "min_signal_lift_p80": "0.05",
+                    "require_cross_model_agreement": "True",
+                    "prefer_low_variance_visicalc_features": "True"
+                },
+                "expected_formats": [
+                    "visicalc_report_json",
+                    "visicalc_feature_matrix",
+                    "critic_dataset_csv",
+                    "critic_model_joblib",
+                    "critic_cross_validation_md",
+                    "ab_vpm_filmstrip",
+                    "model_quality_metrics_json"
+                ],
+                "goal_text": "Evaluate and refine Stephanie’s internal critic by constructing a VisiCalc-based cohort analysis across chat turns, identifying stable high-signal behavioral features, training a compact critic model, and validating its predictive power via HRM/SICQL/EBT agreement. Produce a full lifecycle artifact set (raw → metrics → VPM → cohort summaries → critic model → improvement deltas) that together form a self-improving feedback loop.\n"
+            },
+            "REPORTS": [
+                {
+                    "stage": "paper_pipeline",
+                    "agent": "PaperPipelineAgent",
+                    "status": "⏳ running",
+                    "start_time": "03:54:43",
+                    "end_time": "",
+                    "error": "",
+                    "summary": "Load input documents from specified sources (e.g., local files, URLs, databases) into the system for processing.\n",
+                    "metrics": {},
+                    "outputs": {
+                        "__dropped__": true,
+                        "type": "dict",
+                        "len": 0
+                    }
+                },
+                {
+                    "stage": "paper_spine_builder",
+                    "agent": "PaperSpineBuilderAgent",
+                    "status": "⏳ running",
+                    "start_time": "03:55:43",
+                    "end_time": "",
+                    "error": "",
+                    "summary": "Build a structured spine for the research paper, organizing its content into key sections and concepts.\n",
+                    "metrics": {},
+                    "outputs": {
+                        "__dropped__": true,
+                        "type": "dict",
+                        "len": 0
+                    }
+                },
+                {
+                    "stage": "paper_pipeline_report",
+                    "agent": "PaperPipelineReportAgent",
+                    "status": "⏳ running",
+                    "start_time": "03:55:44",
+                    "end_time": "",
+                    "error": "",
+                    "summary": "Generate a markdown report summarizing the processed papers, including key sections and concept clusters.\n",
+                    "metrics": {},
+                    "outputs": {
+                        "__dropped__": true,
+                        "type": "dict",
+                        "len": 0
+                    }
+                },
+                {
+                    "stage": "paper_blog_generator",
+                    "agent": "PaperBlogGeneratorAgent",
+                    "status": "⏳ running",
+                    "start_time": "03:56:07",
+                    "end_time": "",
+                    "error": "",
+                    "summary": "Generate a blog post based on the processed paper and the generated report.\n",
+                    "metrics": {},
+                    "outputs": {
+                        "__dropped__": true,
+                        "type": "dict",
+                        "len": 0
+                    }
+                },
+                {
+                    "stage": "paper_blog_judge",
+                    "agent": "PaperBlogJudgeAgent",
+                    "status": "⏳ running",
+                    "start_time": "03:58:17",
+                    "end_time": "",
+                    "error": "",
+                    "summary": "Evaluate the quality of the generated blog post, providing feedback and suggestions for improvement.\n",
+                    "metrics": {},
+                    "outputs": {
+                        "__dropped__": true,
+                        "type": "dict",
+                        "len": 0
+                    }
+                }
+            ],
+            "METRICS": []
+        }
+    ],
+    "REPORTS": [
+        {
+            "stage": "paper_pipeline",
+            "agent": "PaperPipelineAgent",
+            "status": "⏳ running",
+            "start_time": "03:54:43",
+            "end_time": "",
+            "error": "",
+            "summary": "Load input documents from specified sources (e.g., local files, URLs, databases) into the system for processing.\n",
+            "metrics": {},
+            "outputs": {
+                "__dropped__": true,
+                "type": "dict",
+                "len": 0
+            }
+        },
+        {
+            "stage": "paper_spine_builder",
+            "agent": "PaperSpineBuilderAgent",
+            "status": "⏳ running",
+            "start_time": "03:55:43",
+            "end_time": "",
+            "error": "",
+            "summary": "Build a structured spine for the research paper, organizing its content into key sections and concepts.\n",
+            "metrics": {},
+            "outputs": {
+                "__dropped__": true,
+                "type": "dict",
+                "len": 0
+            }
+        },
+        {
+            "stage": "paper_pipeline_report",
+            "agent": "PaperPipelineReportAgent",
+            "status": "⏳ running",
+            "start_time": "03:55:44",
+            "end_time": "",
+            "error": "",
+            "summary": "Generate a markdown report summarizing the processed papers, including key sections and concept clusters.\n",
+            "metrics": {},
+            "outputs": {
+                "__dropped__": true,
+                "type": "dict",
+                "len": 0
+            }
+        },
+        {
+            "stage": "paper_blog_generator",
+            "agent": "PaperBlogGeneratorAgent",
+            "status": "⏳ running",
+            "start_time": "03:56:07",
+            "end_time": "",
+            "error": "",
+            "summary": "Generate a blog post based on the processed paper and the generated report.\n",
+            "metrics": {},
+            "outputs": {
+                "__dropped__": true,
+                "type": "dict",
+                "len": 0
+            }
+        },
+        {
+            "stage": "paper_blog_judge",
+            "agent": "PaperBlogJudgeAgent",
+            "status": "⏳ running",
+            "start_time": "03:58:17",
+            "end_time": "",
+            "error": "",
+            "summary": "Evaluate the quality of the generated blog post, providing feedback and suggestions for improvement.\n",
+            "metrics": {},
+            "outputs": {
+                "__dropped__": true,
+                "type": "dict",
+                "len": 0
+            }
+        }
+    ]
+}

@@ -33,6 +33,13 @@ class BeliefCartridgeBuilder(BaseAgent):
         self.evaluation_store = EvaluationAttributeStore(memory.session, logger)
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
 
+    async def run(self, context: dict) -> dict:
+        """
+        Main pipeline to build belief cartridge from document and goal.
+        """
+        context = await self.build_cartridge(context)
+        return context
+
     async def build_cartridge(self, context: dict) -> dict:
         goal = context.get(GOAL)
         document = context.get("document")

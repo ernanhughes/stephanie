@@ -1,0 +1,23 @@
+# config/tools/pairrm_ranker.yaml
+name: pairrm_ranker
+class_path: stephanie.tools.pairrm_ranking_tool.PairRMRankingTool
+
+# HF model
+model_name: llm-blender/PairRM-hf    # or "llm-blender/PairRM" if you prefer
+
+# Token limits
+max_input_tokens: 2048               # truncate long context+candidate inputs
+
+# Storage / logging toggle
+store_to_memory: false               # set true if you wire up memory.pairrm_rankings
+
+# Optional: prompt template override
+# If you leave this out, the tool will use its internal default.
+# prompt_template: |
+#   You are a reward model scoring the quality of a candidate answer.
+#
+#   Context:
+#   {context}
+#
+#   Candidate:
+#   {candidate}

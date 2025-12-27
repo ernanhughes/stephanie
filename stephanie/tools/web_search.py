@@ -9,7 +9,7 @@ from readability import Document
 
 class WebSearchTool:
     def __init__(self, cfg: dict, logger):
-        self.base_url = f"{cfg.get('instance_url', 'localhost:8080')}/search"
+        self.base_url = f"{cfg.get('instance_url', 'http://localhost:8080')}/search"
         self.max_results = cfg.get("max_results", 15)
         self.fetch_page = cfg.get("fetch_page", False)
         self.categories = cfg.get("categories", "general")

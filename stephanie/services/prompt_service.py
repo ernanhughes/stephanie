@@ -5,6 +5,7 @@ import json
 import logging
 import time
 from dataclasses import dataclass
+from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import litellm
@@ -16,14 +17,122 @@ from stephanie.constants import (BUS_STREAM, SUBJ_RESULT_LEG_W,
                                  SUBJ_SUBMIT, SUBJ_SUBMIT_LEG, SUBJ_SUBMIT_NS)
 from stephanie.services.bus.events.prompt_job import PromptJob
 from stephanie.services.service_protocol import Service
+from stephanie.types.model import ModelSpec
 from stephanie.utils.llm_utils import remove_think_blocks
 
 log = logging.getLogger(__name__)
 
-# Subject constants (support both namespaced + legacy for smooth upgrades)
 
+class LLMRole(str, Enum):
+    CRITIC = "critic"
+    PLANNER = "planner"
+    IDEATOR = "ideator"
+    SUMMARIZER = "summarizer"
+    Years = "explainer"
+    CRITIC_FEASIBILITY = "critic_feasibility"
+    CRITIC_RISK = "critic_risk"
+    EXECUTOR = "executor"
+    EXPLAINER = "explainer"
+    REFINER = "refiner"
+    BLOG = "blog"
 
-log = logging.getLogger(__name__)
+DEFAULT_ROLE_SYSTEM_PROMPTS: Dict[LLMRole, str] = {
+    LLMRole.CRITIC_FEASIBILITY: (
+        "You are an AI research feasibility auditor. Your ONLY task is to score how "
+        "technically feasible and testable a research idea is with CURRENT tools and resources. "
+        "\n\n"
+        "SCORING RULES (STRICT):\n"
+        "- 1.0 = Trivial (uses standard libraries, public datasets, <1hr runtime)\n"
+        "- 0.7 = Straightforward (known methods, public data, <1 day runtime)\n"
+        "- 0.4 = Challenging (requires novel engineering, may need data collection)\n"
+        "- 0.1 = Nearly impossible (requires breakthroughs, proprietary data, or massive compute)\n"
+        "- 0.0 = Impossible (violates known physics/math)\n"
+        "\n"
+        "ASSESS THESE FACTORS:\n"
+        "1. Technical plausibility with current AI tools (PyTorch, Hugging Face, etc.)\n"
+        "2. Testability with PUBLIC datasets or easily collectible data\n"
+        "3. Clear, measurable success/failure criteria\n"
+        "4. Realistic compute requirements (<4 A100 GPUs, <1 week runtime)\n"
+        "\n"
+        "BE CONSERVATIVE. When in doubt, score LOWER. "
+        "DO NOT consider novelty, impact, or elegance—ONLY feasibility.\n"
+        "\n"
+        "OUTPUT FORMAT: A SINGLE FLOAT between 0.0 and 1.0. NO TEXT, NO EXPLANATION."
+    ),
+    LLMRole.CRITIC_RISK: (
+        "You are an AI research safety auditor. Your ONLY task is to flag ideas that pose "
+        "significant safety, ethics, or reproducibility risks.\n\n"
+        "RED FLAG CATEGORIES (score 1.0 if ANY apply):\n"
+        "- Human subjects without IRB approval\n"
+        "- Bio/chem safety hazards (pathogens, toxins)\n"
+        "- Weaponization potential\n"
+        "- Privacy violations (non-public personal data)\n"
+        "- Irreproducible claims (no public code/data)\n"
+        "- Unverifiable assertions (no clear success metric)\n"
+        "\n"
+        "OUTPUT FORMAT: 1.0 if HIGH RISK, 0.0 otherwise. NO TEXT, NO EXPLANATION."
+    ),
+    LLMRole.EXECUTOR: (
+        "You are an AI research code generator. Your ONLY task is to convert research methods "
+        "into executable Python code using standard libraries (PyTorch, scikit-learn, etc.).\n\n"
+        "RULES:\n"
+        "- Use ONLY publicly available datasets (CIFAR-10, MNIST, GLUE, etc.)\n"
+        "- Include clear success metrics (accuracy, F1, runtime)\n"
+        "- Add safety checks (memory limits, timeout guards)\n"
+        "- Output COMPLETE, runnable code in one block\n"
+        "- NO hypothetical functions or placeholders\n"
+        "\n"
+        "If the method cannot be implemented with public tools/data, output:\n"
+        "'''INFEASIBLE: [reason]'''"
+    ),
+    LLMRole.REFINER: (
+        "You are an AI research collaborator refining ideas WITH HUMAN FEEDBACK. "
+        "The human has provided constraints via sliders:\n"
+        "- Novelty: {novelty_level} (0=minimal, 1=radical)\n"
+        "- Feasibility: {feasibility_level} (0=moonshot, 1=straightforward)\n"
+        "- Risk tolerance: {risk_level} (0=none, 1=high)\n"
+        "\n"
+        "Your job: Rewrite the idea to satisfy these constraints while preserving core value.\n"
+        "Output ONLY the refined idea in this JSON format:\n"
+        "{\n"
+        '  "title": "Short title",\n'
+        '  "hypothesis": "Clear claim",\n'
+        '  "method": "Concrete validation approach",\n'
+        '  "constraints_applied": ["list", "of", "changes"]\n'
+        "}"
+    ),
+    # Keep your existing roles below this line
+    LLMRole.CRITIC: (
+        "You are a rigorous but constructive AI research critic. "
+        "Your job is to find weaknesses, missing assumptions, and failure modes "
+        "in ideas, arguments, or experimental designs. Be precise and concrete."
+    ),
+    LLMRole.PLANNER: (
+        "You are an AI experiment and project planner. "
+        "Given a research idea or goal, produce a concrete, step-by-step plan "
+        "with milestones, resources, risks, and success criteria."
+    ),
+    LLMRole.IDEATOR: (
+        "You are a creative but technically grounded AI research collaborator. "
+        "Your job is to propose novel, plausible research ideas that connect "
+        "the provided concepts or findings."
+    ),
+    LLMRole.SUMMARIZER: (
+        "You are an expert summarizer for AI/ML research. "
+        "Produce clear, faithful summaries optimized for later reuse as knowledge."
+    ),
+    LLMRole.EXPLAINER: (
+        "You are a teacher explaining AI/ML concepts to an informed engineer. "
+        "Use concise, accurate language and concrete examples."
+    ),
+    LLMRole.BLOG: (
+        "You are a technical blog writer for AI/ML research papers. "
+        "Your job is to turn paper summaries, section notes, and graph context into "
+        "clear, trustworthy blog sections for an informed engineer. "
+        "You avoid hype, stay faithful to the provided context, and explain ideas with "
+        "concrete intuition, short paragraphs, and occasional bullet lists."
+    ),
+}
 
 config = """
 prompt_service:
@@ -46,41 +155,6 @@ prompt_service:
 # ---------------- Model spec ----------------
 
 
-@dataclass
-class ModelSpec:
-    name: str
-    api_base: Optional[str] = None
-    api_key: Optional[str] = None
-    params: Optional[Dict[str, Any]] = None
-
-    @staticmethod
-    def from_cfg(
-        default_cfg: Dict[str, Any],
-        override: Optional[Union[str, Dict[str, Any]]] = None,
-    ) -> "ModelSpec":
-        if override is None:
-            base = default_cfg or {}
-            m = base.get("model", {}) if "model" in base else base
-            return ModelSpec(
-                name=m.get("name") or "ollama/qwen:0.5b",
-                api_base=m.get("api_base"),
-                api_key=m.get("api_key"),
-                params=(m.get("params") or {}),
-            )
-        if isinstance(override, str):
-            return ModelSpec(name=override)
-        # override is a dict
-        return ModelSpec(
-            name=override.get("name"),
-            api_base=override.get("api_base"),
-            api_key=override.get("api_key"),
-            params=(override.get("params") or {}),
-        )
-
-
-# ---------------- Agent wrapper (unchanged behavior) ----------------
-
-
 class PromptRunnerAgent(BaseAgent):
     def __init__(self, memory, container, logger):
         cfg = yaml.safe_load(config)["prompt_service"]
@@ -90,7 +164,6 @@ class PromptRunnerAgent(BaseAgent):
         prompt = context.get("prompt_text") or self.prompt_loader.from_context(
             self.cfg, context=context
         )
-        # NOTE: This agent’s async_call_llm is used only by PromptService.run_prompt(...)
         response = await asyncio.wait_for(
             self.async_call_llm(prompt, context),
             timeout=self.cfg.get("timeout", 300),
@@ -132,11 +205,32 @@ class PromptService(Service):
         self._subs_ready = False
         self._task_group: set[asyncio.Task] = set()
 
-        # subscribe to results so we can serve wait_many/try_get
-        # (we do the actual subscribe in initialize/start_worker)
-        # Also keeps legacy wildcard for compatibility.
 
     # ---- Low-level LLM calls -------------------------------------------------
+
+    def _build_sys_preamble(
+        self,
+        role: Optional[LLMRole],
+        sys_preamble: Optional[str],
+    ) -> Optional[str]:
+        """
+        Combine a role-based system prompt (if any) with an explicit sys_preamble.
+
+        Priority:
+          - If no role: just return sys_preamble.
+          - If role set but no sys_preamble: return the default role prompt.
+          - If both set: role prompt first, then user sys_preamble.
+        """
+        if role is None:
+            return sys_preamble
+
+        base = DEFAULT_ROLE_SYSTEM_PROMPTS.get(role)
+        if not base:
+            return sys_preamble
+
+        if sys_preamble:
+            return f"{base}\n\n{sys_preamble}"
+        return base
 
     async def _acomplete_messages(
         self,
@@ -157,20 +251,17 @@ class PromptService(Service):
                 **call_params,
             )
             out = resp["choices"][0]["message"]["content"]
-            log.info(
-                f"PromptService._acomplete_messages success: model={model.name} {out[:60]!r}..."
-            )
+            log.info(f"PS success: model={model.name} {out[:60]!r}...")
             return remove_think_blocks(out)
         except Exception:
-            log.exception(
-                "PromptService._acomplete_messages failed extra=%s", model.name)
+            log.exception("PS failed extra=%s", model.name)
             return ""
 
     async def _acomplete(
         self,
         *,
         prompt: str,
-        model: "ModelSpec",
+        model: ModelSpec,
         sys_preamble: Optional[str] = None,
         params: Optional[Dict[str, Any]] = None,
     ) -> str:
@@ -190,6 +281,7 @@ class PromptService(Service):
         context: Optional[Dict[str, Any]],
         *,
         model: Optional[Union[str, Dict[str, Any]]] = None,
+        role: Optional[LLMRole] = None,
         sys_preamble: Optional[str] = None,
         params: Optional[Dict[str, Any]] = None,
         timeout: Optional[int] = None,
@@ -202,10 +294,11 @@ class PromptService(Service):
                 log.debug(
                     f"run_prompt(model={model_spec.name}) active={self._active_requests}"
                 )
+                effective_sys = self._build_sys_preamble(role, sys_preamble)
                 coro = self._acomplete(
                     prompt=prompt_text,
                     model=model_spec,
-                    sys_preamble=sys_preamble,
+                    sys_preamble=effective_sys,
                     params=params,
                 )
                 return await asyncio.wait_for(coro, timeout=request_timeout)
@@ -225,6 +318,7 @@ class PromptService(Service):
         *,
         models: List[Union[str, Dict[str, Any]]],
         judge: Optional[callable] = None,
+        role: Optional[LLMRole] = None,  # <-- NEW
         sys_preamble: Optional[str] = None,
         params: Optional[Dict[str, Any]] = None,
         context: Optional[Dict[str, Any]] = None,
@@ -240,6 +334,7 @@ class PromptService(Service):
 
         model_specs = [ModelSpec.from_cfg(self.cfg, m) for m in models]
         keys = [ms.name for ms in model_specs]
+        effective_sys = self._build_sys_preamble(role, sys_preamble)
 
         async with self._semaphore:
             self._active_requests += 1
@@ -249,7 +344,7 @@ class PromptService(Service):
                         self._acomplete(
                             prompt=prompt_text,
                             model=ms,
-                            sys_preamble=sys_preamble,
+                            sys_preamble=effective_sys,
                             params=params,
                         ),
                         timeout=request_timeout,
@@ -342,7 +437,7 @@ class PromptService(Service):
                 ],
             )
         except Exception as e:
-            log.warning("PromptService.ensure_stream failed: %s", e)
+            log.warning("PS _ensure_bus_bindings failed: %s", e)
 
         if not self._subs_ready:
             # Subscribe to both submit subjects; process in background
@@ -401,14 +496,14 @@ class PromptService(Service):
     async def _handle_submit_msg(self, msg) -> None:
         # Parse
         try:
-            log.info("PromptService.ReceivedJob: %s", msg)
+            log.info("PS ReceivedJob: %s", msg)
             raw = (
                 msg.data
                 if isinstance(msg.data, dict)
                 else json.loads(msg.data.decode("utf-8"))
             )
         except Exception as e:
-            log.exception("PromptService.BadJSON: %s", e)
+            log.exception("PS %s", e)
             if hasattr(msg, "nak"):
                 try:
                     await msg.nak()
@@ -418,10 +513,10 @@ class PromptService(Service):
 
         # Validate
         try:
-            log.info("PromptService.ValidatingJob: %s", raw)
+            log.info("PS ValidatingJob: %s", raw)
             job = PromptJob.model_validate(raw)  # Pydantic v2
         except Exception as e:
-            log.error("PromptService.ValidationError %s", e)
+            log.error("PS ValidationError %s", e)
             if hasattr(msg, "nak"):
                 try:
                     await msg.nak()
@@ -452,9 +547,7 @@ class PromptService(Service):
                         text = await self._acomplete_messages(
                             model=model_spec, messages=messages, params=params
                         )
-                        log.info(
-                            f"PromptService._acomplete success: {text[:60]!r}..."
-                        )
+                        log.info(f"PS success: {text[:60]}...")
                     else:
                         text = await self._acomplete(
                             prompt=job.prompt_text or "",
@@ -462,9 +555,7 @@ class PromptService(Service):
                             sys_preamble=job.system,
                             params=params,
                         )
-                        log.info(
-                            f"PromptService._acomplete success: {text[:60]!r}..."
-                        )
+                        log.info(f"PS success: {text[:60]!r}...")
                 finally:
                     self._active_requests = max(0, self._active_requests - 1)
 
@@ -475,19 +566,16 @@ class PromptService(Service):
                 "scorable_id": job.scorable_id,
                 "result": {"text": text},
             }
-            log.info("PromptService.PublishingResult: %s", ret)
+            log.info("PS PublishingResult: %s", ret)
             await self.memory.bus.publish(ret, payload)
             if hasattr(msg, "ack"):
                 try:
                     await msg.ack()
                 except Exception:
                     pass
-            log.info(
-                "PromptService.ResultSent",
-                extra={"job_id": job.job_id, "ret": ret},
-            )
+            log.info("PS ResultSent %s %s", job.job_id, ret)
         except Exception as e:
-            log.exception("PromptService.ExecuteError")
+            log.exception("PS ExecuteError %s", str(e))
             ret = job.return_topic or SUBJ_RESULT_NS_T.format(job=job.job_id)
             try:
                 await self.memory.bus.publish(

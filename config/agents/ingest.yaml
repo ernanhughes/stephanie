@@ -1,0 +1,84 @@
+ingest:
+  name: ingest
+  enabled: true
+  save_prompt: true
+  save_context: false
+  skip_if_completed: false
+
+  # ---- Ingest-specific knobs ----
+  # Which context key contains docs (matches InformationIngestAgent.input_key)
+  input_key: documents
+
+  # How this run is tagged in CaseBook / attrs
+  casebook_action: information_ingest
+
+  # Section handling (copied from LfL but slightly stricter for info pages)
+  min_section_length: 120       # minimum chars for a section to become a case
+  single_random_doc: true       # pick a single random doc if no input docs
+
+  # Optional domain tags to attach to goal/meta/memcube
+  domains: ["information", "research", "encyclopedia"]
+
+  # Where the agent writes its result in the context
+  output_key: information_ingest
+
+  # ---- Information processor sub-config ----
+  # This block is passed as cfg["information"] into InformationProcessor
+  information:
+    # Which source profile to use (maps to SourceProfile.for_name)
+    source_profile: research_web_mixed   # internal_only | web_light | research_web_mixed
+
+    export_markdown: true
+    export_dir: "runs/post/generated"   # or "blog_drafts"
+
+    # Target for the build (MemCube with blog-view enabled)
+    target: memcube_blog_post
+
+    enable_wikipedia: false
+    enable_web: false
+
+    # Bucket / retrieval limits
+    max_nodes: 80            # global cap on bucket nodes
+    max_results_arxiv: 20
+    max_results_wiki: 3
+    max_results_web: 10
+    max_vector_hits: 50
+
+    # Whether to score the resulting MemCube with ScorableProcessor
+    enable_scoring: true
+
+    # Which metrics to project into extra_data["scores"]
+    core_info_metrics:
+      - clarity
+      - faithfulness
+      - coverage
+      - critic_risk
+      - critic_quality
+
+    # Blog / page style options (for the stitched markdown)
+    enable_blog_view: true
+    include_summary: true
+    include_references: true
+
+  # ---- Progress / reporting (optional, matches your style) ----
+  progress:
+    enable_sis: true              # send SIS cards if service available
+    write_case_attrs: true        # write basic progress_* attrs on cases
+
+  # ---- Optional analyze step (if you want a cheap pass over sections) ----
+  analyze:
+    name: info_analyze
+    model:
+      name: ollama/qwen3
+      api_base: http://localhost:11434
+      api_key: null
+    input_key: documents
+    output_key: info_analyze
+    prompt_mode: file
+    prompt_file: info_analyze.txt
+
+  # ---- Model used for section + page generation (LLM backend) ----
+  model:
+    name: ollama/qwen3
+    api_base: http://localhost:11434
+    api_key: null

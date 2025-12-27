@@ -13,6 +13,7 @@ import numpy as np
 from tqdm import tqdm
 
 from stephanie.utils.coerce_utils import to_float
+from stephanie.utils.hash_utils import hash_text
 
 log = logging.getLogger(__name__)
 
@@ -219,7 +220,7 @@ class KnowledgePairBuilder:
                 if neg_emb is None:
                     continue
 
-                pair_hash = hashlib.sha1(f"{pos['id']}:{neg['id']}".encode("utf-8")).hexdigest()[:16]
+                pair_hash = hash_text(f"{pos['id']}:{neg['id']}")
                 if pair_hash in seen:
                     continue
                 seen.add(pair_hash)

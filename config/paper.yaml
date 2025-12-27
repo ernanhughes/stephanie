@@ -3,17 +3,11 @@ defaults:
   - _self_
   - db: postgres
   - plan_monitor: disabled
-  - scoring/service/default
+  - bus: nats   
+  - logging/json_logger
   - mars/default
-
-  - scorer/reward/default
-  - scorer/ebt/default
-  - scorer/hrm/default
-  - scorer/mrq/default
-  - scorer/sicql/default
-  - scorer/svm/default
-  - scorer/contrastive_ranker/default
-  - scorer/epistemic_hrm/default
+  - services/default
+  - scorer: all  
 
 
   - agents/knowledge_infused_summarizer

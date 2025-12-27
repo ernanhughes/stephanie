@@ -28,11 +28,10 @@ class DomainTool(BaseTool):
         )
 
         # Domain classification settings
-        self.max_k = int(cfg.get("max_domains_per_source", 3))  # Max domains per turn
         self.min_conf = float(cfg.get("min_confidence", 0.10))  # Minimum confidence threshold
-
         self.max_k = int(cfg.get("max_k", 3))
         self.min_conf = float(cfg.get("min_conf", 0.10))
+        self.store_to_memory = bool(cfg.get("store_to_memory", True))
 
     async def apply(self, scorable, context: dict):
         """
@@ -62,14 +61,15 @@ class DomainTool(BaseTool):
             )
 
             # Persist to DB
-            for d in domains:
-                self.memory.scorable_domains.insert({
-                    "scorable_id": scorable.id,
-                    "scorable_type": scorable.target_type,
-                    "domain": d["domain"],
-                    "score": d["score"],
-                    "source": d["source"],
-                })
+            if self.store_to_memory:
+                for d in domains:
+                    self.memory.scorable_domains.insert({
+                        "scorable_id": scorable.id,
+                        "scorable_type": scorable.target_type,
+                        "domain": d["domain"],
+                        "score": d["score"],
+                        "source": d["source"],
+                    })
 
             scorable.meta["domains"] = domains
             log.debug(f"[DomainTool] {scorable.id} → {domains}")

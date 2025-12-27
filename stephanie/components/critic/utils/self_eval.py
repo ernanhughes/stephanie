@@ -11,10 +11,12 @@ from typing import Dict, List
 import numpy as np
 from sklearn.metrics import brier_score_loss, roc_auc_score
 
+from stephanie.utils.hash_utils import hash_text
+
 
 # ---------- small utilities ----------
 def _hash(arr: List[str]) -> str:
-    return hashlib.sha256("|".join(arr).encode()).hexdigest()[:12]
+    return hash_text("|".join(arr))[:12]
 
 def ece_binary(y_true: np.ndarray, p: np.ndarray, n_bins: int = 10) -> float:
     bins = np.linspace(0.0, 1.0, n_bins + 1)

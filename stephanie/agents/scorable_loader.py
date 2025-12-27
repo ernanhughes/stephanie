@@ -9,11 +9,8 @@ from stephanie.agents.base_agent import BaseAgent
 from stephanie.data.text_item import TextItem
 from stephanie.scoring.scorable import ScorableType
 from stephanie.services.scoring_service import ScoringService
-from stephanie.utils.embed_utils import (
-    as_list_floats,
-    cos_safe,
-    farthest_point_sample,
-)
+from stephanie.utils.embed_utils import (as_list_floats, cos_safe,
+                                         farthest_point_sample)
 from stephanie.utils.progress_mixin import ProgressMixin
 
 

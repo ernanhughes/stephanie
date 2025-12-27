@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import sys
 import uuid
@@ -12,7 +13,7 @@ import numpy as np
 import torch
 from sqlalchemy import text
 
-from stephanie.models.context_state import ContextStateORM
+log = logging.getLogger(__name__)
 
 
 class ContextManager:
@@ -54,6 +55,9 @@ class ContextManager:
         # Initialize context dictionary
         self._data = {
             "trace": [],
+            "REPORTS": [],
+            "LOGS": [],
+            "METRICS": [],
             "metadata": {
                 "run_id": run_id or str(uuid.uuid4()),
                 "start_time": datetime.now().isoformat(),
@@ -257,12 +261,14 @@ class ContextManager:
         return str(value) if value is not None else value
 
     def _strip_non_serializable(self, data: Any) -> Any:
-        """Remove non-serializable elements"""
+        """Remove non-serializable and ephemeral elements"""
         if isinstance(data, dict):
             return {
-                k: self._strip_non_serializable(v) 
-                for k, v in data.items() 
-                if k not in ["embedding", "logger", "scorer"]
+                k: self._strip_non_serializable(v)
+                for k, v in data.items()
+                # skip ephemeral (double underscore) and known heavy keys
+                if not (isinstance(k, str) and k.startswith("__"))
+                and k not in ["embedding", "logger", "scorer"]
             }
         if isinstance(data, (list, tuple)):
             return [self._strip_non_serializable(v) for v in data]
@@ -303,21 +309,20 @@ class ContextManager:
         # Ensure context is valid
         serializable_context = self._strip_non_serializable(self._data)
         context_size_breakdown = self.context_size_breakdown(serializable_context)
-        print(f"Context size breakdown: {context_size_breakdown}")    
+        log.debug(f"Context size breakdown: {context_size_breakdown}")    
         processed_context_state = self._process_context_for_large_data(serializable_context)
-
                 
         # Save to ORM
-        context_orm = ContextStateORM(
-            run_id=self.run_id,
-            stage_name=stage_dict.get("name", "unknown"),
-            context=json.dumps(processed_context_state),
-            trace=serializable_context.get("trace", []), # Make sure trace is handled correctly
-            token_count=serializable_context["metadata"].get("token_count", 0),
-            extra_data=json.dumps(stage_dict)
-        )
-        self.memory.session.add(context_orm)
-        self.memory.session.commit()
+        stage_name = stage_dict.get("name", "unknown")
+        context_dict = {
+            "run_id": self.run_id,
+            "stage_name": stage_name,
+            "context": json.dumps(processed_context_state),
+            "trace": serializable_context.get("trace", []), # Make sure trace is handled correctly
+            "token_count": serializable_context["metadata"].get("token_count", 0),
+            "extra_data": json.dumps(stage_dict)
+        }
+        self.memory.contexts.save(self.run_id, stage_name, context_dict)
         return True
 
     def stringify_tuple_keys(self, d):

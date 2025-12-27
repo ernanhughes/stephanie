@@ -15,6 +15,7 @@ class PipelineRunner:
     def __init__(self, full_cfg, memory, container, logger):
         self.full_cfg = full_cfg
         self.memory = memory
+        self.container = container
         self.logger = logger
 
     async def run(

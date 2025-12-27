@@ -1,7 +1,6 @@
 # stephanie/components/critic/agents/critic_inference.py
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 from dataclasses import asdict, dataclass
@@ -19,6 +18,7 @@ from stephanie.components.critic.utils.self_eval import (self_evaluate,
                                                          update_competence_ema)
 from stephanie.components.critic.utils.teachpack import (export_teachpack,
                                                          teachpack_meta)
+from stephanie.utils.hash_utils import hash_text
 
 log = logging.getLogger(__name__)
 
@@ -110,7 +110,7 @@ def _load_model(path: Path | str):
 def _model_fingerprint_from_file(path: str) -> str:
     try:
         b = Path(path).read_bytes()
-        return hashlib.sha1(b).hexdigest()
+        return hash_text(b)[:16]
     except Exception:
         return "NA"
 
@@ -447,8 +447,7 @@ class CriticInferenceAgent(BaseAgent):
 
 
 def _digest_names(names: List[str]) -> str:
-    import hashlib
-    return hashlib.sha256("|".join(names).encode("utf-8")).hexdigest()[:12]
+    return hash_text("|".join(names))[:12]
 
 def top_error_flips(X_cur, X_cand, y, p_cur, p_cand, k=10):
     idx = np.where((p_cur >= 0.5) & (y == 0) & (p_cand < 0.5) | (p_cur < 0.5) & (y == 1) & (p_cand >= 0.5))[0]

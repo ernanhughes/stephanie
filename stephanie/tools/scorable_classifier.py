@@ -36,6 +36,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 
 from stephanie.services.bus.bus_protocol import BusProtocol
 from stephanie.services.bus.idempotency import InMemoryIdempotencyStore
+from stephanie.utils.hash_utils import hash_text
 
 log = logging.getLogger(__name__)
 
@@ -130,13 +131,13 @@ class ScorableClassifier:
     def _cache_key(self, text: str, metric: str, top_k: int, min_value: float, context_tags: tuple) -> str:
         """Generate a stable cache key for classification results."""
         payload = {
-            "t": hashlib.sha256((text or "").encode("utf-8")).hexdigest()[:16],
+            "t": hash_text(text)[:16],
             "m": metric,
             "k": int(top_k),
             "min": float(min_value),
             "ctx": list(context_tags),
         }
-        return hashlib.sha256(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()
+        return hash_text(json.dumps(payload, sort_keys=True))  # Use hash_text for consistent hashing
 
     async def _get_cached_results(self, key: str) -> Optional[List[Tuple[str, float]]]:
         """Retrieve cached results if available and valid."""

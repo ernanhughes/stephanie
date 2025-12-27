@@ -68,6 +68,7 @@ from stephanie.agents.base_agent import BaseAgent
 from stephanie.memory.casebook_store import CaseBookStore
 from stephanie.models.ner_retriever import EntityDetector, NERRetrieverEmbedder
 from stephanie.tools.scorable_classifier import ScorableClassifier
+from stephanie.utils.hash_utils import hash_text
 
 log = logging.getLogger(__name__)
 
@@ -883,7 +884,7 @@ class KnowledgeTreeBuilderAgent(BaseAgent):
         """Publish knowledge tree to the bus for verification."""
         try:
             # Create a job ID based on tree content
-            tree_hash = hashlib.sha256(json.dumps(tree).encode("utf-8")).hexdigest()[:16]
+            tree_hash = hash_text(json.dumps(tree, sort_keys=True))[:16]
             
             # Create a verification job
             job = {

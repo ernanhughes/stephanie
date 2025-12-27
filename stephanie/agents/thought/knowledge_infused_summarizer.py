@@ -20,6 +20,7 @@ from stephanie.agents.thought.figure_grounding import FigureGrounding
 from stephanie.agents.thought.paper_blog import SimplePaperBlogAgent
 from stephanie.models.strategy import StrategyProfile
 from stephanie.scoring.scorable import ScorableFactory, ScorableType
+from stephanie.utils.hash_utils import hash_text
 from stephanie.utils.json_sanitize import sanitize_for_json
 
 if matplotlib.get_backend().lower() != "agg":
@@ -445,11 +446,7 @@ class KnowledgeInfusedVerifierAgent(BaseAgent):
                 abstract=abstract,
             )
             # hash + excerpt for report (avoid dumping huge prompts verbatim)
-            import hashlib
-
-            prompt_hash = hashlib.sha256(prompt.encode("utf-8")).hexdigest()[
-                :12
-            ]
+            prompt_hash = hash_text(prompt)[:12]
             prompt_excerpt = prompt[:600]
 
             # PACS refinement (get details for the report)

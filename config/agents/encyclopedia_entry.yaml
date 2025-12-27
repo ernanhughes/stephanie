@@ -1,0 +1,27 @@
+encyclopedia_entry:
+  name: encyclopedia_entry
+  enabled: true
+  save_prompt: false
+  save_context: false
+  skip_if_completed: false
+
+  # This section is passed to EncyclopediaEntryAgent
+  output_key: encyclopedia_entry
+
+  ingest:
+    # Passed directly into InformationIngestAgent
+    input_key: documents
+    casebook_action: information_ingest
+    min_section_length: 120
+    single_random_doc: false
+
+    information:
+      # This is the config for InformationProcessor
+      export_dir: "./encyclopedia"   # where .md gets written
+      enrich:
+        use_arxiv: true
+        use_wiki: false
+        use_web: true
+        max_arxiv: 4
+        max_wiki: 2
+        max_web: 5

@@ -27,6 +27,8 @@ import sys
 from dataclasses import dataclass
 from typing import List, Dict, Any, Optional
 
+from stephanie.utils.hash_utils import hash_text
+
 DEFAULT_EXCLUDES = [
     ".git", ".hg", ".svn",
     ".venv", "venv", ".tox",
@@ -46,7 +48,7 @@ def human_size(n: int) -> str:
     return f"{f:.1f} {units[i]}"
 
 def sha8(s: str) -> str:
-    return hashlib.sha1(s.encode("utf-8")).hexdigest()[:8]
+    return hash_text(s)[:8]
 
 @dataclass
 class Node:

@@ -8,9 +8,10 @@ from typing import Any, Dict, List, Tuple
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.paper_improver.goals import GoalScorer
+from stephanie.utils.hash_utils import hash_text
 
 
-def _hash(x: str) -> str: return hashlib.sha256(x.encode("utf-8")).hexdigest()[:12]
+def _hash(x: str) -> str: return hash_text(x)[:12]
 def _toklen(s: str) -> int: return max(1, len(s)//4)
 
 @dataclass

@@ -7,8 +7,8 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
+from stephanie.data.base_config import BaseConfig
 from stephanie.memory.codecheck_store import CodeCheckStore
-from stephanie.models.base_config import BaseConfig
 
 # adjust this import to wherever your BaseAgent actually lives
 

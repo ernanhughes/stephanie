@@ -145,6 +145,22 @@ Want to understand how and why it was built this way?
 
 ---
 
+## Web Search
+
+In the root directory
+
+```bash
+docker compose up -d
+```
+
+check the logs
+
+```bash
+docker compose logs -f searxng
+```
+
+---
+
 ## 📖 License
 
 MIT License

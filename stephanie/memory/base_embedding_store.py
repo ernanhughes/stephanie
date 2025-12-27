@@ -13,6 +13,7 @@ import numpy as np
 import torch
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
+from stephanie.utils.hash_utils import hash_text
 from stephanie.utils.lru_cache import SimpleLRUCache
 
 log = logging.getLogger(__name__)
@@ -28,12 +29,11 @@ def _build_ner_retriever(cfg, memory, logger):
     device = cfg.get("ner_device", "cuda" if torch.cuda.is_available() else "cpu")
     model_name = cfg.get("ner_model", "Minibase/NER-Small")
 
-    # Optional lightweight/quant settings (if your NERRetriever supports them)
     kwargs = dict(
         model_name=model_name,
         layer=cfg.get("ner_layer", 17),
         device=device,
-        embedding_dim=cfg.get("ner_dim", 2048),
+        embedding_dim=cfg.get("ner_dim", 1024),
         index_path=cfg.get("ner_index_path", "data/ner_retriever/index"),
         logger=logger,
         memory=memory,
@@ -122,7 +122,7 @@ class BaseEmbeddingStore(BaseSQLAlchemyStore):
                     model_name=self.cfg.get("ner_model", "dslim/bert-base-NER"),
                     layer=self.cfg.get("ner_layer", 17),
                     device=self.cfg.get("ner_device", "cuda" if torch.cuda.is_available() else "cpu"),
-                    embedding_dim=self.cfg.get("ner_dim", 2048),
+                    embedding_dim=self.cfg.get("ner_dim", 1024),
                     index_path=self.cfg.get("ner_index_path", "data/ner_retriever/index"),
                     logger=self.logger,
                     memory=self.memory,
@@ -132,7 +132,7 @@ class BaseEmbeddingStore(BaseSQLAlchemyStore):
                     {
                         "model": self.cfg.get("ner_model", "dslim/bert-base-NER"),
                         "layer": self.cfg.get("ner_layer", 17),
-                        "dim": self.cfg.get("ner_dim", 2048),
+                        "dim": self.cfg.get("ner_dim", 1024),
                         "index_path": self.cfg.get("ner_index_path", "data/ner_retriever/index"),
                     },
                 )
@@ -148,13 +148,11 @@ class BaseEmbeddingStore(BaseSQLAlchemyStore):
     def __repr__(self):
         return f"<{self.__class__.__name__} table={self.table} type={self.type}>"
 
-    def get_text_hash(self, text: str) -> str:
-        return hashlib.sha256((text or "").encode("utf-8")).hexdigest()
 
     # --------------- embedding storage ---------------
 
     def get_or_create(self, text: str):
-        text_hash = self.get_text_hash(text)
+        text_hash = hash_text(text)
         cached = self._cache.get(text_hash)
         if cached is not None:
             return cached[1]
@@ -224,7 +222,7 @@ class BaseEmbeddingStore(BaseSQLAlchemyStore):
     
     def get_id_for_text(self, text: str) -> Optional[int]:
         """Return embedding id for a text, cached if available."""
-        text_hash = self.get_text_hash(text)
+        text_hash = hash_text(text)
         cached = self._cache.get(text_hash)
         if cached:
             return cached[0]  # embedding_id

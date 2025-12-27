@@ -9,6 +9,7 @@ from typing import List
 from omegaconf import OmegaConf
 
 from stephanie.config.schema import AppConfig
+from stephanie.utils.hash_utils import hash_text
 
 
 def load_config(yaml_paths: List[str] | None = None,
@@ -35,5 +36,5 @@ def load_config(yaml_paths: List[str] | None = None,
 def snapshot_and_fingerprint(cfg: AppConfig) -> tuple[dict, str]:
     blob = cfg.model_dump()
     s = json.dumps(blob, sort_keys=True, separators=(",",":"))
-    fp = hashlib.sha1(s.encode("utf-8")).hexdigest()
+    fp = hash_text(s)
     return blob, fp

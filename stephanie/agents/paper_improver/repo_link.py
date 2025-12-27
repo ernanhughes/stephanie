@@ -9,6 +9,8 @@ import time
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+from stephanie.utils.hash_utils import hash_text
+
 
 class RepoLink:
     """
@@ -56,7 +58,7 @@ class RepoLink:
         Returns dict with {branch, pr_url, ci_status, merged}.
         """
         # Derive hash from VPM row (or use spec/plan hash if available)
-        row_hash = hashlib.sha256(json.dumps(vpm_row, sort_keys=True).encode()).hexdigest()[:8]
+        row_hash = hash_text(json.dumps(vpm_row, sort_keys=True))[:8]
         branch_name = f"feat/{label}-{artifact_type}-{row_hash}"
 
         run_dir = Path(run_dir).resolve()

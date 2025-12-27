@@ -85,7 +85,8 @@ class CaseORM(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     casebook_id = Column(Integer, ForeignKey("casebooks.id"), nullable=False)
     goal_id = Column(Integer, ForeignKey("goals.id"), nullable=True)
-
+    name = Column(String, nullable=True, index=True)        
+    description = Column(Text, nullable=True)               
     prompt_text = Column(Text, nullable=True)
     agent_name = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.now)
@@ -108,6 +109,8 @@ class CaseORM(Base):
             "goal_id": self.goal_id,
             "prompt_text": self.prompt_text or "",
             "agent_name": self.agent_name,
+            "name": self.name or "",
+            "description": self.description or "",
             "created_at": iso_date(self.created_at),
             "meta": sanitize(self.meta),               # <— sanitize
         }

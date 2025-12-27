@@ -1,0 +1,3 @@
+name: "kg_indexer"
+subject: "knowledge_graph.index_request"
+debug_tree: true     # turn this on when you want the tree logs

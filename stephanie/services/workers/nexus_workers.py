@@ -17,13 +17,6 @@ from stephanie.utils.vpm_utils import vpm_image_details
 log = logging.getLogger(__name__)
 
 
-# ---------- small util ----------
-async def _maybe_await(x):
-    if inspect.isawaitable(x):
-        return await x
-    return x
-
-
 # ===========================
 # Nexus VPM Worker (Inline)
 # ===========================

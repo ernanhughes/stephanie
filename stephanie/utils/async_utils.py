@@ -3,11 +3,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
-
 from typing import Any, Dict, Optional
+
+import litellm
+
 from stephanie.types.model import ModelSpec
 from stephanie.utils.llm_utils import remove_think_blocks
-import litellm
 
 log = logging.getLogger(__name__)
 

@@ -47,6 +47,7 @@ from transformers import AutoModel, AutoTokenizer, pipeline
 
 from stephanie.models.hnsw_index import HNSWIndex
 from stephanie.scoring.scorable import Scorable
+from stephanie.utils.hash_utils import hash_text
 
 log = logging.getLogger(__name__)
 
@@ -88,35 +89,187 @@ class NERRetrieverProjection(nn.Module):
 
 
 # -------------------------------
-# Entity Detector
+# Entity Detector (GLiNER2-first)
 # -------------------------------
 class EntityDetector:
-    """Detects named entities in text using BERT-NER with fallback to heuristic rules."""
+    """
+    Detects named entities in text.
 
-    def __init__(self, device: str = "cuda"):
+    Priority:
+    1. GLiNER2 (fastino/gliner2-large-v1) if available
+    2. BERT NER pipeline (dslim/bert-base-NER)
+    3. Simple capitalization heuristic fallback
+
+    Always returns:
+        List[dict] with keys: text, type, start, end, score
+    """
+
+    DEFAULT_LABELS = [
+        # High-level scientific / paper-oriented labels
+        "person",
+        "organization",
+        "location",
+        "method",
+        "dataset",
+        "metric",
+        "task",
+        "paper",
+    ]
+
+    def __init__(
+        self,
+        device: str = "cuda",
+        model_name: str | None = None,
+        labels: list[str] | None = None,
+        threshold: float = 0.35,
+    ):
+        self.device = device
+        self.threshold = float(threshold)
+        self.model_name = model_name or "fastino/gliner2-large-v1"
+        self.labels = labels or self.DEFAULT_LABELS
+
+        self.gliner_model = None
+        self.ner_pipeline = None
+
+        # Try GLiNER2 first
         try:
-            # Initialize HuggingFace NER pipeline
+            from gliner2 import GLiNER2  # pip: gliner2
+
+            self.gliner_model = GLiNER2.from_pretrained(self.model_name)
+            log.info(
+                f"EntityDetector: using GLiNER2 model '{self.model_name}' "
+                f"with labels={self.labels}"
+            )
+        except Exception as e:
+            log.warning(
+                f"EntityDetector: GLiNER2 init failed ({e}), "
+                "falling back to BERT-NER pipeline"
+            )
+            self._init_bert_ner(device)
+
+    def _init_bert_ner(self, device: str) -> None:
+        """Fallback HuggingFace NER pipeline."""
+        try:
             self.ner_pipeline = pipeline(
                 "ner",
                 model="dslim/bert-base-NER",
                 aggregation_strategy="simple",
                 device=0 if device == "cuda" else -1,
             )
-            log.debug("Initialized NER pipeline with dslim/bert-base-NER")
+            log.info("EntityDetector: using BERT NER (dslim/bert-base-NER)")
         except Exception as e:
-            log.error(f"Failed to init NER pipeline: {e}")
+            log.error(f"EntityDetector: failed to init BERT NER pipeline: {e}")
             self.ner_pipeline = None
 
     def detect_entities(self, text: str) -> List[Dict[str, Any]]:
-        """Detect entities in text using either BERT-NER or fallback heuristic.
-        Always returns list of dicts with keys: text, type, start, end, score.
+        """
+        Detect entities in `text`.
+
+        Returns:
+            List[dict] with keys: text, type, start, end, score
         """
         if not text or len(text.strip()) < 2:
             return []
 
-        entities: List[Dict[str, Any]] = []
-        try:
-            if self.ner_pipeline:
+        # 1) GLiNER2 path
+        if self.gliner_model is not None:
+            try:
+                raw = self.gliner_model.extract_entities(
+                    text,
+                    self.labels,
+                    threshold=self.threshold,
+                )
+                entities: List[Dict[str, Any]] = []
+
+                for r in raw:
+                    # --- NEW: handle multiple possible GLiNER2 return formats ---
+                    if isinstance(r, dict):
+                        ent_text = (r.get("text") or "").strip()
+                        if not ent_text:
+                            continue
+
+                        etype = (
+                            r.get("label")
+                            or r.get("type")
+                            or r.get("entity_type")
+                            or "UNKNOWN"
+                        )
+                        start = int(r.get("start", -1))
+                        end = int(r.get("end", -1))
+                        score = float(r.get("score", 1.0))
+
+                    elif isinstance(r, str):
+                        # e.g. simple list of strings
+                        ent_text = r.strip()
+                        if not ent_text:
+                            continue
+                        etype = "UNKNOWN"
+                        idx = text.find(ent_text)
+                        if idx != -1:
+                            start = idx
+                            end = idx + len(ent_text)
+                        else:
+                            start, end = 0, 0
+                        score = 1.0
+
+                    elif isinstance(r, (list, tuple)) and len(r) >= 1:
+                        # e.g. ("entity text", start?, end?, label?)
+                        ent_text = str(r[0]).strip()
+                        if not ent_text:
+                            continue
+
+                        # Best-effort extraction of type / spans
+                        etype = "UNKNOWN"
+                        if len(r) >= 4:
+                            etype = str(r[3]) or "UNKNOWN"
+
+                        # Try to get numeric spans if present
+                        start = -1
+                        end = -1
+                        if len(r) >= 3 and isinstance(r[1], int) and isinstance(r[2], int):
+                            start, end = int(r[1]), int(r[2])
+                        score = 1.0
+
+                        # If spans are missing or invalid, search in text
+                        if start < 0 or end <= start or end > len(text):
+                            idx = text.find(ent_text)
+                            if idx != -1:
+                                start = idx
+                                end = idx + len(ent_text)
+                            else:
+                                start, end = 0, 0
+
+                    else:
+                        # Unknown format; skip
+                        continue
+
+                    # Fallback span repair (shared)
+                    if start < 0 or end <= start or end > len(text):
+                        idx = text.find(ent_text)
+                        if idx != -1:
+                            start = idx
+                            end = idx + len(ent_text)
+                        else:
+                            start, end = 0, 0
+
+                    entities.append(
+                        {
+                            "text": ent_text,
+                            "type": etype,
+                            "start": start,
+                            "end": end,
+                            "score": score,
+                        }
+                    )
+
+                return entities
+            except Exception as e:
+                log.error(f"EntityDetector (GLiNER2) failed: {e}")
+
+        # 2) BERT-NER path
+        if self.ner_pipeline is not None:
+            try:
+                entities: List[Dict[str, Any]] = []
                 results = self.ner_pipeline(text)
                 for r in results:
                     entities.append(
@@ -128,14 +281,12 @@ class EntityDetector:
                             "score": float(r.get("score", 1.0)),
                         }
                     )
-            else:
-                # fallback
-                entities = self._heuristic_entity_detection(text)
-        except Exception as e:
-            log.warning(f"NER pipeline failed: {e}")
-            entities = self._heuristic_entity_detection(text)
+                return entities
+            except Exception as e:
+                log.warning(f"EntityDetector (BERT) failed: {e}")
 
-        return entities
+        # 3) Heuristic fallback
+        return self._heuristic_entity_detection(text)
 
     def _map_entity_type(self, group: str) -> str:
         """Map BERT-NER entity types to simplified categories."""
@@ -147,7 +298,8 @@ class EntityDetector:
         }.get(group, "UNKNOWN")
 
     def _heuristic_entity_detection(self, text: str) -> List[Dict[str, Any]]:
-        """Fallback entity detection using capitalization rules.
+        """
+        Fallback entity detection using capitalization rules.
         Returns dicts consistent with detect_entities.
         """
         entities: List[Dict[str, Any]] = []
@@ -172,18 +324,18 @@ class NERRetrieverEmbedder:
 
     def __init__(
         self,
+        logger,
+        memory,
+        cfg=None,
         model_name="dslim/bert-base-NER",
         layer=17,
         # device="cuda" if torch.cuda.is_available() else "cpu",
         device="cpu",
-        embedding_dim=2048,
+        embedding_dim=1024,
         index_path="data/ner_retriever/index",
         projection_enabled=False,
-        projection_dim=2048,
+        projection_dim=1024,
         projection_dropout=0.1,
-        logger=None,
-        memory=None,
-        cfg=None,
     ):
         self.device = device
         self.logger = logger
@@ -209,7 +361,13 @@ class NERRetrieverEmbedder:
         from stephanie.scoring.calibration_manager import CalibrationManager
 
         self.index = HNSWIndex(dim=embedding_dim, index_path=index_path)
-        self.entity_detector = EntityDetector(device)
+        # Entity detector (GLiNER2-first, with configurable model/threshold)
+        self.entity_detector = EntityDetector(
+            device=device,
+            model_name=self.cfg.get("ner_detector_model", None),
+            labels=self.cfg.get("ner_labels", None),
+            threshold=self.cfg.get("ner_detector_threshold", 0.35),
+        )
 
         # optional projection
         self.projection_enabled = projection_enabled
@@ -560,13 +718,10 @@ class NERRetrieverEmbedder:
 
     def _cache_key(self, query: str, k: int, domain: str) -> str:
         """Stable key for caching retrieval results."""
-        import hashlib
         import json
 
         payload = {"q": query, "k": k, "d": domain or "general"}
-        return hashlib.sha256(
-            json.dumps(payload, sort_keys=True).encode("utf-8")
-        ).hexdigest()
+        return hash_text(json.dumps(payload, sort_keys=True))
 
     def _kv_get(self, key: str):
         if not self._kv:

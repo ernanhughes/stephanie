@@ -1,0 +1,23 @@
+# config/tools/paddle_ocr.yaml
+name: paddle_ocr_tool
+type: tool
+class_path: stephanie.tools.paddle_ocr_tool.PaddleOcrTool
+
+use_model: true
+persist: true
+hydrate: true
+force: false
+
+lang: "en"
+use_angle_cls: true
+det: true
+rec: true
+cls: true
+
+use_doc_orientation_classify: false
+use_doc_unwarping: false
+use_textline_orientation: false
+
+min_conf: 0.05
+store_to_memory: true
+image_root: "data/paper_pages"

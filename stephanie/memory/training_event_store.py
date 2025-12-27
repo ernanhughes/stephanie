@@ -7,11 +7,11 @@ from typing import Dict, List, Optional
 from stephanie.memory.base_store import BaseSQLAlchemyStore
 from stephanie.models.training_event import TrainingEventORM
 from stephanie.types.training_event import TrainingEventCreate
+from stephanie.utils.hash_utils import hash_text
 
 
 def _sha1(s: str) -> str:
-
-    return hashlib.sha1(s.encode("utf-8")).hexdigest()
+    return hash_text(s)
 
 
 class TrainingEventStore(BaseSQLAlchemyStore):

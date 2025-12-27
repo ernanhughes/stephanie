@@ -2,16 +2,20 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import time
 import traceback
+from dataclasses import asdict
 from datetime import datetime
+from typing import Any, Dict, List, Optional
 
 import torch
 import torch.nn.functional as F
 from sqlalchemy import text
 
 from stephanie.agents.base_agent import BaseAgent
+from stephanie.data.gild import GILDConfig, GILDSignal, GILDTrainingResult
 from stephanie.data.plan_trace import ExecutionStep, PlanTrace
 from stephanie.scoring.scorable import ScorableFactory
 from stephanie.scoring.scorer.ep_hrm_scorer import \
@@ -20,31 +24,55 @@ from stephanie.scoring.scorer.hrm_scorer import HRMScorer
 from stephanie.scoring.scorer.sicql_scorer import SICQLScorer
 from stephanie.scoring.training.preference_pair_builder import \
     PreferencePairBuilder
+from stephanie.utils.model_locator import ModelLocator
+
+log = logging.getLogger(__name__)
 
 
 class GILDTrainerAgent(BaseAgent):
+    """
+    GILDTrainerAgent v2
+
+    - Uses GILDSignal / GILDConfig / GILDTrainingResult.
+    - Extracts SICQL advantage examples from DB (or context/file).
+    - Reconstructs latent `state_z` with SICQLScorer.encode().
+    - Runs AWR-style π-head training per dimension.
+    - Writes detailed results + proxy epistemic quality into PlanTrace.
+    """
+
     def __init__(self, cfg, memory, container, logger):
         super().__init__(cfg, memory, container, logger)
-        self.beta = cfg.get("beta", 1.0)  # Temperature for advantage weighting
-        self.learning_rate = cfg.get("learning_rate", 1e-4)
-        self.epochs = cfg.get(
-            "gild_epochs", 5
-        )  # Number of passes over the data
-        self.batch_size = cfg.get("batch_size", 32)
+
+        # Canonical GILD config
+        self.gild_cfg = GILDConfig(
+            beta=cfg.get("beta", cfg.get("gild_beta", 1.0)),
+            learning_rate=cfg.get("learning_rate", cfg.get("gild_lr", 1e-4)),
+            batch_size=cfg.get("batch_size", cfg.get("gild_batch_size", 32)),
+            epochs=cfg.get("gild_epochs", 5),
+            max_examples=cfg.get("gild_max_examples"),
+            min_abs_advantage=cfg.get("gild_min_abs_advantage", 0.0),
+            entropy_coef=cfg.get("gild_entropy_coef", 0.0),
+            gradient_clip_norm=cfg.get("gild_gradient_clip_norm", 1.0),
+            warm_start_only=cfg.get("gild_warm_start_only", False),
+            warm_start_fraction=cfg.get("gild_warm_start_fraction", 0.1),
+        )
+
+        # Backwards-compatible simple attributes
+        self.beta = self.gild_cfg.beta
+        self.learning_rate = self.gild_cfg.learning_rate
+        self.epochs = self.gild_cfg.epochs
+        self.batch_size = self.gild_cfg.batch_size
+
         self.model_path = cfg.get("model_path", "models")
         self.target_type = cfg.get("target_type", "plan_trace")
         self.embedding_type = self.memory.embedding.name
         self.version = cfg.get("model_version", "v1")
 
         # --- Paths and Data Handling ---
-        # If data was dumped to file, we need the path
-        self.gild_data_file_path = cfg.get(
-            "gild_data_file_path"
-        )  # Fallback, ideally comes from context
+        self.gild_data_file_path = cfg.get("gild_data_file_path")
 
-        # If not provided, we can set a default path        # --- Training Components ---
+        # --- Training Components ---
         self.optimizer = None  # Will be initialized when model is loaded
-
         self.dimensions = cfg.get("dimensions", [])
         self.pair_builder = PreferencePairBuilder(memory, logger)
 
@@ -54,26 +82,27 @@ class GILDTrainerAgent(BaseAgent):
             cfg.get("epistemic_plan_hrm", {}), memory, logger
         )
 
-        self.logger.log(
-            "GILDTrainerAgentInitialized",
-            {
-                "beta": self.beta,
-                "learning_rate": self.learning_rate,
-                "epochs": self.epochs,
-                "batch_size": self.batch_size,
-                # Add other relevant config
-            },
+        log.info(
+            "GILDTrainerAgentInitialized gild_config %s model_path %s target_type %s embedding_type %s version %s",
+            asdict(self.gild_cfg),
+            self.model_path,
+            self.target_type,
+            self.embedding_type,
+            self.version,
         )
 
-    # Inside GILDTrainerAgent.run (conceptual structure)
+    # -----------------------------
+    #  Main entry point
+    # -----------------------------
 
     async def run(self, context: dict) -> dict:
-        # --- 1. Initialize GILD Process Trace (as before) ---
-        gild_trace = None
+        # --- 1. Initialize GILD Process Trace ---
+        gild_trace: Optional[PlanTrace] = None
         gild_step_order_counter = 1
-        goal = context.get("goal")
+
+        goal = context.get("goal") or {}
         goal_id = goal.get("id")
-        goal_text = goal.get("goal_text")
+        goal_text = goal.get("goal_text", "") or ""
         expert_scorer = self.epistemic_plan_hrm_scorer
 
         try:
@@ -82,14 +111,10 @@ class GILDTrainerAgent(BaseAgent):
                 trace_id=trace_id,
                 goal_id=goal_id,
                 goal_text=goal_text[:1000],
-                plan_signature="GILD_SICQL_Pi_Head_Update_v1",
+                plan_signature="GILD_SICQL_Pi_Head_Update_v2",
                 input_data={
-                    "gild_config": {
-                        k: v
-                        for k, v in self.cfg.items()
-                        if k.startswith("gild_")
-                    },
-                    "expert_scorer": expert_scorer,
+                    "gild_config": asdict(self.gild_cfg),
+                    "expert_scorer": str(expert_scorer),
                 },
                 final_output_text="",
                 execution_steps=[],
@@ -100,121 +125,74 @@ class GILDTrainerAgent(BaseAgent):
                     "started_at": datetime.now().isoformat() + "Z",
                 },
             )
-            self.logger.log(
-                "GILDProcessTraceStarted",
-                {
-                    "trace_id": trace_id,
-                    "goal_id": goal_id,
-                },
+            log.info(
+                "GILDProcessTraceStarted trace_id %s goal_id %s",
+                trace_id, goal_id,
             )
-
         except Exception as e:
-            self.logger.log("GILDProcessTraceInitError", {"error": str(e)})
+            log.error("GILDProcessTraceInitError: %s", str(e))
             gild_trace = None
 
         # --- 2. Log Execution Step: Data Preparation ---
-        data_prep_step_db_id = None
         if gild_trace:
             try:
                 data_prep_step = ExecutionStep(
                     step_order=gild_step_order_counter,
-                    step_id=f"{trace_id}_step_{gild_step_order_counter}",
+                    step_id=f"{gild_trace.trace_id}_step_{gild_step_order_counter}",
                     description="Load and prepare GILD training data.",
                     output_text="",
-                    scores=None,  # Assuming no scores yet
+                    scores=None,
                     meta={},
                 )
-                # self.execution_step_store.add(data_prep_step)
-                # Assuming insert returns the ID or you can get it
-                # data_prep_step_db_id = data_prep_step.id
-                # gild_step_order_counter += 1
+                gild_trace.execution_steps.append(data_prep_step)
+                gild_step_order_counter += 1
             except Exception as e:
-                self.logger.log(
-                    "GILDProcessTraceDataPrepStepError",
-                    {"error": str(e), "trace_id": trace_id},
+                log.error(
+                    "GILDProcessTraceDataPrepStepError: %s trace_id %s",
+                    str(e), gild_trace.trace_id,
                 )
 
-        # --- 3. Prepare GILD Training Data (YOUR SNIPPET STARTS HERE) ---
-        # This is the core logic from your uploaded snippet
+        # --- 3. Prepare GILD Training Data ---
         try:
-            sicql_advantages_data = self.extract_sicql_advantages()
-            if not sicql_advantages_data:
-                raise ValueError(
-                    "No GILD signals (sicql_advantages) found in context."
+            # 3a. Try to load signals directly from context/file
+            raw_signals = self._load_gild_signals(context)
+
+            # 3b. If none, fall back to SQL extraction of SICQL advantages
+            if not raw_signals:
+                raw_signals = self.extract_sicql_advantages(
+                    dimensions=self.dimensions or None,
+                    min_length=1_000,
+                    limit=self.cfg.get("gild_sql_limit", 10_000),
                 )
 
-            # --- YOUR DATA PREP LOGIC ---
-            prepared_data = []
-            for item in sicql_advantages_data:
-                try:
-                    target_id = item["target_id"]
-                    target_type = item["target_type"]
-                    dimension = item["dimension"]
-                    evaluation_id = item["evaluation_id"]
+            if not raw_signals:
+                raise ValueError("No GILD signals found for training.")
 
-                    goal = self.memory.evaluations.get_goal(
-                        evaluation_id
-                    ).to_dict()
-                    scorable = ScorableFactory.from_id(
-                        self.memory, target_type, target_id
-                    )
-                    with torch.no_grad():
-                        sicql_outputs = self.sicql_scorer(
-                            goal, scorable, dimension
-                        )
-                        state_z = sicql_outputs.get("zsa")
-                        state_z = state_z.detach().to(self.device)
-
-                    prepared_data.append(
-                        {
-                            **item,
-                            "state_z": state_z,  # This is the crucial part
-                        }
-                    )
-                except Exception as e:
-                    self.logger.log(
-                        "GILDDataPrepItemFailed",
-                        {"target_id": item.get("target_id"), "error": str(e)},
-                    )
-                    continue  # Continue with other items
-
-            self.logger.log(
-                "GILDDataPreparationCompleted",
-                {
-                    "prepared_items": len(prepared_data),
-                    "total_input_items": len(sicql_advantages_data),
-                },
+            # 3c. Convert raw rows → GILDSignal objects
+            prepared_signals: List[GILDSignal] = self._prepare_training_data(
+                raw_signals
             )
 
-            # --- Update Data Prep Execution Step with Outcome ---
-            if data_prep_step_db_id:
-                try:
-                    # Re-query or update the step ORM object
-                    data_prep_step_orm = (
-                        self.memory.execution_step_store.get_by_id(
-                            data_prep_step_db_id
-                        )
-                    )
-                    if data_prep_step_orm:
-                        data_prep_step_orm.output_text = f"Loaded {len(sicql_advantages_data)} signals, prepared {len(prepared_data)} training examples."
-                        # Add timing or other stats to meta if needed
-                        # data_prep_step_orm.extra_data["prep_time_seconds"] = ...
-                        self.execution_step_store.session.commit()
-                except Exception as e:
-                    self.logger.log(
-                        "GILDProcessTraceDataPrepStepUpdateError",
-                        {"error": str(e), "step_id": data_prep_step_db_id},
-                    )
+            log.info(
+                "GILDDataPreparationCompleted prepared_items %d total_input_items %d",
+                len(prepared_signals),
+                len(raw_signals),
+            )
+ 
+            if gild_trace and gild_trace.execution_steps:
+                # Update the last step (data prep) with a short summary
+                gild_trace.execution_steps[-1].output_text = (
+                    f"Loaded {len(raw_signals)} signals, "
+                    f"prepared {len(prepared_signals)} GILDSignal examples."
+                )
 
-            if not prepared_data:
+            if not prepared_signals:
                 raise RuntimeError(
                     "No data prepared for GILD training after processing."
                 )
 
         except Exception as e:
-            self.logger.log("GILDDataPreparationError", {"error": str(e)})
-            # Log error step in trace if possible
-            # ... (similar to previous draft)
+            log.error("GILDDataPreparationError: %s", str(e))
             context["gild_status"] = "failed_data_prep"
             context["gild_error"] = str(e)
             if gild_trace:
@@ -222,83 +200,98 @@ class GILDTrainerAgent(BaseAgent):
                 gild_trace.meta["completed_at"] = (
                     datetime.now().isoformat() + "Z"
                 )
-                self.plan_trace_store.session.commit()
             return context
 
-        # --- 4. GILD Training Loop (YOUR SNIPPET CONTINUES) ---
-        # Determine dimensions to update
-        dimensions_to_update = list(
-            set(item["dimension"] for item in prepared_data)
+        # --- 4. GILD Training Loop (per-dimension AWR over GILDSignal) ---
+        dimensions_to_update = sorted(
+            {s.dimension for s in prepared_signals}
         )
-        training_results = {}
+        training_results: Dict[str, GILDTrainingResult] = {}
 
         for dimension in dimensions_to_update:
             model = self.sicql_scorer.models.get(dimension)
             if not model:
-                self.logger.log(
-                    "GILDTrainingModelError",
-                    {
-                        "message": f"SICQL model for dimension '{dimension}' not found.",
-                        "trace_id": trace_id if gild_trace else "unknown",
-                    },
+                msg = f"SICQL model for dimension '{dimension}' not found."
+                log.error(
+                    "GILDTrainingModelError: %s dimension %s",
+                    msg, dimension,
                 )
-                training_results[dimension] = {
-                    "status": "model_not_found",
-                    "error": "Model not found",
-                }
+                training_results[dimension] = GILDTrainingResult(
+                    dimension=dimension,
+                    status="model_not_found",
+                    final_loss=float("inf"),
+                    num_examples=0,
+                    num_epochs=0,
+                    meta={"error": msg},
+                )
                 continue
 
-            pi_head = model.pi_head
-            if not pi_head:
-                self.logger.log(
-                    "GILDTrainingModelError",
-                    {
-                        "message": f"Pi head for dimension '{dimension}' not found.",
-                        "trace_id": trace_id if gild_trace else "unknown",
-                    },
+            pi_head = getattr(model, "pi_head", None)
+            if pi_head is None:
+                msg = f"Pi head for dimension '{dimension}' not found."
+                log.error(
+                    "GILDTrainingModelError: %s dimension %s",
+                    msg, dimension,
                 )
-                training_results[dimension] = {
-                    "status": "pi_head_not_found",
-                    "error": "Pi head not found",
-                }
+                training_results[dimension] = GILDTrainingResult(
+                    dimension=dimension,
+                    status="pi_head_not_found",
+                    final_loss=float("inf"),
+                    num_examples=0,
+                    num_epochs=0,
+                    meta={"error": msg},
+                )
                 continue
-
-            # Freeze other parts, unfreeze pi_head (as in previous draft)
-            # ... (Freeze logic) ...
-
-            optimizer = torch.optim.AdamW(
-                pi_head.parameters(), lr=self.cfg.get("gild_lr", 1e-4)
-            )
 
             # Log Training Start Step
-            training_start_step_db_id = None
             if gild_trace:
                 try:
                     training_start_step = ExecutionStep(
                         step_order=gild_step_order_counter,
-                        step_id=f"{trace_id}_step_{gild_step_order_counter}",
+                        step_id=f"{gild_trace.trace_id}_step_{gild_step_order_counter}",
                         description=f"Start GILD training for dimension '{dimension}'.",
                         output_text="",
-                        scores=None,  # Assuming no scores yet
+                        scores=None,
                         meta={
                             "trainable_params": sum(
                                 p.numel() for p in pi_head.parameters()
                             )
                         },
                     )
+                    gild_trace.execution_steps.append(training_start_step)
                     gild_step_order_counter += 1
                 except Exception as e:
-                    self.logger.log(
-                        "GILDProcessTraceTrainingStartStepError",
-                        {"error": str(e), "trace_id": trace_id},
+                    log.error(
+                        "GILDProcessTraceTrainingStartStepError: %s trace_id %s",
+                        str(e), gild_trace.trace_id,
                     )
 
             try:
-                # 1. Collect only the samples for THIS dimension
-                dim_samples = [row for row in prepared_data if row["dimension"] == dimension]
-                if not dim_samples:
-                    training_results[dimension] = {"status": "skipped", "reason": "no samples"}
+                # 1. Filter signals for this dimension
+                dim_signals = [
+                    s for s in prepared_signals if s.dimension == dimension
+                ]
+                if not dim_signals:
+                    training_results[dimension] = GILDTrainingResult(
+                        dimension=dimension,
+                        status="skipped",
+                        final_loss=float("inf"),
+                        num_examples=0,
+                        num_epochs=0,
+                        meta={"reason": "no_samples"},
+                    )
                     continue
+
+                # Optional cap on examples
+                if (
+                    self.gild_cfg.max_examples is not None
+                    and len(dim_signals) > self.gild_cfg.max_examples
+                ):
+                    dim_signals = dim_signals[: self.gild_cfg.max_examples]
+
+                # Move to device once
+                for s in dim_signals:
+                    s.to_device(self.device).detach()
 
                 # 2. Freeze everything except the π-head
                 for p in model.parameters():
@@ -306,31 +299,36 @@ class GILDTrainerAgent(BaseAgent):
                 for p in pi_head.parameters():
                     p.requires_grad = True
 
-                # 3. Fresh optimizer for this head
-                self.optimizer = torch.optim.AdamW(pi_head.parameters(), lr=self.learning_rate)
+                # 3. Optimizer for this head
+                self.optimizer = torch.optim.AdamW(
+                    pi_head.parameters(), lr=self.gild_cfg.learning_rate,
+                    weight_decay=1e-5
+                )
 
-                # 4. Epoch loop (uses your existing _run_training_epoch)
-                epoch_losses = []
-                for epoch in range(self.epochs):
-                    avg_loss = self._run_training_epoch(model, dim_samples)
+                # 4. Epoch loop
+                epoch_losses: List[float] = []
+                for epoch in range(self.gild_cfg.epochs):
+                    avg_loss = self._run_training_epoch(model, dim_signals)
                     epoch_losses.append(avg_loss)
-                    self.logger.log(
-                        "GILDEpochCompleted",
-                        {"epoch": epoch, "avg_loss": avg_loss, "dimension": dimension},
+                    log.info(
+                        "GILDEpochCompleted epoch %d avg_loss %.6f dimension %s",
+                        epoch,
+                        avg_loss,
+                        dimension,
                     )
 
-                # 5. Pack up results
-                final_avg_loss = epoch_losses[-1] if epoch_losses else float("inf")
-                training_results[dimension] = {
-                    "status": "completed",
-                    "final_loss": final_avg_loss,
-                    "loss_history": epoch_losses,
-                }
-
                 final_avg_loss = (
-                    sum(epoch_losses) / len(epoch_losses)
-                    if epoch_losses
-                    else float("inf")
+                    epoch_losses[-1] if epoch_losses else float("inf")
+                )
+
+                training_results[dimension] = GILDTrainingResult(
+                    dimension=dimension,
+                    status="completed",
+                    final_loss=final_avg_loss,
+                    num_examples=len(dim_signals),
+                    num_epochs=len(epoch_losses),
+                    trace_id=gild_trace.trace_id if gild_trace else None,
+                    meta={"loss_history": epoch_losses},
                 )
 
                 # Log Training End Step with results
@@ -338,84 +336,97 @@ class GILDTrainerAgent(BaseAgent):
                     try:
                         training_end_step = ExecutionStep(
                             step_order=gild_step_order_counter,
-                            step_id=f"{trace_id}_step_{gild_step_order_counter}",
+                            step_id=f"{gild_trace.trace_id}_step_{gild_step_order_counter}",
                             description=f"Completed GILD training for dimension '{dimension}'.",
-                            output_text=f"Final average loss: {final_avg_loss:.6f}",
-                            scores=None,  # Assuming no scores yet
-                            meta={"final_loss": final_avg_loss,
-                                         "epochs": self.epochs,
-                                         "dimension": dimension},
+                            output_text=(
+                                f"Final average loss: {final_avg_loss:.6f}, "
+                                f"examples: {len(dim_signals)}, "
+                                f"epochs: {len(epoch_losses)}"
+                            ),
+                            scores=None,
+                            meta={
+                                "final_loss": final_avg_loss,
+                                "epochs": len(epoch_losses),
+                                "dimension": dimension,
+                            },
                         )
+                        gild_trace.execution_steps.append(training_end_step)
                         gild_step_order_counter += 1
                     except Exception as e:
                         self.logger.log(
                             "GILDProcessTraceTrainingEndStepError",
-                            {"error": str(e), "trace_id": trace_id},
+                            {"error": str(e), "trace_id": gild_trace.trace_id},
                         )
 
-                # Save updated model (as in your snippet)
-                # ... (save logic) ...
-                training_results[dimension] = {
-                    "status": "completed",
-                    "final_loss": final_avg_loss,
-                    "loss_history": epoch_losses,
-                }
+                try:
+                    locator = ModelLocator(
+                        root_dir=self.model_path,
+                        embedding_type=self.embedding_type,
+                        model_type="sicql",
+                        target_type=self.target_type,
+                        dimension=dimension,
+                        version=self.version,
+                    )
+                    locator.ensure_dirs()
+                    pi_head_path = locator.pi_head_file()
+                    torch.save(pi_head.state_dict(), pi_head_path)
+                    training_results[dimension].meta["pi_head_path"] = pi_head_path
+                    self.logger.log(
+                        "GILDModelSaved",
+                        {"dimension": dimension, "pi_head_path": pi_head_path},
+                    )
+                except Exception as e:
+                    log.error(
+                        "GILDModelSaveError dimension %s error %s",
+                        dimension,
+                        str(e),
+                    )
 
             except Exception as e:
-                self.logger.log(
-                    "GILDTrainingLoopError",
-                    {
-                        "error": str(e),
-                        "dimension": dimension,
-                        "traceback": traceback.format_exc(),
-                    },
+                tb = traceback.format_exc()
+                log.error(
+                    "GILDTrainingLoopError: %s dimension %s traceback %s",
+                    str(e),
+                    dimension,
+                    tb,
                 )
-                # Log error step
-                # ... (error step logic) ...
-                training_results[dimension] = {
-                    "status": "failed_training",
-                    "error": str(e),
-                    "final_loss": epoch_losses[-1] if epoch_losses else None,
-                }
-                # Decide whether to continue with other dimensions or fail completely
-                # For now, let's continue
+                training_results[dimension] = GILDTrainingResult(
+                    dimension=dimension,
+                    status="failed_training",
+                    final_loss=float("inf"),
+                    num_examples=0,
+                    num_epochs=0,
+                    meta={"error": str(e), "traceback": tb},
+                )
+                # Continue with other dimensions
 
         # --- 5. Assign Epistemic Quality and Finalize Trace ---
+        completed_results = [
+            r for r in training_results.values() if r.status == "completed"
+        ]
+        if completed_results:
+            overall_final_loss = sum(r.final_loss for r in completed_results) / len(
+                completed_results
+            )
+        else:
+            overall_final_loss = float("inf")
+
         final_status = (
             "completed"
-            if all(
-                res.get("status") == "completed"
-                for res in training_results.values()
-            )
+            if completed_results
+            and all(r.status == "completed" for r in training_results.values())
             else "completed_with_errors"
         )
-        overall_final_loss = (
-            sum(
-                res.get("final_loss", 0)
-                for res in training_results.values()
-                if res.get("status") == "completed"
-            )
-            / len(
-                [
-                    r
-                    for r in training_results.values()
-                    if r.get("status") == "completed"
-                ]
-            )
-            if any(
-                r.get("status") == "completed"
-                for r in training_results.values()
-            )
-            else float("inf")
-        )
 
-        # --- Calculate Proxy Epistemic Quality ---
+        # Proxy epistemic quality from normalized loss
         max_expected_loss = 0.1
-        normalized_loss_quality = (
-            max(0.0, min(1.0, 1.0 - (overall_final_loss / max_expected_loss)))
-            if overall_final_loss != float("inf")
-            else 0.0
-        )
+        if overall_final_loss == float("inf"):
+            normalized_loss_quality = 0.0
+        else:
+            normalized_loss_quality = max(
+                0.0,
+                min(1.0, 1.0 - (overall_final_loss / max_expected_loss)),
+            )
 
         if gild_trace:
             try:
@@ -423,27 +434,33 @@ class GILDTrainerAgent(BaseAgent):
                 gild_trace.target_epistemic_quality_source = (
                     "proxy_final_loss_normalized"
                 )
-                gild_trace.final_output_text = f"GILD run {final_status}. Overall final average loss: {overall_final_loss:.6f}. Assigned proxy epistemic quality: {normalized_loss_quality:.4f}."
+                gild_trace.final_output_text = (
+                    f"GILD run {final_status}. Overall final average loss: "
+                    f"{overall_final_loss:.6f}. Assigned proxy epistemic "
+                    f"quality: {normalized_loss_quality:.4f}."
+                )
                 gild_trace.meta["completed_at"] = (
                     datetime.now().isoformat() + "Z"
                 )
                 gild_trace.meta["final_metrics"] = {
                     "overall_final_loss": overall_final_loss,
                     "proxy_epistemic_quality": normalized_loss_quality,
-                    "epochs_run": self.epochs,
-                    "per_dimension_results": training_results,  # Include detailed results
-                }
-                self.logger.log(
-                    "GILDProcessTraceFinalized",
-                    {
-                        "trace_id": gild_trace.trace_id,
-                        "epistemic_quality": normalized_loss_quality,
-                        "overall_final_loss": overall_final_loss,
+                    "epochs_run": self.gild_cfg.epochs,
+                    "per_dimension_results": {
+                        dim: asdict(res)
+                        for dim, res in training_results.items()
                     },
+                }
+                log.info(
+                    "GILDProcessTraceFinalized trace_id %s epistemic_quality %.4f overall_final_loss %.6f",
+                    gild_trace.trace_id,
+                    normalized_loss_quality,
+                    overall_final_loss,
                 )
             except Exception as e:
-                self.logger.log(
-                    "GILDProcessTraceFinalizationError", {"error": str(e)}
+                log.error(
+                    "GILDProcessTraceFinalizationError: %s",
+                    str(e),
                 )
                 if gild_trace:
                     gild_trace.final_output_text += (
@@ -451,45 +468,33 @@ class GILDTrainerAgent(BaseAgent):
                     )
                     gild_trace.meta["trace_finalization_error"] = str(e)
 
-        # --- 6. Score the Trace with Epistemic HRM (as per suggestions) ---
+        # --- 6. Score the Trace with Epistemic HRM ---
         quality_pred = None
         if gild_trace:
             try:
-
-
-                # Score the trace (Suggestion 3)
-                # TODO convert to scorable
-                score = self.epistemic_plan_hrm_scorer.score(gild_trace, self.dimensions)
-                quality_pred = score.aggregate()
-
-            except Exception as e:
-                self.logger.log(
-                    "GILDTraceHRMScoringError",
-                    {
-                        "error": str(e),
-                        "trace_id": gild_trace.trace_id
-                        if gild_trace
-                        else "unknown",
-                        "traceback": traceback.format_exc(),
-                    },
+                score = self.epistemic_plan_hrm_scorer.score(
+                    gild_trace, self.dimensions
                 )
-                # Don't fail the whole process if HRM scoring fails
+                quality_pred = score.aggregate()
+            except Exception as e:
+                log.error(
+                    "GILDTraceHRMScoringError: %s trace_id %s traceback %s",
+                    str(e),
+                    gild_trace.trace_id,
+                    traceback.format_exc(),
+                )
 
         # --- 7. Update Context and Return ---
         context["gild_status"] = final_status
         context["gild_overall_final_loss"] = overall_final_loss
-        context["gild_training_results"] = (
-            training_results  # Detailed per-dimension results
-        )
+        context["gild_training_results"] = {
+            dim: asdict(res) for dim, res in training_results.items()
+        }
         if gild_trace:
             context["gild_trace_id"] = gild_trace.trace_id
-            context["gild_epistemic_quality"] = (
-                normalized_loss_quality  # The proxy
-            )
+            context["gild_epistemic_quality"] = normalized_loss_quality
             if quality_pred is not None:
-                context["gild_hrm_predicted_quality"] = (
-                    quality_pred  # Add HRM prediction to context
-                )
+                context["gild_hrm_predicted_quality"] = quality_pred
 
         self.logger.log(
             "GILDTrainerAgentCompleted",
@@ -503,9 +508,17 @@ class GILDTrainerAgent(BaseAgent):
 
         return context
 
-    def _load_gild_signals(self, context: dict) -> dict:
-        """Load GILD signals from context or file."""
-        # 1. Try loading directly from context (if not dumped)
+    # -----------------------------
+    #  Data loading & prep
+    # -----------------------------
+
+    def _load_gild_signals(self, context: dict) -> List[Dict[str, Any]]:
+        """
+        Load precomputed GILD signals from context or from a dumped JSON file.
+
+        Expected shape is "raw" rows, which _prepare_training_data will turn
+        into GILDSignal objects.
+        """
         signals = context.get("policy_synthesis_results", {}).get(
             "gild_signals"
         )
@@ -513,8 +526,6 @@ class GILDTrainerAgent(BaseAgent):
             self.logger.log("GILDDataLoadedFromContext", {})
             return signals
 
-        # 2. Check if data was dumped and load from file
-        # The PolicySynthesisAgent might have put the file path in the context
         psr = context.get("policy_synthesis_results", {})
         if (
             isinstance(psr, dict)
@@ -523,150 +534,183 @@ class GILDTrainerAgent(BaseAgent):
         ):
             file_path = psr["dumped_to_file"]
         else:
-            # Fallback to config path
             file_path = self.gild_data_file_path
 
         if file_path and os.path.exists(file_path):
             try:
                 with open(file_path, "r") as f:
                     signals = json.load(f)
-                self.logger.log(
-                    "GILDDataLoadedFromFile", {"file_path": file_path}
+                log.info(
+                    "GILDDataLoadedFromFile file_path %s", file_path
                 )
                 return signals
             except Exception as e:
-                self.logger.log(
-                    "GILDDataLoadFromFileFailed",
-                    {"file_path": file_path, "error": str(e)},
+                log.error(
+                    "GILDDataLoadFromFileFailed file_path %s error %s",
+                    file_path, str(e)
                 )
 
-        return {}
+        return []
 
-    def _prepare_training_data(self, sicql_advantages_data: list) -> list:
+    def _prepare_training_data(
+        self, sicql_advantages_data: List[Dict[str, Any]]
+    ) -> List[GILDSignal]:
         """
-        Prepare data for training: reconstruct states, organize tensors.
-        This is a critical step requiring access to embeddings.
+        Convert raw SICQL advantage rows into GILDSignal objects.
+
+        Each row is expected to have:
+        - evaluation_id, goal_id, target_id, target_type, dimension
+        - q_value, v_value, advantage
+        Optionally:
+        - source, pi_value
+        If q_value / v_value are missing we recompute with SICQLScorer.
         """
-        prepared_data = []
+        prepared: List[GILDSignal] = []
+
         for item in sicql_advantages_data:
             try:
+                evaluation_id = item["evaluation_id"]
                 target_id = item["target_id"]
                 target_type = item["target_type"]
-                advantage = float(item["advantage"])  # Ensure it's a float
                 dimension = item["dimension"]
-                evaluation_id = item[
-                    "evaluation_id"
-                ]  # Optional ID for tracking
-                goal = self.memory.evaluations.get_goal(
-                    evaluation_id
-                )  # You need to implement this
+                goal_id = item.get("goal_id")
+
+                # Advantage → tensor
+                advantage_val = float(item["advantage"])
+                advantage_tensor = torch.tensor(
+                    advantage_val, dtype=torch.float32
+                )
+
+                # Retrieve goal + scorable
+                goal = self.memory.evaluations.get_goal(evaluation_id)
                 scorable = ScorableFactory.from_id(
                     self.memory, target_type, target_id
-                )  # You need to None implement this
+                )
 
                 if not goal or not scorable:
                     self.logger.log(
                         "GILDDataPrepWarning",
                         {
-                            "message": "Could not retrieve text for state reconstruction",
-                            "target_id": target_id,
+                            "message": "Could not retrieve goal or scorable.",
+                            "target_id": str(target_id),
                             "target_type": target_type,
                         },
                     )
-                    continue  # Skip this item
+                    continue
 
-                with torch.no_grad():  # Usually, you get the *current* model's prediction without gradients
-                    sicql_outputs = self.sicql_scorer(
-                        goal.to_dict(), scorable, dimension
-                    )
-                    # sicql_outputs is the dictionary: {"q_value": ..., "state_value": ..., ...}
-                state_z = self.sicql_scorer.encode(
-                    goal.to_dict(), scorable, dimension
+                goal_dict = goal.to_dict()
+
+                # Use existing q/v if present; otherwise recompute
+                q_value = item.get("q_value")
+                v_value = item.get("v_value")
+
+                if q_value is None or v_value is None:
+                    with torch.no_grad():
+                        sicql_outputs = self.sicql_scorer(
+                            goal_dict, scorable, dimension
+                        )
+                    q_value = sicql_outputs["q_value"].item()
+                    v_value = sicql_outputs["state_value"].item()
+
+                # Encode latent state `state_z`
+                state_z = self.sicql_scorer.encode(goal_dict, scorable, dimension)
+
+                signal = GILDSignal(
+                    evaluation_id=evaluation_id,
+                    goal_id=goal_id,
+                    target_id=target_id,
+                    target_type=target_type,
+                    dimension=dimension,
+                    q_value=float(q_value),
+                    state_value=float(v_value),
+                    advantage=advantage_tensor,
+                    state_z=state_z,
+                    source=item.get("source", "sicql"),
+                    pi_value=(
+                        float(item["pi_value"])
+                        if item.get("pi_value") is not None
+                        else None
+                    ),
+                    meta={},
                 )
-                prepared_data.append(
-                    {
-                        "q_value": sicql_outputs["q_value"].item(),
-                        "state_value": sicql_outputs[
-                            "state_value"
-                        ].item(),  # Get the state value
-                        "advantage": torch.tensor(
-                            advantage, dtype=torch.float32
-                        ),  # Tensor
-                        "state_z": state_z,
-                        "target_id": target_id,
-                        "target_type": target_type,
-                        "dimension": dimension,
-                        "evaluation_id": evaluation_id,
-                    }
-                )
+
+                prepared.append(signal)
+
             except Exception as e:
-                self.logger.log(
-                    "GILDDataPrepItemFailed",
-                    {"target_id": item.get("target_id"), "error": str(e)},
+                log.error(
+                    "GILDDataPrepItemFailed target_id %s error %s",
+                    str(item.get("target_id")), str(e),
                 )
-                # Continue with other items
+                continue
 
-        self.logger.log(
-            "GILDDataPreparationCompleted",
-            {
-                "prepared_items": len(prepared_data),
-                "total_input_items": len(sicql_advantages_data),
-            },
+        log.info(
+            "GILDDataPreparationCompletedRaw prepared_items %d total_input_items %d",
+            len(prepared),
+            len(sicql_advantages_data),
         )
-        return prepared_data
+        return prepared
 
-    def _run_training_epoch(self, model, prepared_data: list) -> float:
-        """Run one epoch of GILD training."""
+    # -----------------------------
+    #  AWR training epoch
+    # -----------------------------
+
+    def _run_training_epoch(
+        self, model: Any, signals: List[GILDSignal]
+    ) -> float:
+        """Run one epoch of GILD AWR training over a list of GILDSignal."""
         total_loss = 0.0
         num_batches = 0
 
-        # Simple batching (you might want a proper DataLoader)
-        for i in range(0, len(prepared_data), self.batch_size):
-            batch = prepared_data[i : i + self.batch_size]
+        batch_size = self.gild_cfg.batch_size
 
-            # Aggregate batch data
-            batch_states = torch.stack(
-                [item["state_z"] for item in batch]
-            )  # Shape: (batch_size, z_dim)
-            batch_advantages = torch.stack(
-                [item["advantage"] for item in batch]
-            )  # Shape: (batch_size,)
+        for i in range(0, len(signals), batch_size):
+            batch_signals = signals[i : i + batch_size]
+
+            # Convert to tensors
+            batch_states, batch_advantages = GILDSignal.batch_to_tensors(
+                batch_signals, device=self.device
+            )
+
+            # Optional advantage thresholding
+            if self.gild_cfg.min_abs_advantage > 0.0:
+                mask = batch_advantages.abs() >= self.gild_cfg.min_abs_advantage
+                if mask.sum() == 0:
+                    continue
+                batch_advantages = batch_advantages[mask]
+                batch_states = batch_states[mask]
+
+            if batch_states.numel() == 0:
+                continue
 
             # Zero gradients
             self.optimizer.zero_grad()
 
             # Forward pass through the policy head only
-            # model.pi_head should take state_z and output action_logits
-            action_logits = model.pi_head(
-                batch_states
-            )  # Shape: (batch_size, action_dim)
+            action_logits = model.pi_head(batch_states)
+            log_probs = F.log_softmax(action_logits, dim=-1)
 
-            # --- Core GILD Update ---
-            # Calculate log probabilities
-            log_probs = F.log_softmax(
-                action_logits, dim=-1
-            )  # Shape: (batch_size, action_dim)
+            # Advantage-weighted imitation
+            weights = torch.exp(self.gild_cfg.beta * batch_advantages.detach())
+            weights = weights / (weights.sum() + 1e-8)
+            weights = weights.unsqueeze(-1)
 
-            # Calculate weights from advantages
-            # Ensure advantages are detached and have correct shape for broadcasting
-            weights = torch.exp(
-                self.beta * batch_advantages.detach()
-            )  # Shape: (batch_size,)
-            weights = weights / (
-                weights.sum() + 1e-8
-            )  # Normalize weights (optional but often done)
-            weights = weights.unsqueeze(
-                -1
-            )  # Shape: (batch_size, 1) for broadcasting
+            pi_loss = -(log_probs * weights).sum(dim=-1).mean()
 
-            # Calculate weighted imitation loss
-            # We sum over actions (dim=-1) and mean over the batch
-            pi_loss = -(log_probs * weights).sum(dim=-1).mean()  # Scalar loss
+            # Optional entropy regularization
+            if self.gild_cfg.entropy_coef > 0.0:
+                probs = log_probs.exp()
+                entropy = -(probs * log_probs).sum(dim=-1).mean()
+                pi_loss = pi_loss - self.gild_cfg.entropy_coef * entropy
 
-            # Backward pass
+            # Backward
             pi_loss.backward()
 
-            # Update parameters
+            # Optional gradient clipping
+            if self.gild_cfg.gradient_clip_norm is not None:
+                torch.nn.utils.clip_grad_norm_(
+                    model.pi_head.parameters(), self.gild_cfg.gradient_clip_norm
+                )
+
             self.optimizer.step()
 
             total_loss += pi_loss.item()
@@ -675,71 +719,4 @@ class GILDTrainerAgent(BaseAgent):
         avg_loss = total_loss / num_batches if num_batches > 0 else 0.0
         return avg_loss
 
-    def extract_sicql_advantages(self,
-        dimensions: list[str] | None = None,                         
-        min_length: int = 1_000,
-        limit: int | None = 10,
-    ) -> list[dict[str, any]]:
-        """Pull `(goal, doc)`‑level *advantage* records produced by the SICQL scorer.
-
-        Parameters
-        ----------
-        session : sqlalchemy.orm.Session
-            Active DB session.
-        logger : Any
-            Object with a `.log(event: str, payload: dict)` method.
-        dimensions : list[str] | None, default ``None``
-            If given, filter to this subset of HRM/SICQL dimensions.
-        min_length : int, default ``1_000``
-            Emit a warning if fewer than this many rows are returned.
-        limit : int | None, default ``10``
-            Hard cap on the number of rows.  Set to ``None`` to disable.
-        """
-
-        base_sql = """
-            SELECT
-                e.id   AS evaluation_id,
-                e.goal_id,
-                e.target_id,
-                e.target_type,
-                s.dimension,
-                ea.q_value,
-                ea.v_value,
-                ea.source,
-                ea.pi_value,
-                ea.advantage
-            FROM evaluation_attributes ea
-            JOIN evaluations e ON ea.evaluation_id = e.id
-            JOIN scores      s ON s.evaluation_id = e.id AND s.dimension = ea.dimension
-            WHERE e.source = :source
-            AND ea.advantage IS NOT NULL
-        """
-
-        params: dict[str, any] = {"source": "sicql"}
-
-        if dimensions:
-            base_sql += "\n          AND s.dimension IN :dims"
-            params["dims"] = tuple(dimensions)
-
-        base_sql += "\n        ORDER BY s.dimension"
-
-        if limit is not None:
-            base_sql += "\n        LIMIT :lim"
-            params["lim"] = int(limit)
-
-        rows = self.memory.session.execute(text(base_sql), params).fetchall()
-        result = [dict(r._mapping) for r in rows]
-
-        self.logger.log("SICQLAdvantageExtracted", {
-            "total": len(result),
-            "dimensions": dimensions or "all",
-            "limit": limit,
-        })
-
-        if len(result) < min_length:
-            self.logger.log("SICQLAdvantageWarning", {
-                "message": f"Only {len(result)} records found — might be insufficient for training.",
-                "min_length": min_length,
-            })
-
-        return result
+    # --------------------

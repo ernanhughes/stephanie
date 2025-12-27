@@ -2,134 +2,61 @@
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import json
 import logging
 import os
-import re
-import time
-import traceback
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-import numpy as np
-import torch
-
-from stephanie.models.hnsw_index import HNSWIndex
-from stephanie.models.ner_retriever import EntityDetector, NERRetrieverEmbedder
 from stephanie.services.service_protocol import Service
-from stephanie.tools.scorable_classifier import ScorableClassifier
+from stephanie.services.knowledge_graph.subgraphs.edge_index import JSONLEdgeIndex
+from stephanie.services.knowledge_graph.subgraphs.seed_finder import EmbeddingSeedFinder
+from stephanie.services.knowledge_graph.subgraphs.subgraph_builder import SubgraphBuilder, SubgraphConfig
+from stephanie.services.knowledge_graph.graph_indexer import GraphIndexer
+from stephanie.services.knowledge_graph.entity_canonicalizer import EntityCanonicalizer
+from stephanie.tools.ner_tool import NerTool
+
 
 log = logging.getLogger(__name__)
-
-def _normalize_text(t: str) -> str:
-    # Minimal normalization; extend with NFC, ZWSP stripping as needed
-    return (t or "").replace("\u200b", "").strip()
-
-def _content_hash(t: str) -> str:
-    return hashlib.sha1(t.encode("utf-8")).hexdigest()
-
-def _segment_sentences(t: str) -> List[Tuple[int, int]]:
-    """
-    Return [(start, end), ...] char spans for naive sentences.
-    Replace with spaCy or your existing SentenceSegmenter when available.
-    """
-    spans = []
-    last = 0
-    for m in re.finditer(r"([.!?])\s+", t):
-        end = m.end()
-        if end > last:
-            spans.append((last, end))
-            last = end
-    if last < len(t):
-        spans.append((last, len(t)))
-    return spans
-
-def _locate_sentence_ix(
-    sent_spans: List[Tuple[int, int]], start: int, end: int
-) -> int:
-    for i, (s, e) in enumerate(sent_spans):
-        # entity ranges that overlap a sentence count as in that sentence
-        if not (end <= s or start >= e):
-            return i
-    return -1
-
-def _safe_slice(t: str, start: int, end: int) -> str:
-    start = max(0, min(start, len(t)))
-    end = max(start, min(end, len(t)))
-    return t[start:end]
 
 
 class KnowledgeGraphService(Service):
     """
-    Knowledge Graph Service - The "contextual glue" that connects entities across knowledge.
-    Now includes:
-      - Consistent embedding space (NER retriever)
-      - Deduplicated node insertion
-      - Properly enriched search results
-      - Accurate stats tracking
+    Thin coordinator service that delegates to modular KG components.
+
+    Responsibilities:
+      - Lifecycle (initialize/shutdown)
+      - Event subscription (index_request → GraphIndexer)
+      - Nexus + embedding store mirroring (upsert_node/edge)
+      - Public APIs (search, query subgraph, tree building)
+      - Stats/health
     """
 
-    def __init__(self, cfg: Dict, memory: Any, logger: Any):
+    def __init__(self, cfg: Dict, memory: Any, container: Any, logger: Any):
+        super().__init__(cfg)
         self.cfg = cfg
         self.memory = memory
+        self.container = container
         self.logger = logger
-        self.enabled = cfg.get("knowledge_graph", {}).get("enabled", True)
+
+        # Subsystems (lazy-initialized)
         self._initialized = False
-        self._graph = None
-        self._entity_detector = None
-        self._retriever = None
-        self._classifier = None
+        self._rel_path = None
+        self.nexus_store = None
+        self.embedding_store = None
+        self._edge_index = None
+        self._seed_finder = None
+        self._subgraph_builder = None
+        self._graph_indexer = None
+        self._canonicalizer = EntityCanonicalizer()
+        self._entity_tool = NerTool(self.cfg, self.memory, self.container, self.logger)
 
-        # Paths for persistence
-        self._rel_path = self.cfg.get(
-            "relationship_store", "data/knowledge_graph/relationships.jsonl"
-        )
-        os.makedirs(os.path.dirname(self._rel_path), exist_ok=True)
-
-        # Config params
-        self.entity_threshold = cfg.get("knowledge_graph", {}).get(
-            "entity_threshold", 0.65
-        )
-        self.relationship_threshold = cfg.get("knowledge_graph", {}).get(
-            "relationship_threshold", 0.75
-        )
-        self.max_hops = cfg.get("knowledge_graph", {}).get("max_hops", 3)
-        self.domain_aware = cfg.get("knowledge_graph", {}).get(
-            "domain_aware", True
-        )
-
-        # also used by the verification/knowledge-tree path (separate from indexing threshold)
-        self.verification_threshold = self.cfg.get("knowledge_graph", {}).get(
-            "verification_threshold", 0.90
-        )
-
-        kg_cfg = cfg.get("knowledge_graph") or {}
-
-        # hard limits / guards used by build_tree & helpers
-        self.max_nodes = int(kg_cfg.get("max_nodes", 200))
-        self.max_relationships = int(kg_cfg.get("max_relationships", 1000))
-        self.max_rels_per_node = int(kg_cfg.get("max_rels_per_node", 16))
-        self.max_entities_per_section = int(
-            kg_cfg.get("max_entities_per_section", 128)
-        )
-
-        # (if you didn’t add these earlier, include them now too)
-        self.min_claim_len = int(kg_cfg.get("min_claim_len", 30))
-        self.max_claim_len = int(kg_cfg.get("max_claim_len", 420))
-
-        # service mode + deferred buffers (health_check/shutdown reference these)
-        self.mode = kg_cfg.get("mode", "online")  # "online" | "deferred"
-        self._pending_nodes: list = []
-        self._pending_relationships: list = []
-
-        # how we split into candidate claims (regex on sentence boundaries)
-        self.claim_split_regex = kg_cfg.get("claim_split_regex", r"[.!?]\s+")
-
-        # verification gate you might use elsewhere
-        self.verification_threshold = float(
-            kg_cfg.get("verification_threshold", 0.90)
-        )
+        # Paths
+        kg_cfg = cfg.get("knowledge_graph", {})
+        data_dir = kg_cfg.get("data_dir") or "./data/kg"
+        os.makedirs(data_dir, exist_ok=True)
+        self._rel_path = Path(data_dir) / "relationships.jsonl"
 
         # Stats
         self._stats = {
@@ -137,1024 +64,277 @@ class KnowledgeGraphService(Service):
             "total_edges": 0,
             "node_types": {},
             "edge_types": {},
-            "last_update": None,
-            "queries": 0,
-            "query_time": 0.0,
-            "build_time": 0.0,
-            "cache_hits": 0,
-            "cache_misses": 0,
         }
+
+    # --- Collaborator factories (lazy init) ----------------------------------
 
     @property
-    def name(self) -> str:
-        return "knowledge-graph"
-    
-    def initialize(self, **kwargs) -> None:
-        if self._initialized or not self.enabled:
-            return
+    def edge_index(self) -> JSONLEdgeIndex:
+        if self._edge_index is None:
+            self._edge_index = JSONLEdgeIndex(rel_path=self._rel_path, logger=self.logger)
+        return self._edge_index
 
-        start_time = time.time()
+    @property
+    def seed_finder(self) -> EmbeddingSeedFinder:
+        if self._seed_finder is None:
+            self._seed_finder = EmbeddingSeedFinder(
+                search_entities_fn=self.search_entities,
+                detect_entities_fn=self.detect_entities,
+                logger=self.logger,
+            )
+        return self._seed_finder
+
+    @property
+    def subgraph_builder(self) -> SubgraphBuilder:
+        if self._subgraph_builder is None:
+            self._subgraph_builder = SubgraphBuilder(
+                seed_finder=self.seed_finder,
+                edge_index=self.edge_index,
+                nexus_store=self.nexus_store,
+                logger=self.logger,
+            )
+        return self._subgraph_builder
+
+    @property
+    def graph_indexer(self) -> GraphIndexer:
+        if self._graph_indexer is None:
+            self._graph_indexer = GraphIndexer(
+                kg_service=self,
+                detect_entities_fn=self.detect_entities,
+                fetch_text_fn=self.fetch_text_for_indexing,
+                logger=self.logger,
+            )
+        return self._graph_indexer
+
+    def _canonical_entity_id(self, ent: Dict[str, Any]) -> str:
+        return EntityCanonicalizer.canonical_id(ent.get("type"), ent.get("text"))
+
+    # --- Public KG APIs -----------------------------------------------------
+
+    def upsert_node(
+        self,
+        *,
+        node_id: str,
+        properties: Optional[Dict[str, Any]] = None,
+        refresh: bool = False,
+    ) -> bool:
+        """Upsert node into Nexus + embedding store (if embeddings present)."""
         try:
-            self._entity_detector = EntityDetector(
-                device=self.cfg.get(
-                    "device", "cuda" if torch.cuda.is_available() else "cpu"
-                )
-            )
-            self._retriever = NERRetrieverEmbedder(
-                model_name=self.cfg.get(
-                    "ner_model", "dslim/bert-base-NER"
-                ),
-                layer=self.cfg.get("ner_layer", 16),
-                device=self.cfg.get(
-                    "device", "cuda" if torch.cuda.is_available() else "cpu"
-                ),
-                embedding_dim=self.cfg.get("ner_dim", 2048),
-                index_path=self.cfg.get(
-                    "index_path", "data/knowledge_graph/index"
-                ),
-                logger=self.logger,
-                memory=self.memory,
-                cfg=self.cfg,
-            )
-            self._classifier = ScorableClassifier(
-                memory=self.memory,
-                logger=self.logger,
-                config_path=self.cfg.get(
-                    "domain_config", "config/domain/seeds.yaml"
-                ),
-                metric=self.cfg.get("domain_metric", "cosine"),
-            )
-
-            self._graph = HNSWIndex(
-                dim=self.cfg.get("ner_dim", 2048),
-                index_path=self.cfg.get(
-                    "index_path", "data/knowledge_graph/index"
-                ),
-                space=self.cfg.get("index_space", "cosine"),
-                persistent=True,
-            )
-
-            self._load_graph()
-            self._initialized = True
-            self._stats["last_update"] = datetime.now(timezone.utc).isoformat()
-            self._stats["build_time"] = time.time() - start_time
-
-            asyncio.create_task(self._setup_event_listeners())
-
-            self.logger.log(
-                "KnowledgeGraphInitialized",
-                {
-                    "node_count": self._stats["total_nodes"],
-                    "edge_count": self._stats["total_edges"],
-                    "duration": self._stats["build_time"],
-                },
-            )
-
+            properties = properties or {}
+            self.nexus_store.upsert_node(node_id, properties=properties)
+            # Embed if text fields present
+            text = properties.get("text") or properties.get("name") or properties.get("title")
+            if text and self.embedding_store:
+                emb = self.embedding_store.encode(text)
+                if emb is not None:
+                    meta = {
+                        "node_id": node_id,
+                        "type": properties.get("type", "node"),
+                        **{k: v for k, v in properties.items() if isinstance(v, (str, int, float))},
+                    }
+                    self.embedding_store.add([text], [emb], [meta])
+            self._stats["total_nodes"] = int(self._stats.get("total_nodes", 0)) + 1
+            node_type = properties.get("type", "UNKNOWN")
+            self._stats["node_types"][node_type] = int(self._stats["node_types"].get(node_type, 0)) + 1
+            return True
         except Exception as e:
-            self.logger.log(
-                "KnowledgeGraphInitError",
-                {"error": str(e), "traceback": traceback.format_exc()},
-            )
-            raise RuntimeError(f"KnowledgeGraph failed to initialize: {e}")
+            log.warning("KG: failed to upsert node %s: %s", node_id, e)
+            return False
 
-
-    # in KnowledgeGraphService
-    def detect_entities(self, text: str) -> List[Dict[str, Any]]:
-        if not self._entity_detector:
-            raise RuntimeError("KG not initialized")
-        return self._entity_detector.detect_entities(text or "")
-
-
-    async def _setup_event_listeners(self):
-        """Subscribe to indexing events via the bus."""
-        await self.subscribe(
-            "knowledge_graph.index_request", self._handle_index_request
-        )
-        self.logger.info("KnowledgeGraphService listening for index requests")
-
-    # --- main handler --------------------------------------------------------
-
-    async def _handle_index_request(self, payload: Dict[str, Any]):
-        """Process an indexing request from the event bus (text-aware)."""
+    def upsert_edge(
+        self,
+        *,
+        source_id: str,
+        target_id: str,
+        rel_type: str,
+        properties: Optional[Dict[str, Any]] = None,
+    ) -> bool:
+        """Upsert edge into Nexus + persist to JSONL."""
         try:
-            scorable_id = payload["scorable_id"]
-            scorable_type = payload["scorable_type"]
-            entities = payload.get("entities") or []
-            domains = payload.get("domains") or []
+            properties = properties or {}
+            # Persist to JSONL
+            edge_record = {
+                "source": source_id,
+                "target": target_id,
+                "type": rel_type,
+                "ts": datetime.now(timezone.utc).isoformat(),
+                "confidence": float(properties.get("confidence", 1.0)),
+                **properties,
+            }
+            with self._rel_path.open("a", encoding="utf-8") as f:
+                f.write(json.dumps(edge_record, ensure_ascii=False) + "\n")
 
-            # 1) Acquire text (prefer store fetch; fallback to payload["text"])
-            text = None
+            # keep index hot
             try:
-                # If you have a DynamicScorable store, fetch by scorable_id
-                # Example: orm = self.scorable_store.get_by_scorable_id(scorable_id)
-                # text = getattr(orm, "text", None)
-                if hasattr(self, "scorable_store"):
-                    orm = getattr(
-                        self.scorable_store, "get_by_scorable_id", None
-                    )
-                    if callable(orm):
-                        row = self.scorable_store.get_by_scorable_id(
-                            scorable_id
-                        )  # implement if missing
-                        text = getattr(row, "text", None)
-            except Exception as e:
-                log.warning(
-                    f"KG: fetch text by scorable_id failed: {e}"
-                )
+                self.edge_index.append_edge(edge_record)
+            except Exception:
+                log.debug("KG: edge_index append failed (non-fatal)", exc_info=True)
 
-            if not text:
-                text = payload.get("text")
-
-            if not text:
-                log.error(
-                    "KG: no text available for scorable_id=%s", scorable_id
-                )
-                await self.publish(
-                    "knowledge_graph.index_failed",
-                    {
-                        "scorable_id": scorable_id,
-                        "error": "Missing text for indexing",
-                    },
-                )
-                return
-
-            text = _normalize_text(text)
-            doc_hash = _content_hash(text)
-
-            # 2) Sentence segmentation (cheap)
-            sent_spans = _segment_sentences(text)
-
-            # 3) Validate/repair entities against text; add surface/context/sentence_ix
-            fixed_entities = []
-            for ent in entities:
-                start = int(ent.get("start", -1))
-                end = int(ent.get("end", -1))
-                etype = ent.get("type") or "UNKNOWN"
-
-                # Ensure offsets sane; if not, try to recover by searching the declared string
-                surface = ent.get("text")
-                if start < 0 or end < 0 or end <= start or end > len(text):
-                    # Try to locate surface if provided
-                    if surface:
-                        pos = text.find(surface)
-                        if pos >= 0:
-                            start, end = pos, pos + len(surface)
-                            log.debug(
-                                "KG: repaired offsets for %s via surface search (%d-%d)",
-                                etype,
-                                start,
-                                end,
-                            )
-                    else:
-                        # If we can’t recover, skip this entity (or you can run a lightweight NER here)
-                        log.warning(
-                            "KG: skipping entity with invalid offsets and no surface: %s",
-                            ent,
-                        )
-                        continue
-
-                # If surface missing or mismatched, derive from offsets
-                derived = _safe_slice(text, start, end)
-                if not surface or surface != derived:
-                    surface = derived
-
-                sentence_ix = _locate_sentence_ix(sent_spans, start, end)
-                # Context: sentence window (or +/- 60 chars if sentence not found)
-                if 0 <= sentence_ix < len(sent_spans):
-                    sstart, send = sent_spans[sentence_ix]
-                    context = text[sstart:send]
-                else:
-                    context = _safe_slice(
-                        text, max(0, start - 60), min(len(text), end + 60)
-                    )
-
-                fixed = {
-                    **ent,
-                    "start": start,
-                    "end": end,
-                    "type": etype,
-                    "text": surface,
-                    "sentence_ix": sentence_ix,
-                    "context": context,
-                    "doc_hash": doc_hash,
-                }
-                fixed_entities.append(fixed)
-
-            # 4) Add nodes with context
-            for ent in fixed_entities:
-                node_id = (
-                    f"{scorable_id}:{ent['type']}:{ent['start']}-{ent['end']}"
-                )
-                self._add_entity_node(
-                    node_id=node_id,
-                    entity=ent,
-                    domains=domains,
-                    scorable_id=scorable_id,
-                    scorable_type=scorable_type,
-                    # You may store large fields in meta inside your node implementation
-                    meta={
-                        "surface": ent["text"],
-                        "sentence_ix": ent["sentence_ix"],
-                        "context": ent["context"],
-                        "doc_hash": ent["doc_hash"],
-                    },
-                )
-
-            # 5) Build relationships (existing) + sentence co-occurrence edges (new)
-            relationships = (
-                self._build_relationships(fixed_entities, domains, scorable_id)
-                or []
-            )
-
-            # Sentence co-occurrence (cheap signal)
-            by_sent = {}
-            for e in fixed_entities:
-                by_sent.setdefault(e["sentence_ix"], []).append(e)
-            for s_ix, ents in by_sent.items():
-                if s_ix < 0 or len(ents) < 2:
-                    continue
-                n = len(ents)
-                for i in range(n):
-                    for j in range(i + 1, n):
-                        a, b = ents[i], ents[j]
-                        relationships.append({
-                            "source_id": f"{scorable_id}:{a['type']}:{a['start']}-{a['end']}",
-                            "target_id": f"{scorable_id}:{b['type']}:{b['start']}-{b['end']}",
-                            "rel_type": "CO_OCCURS_IN_SENTENCE",
-                            "confidence": 1.0,   # match _add_relationship signature
-                            # if you want to persist 'meta', extend _add_relationship to accept it or store it elsewhere
-                        })
-            # 6) Add relationships
-            for rel in relationships:
-                self._add_relationship(
-                    source_id=rel["source"],
-                    target_id=rel["target"],
-                    rel_type=rel["type"],
-                    confidence=rel["confidence"],
-                ) 
-
-            # 7) Publish completion
-            self.publish(
-                "knowledge_graph.index_complete",
-                {
-                    "scorable_id": scorable_id,
-                    "node_count": len(fixed_entities),
-                    "relationship_count": len(relationships),
-                    "doc_hash": doc_hash,
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                },
-            )
-            self.logger.info(
-                "KG: indexed scorable_id=%s nodes=%d rels=%d",
-                scorable_id,
-                len(fixed_entities),
-                len(relationships),
-            )
-
+            # Upsert to Nexus
+            self.nexus_store.upsert_edge(source_id, target_id, rel_type, properties=properties)
+            self._stats["total_edges"] = int(self._stats.get("total_edges", 0)) + 1
+            edge_type = rel_type or "UNKNOWN"
+            self._stats["edge_types"][edge_type] = int(self._stats["edge_types"].get(edge_type, 0)) + 1
+            return True
         except Exception as e:
-            self.logger.error(f"Indexing failed: {str(e)}", exc_info=True)
-            self.publish(
-                "knowledge_graph.index_failed",
-                {"scorable_id": payload.get("scorable_id"), "error": str(e)},
-            )
+            log.warning("KG: failed to upsert edge %s→%s: %s", source_id, target_id, e)
+            return False
 
-    def health_check(self) -> Dict[str, Any]:
-        status = "healthy" if self._initialized else "unhealthy"
-        return {
-            "status": status,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "metrics": {
-                **self._stats,
-            },
-            "dependencies": {
-                "embedding_index": "ready" if self._graph else "missing",
-                "entity_detector": "ready"
-                if self._entity_detector
-                else "missing",
-                "classifier": "ready" if self._classifier else "missing",
-            },
-        }
+    def search_entities(self, query: str, k: int = 10) -> List[Tuple[str, float, Dict]]:
+        if not self.embedding_store:
+            return []
+        try:
+            results = self.embedding_store.search(query, k=k)
+            return [(r["node_id"], r["score"], r) for r in results]
+        except Exception as e:
+            log.warning("KG: search_entities failed: %s", e)
+            return []
 
-    def shutdown(self) -> None:
-        """Clean shutdown, clear state."""
-        self._initialized = False
-        self._entity_detector = None
-        self._retriever = None
-        self._classifier = None
-        self._graph = None
-        self._pending_nodes.clear()
-        self._pending_relationships.clear()
-        self.logger.log("KnowledgeGraphShutdown", {"status": "stopped"})
+    def detect_entities(self, text: str) -> List[Dict]:
+        # Fallback: empty (requires external NER)
+        return self._entity_tool.detect(text)
+
+    def build_query_subgraph(self, *, query: str, cfg: SubgraphConfig | None = None) -> dict:
+        cfg = cfg or SubgraphConfig()
+        return self.subgraph_builder.build(query=query, cfg=cfg)
 
     def build_tree(
         self,
         *,
-        paper_text: str,
-        paper_id: str = "",
-        chat_corpus: List[Dict[str, Any]] = None,
-        trajectories: List[Dict[str, Any]] = None,
-        domains: List[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
-        """
-        Build a lightweight knowledge_tree for verification use.
-        Does NOT do any image work.
-        """
-        chat_corpus = chat_corpus or []
-        trajectories = trajectories or []
-        domains = domains or []
-
-        # extract
-        entities = self._extract_entities_safe(paper_text)
-        claims = self._extract_claims_simple(
-            paper_text, min_len=self.min_claim_len
-        )
-        insights = [
-            m["text"]
-            for m in chat_corpus
-            if isinstance(m, dict) and m.get("text")
-        ]
-
-        # relationships (claim↔insight) filtered by verification_threshold
-        relationships: List[Dict[str, Any]] = []
-        strength_accum, count = 0.0, 0
-        for c in claims:
-            smax = 0.0
-            for ins in insights:
-                s = self._rel_strength_claim_insight(c, ins, entities, domains)
-                if s >= float(self.verification_threshold):
-                    relationships.append(
-                        {
-                            "source": self._node_id("claim", c),
-                            "target": self._node_id("insight", ins),
-                            "type": "supports",
-                            "confidence": float(s),
-                        }
-                    )
-                smax = max(smax, s)
-            if smax > 0:
-                strength_accum += smax
-                count += 1
-
-        temporal = self._temporal_edges(trajectories)
-        # keep only strong temporal edges if you want, else include all; here we include all
-        relationships.extend(temporal)
-
-        # nodes (truncate to avoid blow-up)
-        nodes: List[Dict[str, Any]] = []
-        for e in entities[: self.max_nodes]:
-            nodes.append(
-                {
-                    "id": self._node_id("ent", e["text"]),
-                    "text": e["text"],
-                    "type": "entity",
-                }
-            )
-        for c in claims[: self.max_nodes - len(nodes)]:
-            nodes.append(
-                {"id": self._node_id("claim", c), "text": c, "type": "claim"}
-            )
-        for ins in insights[: self.max_nodes - len(nodes)]:
-            nodes.append(
-                {
-                    "id": self._node_id("insight", ins),
-                    "text": ins,
-                    "type": "insight",
-                }
-            )
-
-        # metrics
-        claim_coverage = self._estimate_claim_coverage(claims, insights)
-        evidence_strength = (strength_accum / max(1, count)) if count else 0.0
-        temporal_coherence = self._temporal_coherence_metric(temporal)
-        domain_alignment = self._domain_alignment_metric(
-            domains, claims, entities
-        )
-
-        # gaps
-        gaps: List[Dict[str, Any]] = []
-        for i, c in enumerate(claims):
-            addressed = any(self._contains_concept(ins, c) for ins in insights)
-            if not addressed:
-                gaps.append(
-                    {
-                        "claim_id": f"gap_{i + 1}",
-                        "claim_text": c,
-                        "gap_type": "missing_explanation",
-                        "severity": self._gap_severity(c),
-                    }
-                )
-
-        return {
-            "nodes": nodes,
-            "relationships": relationships,
-            "claims": [
-                {"id": self._node_id("claim", c), "text": c} for c in claims
-            ],
-            "entities": [e["text"] for e in entities],
-            "claim_coverage": float(self._clamp01(claim_coverage)),
-            "evidence_strength": float(self._clamp01(evidence_strength)),
-            "temporal_coherence": float(self._clamp01(temporal_coherence)),
-            "domain_alignment": float(self._clamp01(domain_alignment)),
-            "knowledge_gaps": gaps,
-            "meta": {
-                "paper_id": paper_id,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "verification_threshold": float(self.verification_threshold),
-            },
-        }
-
-    def search_entities(
-        self, text: str, k: int = 10
-    ) -> List[Tuple[str, float, Dict[str, Any]]]:
-        """
-        Search KG using the SAME embedder used during indexing.
-        Results cached via entity_cache keyed by scorable_embeddings.id (int).
-        Returns: list of (node_id, score, metadata)
-        """
-        if not self._initialized or not self.enabled:
-            return []
-
-        start_time = time.time()
-
-        try:
-            # 1) Ensure we have a canonical embedding and its integer id
-            #    (use the *same* embedder/model you index with)
-            embedding_vec = self._retriever.embed_type_query(text)
-
-            # Persist (or find) this embedding in your embedding store,
-            # tag it with type="ner" so we stay in the same space
-            if hasattr(self.memory, "embedding"):
-                # ensure returns an id for this exact text & type
-                emb_id = self.memory.embedding.ensure_query_embedding(
-                    text=text,
-                    embedding_vec=embedding_vec,
-                    embedding_type="ner",
-                )
-            else:
-                # fallback: try an id lookup; as last resort, fail open (no cache)
-                emb_id = getattr(
-                    self.memory, "get_id_for_text", lambda _t: None
-                )(text)
-
-            # 2) Try cache → embedding_ref is an INT (FK to scorable_embeddings.id)
-            if emb_id and hasattr(self.memory, "entity_cache"):
-                cached_row = self.memory.entity_cache.get_by_embedding(emb_id)
-                if cached_row and cached_row.results_json:
-                    self._stats["cache_hits"] += 1
-                    self._stats["queries"] += 1
-                    self._stats["query_time"] += time.time() - start_time
-                    return cached_row.results_json
-
-            # 3) Miss → do the actual HNSW search
-            # 3) Miss → do the actual HNSW search
-            # Prefer tuple adapter if available
-            raw_results = self._graph.search_tuples(embedding_vec, k=k)
-
-            # 4) Normalize to JSON-safe tuples (node_id, score, metadata)
-            enriched = []
-            for node_id, score, meta in raw_results:
-                enriched.append(
-                    (
-                        str(node_id),
-                        float(score),
-                        {
-                            **(meta or {}),
-                            "node_id": str(node_id),
-                            "score": float(score),
-                        },
-                    )
-                )
-
-            # 5) Upsert cache
-            if emb_id and hasattr(self.memory, "entity_cache"):
-                self.memory.entity_cache.upsert(emb_id, enriched)
-                self._stats["cache_misses"] += 1
-
-            self._stats["queries"] += 1
-            self._stats["query_time"] += time.time() - start_time
-            return enriched
-
-        except Exception as e:
-            self.logger.log(
-                "KnowledgeGraphSearchError",
-                {
-                    "text": text[:200],
-                    "error": str(e),
-                },
-            )
-            return []
-
-    def build_context_for_plan(self, plan: dict, k: int = 5) -> dict:
-        """Return KG neighbors per claim_id for drafting/scoring."""
-        out = {"neighbors": {}}
-        for u in plan.get("units", []):
-            q = (u.get("claim") or u.get("evidence") or "").strip()
-            cid = u.get("claim_id")
-            if not q or not cid:
-                continue
-            hits = self.search_entities(
-                q, k=k
-            )  # [(node_id, score, meta), ...]
-            out["neighbors"][cid] = [
-                {
-                    "node_id": nid,
-                    "text": meta.get("text", ""),
-                    "type": meta.get("type", ""),
-                    "score": float(score),
-                    "sources": meta.get("sources", []),
-                    "domains": meta.get("domains", []),
-                }
-                for (nid, score, meta) in hits
-            ]
-        return out
-
-    def export_for_vpm(self, knowledge_tree: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Produce a minimal VPM payload (no images). ZeroModel will own all image work.
-        metrics per node are broadcast from global tree metrics; you can specialize later.
-        """
-        nodes = knowledge_tree.get("nodes", [])
-        entities = [n.get("text", "") for n in nodes]
-        metrics = ["coverage", "evidence", "temporal", "domain"]
-
-        cov = float(knowledge_tree.get("claim_coverage", 0.0))
-        evd = float(knowledge_tree.get("evidence_strength", 0.0))
-        tmp = float(knowledge_tree.get("temporal_coherence", 0.0))
-        dom = float(knowledge_tree.get("domain_alignment", 0.0))
-
-        matrix = [[cov, evd, tmp, dom] for _ in nodes]
-
-        rels = []
-        for r in knowledge_tree.get("relationships", []):
-            src = r.get("source")
-            tgt = r.get("target")
-            src_i = next(
-                (i for i, n in enumerate(nodes) if n.get("id") == src), None
-            )
-            tgt_i = next(
-                (i for i, n in enumerate(nodes) if n.get("id") == tgt), None
-            )
-            if src_i is not None and tgt_i is not None:
-                rels.append(
-                    {
-                        "source_idx": src_i,
-                        "target_idx": tgt_i,
-                        "type": r.get("type", "rel"),
-                        "confidence": float(r.get("confidence", 0.0)),
-                    }
-                )
-
-        return {
-            "entities": entities,
-            "metrics": metrics,
-            "matrix": matrix,
-            "relationships": rels,
-        }
-
-    def _estimate_claim_coverage(
-        self, claims: List[str], insights: List[str]
-    ) -> float:
-        if not claims:
-            return 0.0
-        covered = 0
-        for c in claims:
-            if any(self._contains_concept(i, c) for i in insights):
-                covered += 1
-        return covered / max(1, len(claims))
-
-    def _temporal_coherence_metric(
-        self, temporal_rels: List[Dict[str, Any]]
-    ) -> float:
-        if not temporal_rels:
-            return 0.0
-        ok, tot = 0, 0
-        for r in temporal_rels:
-            if "time_delta" in r:
-                tot += 1
-                if (r.get("time_delta") or 0) >= 0:
-                    ok += 1
-        return (ok / tot) if tot else 0.8  # neutral default
-
-    def _domain_alignment_metric(
-        self,
-        domains: List[Dict[str, Any]],
-        claims: List[str],
-        ents: List[Dict[str, Any]],
-    ) -> float:
-        if not domains:
-            return 0.7
-        names = [
-            str(d.get("domain", "")).lower()
-            for d in domains
-            if isinstance(d, dict)
-        ]
-        text = " ".join(claims + [e.get("text", "") for e in ents])
-        score = sum(1 for d in names if d and d in text.lower())
-        return self._clamp01(score / max(1, len(names)))
-
-    def _gap_severity(self, claim: str) -> float:
-        sev = 0.50
-        if re.search(
-            r"\b(critical|essential|must|key|fundamental|core)\b", claim, re.I
-        ):
-            sev += 0.30
-        if re.search(
-            r"\b\d+(\.\d+)?\s*(%|percent|accuracy|precision|recall|f1|auc|rmse|mae|bleu)\b",
-            claim,
-            re.I,
-        ):
-            sev += 0.20
-        return self._clamp01(sev)
-
-    def _temporal_edges(
-        self, trajectories: List[Dict[str, Any]]
-    ) -> List[Dict[str, Any]]:
-        rels: List[Dict[str, Any]] = []
-        for traj in trajectories or []:
-            msgs = traj.get("messages") or []
-            for i in range(1, len(msgs)):
-                a, b = msgs[i - 1], msgs[i]
-                a_id = self._node_id("msg", a.get("text", ""))
-                b_id = self._node_id("msg", b.get("text", ""))
-                conf = 0.90
-                rtype = "temporal_sequence"
-                if self._contains_causal_language(b.get("text", "")):
-                    rtype = "causal_sequence"
-                    conf = 0.95
-                rels.append(
-                    {
-                        "source": a_id,
-                        "target": b_id,
-                        "type": rtype,
-                        "confidence": conf,
-                        "timestamp": b.get("timestamp"),
-                        "time_delta": (b.get("timestamp", 0) or 0)
-                        - (a.get("timestamp", 0) or 0),
-                    }
-                )
-        return rels
-
-    def _rel_strength_claim_insight(
-        self,
         claim: str,
-        insight: str,
-        entities: List[Dict[str, Any]],
-        domains: List[Dict[str, Any]],
-    ) -> float:
-        j = self._jaccard(self._token_set(claim), self._token_set(insight))
+        scorable_id: str,
+        max_depth: int = 3,
+        min_confidence: float = 0.5,
+    ) -> dict:
+        """Build verification tree for a claim (simplified)."""
+        nodes = [{"id": "root", "text": claim, "type": "claim"}]
+        edges = []
+        # Placeholder: integrate with future InspectorAgent
+        return {"nodes": nodes, "edges": edges, "meta": {"claim": claim}}
 
-        ent_texts = [e.get("text", "") for e in entities]
-        ce = {t.lower() for t in ent_texts if t and t.lower() in claim.lower()}
-        ie = {
-            t.lower() for t in ent_texts if t and t.lower() in insight.lower()
-        }
-        overlap = (len(ce & ie) / max(1, len(ce | ie))) if (ce or ie) else 0.0
-        entity_bonus = 0.30 * overlap
-
-        domain_boost = 0.0
-        if self.domain_aware:
-            names = {
-                str(d.get("domain", "")).lower()
-                for d in (domains or [])
-                if isinstance(d, dict)
-            }
-            if any(x in names for x in {"ml", "machine learning", "nlp"}):
-                domain_boost = 0.15
-
-        return self._clamp01(j + entity_bonus + domain_boost)
-
-    # -------------------------
-    # Entity & Node Management
-    # -------------------------
-
-    def _extract_entities_safe(self, text: str) -> List[Dict[str, Any]]:
-        try:
-            if not text:
-                return []
-                # and fix _extract_entities_safe
-            ents = self._entity_detector.detect_entities(text)
-
-            if ents:
-                return [
-                    e for e in ents if isinstance(e, dict) and e.get("text")
-                ]
-        except Exception as e:
-            self.logger and self.logger.log(
-                "KGEntityExtractionError", {"error": str(e)}
-            )
-
-        # heuristic fallback (capitalized tokens)
-        tokens = re.findall(r"\b[A-Z][A-Za-z0-9\-\_]{2,}\b", text or "")
-        uniq = {}
-        for t in tokens:
-            key = self._normalize_entity(t)
-            if key not in uniq:
-                uniq[key] = {
-                    "text": t,
-                    "type": "TERM",
-                    "start": -1,
-                    "end": -1,
-                    "source_text": t,
-                }
-        return list(uniq.values())
-
-    def _extract_claims_simple(
-        self, text: str, min_len: int = None
-    ) -> List[str]:
-        min_len = min_len or self.min_claim_len
-        cand = re.split(r"(?<=[\.\!\?])\s+", text or "")
-        out: List[str] = []
-        for s in cand:
-            s = (s or "").strip()
-            if len(s) < min_len:
-                continue
-            if re.search(
-                r"\b(we|our|this paper|results|achieve|improve|demonstrate|propose)\b",
-                s,
-                re.I,
-            ):
-                out.append(s)
-            elif re.search(
-                r"\b\d+(\.\d+)?\s*(%|percent|accuracy|precision|recall|f1|auc|rmse|mae|bleu)\b",
-                s,
-                re.I,
-            ):
-                out.append(s)
-        return out[:256]
-
-    def _create_entity_node_id(
-        self, entity: Dict[str, Any], scorable_id: str
-    ) -> str:
-        return (
-            f"{scorable_id}:{entity['type']}:{entity['start']}-{entity['end']}"
+    def build_context_for_plan(
+        self, plan_scorable_id: str, query: str = ""
+    ) -> Dict[str, Any]:
+        """Build context for plan generation using KG subgraph."""
+        sg = self.build_query_subgraph(
+            query=query or f"What supports plan {plan_scorable_id}?",
+            cfg=SubgraphConfig(max_hops=2, max_nodes=150),
         )
+        nodes = [n["id"] for n in sg["nodes"]]
+        edges = [
+            f"{e['source']} --[{e['type']}]--> {e['target']}"
+            for e in sg["edges"]
+        ]
+        return {
+            "subgraph_nodes": nodes,
+            "subgraph_edges": edges,
+            "node_count": len(nodes),
+            "edge_count": len(edges),
+            "evidence_rate": sg["meta"]["stats"]["evidence_rate"],
+            "query": query,
+        }
+
+    # --- Lifecycle ----------------------------------------------------------
+
+    async def initialize(self) -> None:
+        if self._initialized:
+            return
+        try:
+            from stephanie.memory.nexus_store import NexusStore
+            from stephanie.memory.embedding_store import EmbeddingStore
+
+            self.nexus_store: NexusStore = self.memory.nexus
+            self.embedding_store: EmbeddingStore = self.memory.embedding
+
+            # Warm up edge index (loads file once)
+            _ = self.edge_index
+
+            await self._setup_event_listeners()
+            self._initialized = True
+            log.info("KnowledgeGraphService initialized")
+        except Exception as e:
+            log.error("KG init failed: %s", e, exc_info=True)
+            raise
+
+    async def _setup_event_listeners(self):
+        await self.subscribe(
+            "knowledge_graph.index_request",
+            lambda payload: asyncio.create_task(self.graph_indexer.handle_index_request(payload))
+        )
+        log.info("KnowledgeGraphService listening for index requests")
+
+    async def health_check(self) -> Dict[str, Any]:
+        return {
+            "status": "healthy" if self._initialized else "unhealthy",
+            "stats": self._stats.copy(),
+        }
+
+    async def shutdown(self) -> None:
+        log.info("KnowledgeGraphService shutdown complete")
+
+    def _normalize_entity_surface(self, s: str) -> str:
+        return EntityCanonicalizer.normalize_surface(s)
 
     def _add_entity_node(
         self,
+        *,
         node_id: str,
         entity: Dict[str, Any],
-        domains: List[Dict[str, float]],
+        domains: List[Dict[str, Any]],
         scorable_id: str,
         scorable_type: str,
-        meta: Optional[Dict[str, Any]] = None,   # <-- NEW
-    ):
-        try:
-            # Avoid duplicates (only if the index supports it)
-            try:
-                if hasattr(self._graph, "has_metadata") and self._graph.has_metadata(node_id):
-                    return
-            except Exception:
-                # If the backend doesn’t support duplicate checking, continue and let the index de-dupe or accept dupes
-                pass
+        meta: Dict[str, Any],
+    ) -> None:
+        props = {
+            "type": entity.get("type", "ENTITY"),
+            "text": entity.get("text", ""),
+            "scorable_id": scorable_id,
+            "scorable_type": scorable_type,
+            "domains": domains,
+            "meta": meta,
+        }
+        self.upsert_node(node_id=node_id, properties=props)
 
-            # Build base metadata with guards (avoid KeyError on missing fields)
-            base_meta = {
-                "node_id": node_id,
-                "text": entity.get("text", ""),
-                "type": entity.get("type", "UNKNOWN"),
-                "domains": [d.get("domain") for d in (domains or []) if isinstance(d, dict) and d.get("domain")],
-                "domain_scores": {d.get("domain"): d.get("score") for d in (domains or []) if isinstance(d, dict) and d.get("domain") is not None},
-                "sources": [{
-                    "scorable_id": scorable_id,
-                    "scorable_type": scorable_type,
-                    "start": int(entity.get("start", -1)),
-                    "end": int(entity.get("end", -1)),
-                    "source_text": entity.get("source_text", entity.get("text", "")),
-                }],
-                "created_at": datetime.now(timezone.utc).isoformat(),
-            }
-
-            # Merge caller-provided meta last so it can add context/sentence_ix/doc_hash
-            if meta:
-                base_meta.update(meta)
-
-            # Use same retriever → consistent embedding space
-            embedding = self._retriever.embed_type_query(base_meta["text"])
-            self._graph.add(embedding, base_meta)
-
-            self.logger.log(
-                "KnowledgeGraphNodeAdded",
-                {
-                    "node_id": node_id,
-                    "text": base_meta["text"][:50],
-                    "type": base_meta["type"],
-                    "scorable_id": scorable_id,
-                    "scorable_type": scorable_type,
-                },
-            )
-            self._stats["total_nodes"] += 1
-            self._track_node_stats(base_meta["type"])
-
-        except Exception as e:
-            self.logger.log(
-                "KnowledgeGraphNodeAddError",
-                {"node_id": node_id, "error": str(e)},
-            )
-
-    # -------------------------
-    # Relationships
-    # -------------------------
     def _add_relationship(
-        self, source_id: str, target_id: str, rel_type: str, confidence: float
-    ):
-        """Persist relationship to JSONL + log event."""
-        rel = {
-            "source": source_id,
-            "target": target_id,
-            "type": rel_type,
-            "confidence": confidence,
-            "ts": datetime.now(timezone.utc).isoformat(),
-        }
-        try:
-            with open(self._rel_path, "a", encoding="utf-8") as f:
-                f.write(json.dumps(rel) + "\n")
-
-            self.logger.log("KnowledgeGraphRelationshipAdded", rel)
-            self._stats["total_edges"] += 1
-            self._track_edge_stats(rel_type)
-
-        except Exception as e:
-            self.logger.log(
-                "KnowledgeGraphRelationshipAddError",
-                {"source": source_id, "target": target_id, "error": str(e)},
-            )
-
-    # -------------------------
-    # Relationship Builder
-    # -------------------------
-    def _build_relationships(
         self,
-        entities: List[Dict[str, Any]],
-        domains: List[Dict[str, float]],
+        *,
+        source_id: str,
+        target_id: str,
+        rel_type: str,
+        confidence: float = 1.0,
+        properties: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        properties = properties or {}
+        properties.setdefault("confidence", float(confidence))
+        self.upsert_edge(
+            source_id=source_id,
+            target_id=target_id,
+            rel_type=rel_type,
+            properties=properties,
+        )
+
+    async def fetch_text_for_indexing(
+        self,
         scorable_id: str,
-    ) -> List[Dict[str, Any]]:
-        """Build relationships using proximity + heuristics."""
-        relationships = []
-        for i, e1 in enumerate(entities):
-            for e2 in entities[i + 1 :]:
-                distance = abs(e1["end"] - e2["start"])
-                if distance < 100:
-                    rel_type = self._infer_relationship_type(e1, e2)
-                    confidence = self._calculate_relationship_confidence(
-                        e1, e2, distance, domains
-                    )
-                    if confidence >= self.relationship_threshold:
-                        relationships.append(
-                            {
-                                "source": self._create_entity_node_id(
-                                    e1, scorable_id
-                                ),
-                                "target": self._create_entity_node_id(
-                                    e2, scorable_id
-                                ),
-                                "type": rel_type,
-                                "confidence": confidence,
-                                "evidence": "positional",
-                            }
-                        )
-        return relationships
+        inline_text: Optional[str],
+        payload: Dict[str, Any],
+    ) -> Optional[str]:
+        # 1) inline text wins
+        if inline_text and inline_text.strip():
+            return inline_text
 
-    # -------------------------
-    # Path Traversal
-    # -------------------------
-    def _find_relationship_path(
-        self, start_node: str, query_entity: Dict[str, Any], max_hops: int
-    ) -> List[Dict[str, Any]]:
-        path = []
-        visited = {start_node}
-        current = start_node
-
-        for _ in range(max_hops):
-            relationships = self.get_relationships(current)
-            if not relationships:
-                break
-            best_rel = max(relationships, key=lambda r: r["confidence"])
-            if best_rel["target"] in visited:
-                break
-            path.append(best_rel)
-            visited.add(best_rel["target"])
-            current = best_rel["target"]
-
-        return path
-
-    # -------------------------
-    # Helpers
-    # -------------------------
-    def _load_graph(self):
-        """Load existing nodes and relationships."""
-        self._stats["total_nodes"] = (
-            self._graph.ntotal if hasattr(self._graph, "ntotal") else 0
-        )
-
-        # Rebuild edge stats
-        if os.path.exists(self._rel_path):
-            with open(self._rel_path, "r", encoding="utf-8") as f:
-                for line in f:
-                    try:
-                        rel = json.loads(line.strip())
-                        self._stats["total_edges"] += 1
-                        self._track_edge_stats(rel["type"])
-                    except Exception as e:
-                        self.logger.log(
-                            "KnowledgeGraphLoadError", {"error": str(e)}
-                        )
-
-    def _track_edge_stats(self, rel_type: str):
-        self._stats["edge_types"][rel_type] = (
-            self._stats["edge_types"].get(rel_type, 0) + 1
-        )
-
-    def _track_node_stats(self, node_type: str):
-        self._stats["node_types"][node_type] = (
-            self._stats["node_types"].get(node_type, 0) + 1
-        )
-
-    def get_relationships(self, node_id: str) -> List[Dict[str, Any]]:
-        rels = []
-        if not os.path.exists(self._rel_path):
-            return rels
-        with open(self._rel_path, "r", encoding="utf-8") as f:
-            for line in f:
-                try:
-                    rel = json.loads(line.strip())
-                    if rel["source"] == node_id:
-                        rels.append(rel)
-                except Exception:
-                    continue
-        return sorted(rels, key=lambda x: -x["confidence"])
-
-    def _infer_relationship_type(self, e1: Dict, e2: Dict) -> str:
-        ordered = e1["end"] < e2["start"]
-        first, second = (e1, e2) if ordered else (e2, e1)
-        type_pairs = {
-            ("METHOD", "DATASET"): "evaluates",
-            ("DATASET", "METRIC"): "measured_by",
-            ("MODEL", "TASK"): "performs",
-            ("AUTHOR", "PAPER"): "wrote",
-            ("PAPER", "METHOD"): "introduces",
-        }
-        return type_pairs.get((first["type"], second["type"]), "related_to")
-
-    def _calculate_relationship_confidence(
-        self, e1: Dict, e2: Dict, distance: int, domains: List[Dict]
-    ) -> float:
-        base_score = np.exp(-distance / 50.0)  # exponential decay
-        domain_bonus = (
-            0.1 if any(d["domain"] in {"ml", "nlp"} for d in domains) else 0.0
-        )
-        proximity_bonus = 0.1 if distance < 20 else 0.0
-        return max(min(base_score + domain_bonus + proximity_bonus, 1.0), 0.0)
-
-        # ---------- tiny helpers ----------
-
-    @staticmethod
-    def _token_set(s: str) -> set:
-        return set(re.findall(r"[a-z0-9]+", (s or "").lower()))
-
-    @staticmethod
-    def _jaccard(a: set, b: set) -> float:
-        if not a and not b:
-            return 0.0
-        return len(a & b) / max(1, len(a | b))
-
-    @staticmethod
-    def _clamp01(x: float) -> float:
+        # 2) attempt memory fetch (adapt to your Scorable store)
         try:
-            return max(0.0, min(1.0, float(x)))
+            scorable = self.memory.scorables.get(scorable_id)  # adjust
+            if scorable and getattr(scorable, "text", None):
+                return scorable.text
         except Exception:
-            return 0.0
+            log.debug("KG: failed to fetch scorable text", exc_info=True)
 
-    @staticmethod
-    def _normalize_entity(text: str) -> str:
-        return re.sub(r"[^\w\s]", "", (text or "").lower()).strip()
+        # 3) attempt payload fallbacks
+        for k in ("content", "document", "body"):
+            v = payload.get(k)
+            if isinstance(v, str) and v.strip():
+                return v
 
-    @staticmethod
-    def _contains_causal_language(text: str) -> bool:
-        t = (text or "").lower()
-        pats = [
-            r"therefore",
-            r"as a result",
-            r"because",
-            r"consequently",
-            r"thus",
-            r"hence",
-            r"led to",
-            r"so we",
-        ]
-        return any(re.search(p, t) for p in pats)
-
-    @staticmethod
-    def _contains_concept(a: str, b: str) -> bool:
-        # conservative concept overlap
-        A = KnowledgeGraphService._token_set(a)
-        B = KnowledgeGraphService._token_set(b)
-        return KnowledgeGraphService._jaccard(A, B) >= 0.18
-
-    @staticmethod
-    def _node_id(kind: str, text: str) -> str:
-        import hashlib
-
-        h = hashlib.sha1(
-            (kind + "|" + (text or "")).encode("utf-8")
-        ).hexdigest()[:16]
-        return f"{kind}:{h}"
+        return None

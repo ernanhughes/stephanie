@@ -31,7 +31,7 @@ from __future__ import annotations
 from typing import Dict, List
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.tools.cos_sim_tool import get_top_k_similar
+from stephanie.tools.similar_tool import get_top_k_similar
 
 LABEL_HIERARCHY = {
     "Computer Vision": ["Image Classification", "Object Detection", "Segmentation"],
@@ -87,7 +87,7 @@ class AutoMindKnowledgeCollector:
         # Fallback using similarity
         if not matched_labels:
             all_labels = [label for cat in LABEL_HIERARCHY.values() for label in cat]
-            top = get_top_k_similar(combined_text, all_labels, self.memory, top_k=2)
+            top = get_top_k_similar(combined_text, all_labels, embed=self.memory.embedding.get_or_create, top_k=2)
             matched_labels = [label for label, _ in top]
 
         return list(set(matched_labels))
@@ -116,7 +116,7 @@ class AutoMindKnowledgeCollector:
     def filter_by_similarity(self, query: str, docs: List[Dict]) -> List[Dict]:
         titles_and_summaries = [f"{doc['title']} {doc['summary']}" for doc in docs]
         scores = get_top_k_similar(
-            query, titles_and_summaries, self.memory, top_k=len(docs)
+            query, titles_and_summaries, embed=self.memory.embedding.get_or_create, top_k=len(docs)
         )
         ranked_indices = [i for i, _ in scores]
         return [docs[i] for i in ranked_indices]

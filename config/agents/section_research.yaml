@@ -1,0 +1,49 @@
+section_research:
+  name: section_research
+  enabled: true
+  save_prompt: false
+  save_context: false
+  skip_if_completed: false
+
+  # ---- Inputs / linkage ----
+  # Reads what ingest wrote here:
+  ingest_key: information_ingest
+
+  # Where to stash its own summary:
+  output_key: section_research
+
+  # ---- Embedding / retrieval knobs ----
+  embedding_space: "papers"        # name of your vector index
+  top_k_evidence: 12               # per section
+  min_cosine_for_evidence: 0.55    # filter very off-topic hits
+
+  # ---- Bullet extraction ----
+  bullets:
+    max_bullets: 7
+    model:
+      name: ollama/qwen3
+      api_base: http://localhost:11434
+      api_key: null
+    prompt_mode: file
+    prompt_file: section_bullets.txt
+
+  # ---- Draft generation ----
+  draft:
+    enabled: true
+    max_tokens: 512
+    model:
+      name: ollama/qwen3
+      api_base: http://localhost:11434
+      api_key: null
+    prompt_mode: file
+    prompt_file: section_draft.txt
+
+  # ---- Verification ----
+  verification:
+    enabled: true
+    faithfulness_cosine_threshold: 0.75
+    max_untrusted_fraction: 0.4     # max fraction of sentences allowed off-evidence
+
+  # ---- Persistence ----
+  write_dynamic_scorables: true
+  write_memcube_sections: true

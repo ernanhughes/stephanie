@@ -1,0 +1,13 @@
+# config/tools/ner.yaml
+name: ner
+class_path: stephanie.tools.ner_tool.NerTool
+
+# Behaviour flags
+use_model: true      # run GLiNER2 on the text
+hydrate: true        # load existing entities from scorable_entities if present
+persist: true        # write detected entities back to scorable_entities
+force: false         # if true, ignore cached entities and recompute
+
+# Confidence / filtering
+min_conf: 0.05       # drop entities with score below this (if scores are available)
+

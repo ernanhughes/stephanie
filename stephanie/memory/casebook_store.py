@@ -1,7 +1,6 @@
 # stephanie/memory/casebook_store.py
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 import uuid
@@ -18,6 +17,7 @@ from stephanie.models.casebook import (CaseAttributeORM, CaseBookORM, CaseORM,
 from stephanie.models.dynamic_scorable import DynamicScorableORM
 from stephanie.models.goal import GoalORM
 from stephanie.scoring.scorable import ScorableType
+from stephanie.utils.hash_utils import hash_text
 
 log = logging.getLogger(__name__)
 
@@ -678,9 +678,8 @@ class CaseBookStore(BaseSQLAlchemyStore):
         casebook_id: int,
         goal_id: str,
         agent_name: str,
-        goal_text: Optional[str] = None,
-        mars_summary: Optional[str] = None,
-        scores: Optional[dict] = None,
+        name: Optional[str] = None,
+        description: Optional[str] = None,  
         scorables: Optional[list[dict]] = None,
         prompt_text: Optional[str] = None,
         meta: Optional[dict] = None,
@@ -691,6 +690,8 @@ class CaseBookStore(BaseSQLAlchemyStore):
                 casebook_id=casebook_id,
                 goal_id=goal_id,
                 agent_name=agent_name,
+                name=name,
+                description=description, 
                 prompt_text=prompt_text,
                 meta=meta or {},
             )
@@ -1431,7 +1432,7 @@ class CaseBookStore(BaseSQLAlchemyStore):
         text = text or s.get("text", "") or s.get("content", "")
         if text:
             base = f"{case_id}:{idx}:{text}"
-            return hashlib.sha1(base.encode("utf-8")).hexdigest()[:16]
+            return hash_text(base)[:16]
         return uuid.uuid4().hex
 
 

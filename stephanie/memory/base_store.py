@@ -7,7 +7,9 @@ from sqlalchemy import func
 from sqlalchemy.orm import sessionmaker
 
 from stephanie.utils.db_scope import retry, session_scope
+import logging
 
+log = logging.getLogger(__name__)
 
 class BaseSQLAlchemyStore:
     """
@@ -56,12 +58,12 @@ class BaseSQLAlchemyStore:
         )
 
     def exists(self, **filters) -> bool:
-        return self._run(
-            lambda s: bool(
-                s.query(self.orm_model).filter_by(**filters).exists().scalar()
-                if filters else s.query(self.orm_model).exists().scalar()
-            )
-        )
+        def op(s):
+            q = s.query(self.orm_model)
+            if filters:
+                q = q.filter_by(**filters)
+            return s.query(q.exists()).scalar() or False
+        return self._run(op)
 
     def list(
         self,
@@ -133,3 +135,39 @@ class BaseSQLAlchemyStore:
 
     def flush(self) -> None:
         return None  # handled by session_scope
+
+    def get_one(
+        self,
+        *,
+        order_by: Optional[Any] = None,
+        desc: bool = True,
+        filters: Optional[Dict[str, Any]] = None,
+    ) -> Any | None:
+        def op(s):
+            q = s.query(self.orm_model)
+            if filters:
+                q = q.filter_by(**filters)
+
+            col = order_by or self.default_order_by
+            if isinstance(col, str):
+                col = getattr(self.orm_model, col, None)
+            if col is not None:
+                q = q.order_by(col.desc() if desc else col.asc())
+
+            return q.first()
+        return self._run(op)
+
+    def delete_where(self, **filters) -> int:
+        def op(s):
+            q = s.query(self.orm_model).filter_by(**filters)
+            n = q.count()
+            q.delete(synchronize_session=False)
+            return int(n)
+        return self._run(op)
+
+    def save_all(self, objs: List[Any]) -> List[Any]:
+        def op(s):
+            s.add_all(objs)
+            s.flush()
+            return objs
+        return self._run(op)

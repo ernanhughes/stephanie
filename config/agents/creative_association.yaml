@@ -1,0 +1,8 @@
+# config/agents/creative_association.yaml
+creative_association:
+  class: stephanie.agents.association.CreativeAssociationAgent
+  name: "creative_association"
+  input_key: null
+  output_key: "ideas_accepted"
+  cfg:
+    min_r_final: 0.65

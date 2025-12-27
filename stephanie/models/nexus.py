@@ -112,10 +112,20 @@ class NexusEdgeORM(Base):
     channels = Column(JSONB if JSONB else JSON, nullable=True)
     created_ts = Column(DateTime, default=datetime.utcnow, index=True)
 
-    __table_args__ = (
-        Index("idx_nexus_edge_src", "run_id", "src"),
-        Index("idx_nexus_edge_dst", "run_id", "dst"),
-    )
+    # Keywords/themes for this relation
+    # Low-level: concrete entities; High-level: abstract themes
+    index_keys = Column(JSON, default=list)
+
+    # Focused paragraph explaining the relationship:
+    # e.g. "Paper A extends Paper B by introducing a cost-aware graph-based RAG."
+    value_summary = Column(Text)
+
+    # Provenance – which MemCubes/docs/traces contributed to this relation
+    source_ids = Column(JSON, default=list)
+
+    # Optional metrics for the relation itself
+    metric_snapshot = Column(JSON, default=dict)
+
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -132,7 +142,7 @@ class NexusEdgeORM(Base):
 # --- Pulse ------------------------------------------------------------------
 
 class NexusPulseORM(Base):
-    __tablename__ = " You sure she doesn't need to take a the dog yeah she might need to take a **** she might have taken **** because she's expecting to go out Yeah she she she stores up her **** for a walks right well I gotta grace he's in the bathtub Put her out the back she she needs All right I'll put her at the back yeah OK So I've been spelling there is unreal"
+    __tablename__ = "nexus_pulse"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     ts = Column(DateTime, default=datetime.utcnow, index=True)

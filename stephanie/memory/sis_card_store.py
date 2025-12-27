@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
 from stephanie.models.sis_card import SisCardORM
+from stephanie.utils.hash_utils import hash_text
 
 
 class SisCardStore(BaseSQLAlchemyStore):
@@ -19,7 +20,7 @@ class SisCardStore(BaseSQLAlchemyStore):
         self.name = "sis_cards"
 
     def _digest(self, payload: Dict[str, Any]) -> str:
-        return hashlib.sha256(json.dumps(payload, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
+        return hash_text(json.dumps(payload, sort_keys=True, ensure_ascii=False))
 
     def upsert_payload(self, payload: Dict[str, Any]) -> SisCardORM:
         """

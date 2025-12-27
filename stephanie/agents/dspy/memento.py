@@ -30,6 +30,7 @@ from stephanie.data.score_corpus import ScoreCorpus
 from stephanie.scoring.calculations.mars_calculator import MARSCalculator
 from stephanie.scoring.scorable import Scorable, ScorableType
 from stephanie.scoring.scorer.scorable_ranker import ScorableRanker
+from stephanie.utils.hash_utils import hash_text
 
 # Namespace keys (all internal writes go under this)
 CTX_NS = "_MEMENTO"
@@ -623,16 +624,15 @@ class MementoAgent(MCTSReasoningAgent):
             case = self.memory.casebooks.add_case(
                 casebook_id=home_casebook_id,
                 goal_id=goal["id"],
-                goal_text=goal["goal_text"],
-                agent_name=self.__class__.__name__,
-                mars_summary=mars_results,
-                scores=scores_payload,
+                agent_name=self.name,
+                scorables=scorables_payload,
                 meta={
                     "pipeline_run_id": context.get(PIPELINE_RUN_ID),
                     "casebook_tag": self._casebook_tag_runtime,
                     "hypothesis_count": len(ranked),
+                    "mars_summary": mars_results,
+                    "scores": scores_payload,
                 },
-                scorables=scorables_payload,
             )
             self.logger.log(
                 "CBRRetain", {"case_id": case.id, "goal_id": goal["id"]}
@@ -963,11 +963,9 @@ class MementoAgent(MCTSReasoningAgent):
                 continue
             text = (h.get("text") or "").strip()
             sid = (
-                hashlib.sha1(text.encode("utf-8")).hexdigest()[:16]
+                hash_text(text)[:16]
                 if text
-                else hashlib.sha1(
-                    str(random.random()).encode("utf-8")
-                ).hexdigest()[:16]
+                else hash_text(str(random.random()))[:16]
             )
             nh = dict(h)
             nh["id"] = sid

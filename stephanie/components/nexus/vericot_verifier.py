@@ -10,6 +10,8 @@ from typing import Any, Dict, List, Literal, Optional, Tuple
 
 import z3  # pip install z3-solver
 
+from stephanie.utils.hash_utils import hash_text
+
 Status = Literal["valid", "contradiction", "ungrounded", "untranslatable"]
 UngroundedDetail = Literal[
     "no_premises",
@@ -332,7 +334,7 @@ class VeriCoTVerifier:
         cleaned = "".join(ch.lower() if ch.isalnum() else "_" for ch in text).strip("_")
         base = (cleaned[:40] or "prop")
         suffix = (
-            hashlib.sha1(text.encode("utf-8")).hexdigest()[:8]
+            hash_text(text)[:8]
             if self.deterministic_atoms
             else f"{abs(hash(text)) % 10**6}"
         )

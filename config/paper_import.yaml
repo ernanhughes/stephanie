@@ -39,11 +39,11 @@ embeddings:
 goal:
   # goal_text: "https://arxiv.org/pdf/2506.05070"
   # goal_text: "https://arxiv.org/pdf/2505.15143"
-  goal_text: "2106.09685"
-  # goal_text: "https://arxiv.org/abs/2305.14314"
+  # goal_text: "2106.09685"
+  goal_text: "https://arxiv.org/abs/1803.04899"
   
-  # goal_type: "similar_papers"
-  goal_type: "arxiv_search"
+  goal_type: "similar_papers"
+  # goal_type: "arxiv_search"
   
   focus_area: "AI research"
 
@@ -70,9 +70,9 @@ pipeline:
        iterations: 1
      - name: paper_score
        cls: stephanie.agents.knowledge.paper_score.PaperScoreAgent
-       enabled: true
+       enabled: false
        iterations: 1
      - name: knowledge_loader
        cls: stephanie.agents.knowledge.knowledge_loader.KnowledgeLoaderAgent
-       enabled: true
+       enabled: false
        iterations: 1

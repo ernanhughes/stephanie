@@ -29,14 +29,13 @@ class ScorableProcessorWorker:
         cfg: Dict[str, Any],
         memory,
         container,
-        bus,
-        logger: Optional[logging.Logger] = None,
+        logger,
     ):
         self.cfg = cfg or {}
         self.memory = memory
         self.container = container
-        self.bus = bus
-        self.logger = logger or log
+        self.bus = memory.bus
+        self.logger = logger
 
         # Worker-local config: force inline, usually no manifest
         worker_cfg = dict(self.cfg)
@@ -62,7 +61,7 @@ class ScorableProcessorWorker:
         await self.bus.subscribe(self.SCORABLE_PROCESS, self.handle_rpc)
         await self.bus.subscribe(self.SCORABLE_SUBMIT, self.handle_async)
 
-        self.logger.info(
+        log.info(
             "[ScorableProcessorWorker] subscribed rpc=%s async=%s",
             self.SCORABLE_PROCESS,
             self.SCORABLE_SUBMIT,
@@ -103,7 +102,7 @@ class ScorableProcessorWorker:
         try:
             row = await self.processor.process(scorable, context)
         except Exception as e:
-            self.logger.exception("[ScorableProcessorWorker] processing error (rpc): %s", e)
+            log.exception("[ScorableProcessorWorker] processing error (rpc): %s", e)
             return {"status": "error", "error": str(e), "job_id": job_id}
 
         return {"status": "ok", "row": row, "job_id": job_id}
@@ -130,13 +129,13 @@ class ScorableProcessorWorker:
         try:
             scorable = ScorableFactory.from_dict(scorable_dict)
         except Exception as e:
-            self.logger.exception("[ScorableProcessorWorker] invalid scorable in async: %s", e)
+            log.exception("[ScorableProcessorWorker] invalid scorable in async: %s", e)
             return None
 
         try:
             await self.processor.process(scorable, context)
         except Exception as e:
-            self.logger.exception("[ScorableProcessorWorker] processing error (async): %s", e)
+            log.exception("[ScorableProcessorWorker] processing error (async): %s", e)
 
         # No reply → handler returns None by design
         return None

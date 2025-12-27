@@ -1,0 +1,133 @@
+# config/information.yaml
+defaults:
+  - _self_
+  - db: postgres
+  - bus: zmq
+  - plan_monitor: disabled
+  - logging: json_logger
+  - services: all
+  - scorer: all
+
+  # Critic pipeline agents
+  - agents/paper_pipeline
+  - agents/paper_pipeline_report
+  - agents/paper_blog_generator
+  - agents/paper_spine_builder
+  - agents/paper_blog_judge
+
+embeddings:
+  backend: hnet
+
+
+# ---------------------------------------------------------------------
+# High-level goal conditioning: why we are running this pipeline
+# ---------------------------------------------------------------------
+goal:
+  source: "driver"
+  goal_type: "tactical"
+  goal_category: "visual_graph_memory"
+
+  # ✦ NEW: Cleaner narrative explaining why this pipeline exists ✦
+  goal_text: >
+    Evaluate and refine Stephanie’s internal critic by constructing a
+    VisiCalc-based cohort analysis across chat turns, identifying stable
+    high-signal behavioral features, training a compact critic model, and
+    validating its predictive power via HRM/SICQL/EBT agreement. Produce a
+    full lifecycle artifact set (raw → metrics → VPM → cohort summaries →
+    critic model → improvement deltas) that together form a self-improving
+    feedback loop.
+
+  strategy:
+    - "cohort_metric_analysis"        # VisiCalc → baseline → targeted
+    - "critic_training"               # Train TinyCritic on extracted features
+    - "model_evaluation"              # HRM + SICQL + EBT cross-checks
+    - "visual_reasoning"              # VPM and color-normalized A/B frames
+    - "feedback_integration"          # Update scorer configs & calibration
+
+  expected_formats:
+    - "visicalc_report_json"
+    - "visicalc_feature_matrix"
+    - "critic_dataset_csv"
+    - "critic_model_joblib"
+    - "critic_cross_validation_md"
+    - "ab_vpm_filmstrip"
+    - "model_quality_metrics_json"
+
+  success_criteria:
+    min_goal_alignment_improvement: 0.05
+    min_signal_lift_p80: 0.05
+    require_cross_model_agreement: true
+    prefer_low_variance_visicalc_features: true
+
+  scorer_signals:
+    - "SICQL"
+    - "EBT"
+    - "HRM"
+
+  calibration:
+    color_scale: "global_full_pipeline"
+    winsorize_pct: 1.0
+
+
+paths:
+  prompts: ${hydra:runtime.cwd}/prompts
+
+report:
+  save_context_result: true
+  generate_report: true
+  path: ${hydra:runtime.cwd}/reports
+
+
+# ---------------------------------------------------------------------
+# Pipeline execution graph (linear, but goals-aware)
+# ---------------------------------------------------------------------
+pipeline:
+  name: paper_to_blog
+  tag: paper_to_blog
+  description: >
+    Will take a research paper as input and generate a blog post. 
+    Converts it to a casebook and memcube during this process.
+
+  stages:
+
+    # ------------------------------ Yes Hey---------------------------------
+
+    - name: paper_pipeline
+      description: >
+        Load input documents from specified sources (e.g., local files,
+        URLs, databases) into the system for processing.
+      cls: stephanie.components.information.agents.paper_pipeline.PaperPipelineAgent
+      enabled: true
+      iterations: 1
+
+    - name: paper_spine_builder
+      description: >
+        Build a structured spine for the research paper, organizing its
+        content into key sections and concepts.
+      cls: stephanie.components.information.agents.paper_spine_builder.PaperSpineBuilderAgent
+      enabled: true
+      iterations: 1
+
+    - name: paper_pipeline_report
+      description: >
+        Generate a markdown report summarizing the processed papers,
+        including key sections and concept clusters.
+      cls: stephanie.components.information.agents.paper_pipeline_report.PaperPipelineReportAgent
+      enabled: true
+      iterations: 1
+
+    - name: paper_blog_generator
+      description: >
+        Generate a blog post based on the processed paper and the
+        generated report.
+      cls: stephanie.components.information.agents.paper_blog_generator.PaperBlogGeneratorAgent
+      enabled: true
+      iterations: 1
+
+    - name: paper_blog_judge
+      description: >
+        Evaluate the quality of the generated blog post, providing
+        feedback and suggestions for improvement.
+      cls: stephanie.components.information.agents.paper_blog_judge.PaperBlogJudgeAgent
+      enabled: true
+      iterations: 1

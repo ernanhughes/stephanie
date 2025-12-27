@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.knowledge.improver import Improver
 from stephanie.agents.knowledge.knowledge_fuser import KnowledgeFuser
-from stephanie.agents.paper_improver import GoalScorer
+from stephanie.agents.paper_improver.goals import GoalScorer
 from stephanie.models.casebook import CaseBookORM
 from stephanie.scoring.scorable import ScorableFactory, ScorableType
 from stephanie.utils.json_sanitize import safe_json

@@ -1,12 +1,14 @@
 # stephanie/memory/blossom_store.py
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy.orm import joinedload
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
-from stephanie.models.blossom import BlossomEdgeORM, BlossomNodeORM, BlossomORM
+from stephanie.models.blossom import (BlossomEdgeORM, BlossomNodeORM,
+                                      BlossomORM, BlossomOutputORM)
 
 
 class BlossomStore(BaseSQLAlchemyStore):
@@ -450,3 +452,165 @@ class BlossomStore(BaseSQLAlchemyStore):
         Mark blossom completed and store final stats (counts, win rates, deltas).
         """
         return self.update_status(blossom_id, status="completed", stats=stats)
+
+
+    
+    # ---------- Outputs (BlossomOutputORM) ----------
+
+    def upsert_output_unique(self, data: Dict[str, Any]) -> BlossomOutputORM:
+        """
+        Upsert a BlossomOutputORM while preventing duplicates on:
+          (blossom_id, role, scorable_type, scorable_id)
+
+        Required keys in `data`:
+          - blossom_id
+          - role
+          - scorable_type
+          - scorable_id
+
+        Optional keys:
+          - source_bn_id
+          - source_type
+          - source_id
+          - reward
+          - metrics
+          - notes
+          - extra_data
+          - episode_id (defaults to blossom_id)
+        """
+
+        required = ["blossom_id", "role", "scorable_type", "scorable_id"]
+        missing = [k for k in required if k not in data]
+        if missing:
+            raise ValueError(f"Missing required fields for BlossomOutput upsert: {missing}")
+
+        def op(s):
+            # 1) Try to find existing row with same uniqueness key
+            existing = (
+                s.query(BlossomOutputORM)
+                .filter(
+                    BlossomOutputORM.blossom_id == data["blossom_id"],
+                    BlossomOutputORM.role == data["role"],
+                    BlossomOutputORM.scorable_type == data["scorable_type"],
+                    BlossomOutputORM.scorable_id == data["scorable_id"],
+                )
+                .first()
+            )
+
+            now = datetime.now(timezone.utc)
+
+            if existing:
+                # 2) Update existing record in-place
+                # Only apply known columns; ignore unknown keys in `data`
+                updatable_fields = {
+                    "source_bn_id",
+                    "source_type",
+                    "source_id",
+                    "reward",
+                    "metrics",
+                    "notes",
+                    "extra_data",
+                }
+                for k in updatable_fields:
+                    if k in data:
+                        setattr(existing, k, data[k])
+
+                # Episode id may also be updated if explicitly provided
+                if "episode_id" in data:
+                    existing.episode_id = data["episode_id"]
+
+                existing.updated_at = now
+                return existing
+
+            # 3) Create new record
+            payload: Dict[str, Any] = {}
+
+            # Required uniqueness key
+            payload["blossom_id"] = data["blossom_id"]
+            payload["episode_id"] = data.get("episode_id", data["blossom_id"])
+            payload["role"] = data["role"]
+            payload["scorable_type"] = data["scorable_type"]
+            payload["scorable_id"] = data["scorable_id"]
+
+            # Optional fields if present
+            for key in (
+                "source_bn_id",
+                "source_type",
+                "source_id",
+                "reward",
+                "metrics",
+                "notes",
+                "extra_data",
+            ):
+                if key in data:
+                    payload[key] = data[key]
+
+            payload.setdefault("reward", 0.0)
+            payload.setdefault("metrics", None)
+            payload.setdefault("notes", None)
+            payload.setdefault("extra_data", None)
+
+            payload["created_at"] = now
+            payload["updated_at"] = now
+
+            obj = BlossomOutputORM(**payload)
+            s.add(obj)
+            s.flush()
+            if self.logger:
+                self.logger.log("BlossomOutputUpserted", obj.to_dict())
+            return obj
+
+        return self._run(op)
+
+    def add_features(self, output_id: int, features: Dict[str, Any]) -> Optional[BlossomOutputORM]:
+        """
+        Merge a 'features' dict into BlossomOutputORM.extra_data["features"].
+
+        If the record doesn't exist, returns None.
+        """
+
+        def op(s):
+            obj = s.query(BlossomOutputORM).filter_by(id=output_id).first()
+            if not obj:
+                return None
+
+            extra = dict(obj.extra_data or {})
+            current_feats = dict(extra.get("features") or {})
+            current_feats.update(features)
+            extra["features"] = current_feats
+
+            obj.extra_data = extra
+            obj.updated_at = datetime.now(timezone.utc)
+
+            if self.logger:
+                self.logger.log(
+                    "BlossomOutputFeaturesUpdated",
+                    {"id": output_id, "features_keys": list(features.keys())},
+                )
+            return obj
+
+        return self._run(op)
+
+    # Small convenience helpers you will likely want downstream:
+
+    def list_outputs_for_blossom(self, blossom_id: int) -> List[BlossomOutputORM]:
+        """Return all outputs for a given Blossom episode."""
+        def op(s):
+            return (
+                s.query(BlossomOutputORM)
+                .filter(BlossomOutputORM.blossom_id == blossom_id)
+                .order_by(BlossomOutputORM.id.asc())
+                .all()
+            )
+        return self._run(op)
+
+    def list_outputs_for_node(self, source_bn_id: int) -> List[BlossomOutputORM]:
+        """Return all outputs linked to a specific BlossomNode."""
+        def op(s):
+            return (
+                s.query(BlossomOutputORM)
+                .filter(BlossomOutputORM.source_bn_id == source_bn_id)
+                .order_by(BlossomOutputORM.id.asc())
+                .all()
+            )
+        return self._run(op) 

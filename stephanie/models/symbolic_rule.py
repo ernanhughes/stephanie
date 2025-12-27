@@ -10,6 +10,7 @@ from sqlalchemy import (JSON, Column, DateTime, Float, ForeignKey, Integer,
 from sqlalchemy.orm import relationship
 
 from stephanie.models.base import Base
+from stephanie.utils.hash_utils import hash_text
 
 
 class SymbolicRuleORM(Base):
@@ -72,7 +73,7 @@ class SymbolicRuleORM(Base):
     def compute_context_hash(filters: dict, attributes: dict) -> str:
         merged = {"filters": filters or {}, "attributes": attributes or {}}
         canonical_str = json.dumps(merged, sort_keys=True)
-        return hashlib.sha256(canonical_str.encode("utf-8")).hexdigest()
+        return hash_text(canonical_str)
 
     def to_dict(self, include_relationships=False):
         return {

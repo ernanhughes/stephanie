@@ -9,6 +9,7 @@ from typing import Any, Dict, Optional
 
 from stephanie.scoring.scorable import Scorable
 from stephanie.services.scoring_service import ScoringService
+from stephanie.services.workers.base_worker import BaseWorker
 
 log = logging.getLogger(__name__)
 
@@ -51,7 +52,7 @@ class MetricsWorkerInline:
 
 
 
-class MetricsWorker:
+class MetricsWorker(BaseWorker):
     """
     Consumes 'metrics.request', scores with configured scorers,
     and publishes 'metrics.ready'.

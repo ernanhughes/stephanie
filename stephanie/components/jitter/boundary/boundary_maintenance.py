@@ -21,7 +21,7 @@ import time
 from dataclasses import dataclass, field
 from enum import Enum
 from functools import wraps
-from typing import Any, Dict, List, Callable
+from typing import Any, Callable, Dict, List
 
 import numpy as np
 from pydantic import BaseModel, Field

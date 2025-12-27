@@ -6,9 +6,9 @@ from stephanie.agents.knowledge.automind_knowledge_collector import \
     AutoMindKnowledgeCollector
 from stephanie.constants import GOAL
 from stephanie.tools.arxiv_tool import search_arxiv
-from stephanie.tools.cos_sim_tool import get_top_k_similar
 from stephanie.tools.huggingface_tool import (recommend_similar_papers,
                                               search_huggingface_datasets)
+from stephanie.tools.similar_tool import get_top_k_similar
 from stephanie.tools.web_search import WebSearchTool
 from stephanie.tools.wikipedia_tool import WikipediaTool
 
@@ -141,7 +141,7 @@ class SearchOrchestratorAgent(BaseAgent):
         ]
         phrases = [p for _, p in candidates]
 
-        top = get_top_k_similar(query, phrases, self.memory, top_k=1)
+        top = get_top_k_similar(query, phrases, embed=self.memory.embedding.get_or_create, top_k=1)
         best_phrase = top[0][0]
 
         for intent, phrase in candidates:

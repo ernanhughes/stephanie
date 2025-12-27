@@ -6,8 +6,9 @@ from typing import Any, Dict
 from PIL import Image
 
 from stephanie.agents.base_agent import BaseAgent
+from stephanie.components.jitter.lifecycle.chain_sampler import \
+    diversified_samples
 from stephanie.services.chain_runner_adapter import make_run_chain_fn
-from stephanie.components.jitter.lifecycle.chain_sampler import diversified_samples
 
 
 class ChainSamplingAgent(BaseAgent):

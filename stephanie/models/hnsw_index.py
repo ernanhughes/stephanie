@@ -12,6 +12,8 @@ from typing import Any, Dict, List, Optional, Tuple
 import hnswlib
 import numpy as np
 
+from stephanie.utils.hash_utils import hash_text
+
 log = logging.getLogger(__name__)
 
 class HNSWIndex:
@@ -147,7 +149,7 @@ class HNSWIndex:
             return "|".join(parts)
         # Fallback: hash of text-like fields
         basis = (meta.get("entity_text") or meta.get("text") or "") + "::" + str(meta.get("scorable_id") or "")
-        return "hash::" + hashlib.sha1(basis.encode("utf-8")).hexdigest()[:16]
+        return "hash::" + hash_text(basis)[:16]
 
     def _is_duplicate(self, meta: Dict[str, Any]) -> Tuple[bool, Optional[int]]:
         key = self._get_entity_key(meta)

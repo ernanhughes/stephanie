@@ -1,0 +1,76 @@
+paper_blog_generator:
+  name: paper_blog_generator
+  enabled: true
+  save_prompt: true
+  save_context: false
+  skip_if_completed: false
+
+  # Where we read inputs from the pipeline context
+  input_arxiv_key: arxiv_id
+  graph_key: paper_graph
+  sections_key: paper_sections
+  clusters_key: concept_clusters
+  documents_key: paper_documents
+  report_key: paper_report_markdown
+
+  # Where we write the final blog
+  output_key: paper_blog_markdown
+
+  # ---------------------------------------------------------------------
+  # Baseline BlogConfig (FROZEN)
+  # - This is the canonical baseline configuration for paper→blog.
+  # - AI exploration later will override per-run by writing context["blog_config"].
+  # ---------------------------------------------------------------------
+  baseline_blog_config:
+    version: v1
+    variant: baseline
+
+    # Retrieval / limits
+    max_sections: 8
+    max_reference_items: 12
+    num_similar_papers: 5
+
+    # Selection weights
+    semantic_match_weight: 1.0
+    domain_match_weight: 0.5
+    entity_match_weight: 0.5
+
+    # Visuals/spine
+    include_visuals: true
+
+    # Generation sizes (words are “targets”; your prompt service still uses max_tokens)
+    intro_words: 400
+    section_words: 900
+    conclusion_words: 400
+
+  blog:
+    audience: "informed engineer"
+    max_sections: 16
+    section_target_words: 250
+    intro_target_words: 200
+    conclusion_target_words: 180
+
+    # Per-section writer model (local Ollama example)
+    section_model:
+      name: "ollama/llama3.1:8b"
+      api_base: "http://localhost:11434"
+      api_key: null
+      params:
+        num_ctx: 4096
+        top_p: 0.9
+        top_k: 40
+        repeat_penalty: 1.05
+        temperature: 0.6
+
+    # Optional: overrides (if omitted, these fall back to section_model/section_params)
+    section_params:
+      max_tokens: 480   # per-section cap
+
+    intro_params:
+      temperature: 0.4
+      max_tokens: 400
+
+    conclusion_params:
+      temperature: 0.4
+      max_tokens: 400
+

@@ -1,0 +1,13 @@
+fast_encyclopedia:
+  name: fast_encyclopedia
+  enabled: true
+
+  # Maximum number of sections to include in the final blog
+  max_sections: 6
+
+  # Ignore tiny sections / noisy fragments
+  section_min_len: 80
+
+  # Optional: future flags (not used yet, but reserved)
+  # save_outline: true
+  # save_full_text: true

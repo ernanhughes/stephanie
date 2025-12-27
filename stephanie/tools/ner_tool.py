@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 
+from stephanie.models.gliner2_entity_detector import Gliner2EntityDetector
 from stephanie.tools.base_tool import BaseTool
 
 log = logging.getLogger(__name__)
@@ -25,7 +26,16 @@ class NerTool(BaseTool):
         self.min_conf = float(cfg.get("min_conf", 0.05))
 
         # The low-level model
-        self.detector = container.get("ner_detector") or None
+        model_name = cfg.get("model_name", "fastino/gliner2-large-v1")
+        labels = cfg.get("labels")        # could be list or dict
+        threshold = float(cfg.get("threshold", 0.35))
+
+        self.detector = Gliner2EntityDetector(
+            model_name=model_name,
+            labels=labels,
+            threshold=threshold,
+        )
+
 
     # ------------------------------------------------------------------
     async def apply(self, scorable, context):
@@ -85,6 +95,16 @@ class NerTool(BaseTool):
         except Exception as e:
             log.error(f"[NER] DB hydration failed for {scorable.id}: {e}")
             return None
+
+    def detect(self, text: str):
+        """
+        Public method to detect entities in text.
+        """
+        if not self.use_model or not self.detector:
+            return []
+
+        return self._run_detector(text)    
+
 
     # ------------------------------------------------------------------
     def _run_detector(self, text: str):

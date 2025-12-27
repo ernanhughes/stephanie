@@ -21,6 +21,7 @@ from sklearn.preprocessing import StandardScaler
 from stephanie.components.critic.model.trainer import load_dataset
 from stephanie.components.critic.reports.training_report import \
     generate_training_reports
+from stephanie.utils.hash_utils import hash_text
 
 log = logging.getLogger(__name__)
 
@@ -532,7 +533,7 @@ class CriticTrainer:
     def _calculate_data_hash(self, X, y):
         """Calculate a reproducible hash of the data for versioning"""
         data_bytes = X.tobytes() + y.tobytes()
-        return hashlib.sha256(data_bytes).hexdigest()[:16]
+        return hash_text(data_bytes)[:16]
     
 def _model_n_features(model) -> int | None:
     # Try to infer from first step that exposes n_features_in_

@@ -8,6 +8,7 @@ from sqlalchemy import create_engine
 
 from stephanie.models.base import WorldviewBase
 from stephanie.models.worldview import WorldviewORM
+from stephanie.utils.hash_utils import hash_text
 from stephanie.utils.slug import slugify_with_max_length
 
 
@@ -18,7 +19,7 @@ class WorldviewDBLocator:
 
     def generate_worldview_id(self, goal_text: str) -> str:
         slug = slugify_with_max_length(goal_text, 60)
-        hash_part = hashlib.sha1(goal_text.encode()).hexdigest()[:8]
+        hash_part = hash_text(goal_text)
         return f"{slug}-{hash_part}"
 
     def get_db_path(self, goal_text: str) -> str:

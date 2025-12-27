@@ -1,7 +1,7 @@
 # scripts/run_kg_worker.py
 from stephanie.core.logging.json_logger import JSONLogger
 from stephanie.memory.memory_tool import MemoryTool
-from stephanie.services.workers.kg_indexer import KnowledgeGraphIndexerWorker
+from stephanie.services.workers.kg_indexer_worker import KnowledgeGraphIndexerWorker
 import yaml
 
 def load_config(path="/config/config.yaml"):

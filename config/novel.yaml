@@ -80,11 +80,11 @@ pipeline:
        enabled: true
        iterations: 1
      - name: idea_innovation
-       cls: stephanie.agents.idea_innovation.IdeaInnovationAgent
+       cls: stephanie.components.information.agents.idea_innovation.IdeaInnovationAgent
        enabled: true
        iterations: 1
      - name: idea_sharpening
-       cls: stephanie.agents.idea_sharpening.IdeaSharpeningAgent
+       cls: stephanie.components.information.agents.idea_sharpening.IdeaSharpeningAgent
        enabled: true
        iterations: 1
      - name: ranking
@@ -92,11 +92,11 @@ pipeline:
        enabled: true
        iterations: 1
      - name: idea_evaluator
-       cls: stephanie.agents.idea_evaluator.IdeaEvaluatorAgent
+       cls: stephanie.components.information.agents.idea_evaluator.IdeaEvaluatorAgent
        enabled: true
        iterations: 1
      - name: idea_evolution
-       cls: stephanie.agents.idea_evolution.IdeaEvolutionAgent
+       cls: stephanie.components.information.agents.idea_evolution.IdeaEvolutionAgent
        enabled: true
        iterations: 3
      - name: method_planner

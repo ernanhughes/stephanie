@@ -18,7 +18,7 @@ from stephanie.components.nexus.app.manifest import (ManifestItem,
                                                      NexusRunManifest)
 from stephanie.components.nexus.graph.builder import (build_edges_enhanced,
                                                       build_nodes)
-from stephanie.components.nexus.graph.exporters.pyviz import (
+from stephanie.components.nexus.graph.exporters.pyvis import (
     export_graph_json, export_pyvis_html, export_pyvis_html_rich)
 from stephanie.constants import PIPELINE_RUN_ID
 from stephanie.scoring.metrics.scorable_processor import ScorableProcessor

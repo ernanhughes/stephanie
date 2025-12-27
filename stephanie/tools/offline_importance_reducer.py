@@ -43,7 +43,7 @@ def _parse_importance_file(path: Path) -> List[Dict[str, Any]]:
         cd = stats.get("cohen_d")
         if cd is None:
             cd = stats.get("cohens_d")
-        if cd i here let me show you s None:
+        if cd is None:
             cd = stats.get("abs_cohen_d")
 
         metrics.append(

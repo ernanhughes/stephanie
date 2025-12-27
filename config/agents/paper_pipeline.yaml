@@ -1,0 +1,81 @@
+# config/agents/paper_pipeline.yaml
+paper_pipeline:
+  name: paper_pipeline
+  enabled: true
+  save_prompt: true
+  save_context: false
+  skip_if_completed: false
+
+  # ---- Input / output wiring ----
+  # The context key that must contain the arxiv_id of the root paper.
+  # (Your script should set context["arxiv_id"] before calling the agent.)
+  input_key: arxiv_id
+
+  # Where the agent writes its outputs in the context
+  output_graph_key: paper_graph
+  output_sections_key: paper_sections
+  output_matches_key: section_matches
+  output_clusters_key: concept_clusters
+
+  force_rebuild_sections: false    # ignore cached sections, always re-build
+  
+  features:
+    enabled: true
+    subject: "nexus.features.index_request"   # NexusFeatureWorker.subject
+    target_type: "document_section"           # scorable_type for sections
+    source: "paper_pipeline"
+
+  # ---- Filesystem / storage ----
+  # Root directory where PDFs and graph.json will be stored.
+  papers_root: "data/papers"
+
+  # ---- Graph / similar-paper knobs (used by ReferenceGraphTask) ----
+  # Max number of references to follow from the root paper (None = no cap).
+  max_refs: 100           # e.g. 20 if you want a hard limit
+
+  # HuggingFace similar-paper expansion
+  enable_hf_similar: true  # set false to disable HF similar papers
+  hf_similar_max: 16       # hard cap returned by HFSimilarPaperProvider
+  max_similar: 8           # per-paper limit passed into ReferenceGraphTask
+
+  # ---- Section slicing + matching (SectionBuildTask + SectionLinkTask) ----
+  # How to slice each paper into sections
+  section_chars: 2000      # target chars per section
+  section_min_chars: 400   # treat shorter docs as a single section
+  section_overlap: 200     # sliding window overlap between sections
+
+  # Cross-paper section matching
+  section_top_k: 5         # number of matches per root section
+  section_min_sim: 0.4     # cosine similarity threshold
+
+  # ---- Summarizer tool config (passed as cfg["summarizer"]) ----
+  summarizer:
+    # Optional: if your SummarizationTool uses a named profile
+    tool_name: section_summarizer
+
+    # Model backend used by the summarizer
+    model:
+      name: ollama/qwen3
+      api_base: http://localhost:11434
+      api_key: null
+
+    # Extra knobs your SummarizationTool may look for
+    max_tokens: 512
+    temperature: 0.2
+
+  # ---- Embedding config (for BaseEmbeddingStore / memory) ----
+  # The agent just passes this via cfg; your embedding store can read it.
+  embedding:
+    profile: "paper_default"   # e.g. a named embedding profile in your store
+
+  # ---- Progress / reporting (optional) ----
+  progress:
+    enable_sis: true           # send SIS cards if available
+    write_case_attrs: true     # write basic attrs on cases / runs
+
+  # ---- Default model block (if your framework expects one) ----
+  # Not used directly by PaperPipelineAgent, but keeps configs consistent.
+  model:
+    name: ollama/qwen3
+    api_base: http://localhost:11434
+    api_key: null

@@ -9,10 +9,9 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Dict, Optional, Protocol, Union
 
+from stephanie.data.plan_trace import PlanTrace  # noqa: F401
 from stephanie.utils.date_utils import iso_now
 from stephanie.utils.json_sanitize import dumps_safe, sanitize
-
-from stephanie.data.plan_trace import PlanTrace  # noqa: F401
 
 
 class _PlanTraceLike(Protocol):

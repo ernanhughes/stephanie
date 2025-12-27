@@ -11,6 +11,7 @@ from sqlalchemy import asc, desc
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
 from stephanie.models.memcube import MemCubeORM
+from stephanie.utils.hash_utils import hash_text
 
 # ---------- helpers ----------------------------------------------------------
 
@@ -20,7 +21,7 @@ def _stable_int_id(parts: Iterable[str]) -> int:
     Deterministic 31-bit positive int from a list of strings.
     Satisfies MemCubeORM.scorable_id: Integer (not string).
     """
-    h = hashlib.sha1("||".join(parts).encode("utf-8")).hexdigest()
+    h = hash_text("||".join(parts))
     # take 12 hex chars (~48 bits) then mod into signed-32 range for safety
     return int(h[:12], 16) % 2_000_000_000
 
@@ -44,7 +45,7 @@ def _stable_digest(payload: Dict[str, Any]) -> str:
         ensure_ascii=False,
         separators=(",", ":"),
     )
-    return hashlib.sha1(data.encode("utf-8")).hexdigest()
+    return hash_text(data)
 
 
 def _merge_extra(
@@ -184,8 +185,6 @@ class MemCubeStore(BaseSQLAlchemyStore):
     ) -> MemCubeORM:
         # composite uniqueness: (scorable_id, scorable_type, dimension, version)
         def op(s):
-            if not data.get("version"):
-                data["version"] = "v1"
             existing = (
                 s.query(MemCubeORM)
                 .filter_by(

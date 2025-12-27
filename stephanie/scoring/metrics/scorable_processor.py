@@ -18,6 +18,8 @@ from stephanie.scoring.metrics.feature.metric_filter_group_feature import \
     MetricFilterGroupFeature
 from stephanie.scoring.metrics.feature.metrics_feature import MetricsFeature
 from stephanie.scoring.metrics.feature.ner_feature import NerFeature
+from stephanie.scoring.metrics.feature.section_summarization_feature import \
+    SectionSummarizationFeature
 from stephanie.scoring.metrics.feature.text_feature import TextFeature
 from stephanie.scoring.metrics.row_builder import RowBuilder
 from stephanie.scoring.scorable import Scorable, ScorableFactory
@@ -33,6 +35,7 @@ FEATURE_REGISTRY = {
     "ner": NerFeature,
     "domains": DomainFeature,
     "text": TextFeature,
+    "section_summarizer": SectionSummarizationFeature,
 }
 
 

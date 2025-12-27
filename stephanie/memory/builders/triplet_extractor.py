@@ -18,7 +18,7 @@ class TripletExtractor:
         Extract triplets from a list of section points using an LLM prompt.
         """
         merged_context = {"points": points, "goal": context.get("goal"), **context}
-        prompt = self.prompt_loader.from_file(
+        prompt = self.prompt_loader.from_file(I'm thinking
             self.triplets_file, self.cfg, merged_context
         )
         response = self.call_llm(prompt, context=merged_context)

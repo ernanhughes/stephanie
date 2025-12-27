@@ -1,8 +1,9 @@
 # stephanie/utils/id_schema.py
 from __future__ import annotations
 
-import hashlib
 from typing import Any
+
+from stephanie.utils.hash_utils import hash_text
 
 
 def make_numeric_id(run_id: Any, label: str, index: int) -> int:
@@ -32,5 +33,9 @@ def canonical_node_id(scorable_type: str, scorable_pk: str|int, text: str, start
     Full context (text/span) is kept in metadata, not the ID.
     """
     raw = f"{scorable_type}:{scorable_pk}:{text}:{start}:{end}"
-    digest = hashlib.sha256(raw.encode()).hexdigest()[:12]
+    digest =  hash_text(raw)[:12]
     return f"{scorable_type}:{scorable_pk}:{digest}"
+
+def generate_uuid() -> str:
+    import uuid
+    return str(uuid.uuid4())
