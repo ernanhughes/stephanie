@@ -178,7 +178,7 @@ class ScoringService(Service):
             except Exception:
                 pass
         self._scorers.clear()
-        self.logger and self.logger.log("ScoringServiceShutdown", {"status": "complete"})
+        log.info("ScoringServiceShutdown complete")
 
     # ------------------------------------------------------------------ #
     # Initialization / registration
@@ -232,8 +232,7 @@ class ScoringService(Service):
             # use the section names under cfg.scorer.*
             names = list(scorer_block)
         except Exception as e:
-            if self.logger:
-                self.logger.log("ScoringServiceResolveNamesError", {"error": str(e)})
+            log.error("ScoringServiceResolveNamesError %s", str(e))
 
         # sane default if nothing is configured
         if not names:
@@ -253,11 +252,9 @@ class ScoringService(Service):
                 # create a lock for this scorer
                 import threading
                 self._scorer_locks.setdefault(name, threading.Lock())
-                if self.logger:
-                    self.logger.log("ScoringServiceScorerConfigRegistered", {"name": name})
+                log.info("ScoringServiceScorerConfigRegistered %s", name)
             except Exception as e:
-                if self.logger:
-                    self.logger.log("ScoringServiceRegisterCfgError", {"name": name, "error": str(e)})
+                log.error("ScoringServiceRegisterCfgError %s %s", name, str(e))
 
     def register_from_cfg(self, names: List[str]) -> None:
         """
@@ -332,8 +329,7 @@ class ScoringService(Service):
                     HuggingFaceScorer
                 return HuggingFaceScorer(scorer_cfg, memory=self.memory, container=self.container, logger=self.logger)
         except Exception as e:
-            if self.logger:
-                self.logger.log("ScoringServiceBuildScorerError", {"name": name, "error": str(e)})
+            log.error("ScoringServiceBuildScorerError %s %s", name, str(e))
         return None
 
     def _get_or_init_scorer(self, name: str) -> BaseScorer:
@@ -365,8 +361,7 @@ class ScoringService(Service):
             if scorer is None:
                 raise RuntimeError(f"Failed to initialize scorer '{name}'")
             self._scorers[name] = scorer
-            if self.logger:
-                self.logger.log("ScoringServiceScorerInitialized", {"name": name})
+            log.info("ScoringServiceScorerInitialized %s", name)
             return scorer
 
     def get_model_name(self, scorer_name: str) -> str:
@@ -397,11 +392,10 @@ class ScoringService(Service):
 
     def _log_init(self):
         """Log initialization details for the scoring service."""
-        if self.logger:
-            self.logger.log("ScoringServiceInitialized", {
-                "enabled": self.enabled_scorer_names,
-                "registered": list(self._scorers.keys())
-            })
+        log.info("ScoringServiceInitialized enabled=%s registered=%s",
+                 self.enabled_scorer_names,
+                 list(self._scorers.keys())
+            )
 
     # ------------------------------------------------------------------ #
     # Compute paths (ScoreBundle) + persistence
@@ -436,8 +430,9 @@ class ScoringService(Service):
         if not scorer:
             raise ValueError(f"Scorer '{scorer_name}' not registered")
 
-        if len(context.get("goal", {}).get("goal_text", "")) > 2000:
-            context["goal"] = {"goal_text": ""  }
+        goal_text = context.get("goal", {}).get("goal_text", "")
+        if len(goal_text) > 2000:
+            context["goal"] = {"goal_text": goal_text[:2000]  }
 
         return scorer.score(context, scorable, dimensions)
 
@@ -453,7 +448,7 @@ class ScoringService(Service):
         model_name: Optional[str] = None,
     ) -> ScoreBundle:
         """
-        Compute and persist scores using EvaluationStore.save_bundle.
+        Comp Such a puke ute and persist scores using EvaluationStore.save_bundle.
         
         Args:
             scorer_name: Name of the registered scorer to use
@@ -485,13 +480,7 @@ class ScoringService(Service):
                 agent_name=self.name,
             )
         except Exception as e: 
-            if self.logger:
-                self.logger.log("ScoringServicePersistError", {
-                    "scorer": scorer_name,
-                    "scorable_id": scorable.id,
-                    "scorable_type": scorable.target_type,
-                    "error": str(e)
-                })
+            log.error("ScoringServicePersistError %s %s %s %s", scorer_name, scorable.id, scorable.target_type, str(e))
         return bundle
 
     def save_bundle(
@@ -539,13 +528,7 @@ class ScoringService(Service):
                 agent_name=agent_name or self.name,
             )
         except Exception as e: 
-            if self.logger:
-                self.logger.log("ScoringServicePersistError", {
-                    "scorer": scorer_name,
-                    "scorable_id": scorable.id,
-                    "scorable_type": scorable.target_type,
-                    "error": str(e)
-                })
+            log.error("ScoringServicePersistError %s %s %s %s", scorer_name, scorable.id, scorable.target_type, str(e))
         return bundle
 
     # ------------------------------------------------------------------ #
@@ -773,7 +756,7 @@ class ScoringService(Service):
         for name in required or []:
             if name not in self._scorer_cfgs:
                 msg = {"scorer": name, "reason": "not_registered"}
-                self.logger and self.logger.log("ScoringModelMissing", msg)
+                log.error("ScoringModelMissing %s %s", name, msg)
                 st = {"name": name, "registered": False, "initialized": False, "ready": False, "error": "not_registered"}
                 report[name] = st
                 if fail_on_missing:
@@ -788,12 +771,12 @@ class ScoringService(Service):
                     st = self.get_model_status(name)
                 except Exception as e:
                     st["error"] = f"init_failed: {e}"
-                    self.logger and self.logger.log("ScoringModelInitFailed", {"scorer": name, "error": str(e)})
+                    log.error("ScoringModelInitFailed %s %s", name, str(e))
                     if fail_on_missing:
                         raise
 
             report[name] = st
-        self.logger and self.logger.log("ScoringEnsureReadyReport", report)
+        log.info("ScoringEnsureReadyReport %s", report)
         return report
 
     # ------------------------------------------------------------------ #
@@ -893,13 +876,7 @@ class ScoringService(Service):
             except Exception:
                 pass  # leave result as-is if embeddings/tie-break fails
 
-        self.logger and self.logger.log("ScoringServicePairwise", {
-            "scorer": scorer_name,
-            "winner": res.get("winner"),
-            "score_a": res.get("score_a"),
-            "score_b": res.get("score_b"),
-            "mode": res.get("mode"),
-        })
+        log.info("ScoringServicePairwise %s %s %s %s %s", scorer_name, res.get("winner"), res.get("score_a"), res.get("score_b"), res.get("mode"))
         return res
 
     def reward_compare(
@@ -962,130 +939,12 @@ class ScoringService(Service):
             res = self.reward_compare(context=context, a=a, b=b)
             return "a" if res.get("winner") == "a" else "b"
         except Exception as e:
-            # Deterministic last-resort fallback
-            self.logger and self.logger.log("ScoringServiceRewardFallback", {"error": str(e)})
+                # Deterministic last-resort fallback
+            log.error("ScoringServiceRewardFallback %s", str(e))
             la = len(getattr(a, "text", str(a)))
             lb = len(getattr(b, "text", str(b)))
             return "a" if la >= lb else "b"
 
-
-    def evaluate_state(
-        self,
-        *,
-        scorable: "Scorable",
-        context: dict,
-        scorers: list[str],
-        dimensions: list[str],
-        scorer_weights: dict[str, float] | None = None,
-        dimension_weights: dict[str, float] | None = None,
-        include_llm_heuristic: bool = False,
-        include_vpm_phi: bool = False,
-        fuse_mode: str = "weighted_mean",
-        clamp_01: bool = True,
-    ) -> dict:
-        """
-        Fuse multiple scorer families into:
-        - overall (scalar in [0,1])
-        - dims (per-dimension fused scores)
-        - by_scorer (raw aggregates + per-dimension)
-        - components (optional llm_heuristic, vpm_phi)
-
-        Compatible with your agent’s call signature.
-        """
-        # Ensure requested scorers are initialized (lazy + tolerant)
-        try:
-            self.ensure_ready(list(scorers or []), auto_train=False, fail_on_missing=False)
-        except Exception as e:
-            self.logger and self.logger.log("StateEvalEnsureReadyError", {"error": str(e)})
-
-        sw = {k: float(v) for k, v in (scorer_weights or {}).items()}
-        dw = {d: float(v) for d, v in (dimension_weights or {}).items()}
-        dims = list(dimensions or []) or ["alignment"]
-
-        by_scorer = {}
-        per_dim_stack = {d: [] for d in dims}
-
-        # Score with each scorer
-        for name in (scorers or []):
-            try:
-                bundle = self.score(scorer_name=name, scorable=scorable, context=context, dimensions=dims)
-                agg = float(bundle.aggregate())
-                per = {d: float(bundle.results.get(d, None).score if d in bundle.results else agg) for d in dims}
-                by_scorer[name] = {"aggregate": agg, "per_dimension": per}
-                w_i = sw.get(name, 1.0)
-                for d in dims:
-                    per_dim_stack[d].append((per[d], w_i))
-            except Exception as e:
-                self.logger and self.logger.log("StateEvalScorerError", {"scorer": name, "error": str(e)})
-
-        # Fuse per-dimension
-        fused_dim: dict[str, float] = {}
-        for d in dims:
-            if not per_dim_stack[d]:
-                fused = 0.0
-            elif fuse_mode == "median":
-                fused = float(np.median([v for (v, _) in per_dim_stack[d]]))
-            else:
-                num = sum(v * w for (v, w) in per_dim_stack[d])
-                den = sum(w for (_, w) in per_dim_stack[d]) or 1.0
-                fused = float(num / den)
-            # apply dimension weight so it affects overall
-            fused_dim[d] = fused * float(dw.get(d, 1.0))
-
-        components = {}
-
-        # Optional: cheap LLM heuristic prior
-        if include_llm_heuristic:
-            try:
-                hsvc = getattr(self.container, "get", lambda *_: None)("llm_heuristic")
-                if hsvc and hasattr(hsvc, "score"):
-                    llm_h = float(hsvc.score(scorable=scorable, context=context, dimensions=dims))
-                else:
-                    txt = getattr(scorable, "text", "") or ""
-                    nw = len(txt.split())
-                    punct = sum(1 for c in txt if c in ".!?")
-                    llm_h = float(max(0.0, min(1.0, 0.4 + 0.2*(punct>0) + 0.2*(50<=nw<=400))))
-                for d in dims:
-                    fused_dim[d] = 0.9 * fused_dim[d] + 0.1 * llm_h
-                components["llm_heuristic"] = llm_h
-            except Exception as e:
-                self.logger and self.logger.log("StateEvalLLMHeuError", {"error": str(e)})
-
-        # Optional: VPM φ (if ZeroModel present)
-        if include_vpm_phi:
-            try:
-                zm: ZeroModelService = self.container.get("zero_model")
-                if zm:
-                    vpm_u8, _meta = zm.vpm_from_scorable(scorable, img_size=128)
-                    phi = float(zm.score_vpm_image(vpm_u8))  # expected [0,1]
-                    if "clarity" in fused_dim:
-                        fused_dim["clarity"] = 0.9 * fused_dim["clarity"] + 0.1 * phi
-                    if "coverage" in fused_dim:
-                        fused_dim["coverage"] = 0.9 * fused_dim["coverage"] + 0.1 * phi
-                    components["vpm_phi"] = phi
-            except Exception as e:
-                self.logger and self.logger.log("StateEvalVPMError", {"error": str(e)})
-
-        # Overall = dim-weighted mean (by absolute weights)
-        dw_total = sum(abs(dw.get(d, 1.0)) for d in dims) or float(len(dims))
-        overall = float(sum(fused_dim[d] for d in dims) / dw_total)
-
-        if clamp_01:
-            overall = float(max(0.0, min(1.0, overall)))
-            for d in list(fused_dim):
-                fused_dim[d] = float(max(0.0, min(1.0, fused_dim[d])))
-
-        return {
-            "overall": overall,
-            "dims": fused_dim,
-            "by_scorer": by_scorer,
-            "components": components,
-        }
-
-    async def evaluate_state_async(self, *args, **kwargs) -> dict:
-        import asyncio
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, lambda: self.evaluate_state(*args, **kwargs))
 
     # ------------------------------------------------------------------ #
     # StateEvaluator (fused single-scalar + per-dimension)
@@ -1175,7 +1034,7 @@ class ScoringService(Service):
                     fused_dim[d] = 0.9 * fused_dim[d] + 0.1 * llm_h
                 components["llm_heuristic"] = llm_h
             except Exception as e:
-                self.logger and self.logger.log("StateEvalLLMHeuError", {"error": str(e)})
+                log.error("StateEvalLLMHeuError %s", str(e))
 
         # optional VPM φ (belief/visual) score
         if include_vpm_phi:
@@ -1192,7 +1051,7 @@ class ScoringService(Service):
                         fused_dim["coverage"] = 0.9 * fused_dim["coverage"] + 0.1 * phi
                     components["vpm_phi"] = phi
             except Exception as e:
-                self.logger and self.logger.log("StateEvalVPMError", {"error": str(e)})
+                log.error("StateEvalVPMError %s", str(e))
 
         # --- overall from fused_dim (dim-weighted mean)
         dw_total = sum(abs(dw.get(d, 1.0)) for d in dims) or float(len(dims))
@@ -1216,5 +1075,4 @@ class ScoringService(Service):
         """
         import asyncio
         return await asyncio.get_event_loop().run_in_executor(None, lambda: self.evaluate_state(*args, **kwargs))
-
 

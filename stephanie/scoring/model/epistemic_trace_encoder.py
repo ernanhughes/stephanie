@@ -120,6 +120,20 @@ class EpistemicTraceEncoder(nn.Module):
 
         # -- Get score stats (e.g., mean Q, max energy, etc.)
         stats_vector = score_stats_fn(trace, dimensions)  # shape: [stats_input_dim]
+
+        stats_vector = torch.as_tensor(stats_vector, dtype=torch.float32, device=self.device)
+
+        # Normalize shapes to [N]
+        stats_vector = stats_vector.view(-1)
+
+        if stats_vector.numel() != self.stats_input_dim:
+            raise RuntimeError(
+                f"[EpistemicTraceEncoder] stats_vector has {stats_vector.numel()} features "
+                f"but stats_encoder expects stats_input_dim={self.stats_input_dim}. "
+                f"Fix by setting cfg['stats_input_dim']={stats_vector.numel()} "
+                f"or updating score_stats_fn to return {self.stats_input_dim} features."
+            )
+
         stats_encoded = self.stats_encoder(stats_vector.to(self.device))
 
         # -- Concatenate all latent components
