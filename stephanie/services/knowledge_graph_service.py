@@ -71,7 +71,7 @@ class KnowledgeGraphService(Service):
     @property
     def edge_index(self) -> JSONLEdgeIndex:
         if self._edge_index is None:
-            self._edge_index = JSONLEdgeIndex(str(self._rel_path), self.logger)
+            self._edge_index = JSONLEdgeIndex(rel_path=self._rel_path, logger=self.logger)
         return self._edge_index
 
     @property
@@ -100,6 +100,8 @@ class KnowledgeGraphService(Service):
         if self._graph_indexer is None:
             self._graph_indexer = GraphIndexer(
                 kg_service=self,
+                detect_entities_fn=self.detect_entities,
+                fetch_text_fn=self.fetch_text_for_indexing,
                 logger=self.logger,
             )
         return self._graph_indexer
@@ -156,14 +158,17 @@ class KnowledgeGraphService(Service):
                 "target": target_id,
                 "type": rel_type,
                 "ts": datetime.now(timezone.utc).isoformat(),
+                "confidence": float(properties.get("confidence", 1.0)),
                 **properties,
             }
             with self._rel_path.open("a", encoding="utf-8") as f:
                 f.write(json.dumps(edge_record, ensure_ascii=False) + "\n")
 
-            # Refresh edge index so new edges are queryable immediately
-            if self._edge_index is not None:
-                self._edge_index.invalidate()
+            # keep index hot
+            try:
+                self.edge_index.append_edge(edge_record)
+            except Exception:
+                log.debug("KG: edge_index append failed (non-fatal)", exc_info=True)
 
             # Upsert to Nexus
             self.nexus_store.upsert_edge(source_id, target_id, rel_type, properties=properties)
@@ -266,3 +271,70 @@ class KnowledgeGraphService(Service):
 
     async def shutdown(self) -> None:
         log.info("KnowledgeGraphService shutdown complete")
+
+    def _normalize_entity_surface(self, s: str) -> str:
+        return EntityCanonicalizer.normalize_surface(s)
+
+    def _add_entity_node(
+        self,
+        *,
+        node_id: str,
+        entity: Dict[str, Any],
+        domains: List[Dict[str, Any]],
+        scorable_id: str,
+        scorable_type: str,
+        meta: Dict[str, Any],
+    ) -> None:
+        props = {
+            "type": entity.get("type", "ENTITY"),
+            "text": entity.get("text", ""),
+            "scorable_id": scorable_id,
+            "scorable_type": scorable_type,
+            "domains": domains,
+            "meta": meta,
+        }
+        self.upsert_node(node_id=node_id, properties=props)
+
+    def _add_relationship(
+        self,
+        *,
+        source_id: str,
+        target_id: str,
+        rel_type: str,
+        confidence: float = 1.0,
+        properties: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        properties = properties or {}
+        properties.setdefault("confidence", float(confidence))
+        self.upsert_edge(
+            source_id=source_id,
+            target_id=target_id,
+            rel_type=rel_type,
+            properties=properties,
+        )
+
+    async def fetch_text_for_indexing(
+        self,
+        scorable_id: str,
+        inline_text: Optional[str],
+        payload: Dict[str, Any],
+    ) -> Optional[str]:
+        # 1) inline text wins
+        if inline_text and inline_text.strip():
+            return inline_text
+
+        # 2) attempt memory fetch (adapt to your Scorable store)
+        try:
+            scorable = self.memory.scorables.get(scorable_id)  # adjust
+            if scorable and getattr(scorable, "text", None):
+                return scorable.text
+        except Exception:
+            log.debug("KG: failed to fetch scorable text", exc_info=True)
+
+        # 3) attempt payload fallbacks
+        for k in ("content", "document", "body"):
+            v = payload.get(k)
+            if isinstance(v, str) and v.strip():
+                return v
+
+        return None

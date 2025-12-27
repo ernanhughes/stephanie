@@ -9,9 +9,14 @@ import logging
 log = logging.getLogger(__name__)
 
 class GraphIndexer:
-    def __init__(self, *, kg_service: Any, entity_detector: Any, logger: Any):
-        self.kg = kg_service
-        self.entity_detector = entity_detector
+    def __init__(self, *, kg_service: Any, 
+                 detect_entities_fn: Any,
+                 fetch_text_fn: Any,
+                 logger: Any):
+        from stephanie.services.knowledge_graph_service import KnowledgeGraphService
+        self.kg: KnowledgeGraphService = kg_service
+        self.detect_entities_fn = detect_entities_fn
+        self.fetch_text_fn = fetch_text_fn
         self.logger = logger
 
     def _normalize_text(self, t: str) -> str:
@@ -215,7 +220,7 @@ class GraphIndexer:
         entities = payload.get("entities") or []
         domains = payload.get("domains") or []
 
-        text = await self._fetch_text_for_indexing(scorable_id, payload.get("text"))
+        text = await self.fetch_text_fn(scorable_id, payload.get("text"), payload)
         if not text:
             await self.kg.publish("knowledge_graph.index_failed", {"scorable_id": scorable_id, "error": "Missing text"})
             return
@@ -225,6 +230,11 @@ class GraphIndexer:
         sent_spans = sentences(text)
 
         fixed_entities = self._repair_entities(entities=entities, text=text, sent_spans=sent_spans, doc_hash=doc_hash)
+        if not entities:
+            try:
+                entities = self.detect_entities_fn(text) or []
+            except Exception:
+                log.warning("GraphIndexer: detect_entities_fn failed", exc_info=True)
 
         # upsert mention + canonical + MENTIONS edge
         for ent in fixed_entities:
@@ -273,18 +283,23 @@ class GraphIndexer:
                 },
             )
 
-        # co-occurrence edges
-        for rel in self._cooccur_edges(
+        # relationships (typed + co-occurrence)
+        rels = self._build_relationships(
+            fixed_entities=fixed_entities,
+            domains=domains,
             scorable_id=scorable_id,
             scorable_type=scorable_type,
             doc_hash=doc_hash,
-            fixed_entities=fixed_entities,
-        ):
+        )
+        for rel in rels:
             self.kg.upsert_edge(
                 source_id=rel["source"],
                 target_id=rel["target"],
                 rel_type=rel["type"],
-                properties={k: v for k, v in rel.items() if k not in ("source", "target", "type")},
+                properties={
+                    "confidence": float(rel.get("confidence", 1.0)),
+                    **(rel.get("properties") or {}),
+                },
             )
 
         await self.kg.publish(

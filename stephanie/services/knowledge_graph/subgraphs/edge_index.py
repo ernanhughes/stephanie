@@ -87,6 +87,22 @@ class JSONLEdgeIndex:
         self.ensure_loaded()
         return self._edge_count
 
+
+    def append_edge(self, e: Dict[str, Any]) -> None:
+        """
+        Keep the in-memory index consistent with new JSONL appends.
+        Safe to call even before ensure_loaded().
+        """
+        self.ensure_loaded()
+        s = str(_rel_get(e, "source", "source_id", default="")).strip()
+        t = str(_rel_get(e, "target", "target_id", default="")).strip()
+        if not s or not t:
+            return
+        self._by_src[s].append(e)
+        self._by_dst[t].append(e)
+        self._edge_count += 1
+
+
     def invalidate(self) -> None:
         """Force a reload on next query (call after appending edges)."""
         self._loaded = False
