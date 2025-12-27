@@ -82,7 +82,7 @@ class GapAnalysisOrchestrator(ProgressMixin):
         self.analysis_processor = AnalysisProcessor(self.cfg, container, logger)
         self.calibration_processor = CalibrationProcessor(self.cfg, container, logger)
 
-        self.base_dir = getattr(self.cfg, "base_dir", Path("./data/gap_runs"))
+        self.base_dir = getattr(self.cfg, "base_dir", Path("./data/gap_runs/"))
 
         # Register services (idempotent)
         try:
@@ -137,7 +137,7 @@ class GapAnalysisOrchestrator(ProgressMixin):
             pass  # already registered
 
         self.storage = self.container.get("storage")
-        self.manifest_manager = ManifestManager(self.storage)
+        self.manifest_manager = ManifestManager(self.cfg.base_dir)
 
         # Significance
         self.significance_processor = SignificanceProcessor(

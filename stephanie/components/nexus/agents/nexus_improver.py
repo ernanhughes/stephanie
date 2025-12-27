@@ -505,7 +505,7 @@ class NexusImproverAgent(ProgressMixin, BaseAgent):
             int_child_ids = []
             for cid in child_ids:
                 try:
-                    int_child_ids.append(int(cid))
+                    int_child_ids.append(cid)
                 except Exception:
                     continue  # skip non-integer ids (e.g., "blossom:127:0")
 

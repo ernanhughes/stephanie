@@ -114,7 +114,7 @@ class CompassAgent(BaseAgent, ProgressMixin):
         )
 
         self.scorable_processor = ScorableProcessor(
-            cfg=cfg,
+            cfg=cfg.get("processor", {}),
             memory=memory,
             container=container,
             logger=logger,

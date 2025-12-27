@@ -55,7 +55,7 @@ class BaseScorer(ModelLocatorMixin, abc.ABC):
 
     def score(
         self,
-        goal: dict,
+        context: Dict[str, Any],
         scorable: Scorable,
         dimensions: List[str],
     ) -> ScoreBundle:
@@ -63,15 +63,15 @@ class BaseScorer(ModelLocatorMixin, abc.ABC):
         Final score entrypoint. Subclasses implement _score_core; we then
         apply plugins and merge their outputs into attributes/vectors.
         """
-        bundle: ScoreBundle = self._score_core(goal, scorable, dimensions)
-        result = self._run_plugins_and_merge(bundle=bundle, goal=goal, scorable=scorable)
+        bundle: ScoreBundle = self._score_core(context, scorable, dimensions)
+        result = self._run_plugins_and_merge(bundle=bundle, context=context, scorable=scorable)
 
         return result
 
     @abc.abstractmethod
     def _score_core(
         self,
-        goal: dict,
+        context: Dict[str, Any],
         scorable: Scorable,
         dimensions: List[str],
     ) -> ScoreBundle:
@@ -99,11 +99,11 @@ class BaseScorer(ModelLocatorMixin, abc.ABC):
         return self.cfg.get("display_name", self.name)
 
     # ===== Plugin runner and merge =====
-    def _run_plugins_and_merge(self, *, bundle: ScoreBundle, goal: dict, scorable: Scorable) -> ScoreBundle:
+    def _run_plugins_and_merge(self, *, bundle: ScoreBundle, context: Dict[str, Any], scorable: Scorable) -> ScoreBundle:
         tap = {
-            "goal_text": goal.get("goal", {}).get("goal_text", ""),
+            "goal_text": context.get("goal", {}).get("goal_text", ""),
             "resp_text": scorable.text,
-            "context": goal,
+            "context": context,
             "model_alias": getattr(self, "model_alias", self.model_type),
             "attributes": {},
             "per_dim_scores": {},

@@ -31,6 +31,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from stephanie.scoring.analysis.trace_tap import TraceTap
+
 # ---------------------------
 # Core Building Blocks
 # ---------------------------
@@ -224,6 +226,9 @@ class TinyRecursionModel(nn.Module):
         x: torch.Tensor,
         y: torch.Tensor,
         z: torch.Tensor,
+        *,
+        n_steps: Optional[int] = None,
+        tap: Optional[TraceTap] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Execute recursive state updates over n_recursions steps.
@@ -255,7 +260,9 @@ class TinyRecursionModel(nn.Module):
         z_cur = z  # Current latent state
 
         # Recursive state updates
-        for _ in range(self.n_recursions):
+        steps = self.n_recursions if n_steps is None else int(n_steps)
+        steps = max(1, min(steps, self.n_recursions))
+        for step_idx in range(steps):
             fused = torch.cat([x, y, z_cur], dim=-1)   # [B, 3 * D]
             z_next = torch.tanh(self.z_proj(fused))    # [B, D] with saturation
             z_next = self.core(z_next)                 # [B, D] core processing
@@ -266,6 +273,11 @@ class TinyRecursionModel(nn.Module):
 
             # Residual state update with step scaling
             z_cur = z_cur + self.step_scale * z_next
+
+            if tap is not None:
+                tap.add("tiny/z_cur", z_cur)
+                tap.add("tiny/z_next", z_next)
+                tap.add("tiny/halt_logits", halt_logits)
 
         # Final normalization
         z_final = self.final_ln(z_cur)  # [B, D]
@@ -290,6 +302,8 @@ class TinyRecursionModel(nn.Module):
         seq_len: Optional[torch.Tensor] = None,  # Response length [B] (optional)
         return_aux: bool = True,                 # Whether to return auxiliary outputs
         with_consistency_target: bool = True,    # Compute consistency regularization
+        n_steps: Optional[int] = None,
+        tap: Optional["TraceTap"] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, Dict[str, Any]]:
         """
         Complete forward pass with recursive processing and multi-head prediction.
@@ -297,6 +311,11 @@ class TinyRecursionModel(nn.Module):
         # Main recursive processing
         z = z.clone()  # Ensure we don't modify input
         z_final, z_head, halt_logits, tau, c = self._recur(x, y, z)
+        z_final, z_head, halt_logits, tau, c = self._recur(x, y, z, n_steps=n_steps, tap=tap)
+
+        if tap is not None:
+            tap.add("tiny/z_final", z_final)
+            tap.add("tiny/z_head", z_head)
 
         # Core prediction heads
         logits = self.classifier(z_head)                    # [B, vocab_size]

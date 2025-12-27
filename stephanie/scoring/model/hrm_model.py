@@ -28,10 +28,12 @@ from __future__ import annotations
 
 import logging
 from typing import Any, Dict, Optional, Tuple
+from typing import TYPE_CHECKING
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from stephanie.scoring.analysis.trace_tap import TraceTap
 
 log = logging.getLogger(__name__)
 
@@ -237,7 +239,13 @@ class HRMModel(nn.Module):
     # Core Hierarchical Rollout
     # ---------------------------
 
-    def _rollout(self, x_tilde: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def _rollout(
+        self,
+        x_tilde: torch.Tensor,
+        *,
+        max_cycles: Optional[int] = None,
+        tap: Optional[TraceTap] = None,
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Execute hierarchical recurrent processing across cycles and steps.
         
@@ -263,18 +271,23 @@ class HRMModel(nn.Module):
         zH_max = torch.zeros_like(zH)  # Track maximum activation
 
         # Hierarchical recurrent processing
-        for cycle in range(self.n_cycles):
-            # Low-level fine-grained processing (T steps)
+        cycles = self.n_cycles if max_cycles is None else int(max_cycles)
+        cycles = max(1, min(cycles, self.n_cycles))
+        for cycle in range(cycles):            # Low-level fine-grained processing (T steps)
             for step in range(self.t_steps):
                 # L-module input: projected input + current H-state
                 l_input = torch.cat([x_tilde, zH], dim=-1)  # [batch, 2 * h_dim]
                 zL = self.l_module(zL, l_input)
+                if tap is not None:
+                    tap.add("hrm/zL", zL)
 
             # High-level abstract update (1 step per cycle)
             # H-module input: final L-state + previous H-state
             h_input = torch.cat([zL, zH], dim=-1)  # [batch, l_dim + h_dim]
             zH = self.h_module(zH, h_input)
-            
+            if tap is not None:
+                tap.add("hrm/zH", zH)            
+
             # Track maximum activation for evidence accumulation
             zH_max = torch.maximum(zH_max, zH)
 
@@ -282,6 +295,9 @@ class HRMModel(nn.Module):
         zH = self.final_norm(zH)
         zH_max = self.final_norm(zH_max)
         
+        if tap is not None:
+            tap.add("hrm/zL_final", zL)
+            tap.add("hrm/zH_final", zH)
         return zL, zH, zH_max
 
     # ---------------------------
@@ -293,6 +309,8 @@ class HRMModel(nn.Module):
         x: torch.Tensor,                      # Input embeddings [batch, input_dim]
         *,
         return_aux: bool = True,              # Return auxiliary diagnostics
+        n_steps: Optional[int] = None,
+        tap: Optional["TraceTap"] = None,
     ) -> Tuple[torch.Tensor, Dict[str, Any]]:
         """
         Complete forward pass with hierarchical reasoning and multi-head prediction.
@@ -309,7 +327,7 @@ class HRMModel(nn.Module):
 
         # Input projection and hierarchical processing
         x_tilde = self.input_projector(x)     # [batch, h_dim]
-        zL, zH, zH_max = self._rollout(x_tilde)
+        zL, zH, zH_max = self._rollout(x_tilde, max_cycles=n_steps, tap=tap)
         
         # Prepare state for prediction heads
         zH_head = self.head_drop(zH)  # Regularization

@@ -1,53 +1,98 @@
-# stephanie/scoring/analysis/paper_temporal_abstraction_processor.py
 from __future__ import annotations
 
 from dataclasses import asdict
 from typing import Any, Dict
 
-from stephanie.scoring.analysis.temporal_abstraction_metrics import compute_temporal_metrics
+import numpy as np
+import torch
+
 from stephanie.scoring.analysis.trace_tap import TraceTap
+
+
+def _cos(a: np.ndarray, b: np.ndarray, eps: float = 1e-8) -> float:
+    return float(np.dot(a, b) / ((np.linalg.norm(a) + eps) * (np.linalg.norm(b) + eps)))
+
+
+def _boundary_rate(traj_TD: np.ndarray, thresh: float) -> float:
+    if traj_TD.shape[0] < 2:
+        return 0.0
+    cos = np.array([_cos(traj_TD[t - 1], traj_TD[t]) for t in range(1, traj_TD.shape[0])])
+    return float(np.mean(cos < thresh))
+
+
+def _mean_step_cos(traj_TD: np.ndarray) -> float:
+    if traj_TD.shape[0] < 2:
+        return 1.0
+    cos = np.array([_cos(traj_TD[t - 1], traj_TD[t]) for t in range(1, traj_TD.shape[0])])
+    return float(cos.mean())
+
+
+def _mean_dwell(traj_TD: np.ndarray, thresh: float) -> float:
+    if traj_TD.shape[0] < 2:
+        return float(traj_TD.shape[0])
+    cos = np.array([_cos(traj_TD[t - 1], traj_TD[t]) for t in range(1, traj_TD.shape[0])])
+    boundaries = (cos < thresh).astype(np.int32)
+    dwells = []
+    cur = 1
+    for b in boundaries:
+        if b == 0:
+            cur += 1
+        else:
+            dwells.append(cur)
+            cur = 1
+    dwells.append(cur)
+    return float(np.mean(dwells)) if dwells else 0.0
 
 
 class PaperTemporalAbstractionProcessor:
     """
-    Paper-only analysis: measure temporal abstraction signatures from traces.
+    Paper-only metrics on traces:
+      - stability (mean step cosine)
+      - boundary rate
+      - mean dwell length
 
-    Inputs (per item):
-      - hrm_tap.dump(): tensors like hrm/zH, hrm/zL
-      - tiny_tap.dump(): tensors like tiny/z_cur, tiny/z_next
-
-    Outputs:
-      - metrics dict you can save into EvaluationAttributes or into artifacts.
+    Reads context['trace_taps'] produced by scorers.
     """
 
-    def __init__(self, *, boundary_thresh: float = 0.90, n_modes: int = 4) -> None:
+    def __init__(self, *, boundary_thresh: float = 0.90) -> None:
         self.boundary_thresh = boundary_thresh
-        self.n_modes = n_modes
 
-    def analyze(self, *, hrm_tap: TraceTap, tiny_tap: TraceTap) -> Dict[str, Any]:
-        hrm = hrm_tap.dump()
-        tiny = tiny_tap.dump()
-
-        # Choose the most relevant trajectories (you can adjust later)
-        hrm_traj = hrm.get("hrm/zH") or hrm.get("hrm/zL")
-        tiny_traj = tiny.get("tiny/z_cur") or tiny.get("tiny/z_next")
-
+    def run(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        taps = context.get("trace_taps", {})
         out: Dict[str, Any] = {}
 
-        if hrm_traj is not None and hrm_traj.numel() > 0:
-            m = compute_temporal_metrics(hrm_traj, boundary_thresh=self.boundary_thresh, n_modes=self.n_modes)
-            for k, v in asdict(m).items():
-                out[f"paper.hrm.{k}"] = v
+        def _analyze(prefix: str, tap: TraceTap, prefer_keys: list[str]) -> None:
+            dump = tap.dump()
+            traj = None
+            for k in prefer_keys:
+                if k in dump and dump[k].numel() > 0:
+                    traj = dump[k]
+                    break
+            if traj is None:
+                return
 
-        if tiny_traj is not None and tiny_traj.numel() > 0:
-            m = compute_temporal_metrics(tiny_traj, boundary_thresh=self.boundary_thresh, n_modes=self.n_modes)
-            for k, v in asdict(m).items():
-                out[f"paper.tiny.{k}"] = v
+            # expect [T, B, D] — reduce B by mean for global metrics
+            x = traj.detach().float().cpu().numpy()
+            if x.ndim == 3:
+                x = x.mean(axis=1)  # [T, D]
 
-        # simple mismatches (still paper-only; no GAP)
-        if "paper.hrm.boundary_rate" in out and "paper.tiny.boundary_rate" in out:
-            out["paper.mismatch.boundary_rate"] = abs(out["paper.hrm.boundary_rate"] - out["paper.tiny.boundary_rate"])
-        if "paper.hrm.mode_switch_rate" in out and "paper.tiny.mode_switch_rate" in out:
-            out["paper.mismatch.mode_switch_rate"] = abs(out["paper.hrm.mode_switch_rate"] - out["paper.tiny.mode_switch_rate"])
+            out[f"{prefix}.mean_step_cos"] = _mean_step_cos(x)
+            out[f"{prefix}.boundary_rate"] = _boundary_rate(x, self.boundary_thresh)
+            out[f"{prefix}.mean_dwell"] = _mean_dwell(x, self.boundary_thresh)
 
-        return out
+        # Analyze each dimension independently
+        for dim, tap in taps.get("hrm", {}).items():
+            _analyze(f"paper.hrm.{dim}", tap, ["hrm/zH", "hrm/zL", "hrm/zH_final"])
+        for dim, tap in taps.get("tiny", {}).items():
+            _analyze(f"paper.tiny.{dim}", tap, ["tiny/z_cur", "tiny/z_next", "tiny/z_final"])
+
+        # Simple mismatch signals per dimension (paper-only)
+        for dim in taps.get("hrm", {}).keys():
+            hr = out.get(f"paper.hrm.{dim}.boundary_rate")
+            tr = out.get(f"paper.tiny.{dim}.boundary_rate")
+            if hr is not None and tr is not None:
+                out[f"paper.mismatch.{dim}.boundary_rate"] = abs(float(hr) - float(tr))
+
+        # Put back into context so later stages can persist or plot
+        context.setdefault("analysis", {})["paper_temporal"] = out
+        return context

@@ -32,6 +32,7 @@ from stephanie.data.score_result import ScoreResult
 from stephanie.scoring.model.tiny_recursion import TinyRecursionModel
 from stephanie.scoring.scorer.base_scorer import BaseScorer
 from stephanie.utils.file_utils import load_json
+from stephanie.scoring.analysis.trace_tap import TraceTap
 
 log = logging.getLogger(__name__)
 
@@ -288,9 +289,13 @@ class TinyScorer(BaseScorer):
             try:
                 # Run TRM inference with gradient disabled for efficiency
                 log.debug(f"Running TRM inference for {dim}")
+                trace_enabled = bool(getattr(self.cfg, "trace", {}).get("enabled", True)) if hasattr(self, "cfg") else True
+                tap = TraceTap(enabled=trace_enabled)
+                context.setdefault("trace_taps", {}).setdefault("tiny", {})[dim] = tap
+
                 with torch.no_grad():
                     _, halt_logits, _, aux = model(
-                        x, y, z, seq_len=seq_len, return_aux=True
+                        x, y, z, seq_len=seq_len, return_aux=True, tap=tap
                     )
                 log.debug(f"TRM inference completed for {dim}")
 
@@ -663,7 +668,7 @@ def _build_scm_from_tiny_attrs(attrs: Dict[str, Any]) -> Dict[str, float]:
     certainty = float(attrs.get("certainty01", 0.5))
     unc01     = 1.0 - max(0.0, min(1.0, certainty))
     cons01    = max(0.0, min(1.0, float(attrs.get("consistency_hat", 0.5))))
-    ood01     = max(0.0, min(1.0, float(attrs.get("ood_hat", 0.0))))
+    ood01     = max(0.0, min(1.0, float(attrs.get("ood_hat01", attrs.get("ood_hat", 0.0)))))
     len01     = max(0.0, min(1.0, float(attrs.get("len_effect", 0.0))))
     temp01    = max(0.0, min(1.0, float(attrs.get("temp01", 0.0))))
     agree01   = max(0.0, min(1.0, float(attrs.get("agree01", 0.5))))
