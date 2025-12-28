@@ -11,6 +11,9 @@ from stephanie.scoring.model.hrm_model import HRMModel  # Import the model
 from stephanie.scoring.training.base_trainer import \
     BaseTrainer  # Assuming this exists or adapt
 
+import logging
+
+log = logging.getLogger(__name__)
 
 class HRMTrainer(BaseTrainer): 
     """
@@ -62,27 +65,24 @@ class HRMTrainer(BaseTrainer):
         self.log_interval  = self.cfg.get("log_interval", 25)      # batch logging freq
 
 
-        self.logger.log("HRMTrainerInitialized", {
-            "model_type": self.model_type,
-            "input_dim": self.input_dim,
-            "h_dim": self.h_dim,
-            "l_dim": self.l_dim,
-            "output_dim": self.output_dim,
-            "n_cycles": self.n_cycles,
-            "t_steps": self.t_steps,
-            "lr": self.lr,
-            "device": str(self.device)
-        })
+        log.info("HRMTrainerInitialized model_type %s input_dim %d h_dim %d l_dim %d output_dim %d n_cycles %d t_steps %d lr %f device %s",
+            self.model_type,
+            self.input_dim,
+            self.h_dim,
+            self.l_dim,
+            self.output_dim,
+            self.n_cycles,
+            self.t_steps,
+            self.lr,
+            str(self.device)
+        )
 
     def train(self, samples, dimension) -> dict:
-        self.logger.log("HRMTrainingStarted", {"epochs": self.epochs})
+        log.info("HRMTrainingStarted epochs %d", self.epochs)
 
         dataloader = self._create_dataloader(samples, dimension)
         if dataloader is None:
-            self.logger.log("HRMTrainingError", {
-                "message": "Dataloader creation failed or insufficient samples."
-            })
-            return {"status": "failed", "message": "Dataloader creation failed."}
+            log.error("HRMTrainingError message Dataloader creation failed or insufficient samples.")
 
         losses = []
         best = float("inf")
@@ -126,12 +126,12 @@ class HRMTrainer(BaseTrainer):
 
                 # periodic logs
                 if (bidx + 1) % max(1, self.log_interval) == 0:
-                    self.logger.log("HRMTrainingBatch", {
-                        "epoch": epoch,
-                        "batch": bidx + 1,
-                        "loss": float(loss.item()),
-                        "lr": float(self.optimizer.param_groups[0]["lr"])
-                    })
+                    log.info("HRMTrainingBatch epoch %s batch %s loss %f lr %f",
+                        epoch,
+                        bidx + 1,
+                        float(loss.item()),
+                        float(self.optimizer.param_groups[0]["lr"])
+                    )
 
             avg_epoch_loss = epoch_loss / max(1, num_batches)
             losses.append(avg_epoch_loss)
@@ -144,11 +144,11 @@ class HRMTrainer(BaseTrainer):
                     best=best if best < float("inf") else avg_epoch_loss
                 )
 
-            self.logger.log("HRMTrainingEpoch", {
-                "epoch": epoch,
-                "avg_loss": avg_epoch_loss,
-                "best_so_far": min(best, avg_epoch_loss)
-            })
+            log.info("HRMTrainingEpoch epoch %s avg_loss %f best_so_far %f",
+                epoch,
+                avg_epoch_loss,
+                min(best, avg_epoch_loss)
+            )
 
             # early stopping
             if avg_epoch_loss < best - self.early_stopping_min_delta:
@@ -156,11 +156,11 @@ class HRMTrainer(BaseTrainer):
             else:
                 wait += 1
                 if self.use_early_stopping and wait >= self.early_stopping_patience:
-                    self.logger.log("HRMEarlyStopping", {
-                        "epoch": epoch,
-                        "reason": "patience_reached",
-                        "best_loss": best
-                    })
+                    log.info("HRMEarlyStopping epoch %s reason %s best_loss %f",
+                        epoch,
+                        "patience_reached",
+                        best
+                    )
                     break
 
         # --- save model ---
@@ -191,16 +191,16 @@ class HRMTrainer(BaseTrainer):
                     diff = P - Y
                     mae  = float(np.mean(np.abs(diff)))
                     rmse = float(np.sqrt(np.mean(diff * diff)))
-                    self.logger.log("HRMTrainingSnapshot", {
-                        "dimension": dimension,
-                        "train_mae": mae,
-                        "train_rmse": rmse,
-                        "pred_mean": float(np.mean(P)),
-                        "target_mean": float(np.mean(Y)),
-                        "count": int(P.size)
-                    })
+                    log.info("HRMTrainingSnapshot dimension %s train_mae %f train_rmse %f pred_mean %f target_mean %f size %d",
+                        dimension,
+                        mae,
+                        rmse,
+                        float(np.mean(P)),
+                        float(np.mean(Y)),
+                        int(P.size)
+                    )
         except Exception as e:
-            self.logger.log("HRMSnapshotError", {"error": str(e)})
+            log.error("HRMSnapshotError error %s", str(e))
 
         self._log_training_stats(
             dimension,
@@ -326,12 +326,12 @@ class HRMTrainer(BaseTrainer):
         dataset = TensorDataset(X, Y)
         loader = DataLoader(dataset, batch_size=self.batch_size, shuffle=True)
 
-        self.logger.log("HRMDataLoaderCreated", {
-            "dimension": dimension,
-            "num_samples": len(dataset),
-            "num_batches": len(loader),
-            "kept": kept, "skipped": skipped
-        })
+        log.info("HRMDataLoaderCreated dimension %s num_samples %d num_batches %d kept %d skipped %d",
+            dimension,
+            len(dataset),
+            len(loader),
+            kept, skipped
+        )
         return loader
 
     def _log_training_stats(self, dimension, *, avg_loss, sample_count, valid_samples, scaler_meta):
@@ -394,4 +394,4 @@ class HRMTrainer(BaseTrainer):
             },
         }
         self._save_meta_file(meta, dimension)
-        self.logger.log("HRMModelSaved", {"path": locator.base_path, "dimension": dimension})
+        log.info("HRMModelSaved path %s dimension %s", locator.base_path, dimension)

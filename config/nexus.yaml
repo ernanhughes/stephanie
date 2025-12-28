@@ -8,6 +8,7 @@ defaults:
   - scorer: all  
 
   - agents/nexus_scorable_loader
+  - agents/universal_scorer
   - agents/scorable_annotate
   - agents/nexus
   - agents/nexus_improver
@@ -69,6 +70,12 @@ pipeline:
        cls: stephanie.agents.scorable_loader.ScorableLoaderAgent
        enabled: true
        iterations: 1    
+
+     - name: universal_scorer
+       description: "Score the loaded conversation turns with universal scorers"
+       cls: stephanie.agents.universal_scorer.UniversalScorerAgent
+       enabled: true
+       iterations: 1
 
      - name: scorable_annotate
        description: "Annotate the loaded conversation turns with scores"

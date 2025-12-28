@@ -15,6 +15,7 @@ from stephanie.models.hypothesis import HypothesisORM
 from stephanie.models.prompt import PromptORM
 from stephanie.models.theorem import CartridgeORM, TheoremORM
 from stephanie.scoring.calculations.mars_calculator import MARSCalculator
+from stephanie.scoring.metrics.scorable_processor import ScorableProcessor
 from stephanie.scoring.scorable import ScorableFactory, ScorableType
 from stephanie.scoring.score_display import ScoreDisplay
 from stephanie.scoring.scorer.scorable_ranker import ScorableRanker
@@ -42,7 +43,7 @@ class UniversalScorerAgent(BaseAgent):
 
     def __init__(self, cfg, memory, container, logger):
         super().__init__(cfg, memory, container, logger)
-        self.enabled_scorers = cfg.get("enabled_scorers", ["tiny"])
+        self.enabled_scorers = cfg.get("enabled_scorers", ["tiny", "hrm"])
         self.progress = cfg.get("progress", True)
         self.force_rescore = cfg.get("force_rescore", False)
         self.save_results = cfg.get("save_results", False)
@@ -60,11 +61,11 @@ class UniversalScorerAgent(BaseAgent):
         self.dimensions = self.cfg.get(
             "dimensions",
             [
-                "novelty",
+                "coverage",
                 "clarity",
-                "relevance",
-                "implementability",
-                "alignment",
+                "faithfulness",
+                "knowledge",
+                "reasoning",
             ],
         )
         self.include_mars = self.cfg.get("include_mars", True)
@@ -76,6 +77,13 @@ class UniversalScorerAgent(BaseAgent):
             dimension_config, memory=self.memory, container=self.container, logger=self.logger
         )
         self.ranker = ScorableRanker(cfg, memory=self.memory, container=self.container, logger=self.logger)
+
+        self.scorable_processor = ScorableProcessor(
+            cfg=cfg.get("processor", {}),
+            memory=self.memory,
+            container=self.container,
+            logger=self.logger,
+        )
 
         log.debug(
             f"AgentScorerInitialized: "

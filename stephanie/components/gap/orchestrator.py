@@ -170,7 +170,7 @@ class GapAnalysisOrchestrator(ProgressMixin):
         2) run IDs under cfg.out_dir (default: runs/nexus_vpm)
            - ab_targeted_run_id, ab_baseline_run_id Hello
         3) derive from pipeline_run_id: <out>/<id>-{targeted|baseline}
-        4) scan <out> for latest *-targeted/*-baseline that have run_metrics.json
+        4) scan <out> for latest */targeted/*-baseline that have run_metrics.json
         """
         # 1) paths
         tgt_dir = context.get("ab_targeted_run_dir")
@@ -197,8 +197,8 @@ class GapAnalysisOrchestrator(ProgressMixin):
         # 3) pipeline id
         pr = context.get("pipeline_run_id") or context.get("run_id") or ""
         if pr:
-            td = (nexus_root / f"{pr}-targeted").resolve()
-            bd = (nexus_root / f"{pr}-baseline").resolve()
+            td = (nexus_root / f"{pr}/targeted").resolve()
+            bd = (nexus_root / f"{pr}/baseline").resolve()
             if (td / "manifest.json").exists() and (bd / "manifest.json").exists():
                 self.logger.log("GapInputResolved", {"mode": "pipeline_id", "targeted": td.as_posix(), "baseline": bd.as_posix()})
                 return td, bd

@@ -116,7 +116,25 @@ class HRMScorer(BaseScorer):
                 model = HRMModel(hrm_cfg, logger=self.logger).to(self.device)
                 state = torch.load(model_file_path, map_location=self.device)
                 model.load_state_dict(state, strict=False)
-                model.eval()
+                missing, unexpected = model.load_state_dict(state, strict=False)
+                if missing:
+                    log.error("HRMScorerMissingKeys dimension=%s missing=%s", dimension, missing)
+                if unexpected:
+                    log.error("HRMScorerUnexpectedKeys dimension=%s unexpected=%s", dimension, unexpected)
+
+                try:
+                    st = model.self_test(device="cpu", n_trials=8)
+                    if not st.get("ok", False):
+                        # warn only on failure
+                        summary = st.get("summary", "")
+                        line = summary.splitlines()[1] if summary else "<no summary>"
+                        log.warning("HRM self_test FAILED dimension=%s %s", dimension, line)
+                    else:
+                        log.info("HRM self_test dimension=%s ok=%s %s", dimension, st["ok"], st["summary"].splitlines()[1])
+                except Exception as e:
+                    log.exception("HRM self_test failed No=%s err=%s", dimension, e)
+
+                model.eval() 
 
                 self.models[dimension] = model
 

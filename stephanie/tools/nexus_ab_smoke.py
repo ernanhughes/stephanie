@@ -14,8 +14,8 @@ Usage:
 
 Notes
 - Backward compatible with your existing run_metrics.json layout:
-    <root>/<run_id>-baseline/run_metrics.json
-    <root>/<run_id>-targeted/run_metrics.json
+    <root>/<run_id>/baseline/run_metrics.json
+    <root>/<run_id>/targeted/run_metrics.json
 - If the above is missing per-metric aggregates, this script will
   auto-aggregate from features.jsonl written by ScorableProcessor.
 - NexusImprover is optional. If provided, we compare:
@@ -266,8 +266,8 @@ def main():
 
     root = Path(args.root)
     rid = args.run_id
-    base_dir = root / f"{rid}-baseline"
-    targ_dir = root / f"{rid}-targeted"
+    base_dir = root / f"{rid}/baseline"
+    targ_dir = root / f"{rid}/targeted"
 
     base_metrics = load_json(base_dir / "run_metrics.json") or {}
     targ_metrics = load_json(targ_dir / "run_metrics.json") or {}

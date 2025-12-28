@@ -52,14 +52,14 @@ goal:
 
 post_judgment:
   name: pipeline_judge
-  enabled: true
+  enabled: false
   cls: stephanie.agents.pipeline_judge.PipelineJudgeAgent
 
 paths:
   prompts: ${hydra:runtime.cwd}/prompts
 
 report:
-  generate_report: true
+  generate_report: false
   path: ${hydra:runtime.cwd}/reports
 
 web_search:
@@ -74,31 +74,31 @@ pipeline:
      - name: chat_mrq_trainer
        description: "Build document pairs for training and evaluation" 
        cls: stephanie.agents.maintenance.mrq_trainer.MRQTrainerAgent 
-       enabled: true
+       enabled: false
        iterations: 1
 
      - name: sicql_mrq_trainer
        description: "Build document pairs for training and evaluation"
        cls: stephanie.agents.maintenance.sicql_trainer.SICQLTrainerAgent
-       enabled: true
+       enabled: false
        iterations: 1
 
      - name: document_svm_trainer
        description: "Train a model to predict document values using SVM" 
        cls: stephanie.agents.maintenance.svm_trainer.SVMTrainerAgent 
-       enabled: true
+       enabled: false
        iterations: 1
 
      - name: document_ebt_trainer
        description: "Train a model to predict document values based on EBT" 
        cls: stephanie.agents.maintenance.ebt_trainer.EBTTrainerAgent 
-       enabled: true
+       enabled: false
        iterations: 1
 
      - name: rank_trainer
        description: "Train a ranker model using SICQL"
        cls: stephanie.agents.maintenance.rank_trainer.ContrastiveRankerTrainerAgent
-       enabled: true
+       enabled: false
        iterations: 1
 
      - name: hrm_trainer
@@ -106,49 +106,51 @@ pipeline:
        cls: stephanie.agents.maintenance.hrm_trainer.HRMTrainerAgent
        enabled: true
        iterations: 1
+
      - name: knowledge_loader
        description: "Load knowledge from the scored papers into the system"
        cls: stephanie.agents.knowledge.knowledge_loader.KnowledgeLoaderAgent
-       enabled: true
+       enabled: false
        iterations: 1
 
      - name: knowledge_db_loader
        description: "Load knowledge from the database into the system"
        cls: stephanie.agents.knowledge.knowledge_db_loader.KnowledgeDBLoaderAgent
-       enabled: true
+       enabled: false
        iterations: 1
 
      - name: document_llm_inference
        description: "Infer LLM scores for documents" 
        cls: stephanie.agents.inference.llm_inference.LLMInferenceAgent 
-       enabled: true
+       enabled: false
        iterations: 1
+
      - name: document_mrq_inference
        description: "Infer MRQ scores for documents" 
        cls: stephanie.agents.inference.mrq_inference.MRQInferenceAgent 
-       enabled: true
+       enabled: false
        iterations: 1
        
      - name: document_svm_inference
        description: "Infer SVM scores for documents" 
        cls: stephanie.agents.inference.svm_inference.SVMInferenceAgent
-       enabled: true
+       enabled: false
        iterations: 1
        
      - name: document_ebt_inference
        description: "Infer EBT scores for documents" 
        cls: stephanie.agents.inference.ebt_inference.EBTInferenceAgent 
-       enabled: true
+       enabled: false
        iterations: 1
 
      - name: document_reward_scorer
        description: "Score the documents based on their relevance and quality"
        cls: stephanie.agents.knowledge.document_reward_scorer.DocumentRewardScorerAgent
-       enabled: true
+       enabled: false
        iterations: 1
 
      - name: scorer
        description: "Score the documents based on various criteria"
        cls: stephanie.agents.scorer.ScorerAgent
-       enabled: true
+       enabled: false
        iterations: 1

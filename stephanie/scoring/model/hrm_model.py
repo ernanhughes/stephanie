@@ -327,7 +327,7 @@ class HRMModel(nn.Module):
 
         # Input projection and hierarchical processing
         x_tilde = self.input_projector(x)     # [batch, h_dim]
-        zL, zH, zH_max = self._rollout(x_tilde, max_cycles=n_steps, tap=tap)
+        zL, zH, zH_max = self._rollout(x_tilde, max_cycles=self.n_cycles, tap=tap)
         
         # Prepare state for prediction heads
         zH_head = self.head_drop(zH)  # Regularization
@@ -442,3 +442,50 @@ class HRMModel(nn.Module):
         super().to(device)
         self.device = device
         return self
+
+    def self_test(self, *, device: str = "cpu", n_trials: int = 16) -> Dict[str, Any]:
+        """
+        Quick sanity check to detect:
+        - constant outputs
+        - always-near-zero outputs
+        - exploding temperature
+        - collapsed latents (zH/zL near 0)
+        """
+        from stephanie.scoring.model.model_selftest import ModelSelfTest, summarize_selftest
+
+        input_dim = int(getattr(self, "input_dim", 0) or getattr(self, "cfg", {}).get("input_dim", 0) or 0)
+        if input_dim <= 0:
+            # fall back: infer from projector weight
+            for name, p in self.named_parameters():
+                if name.endswith("input_projector.project.weight") and p.ndim == 2:
+                    input_dim = int(p.shape[1])
+                    break
+
+        def build_inputs():
+            B = 8
+            x = torch.randn(B, input_dim)
+            return {"x": x, "return_aux": True}
+
+        def extract_debug(aux: Any):
+            # aux is dict in your HRM
+            if not isinstance(aux, dict):
+                return {}
+            out = {}
+            for k in ["score_logit", "temp01", "zH_mag", "zL_mag", "entropy", "energy"]:
+                if k in aux:
+                    out[k] = aux[k]
+            # also include any final latent if present
+            for k in ["zH_final", "zL_final"]:
+                if k in aux:
+                    out[k] = aux[k]
+            return out
+
+        tester = ModelSelfTest(
+            name="HRMModel",
+            build_inputs=build_inputs,
+            extract_debug=extract_debug,
+            device=device,
+            n_trials=n_trials,
+        )
+        res = tester.run(self)
+        return {"ok": res.ok, "summary": summarize_selftest(res), "details": res.details}

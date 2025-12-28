@@ -6,11 +6,15 @@ hrm_trainer:
   skip_if_completed: false
 
   dimensions: 
-    - "alignment"
-    - "clarity"
-    - "implementability"
-    - "novelty"
-    - "relevance"
+    - alignment
+    - clarity
+    - implementability
+    - novelty
+    - relevance
+    - coverage
+    - faithfulness
+    - knowledge
+    - reasoning
 
   hrm: 
     name: hrm

@@ -214,7 +214,7 @@ class CompassAgent(BaseAgent, ProgressMixin):
 
             # Emit baseline
             base_ctx = await self._emit_single_run(
-                run_id=f"{run_id_root}-baseline",
+                run_id=f"{run_id_root}/baseline",
                 scorables=baseline_scorables,
                 context=context,
                 target_vec=target_vec,
@@ -222,7 +222,7 @@ class CompassAgent(BaseAgent, ProgressMixin):
 
             # Emit targeted
             tgt_ctx = await self._emit_single_run(
-                run_id=f"{run_id_root}-targeted",
+                run_id=f"{run_id_root}/targeted",
                 scorables=targeted_scorables,
                 context=context,
                 target_vec=target_vec,
@@ -638,13 +638,13 @@ class CompassAgent(BaseAgent, ProgressMixin):
             else []
         )
         tgt_ctx = await self._emit_single_run(
-            run_id=f"{run_id_root}-targeted",
+            run_id=f"{run_id_root}/targeted",
             scorables=context["scorables_targeted"],
             context=context,
             target_vec=target_vec,
         )
         bl_ctx = await self._emit_single_run(
-            run_id=f"{run_id_root}-baseline",
+            run_id=f"{run_id_root}/baseline",
             scorables=context["scorables_baseline"],
             context=context,
             target_vec=target_vec,
