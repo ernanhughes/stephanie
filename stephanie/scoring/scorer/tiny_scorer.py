@@ -19,7 +19,7 @@ analysis pipeline, enabling efficient model comparison and routing decisions.
 
 References:
 Less is More: Recursive Reasoning with Tiny Networks
-That's you set you up Is that you Oh- arXiv:2510.04871 — https://arxiv.org/abs/2510.04871 
+- arXiv:2510.04871 — https://arxiv.org/abs/2510.04871 
 
 Attribution:
 - This implementation is inspired by the referenced paper.
