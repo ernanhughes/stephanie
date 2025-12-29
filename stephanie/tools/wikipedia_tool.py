@@ -4,14 +4,19 @@ from __future__ import annotations
 import wikipedia
 
 from stephanie.tools.similar_tool import get_top_k_similar
+import logging
+
+log = logging.getLogger(__name__)
 
 
 class WikipediaTool:
-    def __init__(self, memory, logger, lang="en", top_k=3):
+    def __init__(self, cfg, memory, logger):
+        self.cfg = cfg    
         self.memory = memory
         self.logger = logger
+        lang = cfg.get("lang", "en")
         wikipedia.set_lang(lang)
-        self.top_k = top_k
+        self.top_k = cfg.get("top_k", 3)
 
     def search(self, query: str) -> list[dict]:
         self.logger.log("WikipediaSearchStart", {"query": query})
@@ -24,18 +29,18 @@ class WikipediaTool:
                 summary = page.summary[:2000]
                 article = {"title": title, "summary": summary, "url": page.url}
                 articles.append(article)
-                self.logger.log("WikipediaArticleFetched", {"article": article})
+                log.info("WikipediaArticleFetched  article: %s", article)
             except wikipedia.exceptions.DisambiguationError:
-                self.logger.log("WikipediaDisambiguationSkipped", {"title": title})
+                log.error("WikipediaDisambiguationSkipped itle: %s", title)
                 continue
             except Exception as e:
-                self.logger.log(
-                    "WikipediaFetchFailed", {"title": title, "error": str(e)}
+                log.error(
+                    "WikipediaFetchFailed title: %s, error: %s", title, str(e)
                 )
                 continue
 
-        self.logger.log(
-            "WikipediaSearchComplete", {"query": query, "count": len(articles)}
+        log.info(
+            "WikipediaSearchComplete query: %s, count: %d", query, len(articles)
         )
         return articles
 
@@ -48,9 +53,9 @@ class WikipediaTool:
 
         summaries = [a["summary"] for a in raw_articles]
         scored = get_top_k_similar(query, summaries, embed=self.memory.embedding.get_or_create, top_k=self.top_k)
-        self.logger.log(
-            "WikipediaSimilarityScores",
-            {"scores": [{"summary": s, "score": sc} for s, sc in scored]},
+        log.info(
+            "WikipediaSimilarityScores scores: %s",
+            [{"summary": s, "score": sc} for s, sc in scored],
         )
 
         final = []
@@ -59,9 +64,9 @@ class WikipediaTool:
             if match:
                 result = match | {"score": round(score, 4)}
                 final.append(result)
-                self.logger.log("WikipediaMatchSelected", {"result": result})
+                log.info("WikipediaMatchSelected result: %s", result)
 
-        self.logger.log(
-            "WikipediaSimilaritySearchComplete", {"query": query, "top_k": len(final)}
+        log.info(
+            "WikipediaSimilaritySearchComplete query: %s, top_k: %d", query, len(final)
         )
         return final

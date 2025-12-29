@@ -17,7 +17,7 @@ class SearchOrchestratorAgent(BaseAgent):
     def __init__(self, cfg, memory, container, logger):
         super().__init__(cfg, memory, container, logger)
         self.web_search_tool = WebSearchTool(cfg.get("web_search", {}), self.logger)
-        self.wikipedia_tool = WikipediaTool(self.memory, self.logger)
+        self.wikipedia_tool = WikipediaTool(cfg.get("wikipedia", {}), self.memory, self.logger)
         self.max_results = cfg.get("max_results", 5)
 
     async def run(self, context: dict) -> dict:

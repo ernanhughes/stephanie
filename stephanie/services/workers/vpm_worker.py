@@ -218,7 +218,6 @@ class VPMWorker:
             # 🧩 Gracefully handle incomplete payloads
             names = list(payload.get("metrics_columns") or [])
             values = list(payload.get("metrics_values") or [])
-            vector = payload.get("metrics_vector", {})
 
             if not names or not values:
                 # Try to reconstruct something minimal from results
