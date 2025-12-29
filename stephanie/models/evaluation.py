@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import JSON, Column, DateTime, ForeignKey, Integer, String
+from sqlalchemy import JSON, Column, DateTime, ForeignKey, Integer, String, func
 from sqlalchemy.orm import Mapped, relationship
 
 from stephanie.models.base import Base
@@ -108,3 +108,16 @@ class EvaluationORM(Base):
                 data["pipeline_run"] = self.pipeline_run.to_dict()
 
         return data
+
+
+class EvaluationRuleLinkORM(Base):
+    __tablename__ = "evaluation_rule_links"
+
+    id = Column(Integer, primary_key=True)
+    evaluation_id = Column(
+        Integer, ForeignKey("evaluations.id", ondelete="CASCADE"), nullable=False
+    )
+    rule_application_id = Column(
+        Integer, ForeignKey("rule_applications.id", ondelete="CASCADE"), nullable=False
+    )
+    created_at = Column(DateTime(timezone=True), server_default=func.now())

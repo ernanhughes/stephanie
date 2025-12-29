@@ -12,7 +12,7 @@ universal_scorer:
   enabled_scorers:
     - hrm
     - tiny
-    # - sicql
+    - sicql
     # - svm
     # - mrq
     # - ebt

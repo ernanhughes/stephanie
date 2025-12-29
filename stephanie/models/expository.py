@@ -6,7 +6,7 @@ from datetime import datetime
 from sqlalchemy import (JSON, Boolean, Column, DateTime, Float, Index, Integer,
                         String, Text)
 
-from stephanie.db.base import Base
+from stephanie.models.base import Base
 
 
 class ExpositorySnippet(Base):

@@ -11,8 +11,7 @@ from .context_state import ContextStateORM
 from .document_section import DocumentSectionORM
 from .document_section_domain import DocumentSectionDomainORM
 from .embedding import EmbeddingORM
-from .evaluation import EvaluationORM
-from .evaluation_rule_link import EvaluationRuleLinkORM
+from .evaluation import EvaluationORM, EvaluationRuleLinkORM
 from .goal import GoalORM
 from .goal_dimension import GoalDimensionORM
 from .hypothesis import HypothesisORM

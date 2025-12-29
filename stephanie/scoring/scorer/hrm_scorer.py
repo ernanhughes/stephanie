@@ -13,8 +13,10 @@ from stephanie.data.score_result import ScoreResult
 from stephanie.scoring.model.hrm_model import HRMModel
 from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.scorer.base_scorer import BaseScorer
+from stephanie.scoring.scorer.model_health import LoadAudit
 from stephanie.utils.file_utils import load_json  # To load meta file
 from stephanie.scoring.analysis.trace_tap import TraceTap
+import torch.nn.functional as F
 
 log = logging.getLogger(__name__)
 
@@ -115,24 +117,21 @@ class HRMScorer(BaseScorer):
 
                 model = HRMModel(hrm_cfg, logger=self.logger).to(self.device)
                 state = torch.load(model_file_path, map_location=self.device)
-                model.load_state_dict(state, strict=False)
-                missing, unexpected = model.load_state_dict(state, strict=False)
-                if missing:
-                    log.error("HRMScorerMissingKeys dimension=%s missing=%s", dimension, missing)
-                if unexpected:
-                    log.error("HRMScorerUnexpectedKeys dimension=%s unexpected=%s", dimension, unexpected)
 
-                try:
-                    st = model.self_test(device="cpu", n_trials=8)
-                    if not st.get("ok", False):
-                        # warn only on failure
-                        summary = st.get("summary", "")
-                        line = summary.splitlines()[1] if summary else "<no summary>"
-                        log.warning("HRM self_test FAILED dimension=%s %s", dimension, line)
-                    else:
-                        log.info("HRM self_test dimension=%s ok=%s %s", dimension, st["ok"], st["summary"].splitlines()[1])
-                except Exception as e:
-                    log.exception("HRM self_test failed No=%s err=%s", dimension, e)
+                missing, unexpected = model.load_state_dict(state, strict=False)
+                load_audit = LoadAudit(missing=missing, unexpected=unexpected)
+
+                # model_name should identify the on-disk artifact (helps debugging)
+                model_name = f"HRM[{dimension}]::{model_file_path}"
+
+                # optional: model_id can include a short hash of the state keys or file path
+                self.check_model_health(
+                    dimension=dimension,
+                    model_name=model_name,
+                    model=model,
+                    load_audit=load_audit,
+                    model_id=model_file_path,   # simple + stable
+                )
 
                 model.eval() 
 
@@ -185,8 +184,17 @@ class HRMScorer(BaseScorer):
             doc_emb_np, dtype=torch.float32, device=self.device
         ).unsqueeze(0)
 
-        # HRM input: concat (x, y) — keep consistent with training
-        x_input = torch.cat([ctx_emb, doc_emb], dim=-1)
+ 
+        # ✅ normalize to match typical training assumptions
+        ctx_emb = F.normalize(ctx_emb, p=2, dim=-1)
+        doc_emb = F.normalize(doc_emb, p=2, dim=-1)
+
+        # optional: make order configurable (debug quickly)
+        order = (self.cfg.get("hrm", {}) or {}).get("concat_order", "ctx_doc")
+        x_input = torch.cat([ctx_emb, doc_emb], dim=-1) if order == "ctx_doc" else torch.cat([doc_emb, ctx_emb], dim=-1)
+
+        # # HRM input: concat (x, y) — keep consistent with training
+        # x_input = torch.cat([ctx_emb, doc_emb], dim=-1)
 
         for dimension in dimensions:
             tap = TraceTap(enabled=self.trace_enabled)
@@ -219,7 +227,9 @@ class HRMScorer(BaseScorer):
 
                 rationale = (
                     f"HRM[{dimension}] raw={raw01:.4f} | "
-                    f"zL_mag={_fmt_opt4(zL_mag)}, zH_mag={_fmt_opt4(zH_mag)}"
+                    f"zL_mag={_fmt_opt4(zL_mag)}, zH_mag={_fmt_opt4(zH_mag)} |"
+                    f"ctx_n = {float(ctx_emb.norm(p=2).item())} | "
+                    f"doc_n = {float(doc_emb.norm(p=2).item())}"
                 )
 
                 # Native attrs (kept for drill-down)

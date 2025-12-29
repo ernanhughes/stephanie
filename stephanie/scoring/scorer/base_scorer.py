@@ -2,15 +2,20 @@
 from __future__ import annotations
 
 import abc
+import hashlib
+import json
 import logging
 from collections.abc import Mapping
-from typing import Any, Dict, List, Protocol
+from dataclasses import dataclass
+from typing import Any, Callable, Dict, List, Protocol, Optional, Sequence, Tuple
 
 import torch
 
 from stephanie.data.score_bundle import ScoreBundle
 from stephanie.scoring.model.model_locator_mixin import ModelLocatorMixin
 from stephanie.scoring.scorable import Scorable
+from stephanie.scoring.scorer.model_health import ModelHealthLogger, LoadAudit
+
 
 log = logging.getLogger(__name__)
 
@@ -52,6 +57,18 @@ class BaseScorer(ModelLocatorMixin, abc.ABC):
                               [type(p).__name__ for p in self._plugins])
             except Exception as e:
                 log.error("ScorerPluginLoadError: %s", e)
+
+        # ---- Model health / self-test (shared across all scorers) ----
+        mh = dict(self.cfg.get("model_health", {}) or {})
+        
+        self.model_health = ModelHealthLogger(
+            enabled=bool(mh.get("enabled", True)),
+            self_test_enabled=bool(mh.get("self_test_enabled", True)),
+            self_test_device=str(mh.get("self_test_device", "cpu")),
+            self_test_trials=int(mh.get("self_test_trials", 8)),
+            warn_on_load_issues=bool(mh.get("warn_on_load_issues", True)),
+            warn_on_selftest_fail=bool(mh.get("warn_on_selftest_fail", True)),
+        )
 
     def score(
         self,
@@ -265,3 +282,22 @@ class BaseScorer(ModelLocatorMixin, abc.ABC):
             log.debug("ScoringPluginLoaded(service): %s -> %s", service_name, type(svc).__name__)
 
         return plugins
+
+    # ===== Model health / self-test =====
+    def check_model_health(
+        self,
+        *,
+        dimension: str,
+        model_name: str,
+        model,
+        load_audit: Optional[LoadAudit] = None,
+        model_id: Optional[str] = None,
+    ) -> dict:
+        return self.model_health.check_loaded_model(
+            scorer_name=self.__class__.__name__,
+            dimension=dimension,
+            model_name=model_name,
+            model=model,
+            load_audit=load_audit,
+            model_id=model_id,
+        )
