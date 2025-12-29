@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Any, Optional
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
-from stephanie.models.entity_cache import EntityCacheORM
+from stephanie.orm.entity_cache import EntityCacheORM
 from stephanie.utils.json_sanitize import to_json_safe
 
 

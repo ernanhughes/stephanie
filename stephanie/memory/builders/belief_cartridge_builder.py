@@ -13,10 +13,10 @@ from stephanie.agents.base_agent import BaseAgent
 from stephanie.constants import GOAL
 from stephanie.memory.evaluation_attribute_store import \
     EvaluationAttributeStore
-from stephanie.models.belief_cartridge import BeliefCartridgeORM
-from stephanie.models.evaluation import EvaluationORM
-from stephanie.models.evaluation_attribute import EvaluationAttributeORM
-from stephanie.models.score import ScoreORM
+from stephanie.orm.belief_cartridge import BeliefCartridgeORM
+from stephanie.orm.evaluation import EvaluationORM
+from stephanie.orm.evaluation_attribute import EvaluationAttributeORM
+from stephanie.orm.score import ScoreORM
 from stephanie.scoring.scorable import Scorable, ScorableType
 from stephanie.utils.metrics import compute_uncertainty
 

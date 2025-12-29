@@ -6,7 +6,7 @@ from typing import List
 import networkx as nx
 
 from stephanie.memcube.world_model import WorldModel
-from stephanie.models.belief import BeliefORM
+from stephanie.orm.belief import BeliefORM
 
 
 class GoalDirectedPlanner:

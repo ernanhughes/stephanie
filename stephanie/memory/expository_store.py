@@ -8,7 +8,7 @@ from sqlalchemy import asc, desc, func
 from sqlalchemy.orm import Query
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
-from stephanie.models.expository import (BlogDraft, ExpositoryBuffer,
+from stephanie.orm.expository import (BlogDraft, ExpositoryBuffer,
                                          ExpositorySnippet,
                                          PaperSourceQueueORM)
 

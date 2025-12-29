@@ -8,7 +8,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Query
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
-from stephanie.models.training_stats import TrainingStatsORM
+from stephanie.orm.training_stats import TrainingStatsORM
 
 
 class TrainingStatsStore(BaseSQLAlchemyStore):

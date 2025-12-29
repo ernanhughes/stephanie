@@ -8,7 +8,7 @@ import yaml
 from omegaconf import OmegaConf
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.models import SymbolicRuleORM
+from stephanie.orm import SymbolicRuleORM
 from stephanie.registry.pipeline import PipelineRegistry
 from stephanie.rules.rule_options_config import RuleOptionsConfig
 from stephanie.rules.rule_tuner import RuleTuner

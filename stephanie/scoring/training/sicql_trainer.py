@@ -12,7 +12,7 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader, TensorDataset
 from tqdm import tqdm
 
-from stephanie.models.belief_cartridge import BeliefCartridgeORM
+from stephanie.orm.belief_cartridge import BeliefCartridgeORM
 from stephanie.scoring.model.sicql import (InContextQModel, PolicyHead, QHead,
                                            VHead)
 from stephanie.scoring.model.text_encoder import TextEncoder

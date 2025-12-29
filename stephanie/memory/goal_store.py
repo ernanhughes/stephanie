@@ -7,7 +7,7 @@ from typing import List, Optional
 from sqlalchemy.exc import IntegrityError
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
-from stephanie.models.goal import GoalORM
+from stephanie.orm.goal import GoalORM
 
 
 class GoalStore(BaseSQLAlchemyStore):

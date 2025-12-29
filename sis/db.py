@@ -1,7 +1,7 @@
 # sis/db.py
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from stephanie.models.base import Base
+from stephanie.orm.base import Base
 
 # You’ll load this from your config.yaml
 def init_db(db_url: str):

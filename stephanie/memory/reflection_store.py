@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
-from stephanie.models.reflection import ReflectionORM
+from stephanie.orm.reflection import ReflectionORM
 
 
 class ReflectionStore(BaseSQLAlchemyStore):

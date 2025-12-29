@@ -7,7 +7,7 @@ from sqlalchemy import asc
 
 from stephanie.data.plan_trace import ExecutionStep
 from stephanie.memory.base_store import BaseSQLAlchemyStore
-from stephanie.models.plan_trace import ExecutionStepORM
+from stephanie.orm.plan_trace import ExecutionStepORM
 
 
 class ExecutionStepStore(BaseSQLAlchemyStore):

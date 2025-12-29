@@ -10,7 +10,7 @@ from typing import Iterable, List, Tuple
 import numpy as np
 
 from stephanie.memory.nexus_store import NexusStore
-from stephanie.models.nexus import (NexusEdgeORM, NexusMetricsORM,
+from stephanie.orm.nexus import (NexusEdgeORM, NexusMetricsORM,
                                     NexusScorableORM)
 
 log = logging.getLogger(__name__)

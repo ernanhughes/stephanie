@@ -7,7 +7,7 @@ from stephanie.agents.base_agent import BaseAgent
 from stephanie.memory.builders.cartridge_builder import CartridgeBuilder
 from stephanie.memory.builders.theorem_extractor import TheoremExtractor
 from stephanie.memory.builders.triplet_extractor import TripletExtractor
-from stephanie.models.theorem import CartridgeORM
+from stephanie.orm.theorem import CartridgeORM
 from stephanie.scoring.scorable import Scorable, ScorableFactory, ScorableType
 from stephanie.scoring.scorer.ebt_scorer import EBTScorer
 from stephanie.scoring.scorer.mrq_scorer import MRQScorer

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from stephanie.models.theorem import CartridgeORM
+from stephanie.orm.theorem import CartridgeORM
 from stephanie.scoring.scorable import ScorableFactory
 
 

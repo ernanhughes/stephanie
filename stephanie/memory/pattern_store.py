@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import List
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
-from stephanie.models.pattern_stat import PatternStatORM
+from stephanie.orm.pattern_stat import PatternStatORM
 
 
 class PatternStatStore(BaseSQLAlchemyStore):

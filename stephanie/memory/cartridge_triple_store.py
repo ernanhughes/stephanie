@@ -4,10 +4,10 @@ from __future__ import annotations
 from sqlalchemy import case, func
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
-from stephanie.models.cartridge_domain import CartridgeDomainORM
-from stephanie.models.cartridge_triple import CartridgeTripleORM
-from stephanie.models.evaluation import EvaluationORM
-from stephanie.models.score import ScoreORM
+from stephanie.orm.cartridge_domain import CartridgeDomainORM
+from stephanie.orm.cartridge_triple import CartridgeTripleORM
+from stephanie.orm.evaluation import EvaluationORM
+from stephanie.orm.score import ScoreORM
 from stephanie.scoring.scorable import ScorableType
 
 

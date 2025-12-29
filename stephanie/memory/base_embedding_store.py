@@ -24,7 +24,7 @@ _NER_OPTS = None
 def _build_ner_retriever(cfg, memory, logger):
     import torch
 
-    from stephanie.models.ner_retriever import NERRetrieverEmbedder
+    from stephanie.orm.ner_retriever import NERRetrieverEmbedder
 
     device = cfg.get("ner_device", "cuda" if torch.cuda.is_available() else "cpu")
     model_name = cfg.get("ner_model", "Minibase/NER-Small")
@@ -116,7 +116,7 @@ class BaseEmbeddingStore(BaseSQLAlchemyStore):
 
         if self.ner_enabled:
             try:
-                from stephanie.models.ner_retriever import NERRetrieverEmbedder
+                from stephanie.orm.ner_retriever import NERRetrieverEmbedder
 
                 self.ner_retriever = NERRetrieverEmbedder(
                     model_name=self.cfg.get("ner_model", "dslim/bert-base-NER"),

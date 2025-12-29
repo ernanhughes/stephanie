@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy import desc
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
-from stephanie.models.skill_filter import SkillFilterORM
+from stephanie.orm.skill_filter import SkillFilterORM
 
 
 class SkillFilterStore(BaseSQLAlchemyStore):

@@ -12,7 +12,7 @@ from stephanie.utils.slug import simple_slugify
 
 # Optional: if you want a separate goal-state table
 try:
-    from stephanie.models.case_goal_state import CaseGoalStateORM
+    from stephanie.orm.case_goal_state import CaseGoalStateORM
 except Exception:
     CaseGoalStateORM = None
 

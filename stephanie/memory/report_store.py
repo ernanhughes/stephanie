@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import List, Optional
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
-from stephanie.models.report import ReportORM
+from stephanie.orm.report import ReportORM
 
 
 class ReportStore(BaseSQLAlchemyStore):

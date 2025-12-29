@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from typing import List, Optional
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
-from stephanie.models.lookahead import LookaheadORM
+from stephanie.orm.lookahead import LookaheadORM
 
 
 class LookaheadStore(BaseSQLAlchemyStore):

@@ -11,7 +11,7 @@ from typing import Dict, Optional, Tuple
 import numpy as np
 import pandas as pd
 
-from stephanie.models.quantile_fallback import QuantileThresholdCalibrator
+from stephanie.orm.quantile_fallback import QuantileThresholdCalibrator
 
 log = logging.getLogger(__name__)
 
@@ -68,7 +68,7 @@ class CalibrationManager:
     ):
         """Log event to DB (NumPy-safe)."""
         try:
-            from stephanie.models.calibration import CalibrationEventORM
+            from stephanie.orm.calibration import CalibrationEventORM
 
             def _f(x, default=0.0) -> float:
                 try:

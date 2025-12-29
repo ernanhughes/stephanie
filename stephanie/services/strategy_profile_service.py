@@ -5,7 +5,7 @@ import time
 from typing import Any, Dict, Optional
 
 from stephanie.memory.strategy_store import IStrategyStore, JsonStrategyStore
-from stephanie.models.strategy import StrategyProfile
+from stephanie.orm.strategy import StrategyProfile
 from stephanie.services.service_protocol import Service
 
 

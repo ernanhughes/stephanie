@@ -6,7 +6,7 @@ from typing import Optional
 from sqlalchemy import func
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
-from stephanie.models.evaluation_attribute import EvaluationAttributeORM
+from stephanie.orm.evaluation_attribute import EvaluationAttributeORM
 
 
 class EvaluationAttributeStore(BaseSQLAlchemyStore):

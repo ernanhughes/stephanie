@@ -8,13 +8,13 @@ from tqdm import tqdm
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.data.score_corpus import ScoreCorpus
-from stephanie.models.cartridge_triple import CartridgeTripleORM
-from stephanie.models.casebook import CaseScorableORM
-from stephanie.models.chat import ChatTurnORM
-from stephanie.models.document import DocumentORM
-from stephanie.models.hypothesis import HypothesisORM
-from stephanie.models.prompt import PromptORM
-from stephanie.models.theorem import CartridgeORM, TheoremORM
+from stephanie.orm.cartridge_triple import CartridgeTripleORM
+from stephanie.orm.casebook import CaseScorableORM
+from stephanie.orm.chat import ChatTurnORM
+from stephanie.orm.document import DocumentORM
+from stephanie.orm.hypothesis import HypothesisORM
+from stephanie.orm.prompt import PromptORM
+from stephanie.orm.theorem import CartridgeORM, TheoremORM
 from stephanie.scoring.calculations.mars_calculator import MARSCalculator
 from stephanie.scoring.scorable import ScorableFactory, ScorableType
 from stephanie.utils.db_scope import session_scope

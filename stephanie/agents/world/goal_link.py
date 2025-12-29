@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from sklearn.metrics.pairwise import cosine_similarity
 
-from stephanie.models.world_view import WorldviewORM
+from stephanie.orm.world_view import WorldviewORM
 
 
 class GoalLinkingAgent:

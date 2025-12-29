@@ -7,9 +7,9 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy.orm import joinedload
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
-from stephanie.models.evaluation import EvaluationORM
-from stephanie.models.score import ScoreORM
-from stephanie.models.score_attribute import ScoreAttributeORM
+from stephanie.orm.evaluation import EvaluationORM
+from stephanie.orm.score import ScoreORM
+from stephanie.orm.score_attribute import ScoreAttributeORM
 
 
 class ScoreStore(BaseSQLAlchemyStore):

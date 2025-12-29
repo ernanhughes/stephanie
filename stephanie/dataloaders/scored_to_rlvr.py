@@ -7,9 +7,9 @@ from typing import Dict, List, Optional
 from sqlalchemy import String, cast
 
 from stephanie.dataloaders.casebook_to_rlvr import RLVRItem
-from stephanie.models.casebook import CaseBookORM, CaseORM, CaseScorableORM
-from stephanie.models.evaluation import EvaluationORM
-from stephanie.models.score import ScoreORM
+from stephanie.orm.casebook import CaseBookORM, CaseORM, CaseScorableORM
+from stephanie.orm.evaluation import EvaluationORM
+from stephanie.orm.score import ScoreORM
 
 
 class ScoredRLVRDataset:

@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import List
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
-from stephanie.models.scorable_rank import ScorableRankORM
+from stephanie.orm.scorable_rank import ScorableRankORM
 
 
 class ScorableRankStore(BaseSQLAlchemyStore):

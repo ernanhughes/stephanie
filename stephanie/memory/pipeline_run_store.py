@@ -6,7 +6,7 @@ from typing import Optional
 from sqlalchemy.orm import selectinload
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
-from stephanie.models.pipeline_run import PipelineRunORM
+from stephanie.orm.pipeline_run import PipelineRunORM
 
 
 class PipelineRunStore(BaseSQLAlchemyStore):

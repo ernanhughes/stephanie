@@ -20,9 +20,9 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import torch
 
-from stephanie.models.casebook import CaseBookORM
+from stephanie.orm.casebook import CaseBookORM
 # ORM imports – adjust paths to your repo
-from stephanie.models.chat import ChatTurnORM
+from stephanie.orm.chat import ChatTurnORM
 
 # ======= Primitive Metadata =======
 

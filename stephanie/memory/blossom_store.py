@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy.orm import joinedload
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
-from stephanie.models.blossom import (BlossomEdgeORM, BlossomNodeORM,
+from stephanie.orm.blossom import (BlossomEdgeORM, BlossomNodeORM,
                                       BlossomORM, BlossomOutputORM)
 
 

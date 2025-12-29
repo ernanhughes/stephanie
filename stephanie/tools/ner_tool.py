@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 
-from stephanie.models.gliner2_entity_detector import Gliner2EntityDetector
+from stephanie.orm.gliner2_entity_detector import Gliner2EntityDetector
 from stephanie.tools.base_tool import BaseTool
 
 log = logging.getLogger(__name__)

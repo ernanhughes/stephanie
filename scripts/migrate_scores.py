@@ -1,7 +1,7 @@
 import json
 from sqlalchemy.orm import Session
-from stephanie.models.evaluation import EvaluationORM
-from stephanie.models.score import ScoreORM
+from stephanie.orm.evaluation import EvaluationORM
+from stephanie.orm.score import ScoreORM
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 

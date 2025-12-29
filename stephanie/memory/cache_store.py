@@ -9,7 +9,7 @@ from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
-from stephanie.models.cache_entry import CacheEntryORM
+from stephanie.orm.cache_entry import CacheEntryORM
 
 
 class CacheStore(BaseSQLAlchemyStore):

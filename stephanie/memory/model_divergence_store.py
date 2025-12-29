@@ -7,7 +7,7 @@ from typing import Dict, Optional
 from sqlalchemy import and_
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
-from stephanie.models.model_divergence import ModelDivergenceORM
+from stephanie.orm.model_divergence import ModelDivergenceORM
 
 
 class ModelDivergenceStore(BaseSQLAlchemyStore):

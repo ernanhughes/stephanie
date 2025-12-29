@@ -6,8 +6,8 @@ import numpy as np
 from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler
 
-from stephanie.models.comparison_preference import ComparisonPreferenceORM
-from stephanie.models.goal import GoalORM
+from stephanie.orm.comparison_preference import ComparisonPreferenceORM
+from stephanie.orm.goal import GoalORM
 
 
 class PipelinePreferenceTrainerAgent:

@@ -9,11 +9,11 @@ from sqlalchemy import desc, select
 from sqlalchemy.orm import aliased
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
-from stephanie.models.chat import ChatMessageORM, ChatTurnORM
-from stephanie.models.evaluation import EvaluationORM
-from stephanie.models.goal import GoalORM
-from stephanie.models.reasoning_sample import ReasoningSampleORM
-from stephanie.models.score import ScoreORM
+from stephanie.orm.chat import ChatMessageORM, ChatTurnORM
+from stephanie.orm.evaluation import EvaluationORM
+from stephanie.orm.goal import GoalORM
+from stephanie.orm.reasoning_sample import ReasoningSampleORM
+from stephanie.orm.score import ScoreORM
 from stephanie.scoring.scorable import ScorableType
 
 

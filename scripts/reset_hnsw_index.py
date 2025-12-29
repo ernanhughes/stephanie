@@ -1,7 +1,7 @@
 # scripts/reset_hnsw_index.py
 import os
 import logging
-from stephanie.models.ner_retriever import NERRetrieverEmbedder
+from stephanie.orm.ner_retriever import NERRetrieverEmbedder
 from stephanie.scoring.scorable import ScorableType, ScorableFactory
 from stephanie.scoring.scorable import Scorable
 from stephanie.memory import init_memory   # adjust if your project imports differ

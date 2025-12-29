@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Dict, Iterable, List, Optional
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
-from stephanie.models.scorable_summary import ScorableSummaryORM
+from stephanie.orm.scorable_summary import ScorableSummaryORM
 
 
 class ScorableSummaryStore(BaseSQLAlchemyStore):

@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import Any, Iterable, List
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
-from stephanie.models.idea import IdeaORM
+from stephanie.orm.idea import IdeaORM
 
 
 class IdeaStore(BaseSQLAlchemyStore):

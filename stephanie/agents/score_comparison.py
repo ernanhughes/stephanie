@@ -13,7 +13,7 @@ from scipy.stats import pearsonr
 from sqlalchemy import text
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.models import (  # Assuming these are the ORM models used
+from stephanie.orm import (  # Assuming these are the ORM models used
     EvaluationORM, ScoreORM)
 
 # If ScoringStore methods aren't directly usable, we might need to adapt them or use session directly

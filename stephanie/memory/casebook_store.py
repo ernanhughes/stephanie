@@ -11,11 +11,11 @@ from sqlalchemy import and_, desc, func, or_
 from sqlalchemy.orm import Query, aliased, selectinload
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
-from stephanie.models.case_goal_state import CaseGoalStateORM
-from stephanie.models.casebook import (CaseAttributeORM, CaseBookORM, CaseORM,
+from stephanie.orm.case_goal_state import CaseGoalStateORM
+from stephanie.orm.casebook import (CaseAttributeORM, CaseBookORM, CaseORM,
                                        CaseScorableORM)
-from stephanie.models.dynamic_scorable import DynamicScorableORM
-from stephanie.models.goal import GoalORM
+from stephanie.orm.dynamic_scorable import DynamicScorableORM
+from stephanie.orm.goal import GoalORM
 from stephanie.scoring.scorable import ScorableType
 from stephanie.utils.hash_utils import hash_text
 

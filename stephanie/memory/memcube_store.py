@@ -10,7 +10,7 @@ from typing import Any, Dict, Iterable, List, Literal, Optional, Tuple
 from sqlalchemy import asc, desc
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
-from stephanie.models.memcube import MemCubeORM
+from stephanie.orm.memcube import MemCubeORM
 from stephanie.utils.hash_utils import hash_text
 
 # ---------- helpers ----------------------------------------------------------

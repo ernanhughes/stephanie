@@ -27,7 +27,7 @@ from datetime import datetime
 import pandas as pd
 from sqlalchemy import text
 
-from stephanie.models.base import engine
+from stephanie.orm.base import engine
 from stephanie.utils.file_utils import atomic_write
 
 log = logging.getLogger(__name__)

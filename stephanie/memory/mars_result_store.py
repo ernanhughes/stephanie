@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import List
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
-from stephanie.models.mars_result import MARSResultORM
+from stephanie.orm.mars_result import MARSResultORM
 
 
 class MARSResultStore(BaseSQLAlchemyStore):

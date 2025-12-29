@@ -5,7 +5,7 @@ import hashlib
 import json
 from typing import Any, Dict, List
 
-from stephanie.models.knowledge_pair import KnowledgePairORM
+from stephanie.orm.knowledge_pair import KnowledgePairORM
 from stephanie.utils.hash_utils import hash_text
 
 

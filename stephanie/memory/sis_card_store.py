@@ -7,7 +7,7 @@ import time
 from typing import Any, Dict, List, Optional
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
-from stephanie.models.sis_card import SisCardORM
+from stephanie.orm.sis_card import SisCardORM
 from stephanie.utils.hash_utils import hash_text
 
 

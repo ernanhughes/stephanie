@@ -18,7 +18,7 @@ from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.thought.anti_hallucination import AntiHallucination
 from stephanie.agents.thought.figure_grounding import FigureGrounding
 from stephanie.agents.thought.paper_blog import SimplePaperBlogAgent
-from stephanie.models.strategy import StrategyProfile
+from stephanie.orm.strategy import StrategyProfile
 from stephanie.scoring.scorable import ScorableFactory, ScorableType
 from stephanie.utils.hash_utils import hash_text
 from stephanie.utils.json_sanitize import sanitize_for_json

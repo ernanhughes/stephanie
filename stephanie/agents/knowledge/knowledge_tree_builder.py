@@ -66,7 +66,7 @@ import torch
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.memory.casebook_store import CaseBookStore
-from stephanie.models.ner_retriever import EntityDetector, NERRetrieverEmbedder
+from stephanie.orm.ner_retriever import EntityDetector, NERRetrieverEmbedder
 from stephanie.tools.scorable_classifier import ScorableClassifier
 from stephanie.utils.hash_utils import hash_text
 

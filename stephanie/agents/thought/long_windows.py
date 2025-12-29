@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Iterable
 
-from stephanie.models.chat import ChatConversationORM
+from stephanie.orm.chat import ChatConversationORM
 
 
 # naive tokenizer is fine for now; replace with your real splitter if you like

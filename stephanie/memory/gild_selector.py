@@ -11,9 +11,9 @@ from sqlalchemy import text
 from torch.nn import functional as F
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
-from stephanie.models.belief_cartridge import BeliefCartridgeORM
-from stephanie.models.evaluation import EvaluationORM
-from stephanie.models.evaluation_attribute import EvaluationAttributeORM
+from stephanie.orm.belief_cartridge import BeliefCartridgeORM
+from stephanie.orm.evaluation import EvaluationORM
+from stephanie.orm.evaluation_attribute import EvaluationAttributeORM
 from stephanie.scoring.scorable import Scorable
 
 

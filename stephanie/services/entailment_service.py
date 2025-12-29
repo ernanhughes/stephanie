@@ -11,7 +11,7 @@ from stephanie.services.service_protocol import Service
 
 # Optional: if you have a dedicated NLI model service
 try:
-    from stephanie.models.nli import NLIModel  # <-- your own NLI wrapper
+    from stephanie.orm.nli import NLIModel  # <-- your own NLI wrapper
 except ImportError:
     NLIModel = None
 

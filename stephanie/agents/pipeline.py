@@ -5,7 +5,7 @@ import re
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.constants import PIPELINE, PIPELINE_RUN_ID
-from stephanie.models import EvaluationORM
+from stephanie.orm import EvaluationORM
 
 
 class PipelineJudgeAgent(BaseAgent):

@@ -1,7 +1,7 @@
 from stephanie.utils.loaders import get_memory, get_logger, get_config
 from stephanie.agents.pipeline_judge import PipelineJudgeAgent
 from stephanie.constants import GOAL, PIPELINE_RUN_ID
-from stephanie.models import EvaluationORM, HypothesisORM
+from stephanie.orm import EvaluationORM, HypothesisORM
 
 
 def get_unscored_hypotheses(session, run_id: str = None):

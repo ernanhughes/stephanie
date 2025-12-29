@@ -2,8 +2,8 @@
 from __future__ import annotations
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
-from stephanie.models.scorable_embedding import ScorableEmbeddingORM
-from stephanie.models.theorem import CartridgeORM
+from stephanie.orm.scorable_embedding import ScorableEmbeddingORM
+from stephanie.orm.theorem import CartridgeORM
 
 
 class CartridgeStore(BaseSQLAlchemyStore):

@@ -25,7 +25,7 @@ from typing import Any, Dict, List, Optional
 import dspy
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.models.casebook import CaseBookORM
+from stephanie.orm.casebook import CaseBookORM
 from stephanie.utils.casebook_utils import generate_casebook_name
 from stephanie.utils.json_sanitize import dumps_safe
 from stephanie.utils.paper_utils import (build_paper_goal_meta,

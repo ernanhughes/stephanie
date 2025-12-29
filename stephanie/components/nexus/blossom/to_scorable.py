@@ -5,7 +5,7 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from stephanie.agents.base_agent import BaseAgent
 # These ORMs/stores were defined earlier in our Blossom schema work
-from stephanie.models.blossom import BlossomNodeORM, BlossomOutputORM
+from stephanie.orm.blossom import BlossomNodeORM, BlossomOutputORM
 from stephanie.scoring.scorable import ScorableType
 
 # ------------------------------- CONFIG ----------------------------------

@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from stephanie.memory.base_embedding_store import BaseEmbeddingStore
-from stephanie.models.hnet_embedding import HNetEmbeddingORM
+from stephanie.orm.hnet_embedding import HNetEmbeddingORM
 from stephanie.tools.hnet_embedding import get_embedding
 
 

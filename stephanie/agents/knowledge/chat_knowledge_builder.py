@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional
 
 from stephanie.data.knowledge_unit import KnowledgeUnit
 from stephanie.memory.chat_store import ChatStore
-from stephanie.models.ner_retriever import EntityDetector
+from stephanie.orm.ner_retriever import EntityDetector
 from stephanie.scoring.scorable import Scorable, ScorableFactory, ScorableType
 from stephanie.tools.scorable_classifier import ScorableClassifier
 from stephanie.utils.hash_utils import hash_text

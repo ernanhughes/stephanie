@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import List
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
-from stephanie.models.mars_conflict import MARSConflictORM
+from stephanie.orm.mars_conflict import MARSConflictORM
 
 
 class MARSConflictStore(BaseSQLAlchemyStore):

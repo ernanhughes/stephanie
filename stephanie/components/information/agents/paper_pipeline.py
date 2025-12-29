@@ -22,7 +22,7 @@ from stephanie.components.information.tasks.section_link_task import \
     SectionLinkTask
 from stephanie.constants import PIPELINE_RUN_ID
 from stephanie.memory.paper_store import PaperStore
-from stephanie.models.paper import PaperORM
+from stephanie.orm.paper import PaperORM
 from stephanie.scoring.scorable import Scorable, ScorableType
 from stephanie.tools.huggingface_tool import recommend_similar_papers
 from stephanie.tools.summarization_tool import SummarizationTool

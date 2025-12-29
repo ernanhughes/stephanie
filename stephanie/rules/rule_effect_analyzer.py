@@ -8,7 +8,7 @@ from typing import Optional
 
 from tabulate import tabulate
 
-from stephanie.models import (EvaluationORM, EvaluationRuleLinkORM,
+from stephanie.orm import (EvaluationORM, EvaluationRuleLinkORM,
                               PipelineRunORM, RuleApplicationORM)
 
 
@@ -32,7 +32,7 @@ class RuleEffectAnalyzer:
         }
 
     def get_scores_for_evaluation(self, evaluation_id):
-        from stephanie.models.score import \
+        from stephanie.orm.score import \
             ScoreORM  # local import to avoid circularity
 
         return (

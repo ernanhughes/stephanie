@@ -5,9 +5,9 @@ import datetime
 from typing import Any, Dict, List, Optional
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
-from stephanie.models.metrics import CriticModelORM  # NEW
-from stephanie.models.metrics import CriticRunORM  # NEW
-from stephanie.models.metrics import (MetricDeltaORM, MetricGroupORM,
+from stephanie.orm.metrics import CriticModelORM  # NEW
+from stephanie.orm.metrics import CriticRunORM  # NEW
+from stephanie.orm.metrics import (MetricDeltaORM, MetricGroupORM,
                                       MetricVectorORM, MetricVPMORM)
 
 

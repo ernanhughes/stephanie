@@ -6,7 +6,7 @@ from datetime import datetime
 from sqlalchemy.exc import IntegrityError
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
-from stephanie.models.scorable_embedding import ScorableEmbeddingORM
+from stephanie.orm.scorable_embedding import ScorableEmbeddingORM
 from stephanie.scoring.scorable import Scorable
 
 

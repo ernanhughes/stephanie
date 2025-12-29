@@ -9,7 +9,7 @@ from typing import List, Optional
 from sqlalchemy import text
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
-from stephanie.models import (MRQMemoryEntryORM, MRQPreferencePairORM,
+from stephanie.orm import (MRQMemoryEntryORM, MRQPreferencePairORM,
                               ReflectionDeltaORM)
 
 

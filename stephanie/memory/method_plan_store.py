@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import List, Optional
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
-from stephanie.models.method_plan import MethodPlanORM
+from stephanie.orm.method_plan import MethodPlanORM
 
 
 class MethodPlanStore(BaseSQLAlchemyStore):
