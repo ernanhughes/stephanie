@@ -108,7 +108,7 @@ class TinyBlockAttn(nn.Module):
 # Tiny Recursion Model (Tiny+)
 # ---------------------------
 
-class TinyRecursionModel(nn.Module):
+class TinyModel(nn.Module):
     """
     Parameter-efficient recursive model for multi-task evaluation.
 

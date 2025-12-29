@@ -16,6 +16,13 @@ Key Features:
 
 The TinyScorer serves as the lightweight counterpart to HRM in the GAP
 analysis pipeline, enabling efficient model comparison and routing decisions.
+
+References:
+Less is More: Recursive Reasoning with Tiny Networks
+That's you set you up Is that you Oh- arXiv:2510.04871 — https://arxiv.org/abs/2510.04871 
+
+Attribution:
+- This implementation is inspired by the referenced paper.
 """
 
 from __future__ import annotations
@@ -29,7 +36,7 @@ import torch
 from stephanie.constants import GOAL, GOAL_TEXT
 from stephanie.data.score_bundle import ScoreBundle
 from stephanie.data.score_result import ScoreResult
-from stephanie.scoring.model.tiny_recursion import TinyRecursionModel
+from stephanie.scoring.model.tiny import TinyModel
 from stephanie.scoring.scorer.base_scorer import BaseScorer
 from stephanie.utils.file_utils import load_json
 from stephanie.scoring.analysis.trace_tap import TraceTap
@@ -101,7 +108,7 @@ class TinyScorer(BaseScorer):
         log.debug(f"Attribute level set to: {self.attr_level}")
 
         # Containers for per-dimension models and metadata
-        self.models: Dict[str, TinyRecursionModel] = {}
+        self.models: Dict[str, TinyModel] = {}
         self.model_meta: Dict[str, Dict[str, Any]] = {}
 
         # Attempt to load models up-front for all specified dimensions
@@ -187,7 +194,7 @@ class TinyScorer(BaseScorer):
 
             # Instantiate model with exact same architecture as training
             log.debug(f"Instantiating TRM for dimension {dim}")
-            model = TinyRecursionModel(
+            model = TinyModel(
                 d_model=self.dim,
                 n_layers=n_layers,
                 n_recursions=n_recursions,

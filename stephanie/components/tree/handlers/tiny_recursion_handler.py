@@ -18,7 +18,7 @@ from typing import Any, Dict
 import torch
 import torch.nn.functional as F
 
-from stephanie.scoring.model.tiny_recursion import TinyRecursionModel
+from stephanie.scoring.model.tiny import TinyModel
 
 
 class TinyRecursionHandler:
@@ -36,7 +36,7 @@ class TinyRecursionHandler:
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         # initialize model
-        self.model = TinyRecursionModel(
+        self.model = TinyModel(
             d_model=cfg.get("d_model", 256),
             n_layers=cfg.get("n_layers", 2),
             n_recursions=cfg.get("n_recursions", 6),
