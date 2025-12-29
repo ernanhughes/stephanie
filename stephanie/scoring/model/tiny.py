@@ -412,3 +412,97 @@ class TinyModel(nn.Module):
             aux["sens01"] = sens01
 
         return logits, halt_logits.squeeze(-1), z_final, (aux if return_aux else {})
+
+    def self_test(self, *, device: str = "cpu", n_trials: int = 8) -> dict:
+        import math
+        import torch
+
+        self.eval()
+        dev = torch.device(device)
+        self.to(dev)
+
+        # Infer input dims safely
+        def _infer_dim(attr_names, fallback=None):
+            for a in attr_names:
+                v = getattr(self, a, None)
+                if isinstance(v, int) and v > 0:
+                    return v
+            return fallback
+
+        # Prefer explicit attrs if you have them
+        x_dim = _infer_dim(["x_dim", "d_x", "input_x_dim"], None)
+        y_dim = _infer_dim(["y_dim", "d_y", "input_y_dim"], None)
+        z_dim = _infer_dim(["z_dim", "d_z", "state_dim"], None)
+
+        # Fall back to layer shapes
+        # If you have projections: x_proj / y_proj
+        if x_dim is None:
+            xp = getattr(self, "x_proj", None)
+            if xp is not None and hasattr(xp, "in_features"):
+                x_dim = int(xp.in_features)
+        if y_dim is None:
+            yp = getattr(self, "y_proj", None)
+            if yp is not None and hasattr(yp, "in_features"):
+                y_dim = int(yp.in_features)
+
+        # z_proj sees concat([x, y, z_cur]) so in_features = x+y+z
+        zp = getattr(self, "z_proj", None)
+        if zp is not None and hasattr(zp, "in_features"):
+            fused_in = int(zp.in_features)
+            if x_dim is None:
+                x_dim = max(1, fused_in // 3)
+            if y_dim is None:
+                y_dim = max(1, fused_in // 3)
+            if z_dim is None:
+                z_dim = max(1, fused_in - int(x_dim) - int(y_dim))
+
+        # Last resort
+        if x_dim is None: x_dim = 768
+        if y_dim is None: y_dim = 768
+        if z_dim is None: z_dim = 128
+
+        scores = []
+        reasons = []
+        details = {"x_dim": x_dim, "y_dim": y_dim, "z_dim": z_dim, "trials": int(n_trials)}
+
+        with torch.no_grad():
+            for _ in range(max(1, int(n_trials))):
+                B = 4
+                x = torch.randn(B, x_dim, device=dev)
+                y = torch.randn(B, y_dim, device=dev)
+                z = torch.randn(B, z_dim, device=dev)
+
+                out = self(x, y, z)  # <-- correct signature
+
+                # Normalize a score tensor out of your return type
+                if isinstance(out, dict):
+                    s = out.get("score", None) or out.get("score01", None) or out.get("logits", None)
+                else:
+                    s = out
+
+                if not torch.is_tensor(s):
+                    return {"ok": False, "summary": f"Tiny self_test: forward returned {type(out)} (no tensor score found)", "details": details}
+
+                s = s.float().reshape(-1)
+                if not torch.isfinite(s).all():
+                    return {"ok": False, "summary": "Tiny self_test: non-finite outputs (nan/inf)", "details": details}
+
+                scores.append(s.mean().item())
+
+        mean = sum(scores) / len(scores)
+        var = sum((v - mean) ** 2 for v in scores) / max(1, len(scores) - 1)
+        std = math.sqrt(var)
+
+        ok = True
+        if std < 1e-6:
+            ok = False
+            reasons.append("collapsed outputs (std too small)")
+
+        summary = (
+            "Tiny self_test\n"
+            f"  score: mean={mean:.6f} std={std:.6f} min={min(scores):.6f} max={max(scores):.6f}\n"
+            f"  ok={ok} reasons={reasons}\n"
+        )
+
+        details.update({"mean": mean, "std": std, "min": min(scores), "max": max(scores), "reasons": reasons})
+        return {"ok": ok, "summary": summary, "details": details}

@@ -467,17 +467,32 @@ class HRMModel(nn.Module):
             return {"x": x, "return_aux": True}
 
         def extract_debug(aux: Any):
-            # aux is dict in your HRM
             if not isinstance(aux, dict):
                 return {}
+
             out = {}
-            for k in ["score_logit", "temp01", "zH_mag", "zL_mag", "entropy", "energy"]:
-                if k in aux:
-                    out[k] = aux[k]
-            # also include any final latent if present
-            for k in ["zH_final", "zL_final"]:
-                if k in aux:
-                    out[k] = aux[k]
+
+            # keep these always (cheap + most diagnostic)
+            always = {"score_logit", "temp01", "log_var", "entropy_aux", "jacobian_fd", "halt_prob", "ood_hat", "disagree_hat",
+                    "zH_final", "zL_final", "recon_sim"}
+
+            # avoid heavy tensors unless small
+            max_numel = 4096  # tune later
+
+            for k, v in aux.items():
+                if k in always:
+                    out[k] = v
+                    continue
+
+                if torch.is_tensor(v):
+                    # include small tensors (or you can exclude known huge keys like x_recon)
+                    if v.numel() <= max_numel:
+                        out[k] = v
+                else:
+                    # include simple scalar-ish values
+                    if isinstance(v, (int, float, bool, str)):
+                        out[k] = v
+
             return out
 
         tester = ModelSelfTest(

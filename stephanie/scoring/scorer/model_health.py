@@ -21,7 +21,9 @@ class LoadAudit:
         return (not self.missing) and (not self.unexpected)
 
 
-def audit_load_state_dict(model, state_dict: Dict[str, Any], *, strict: bool = False) -> LoadAudit:
+def audit_load_state_dict(
+    model, state_dict: Dict[str, Any], *, strict: bool = False
+) -> LoadAudit:
     """
     Loads state_dict and returns missing/unexpected keys.
     Always uses strict=False by default, but audits it.
@@ -31,23 +33,23 @@ def audit_load_state_dict(model, state_dict: Dict[str, Any], *, strict: bool = F
 
 
 def run_self_test_if_available(
-    model,
-    *,
-    device: str = "cpu",
-    n_trials: int = 8,
-) -> Optional[Dict[str, Any]]:
-    """
-    Calls model.self_test(...) if present.
-    Returns dict with at least {'ok': bool, 'summary': str} or None if no self_test.
-    """
+    model, *, device: str = "cpu", n_trials: int = 8
+):
     fn = getattr(model, "self_test", None)
-    if fn is None:
+    if not callable(fn):
         return None
-    out = fn(device=device, n_trials=n_trials)
-    # normalize
-    if isinstance(out, dict) and "ok" in out:
-        return out
-    return {"ok": bool(out), "summary": str(out)}
+
+    try:
+        out = fn(device=device, n_trials=n_trials)
+        if isinstance(out, dict) and "ok" in out:
+            return out
+        return {"ok": bool(out), "summary": str(out)}
+    except Exception as e:
+        # Important: don't break scorer init; treat as a failed self-test.
+        return {
+            "ok": False,
+            "summary": f"self_test raised: {type(e).__name__}: {e}",
+        }
 
 
 class ModelHealthLogger:
@@ -101,23 +103,39 @@ class ModelHealthLogger:
             if load_audit.missing:
                 log.error(
                     "%s model load missing keys dim=%s model=%s count=%d example=%s",
-                    scorer_name, dimension, model_name, len(load_audit.missing), list(load_audit.missing)[:8],
+                    scorer_name,
+                    dimension,
+                    model_name,
+                    len(load_audit.missing),
+                    list(load_audit.missing)[:8],
                 )
             if load_audit.unexpected:
                 log.error(
                     "%s model load unexpected keys dim=%s model=%s count=%d example=%s",
-                    scorer_name, dimension, model_name, len(load_audit.unexpected), list(load_audit.unexpected)[:8],
+                    scorer_name,
+                    dimension,
+                    model_name,
+                    len(load_audit.unexpected),
+                    list(load_audit.unexpected)[:8],
                 )
             if self.warn_on_load_issues:
                 log.warning(
                     "%s model load issues detected dim=%s model=%s (missing=%d unexpected=%d)",
-                    scorer_name, dimension, model_name, len(load_audit.missing), len(load_audit.unexpected),
+                    scorer_name,
+                    dimension,
+                    model_name,
+                    len(load_audit.missing),
+                    len(load_audit.unexpected),
                 )
 
         # 2) Self-test (warn only on failure)
         if self.self_test_enabled:
             try:
-                st = run_self_test_if_available(model, device=self.self_test_device, n_trials=self.self_test_trials)
+                st = run_self_test_if_available(
+                    model,
+                    device=self.self_test_device,
+                    n_trials=self.self_test_trials,
+                )
                 if st is None:
                     return
 
@@ -128,13 +146,26 @@ class ModelHealthLogger:
 
                 if (not ok) and self.warn_on_selftest_fail:
                     summary = st.get("summary", "")
-                    line = summary.splitlines()[1] if summary and "\n" in summary else summary
+                    line = (
+                        summary.splitlines()[1]
+                        if summary and "\n" in summary
+                        else summary
+                    )
                     log.warning(
                         "%s self_test FAILED dim=%s model=%s %s",
-                        scorer_name, dimension, model_name, line,
+                        scorer_name,
+                        dimension,
+                        model_name,
+                        line,
                     )
             except Exception as e:
-                log.exception("%s self_test crashed dim=%s model=%s err=%s", scorer_name, dimension, model_name, e)
+                log.exception(
+                    "%s self_test crashed dim=%s model=%s err=%s",
+                    scorer_name,
+                    dimension,
+                    model_name,
+                    e,
+                )
 
     def check_loaded_model(
         self,
@@ -155,13 +186,23 @@ class ModelHealthLogger:
           - SILENT on success
         """
         if not self.enabled:
-            return {"ok": True, "load_ok": True, "self_test": None, "model_id": model_id}
+            return {
+                "ok": True,
+                "load_ok": True,
+                "self_test": None,
+                "model_id": model_id,
+            }
 
         # Cache key: (scorer, dim, model_id-ish)
         mid = model_id or hash_dict(model_name)
         key = (scorer_name, dimension, mid)
         if key in self._seen:
-            return {"ok": True, "load_ok": True, "self_test": None, "model_id": mid}
+            return {
+                "ok": True,
+                "load_ok": True,
+                "self_test": None,
+                "model_id": mid,
+            }
         self._seen.add(key)
 
         load_ok = True
@@ -170,18 +211,30 @@ class ModelHealthLogger:
             if load_audit.missing:
                 log.error(
                     "%s model load missing keys dim=%s model=%s count=%d example=%s",
-                    scorer_name, dimension, model_name, len(load_audit.missing), list(load_audit.missing)[:8],
+                    scorer_name,
+                    dimension,
+                    model_name,
+                    len(load_audit.missing),
+                    list(load_audit.missing)[:8],
                 )
             if load_audit.unexpected:
                 log.error(
                     "%s model load unexpected keys dim=%s model=%s count=%d example=%s",
-                    scorer_name, dimension, model_name, len(load_audit.unexpected), list(load_audit.unexpected)[:8],
+                    scorer_name,
+                    dimension,
+                    model_name,
+                    len(load_audit.unexpected),
+                    list(load_audit.unexpected)[:8],
                 )
 
         st = None
         st_ok = True
         if self.self_test_enabled:
-            st = run_self_test_if_available(model, device=self.self_test_device, n_trials=self.self_test_trials)
+            st = run_self_test_if_available(
+                model,
+                device=self.self_test_device,
+                n_trials=self.self_test_trials,
+            )
             if st is not None:
                 st_ok = bool(st.get("ok", False))
 
@@ -192,10 +245,19 @@ class ModelHealthLogger:
             summary = ""
             if isinstance(st, dict):
                 summary = st.get("summary", "")
-            line = summary.splitlines()[1] if summary and "\n" in summary else summary
+            line = (
+                summary.splitlines()[1]
+                if summary and "\n" in summary
+                else summary
+            )
             log.warning(
                 "%s model health FAILED dim=%s model=%s load_ok=%s self_test_ok=%s %s",
-                scorer_name, dimension, model_name, load_ok, st_ok, line,
+                scorer_name,
+                dimension,
+                model_name,
+                load_ok,
+                st_ok,
+                line,
             )
 
         return {"ok": ok, "load_ok": load_ok, "self_test": st, "model_id": mid}
