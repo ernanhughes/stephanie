@@ -18,7 +18,7 @@ from stephanie.scoring.scorer.base_scorer import BaseScorer
 from stephanie.scoring.transforms.regression_tuner import RegressionTuner
 from stephanie.utils.file_utils import load_json
 from stephanie.utils.model_locator import ModelLocator
-
+from stephanie.scoring.scorer.model_health import audit_load_state_dict, merge_load_audits
 
 class SICQLScorer(BaseScorer):
     """
@@ -56,19 +56,32 @@ class SICQLScorer(BaseScorer):
             t = t.view(-1)
         return t.tolist()
 
-    def _scale_with_tuner_or_sigmoid(self, dim: str, q_value: float, meta: dict) -> float:
+    def _clamp01(self, x: float) -> float:
+        return 0.0 if x != x else max(0.0, min(1.0, float(x)))
+
+    def _scale_with_tuner_or_sigmoid(self, dim: str, q_value: float, meta: dict) -> tuple[float, float]:
         """
-        If a RegressionTuner exists, use it. Otherwise, sigmoid → [0..1] → [min,max].
+        Always produce:
+        - score01 in [0,1]  (authoritative, returned as ScoreResult.score)
+        - score_scaled in [min,max] (kept as attribute for display)
         """
         min_val = float(meta.get("min_value", 0.0))
         max_val = float(meta.get("max_value", 100.0))
+        denom = (max_val - min_val) if (max_val - min_val) != 0 else 1.0
+
         if dim in self.tuners and self.tuners[dim] is not None:
-            s = float(self.tuners[dim].transform(q_value))
+            # tuner likely outputs in scaled units (often 0..100)
+            score_scaled = float(self.tuners[dim].transform(q_value))
+            score01 = self._clamp01((score_scaled - min_val) / denom)
         else:
-            s01 = torch.sigmoid(torch.tensor(q_value, dtype=torch.float32)).item()
-            s = s01 * (max_val - min_val) + min_val
-        # clamp to declared domain
-        return max(min(s, max_val), min_val)
+            # base path: sigmoid(q) gives score01 directly
+            score01 = float(torch.sigmoid(torch.tensor(q_value, dtype=torch.float32)).item())
+            score01 = self._clamp01(score01)
+            score_scaled = score01 * denom + min_val
+
+        # clamp scaled into declared range
+        score_scaled = max(min(score_scaled, max_val), min_val)
+        return score01, score_scaled
 
     def _get_locator(self, dim: str) -> ModelLocator:
         return ModelLocator(
@@ -154,11 +167,12 @@ class SICQLScorer(BaseScorer):
                     zsa_tensor = model.encoder(prompt_emb, output_emb)  # already no_grad
 
             meta = self.model_meta.get(dim, {"min_value": 0.0, "max_value": 100.0})
-            final_score = round(self._scale_with_tuner_or_sigmoid(dim, q_value, meta), 4)
+            final_score, score_scaled = self._scale_with_tuner_or_sigmoid(dim, q_value, meta)
 
             rationale = f"Q={q_value:.4f}, V={v_value:.4f}, Δ={abs(advantage):.3f}, H={entropy:.3f}"
 
             attributes = {
+                "score_scaled": score_scaled,
                 "q_value": q_value,
                 "energy": q_value,            # legacy alias
                 "state_value": v_value,

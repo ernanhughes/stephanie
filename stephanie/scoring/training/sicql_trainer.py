@@ -597,10 +597,10 @@ class SICQLTrainer(BaseTrainer):
 
         # Build optimizers
         optimizers = {
-            "encoder": optim.Adam(model.encoder.parameters(), lr=self.lr),
-            "q_head": optim.Adam(model.q_head.parameters(), lr=self.lr),
-            "v_head": optim.Adam(model.v_head.parameters(), lr=self.lr),
-            "pi_head": optim.Adam(model.pi_head.parameters(), lr=self.lr),
+            "encoder": optim.Adam(model.encoder.parameters(), lr=self.lr, weight_decay=1e-5),
+            "q_head": optim.Adam(model.q_head.parameters(), lr=self.lr, weight_decay=1e-5),
+            "v_head": optim.Adam(model.v_head.parameters(), lr=self.lr, weight_decay=1e-5),
+            "pi_head": optim.Adam(model.pi_head.parameters(), lr=self.lr, weight_decay=1e-5),
         }
 
         # Build schedulers

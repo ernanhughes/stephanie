@@ -50,6 +50,29 @@ def run_self_test_if_available(
             "summary": f"self_test raised: {type(e).__name__}: {e}",
         }
 
+def merge_load_audits(audits: list[LoadAudit]) -> Optional[LoadAudit]:
+    """
+    Merge multiple LoadAudit objects into one.
+    Useful when a 'model' is composed of multiple modules with separate state_dicts
+    (e.g., SICQL encoder + q/v/pi heads).
+    """
+    missing: list[str] = []
+    unexpected: list[str] = []
+
+    any_audit = False
+    for a in audits:
+        if a is None:
+            continue
+        any_audit = True
+        missing.extend(list(a.missing or []))
+        unexpected.extend(list(a.unexpected or []))
+
+    if not any_audit:
+        return None
+
+    # NOTE: ok is a @property computed from missing/unexpected
+    return LoadAudit(missing=missing, unexpected=unexpected)
+
 
 class ModelHealthLogger:
     """
@@ -78,6 +101,7 @@ class ModelHealthLogger:
 
         # Optional: prevent repeated logs per scorer instance
         self._seen: set[tuple[str, str]] = set()  # (scorer_name, dimension)
+        self._warned_once: set[str] = set()
 
     def check_and_log(
         self,
@@ -260,3 +284,35 @@ class ModelHealthLogger:
             )
 
         return {"ok": ok, "load_ok": load_ok, "self_test": st, "model_id": mid}
+
+    def check_score_saturation_once(
+        self,
+        *,
+        scorer_name: str,
+        dimension: str,
+        model_id: str,
+        q_value: float,
+        score01: float,
+        threshold_q: float = 20.0,
+        threshold_score01: float = 0.999,
+    ) -> None:
+        """
+        Detect sigmoid saturation / always-1 behavior and warn once per model_id+dimension.
+        """
+        # sigmoid will be ~1 for q>~20; score01 close to 1 indicates saturation/clamping
+        if q_value > threshold_q and score01 >= threshold_score01:
+            key = f"saturation::{scorer_name}::{dimension}::{model_id}"
+            self.warn_once(
+                key,
+                "%s saturation suspected dim=%s q=%.4f score01=%.6f (sigmoid likely saturated; consider temperature or tuner)",
+                scorer_name, dimension, q_value, score01
+            )
+            
+    def warn_once(self, key: str, msg: str, *args) -> None:
+        """
+        Emit a warning only once per unique key for the lifetime of this process.
+        """
+        if key in self._warned_once:
+            return
+        self._warned_once.add(key)
+        log.warning(msg, *args)
