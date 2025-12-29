@@ -66,6 +66,7 @@ class UniversalScorerAgent(BaseAgent):
         self.include_mars = self.cfg.get("include_mars", True)
         self.include_ranking = self.cfg.get("include_ranking", True)
         self.rank_top_k = self.cfg.get("rank_top_k", 5)
+        self.max_candidates = self.cfg.get("max_candidates", 100)
         dimension_config = self.cfg.get("dimension_config", {})
         # Components
         self.mars_calculator = MARSCalculator(
@@ -93,15 +94,15 @@ class UniversalScorerAgent(BaseAgent):
         )
 
     async def run(self, context: dict) -> dict:
-        scored_items = []
-        candidates = []
+        scorables = [] 
 
         for ttype in self.target_types:
             if ttype == ScorableType.CONVERSATION_TURN:
-                objs = self.memory.chats.list_turns()
+                objs = self.memory.chats.list_turns(limit=self.max_candidates)
+
                 objs = [o.to_dict() for o in objs]
                 for obj in objs:
-                    candidates.append((obj, ttype))
+                    obj.setdefault("text", obj.get("assistant_message", {}).get("conversation", ""))
             else:
                 objs = context.get(ttype.lower() + "s", [])
 
@@ -112,56 +113,18 @@ class UniversalScorerAgent(BaseAgent):
                         objs = session.query(orm_cls).all()
                     objs = [o.to_dict() for o in objs]
 
-                for obj in objs:
-                    candidates.append((obj, ttype))
+            for obj in objs:
+                scorables.append(ScorableFactory.from_dict(obj, ttype))
 
-        total_candidates = len(candidates)
-
-        if not candidates:
-            self.report({"event": "no_scorables", "target_types": self.target_types})
-            return context
+        scorables = scorables[:self.max_candidates]
+        total_candidates = len(scorables)
 
         self.report({"event": "scoring_start", "total": total_candidates})
 
-        pbar = tqdm(candidates, desc="Scoring Scorables", disable=not self.progress)
+        scored_items = await self.scorable_processor.process_many(scorables, context=context)
 
-        for idx, (obj, ttype) in enumerate(pbar):
-            try:
-                scorable = ScorableFactory.from_dict(obj, ttype)
+        self.report({"event": "scoring_completed", "total": total_candidates})
 
-                existing = self.memory.scores.get_scores_for_target(
-                    target_id=scorable.id,
-                    target_type=ttype,
-                    dimensions=self.dimensions,
-                )
-                if existing and not self.force_rescore:
-                    self.report({
-                        "event": "skipped",
-                        "id": scorable.id,
-                        "type": ttype,
-                        "reason": "already_scored"
-                    })
-                    continue
-
-                result, _ = self._score_item(context, scorable, ttype)
-                scored_items.append(result)
-
-                self.report({
-                    "event": "scored",
-                    "id": scorable.id,
-                    "type": ttype,
-                    "scores": result["scores"]
-                })
-
-                pbar.set_postfix({"done": f"{idx + 1}/{total_candidates}"})
-
-            except Exception as e:
-                self.report({
-                    "event": "error",
-                    "id": obj.get("id"),
-                    "type": ttype,
-                    "error": str(e)
-                })
 
         self.report({"event": "scoring_completed", "total_scored": len(scored_items)})
         context[self.output_key] = scored_items

@@ -13,7 +13,6 @@ import logging
 from typing import Any, Dict, Optional, Tuple
 
 
-
 log = logging.getLogger(__name__)
 
 
@@ -303,4 +302,3 @@ def log_load_state_dict(
             str(e).splitlines()[0],
         )
         return False
-

@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import os
-from typing import Dict, List
+from typing import Any, Dict, List, Tuple
 
 import torch
 import torch.nn.functional as F
@@ -19,6 +19,9 @@ from stephanie.scoring.transforms.regression_tuner import RegressionTuner
 from stephanie.utils.file_utils import load_json
 from stephanie.utils.model_locator import ModelLocator
 from stephanie.scoring.scorer.model_health import audit_load_state_dict, merge_load_audits
+
+import logging
+log = logging.getLogger(__name__)
 
 class SICQLScorer(BaseScorer):
     """
@@ -106,10 +109,16 @@ class SICQLScorer(BaseScorer):
             pi_head = PolicyHead(zsa_dim=self.dim, hdim=self.hdim, num_actions=3).to(self.device)
 
             # load weights (best-effort)
-            encoder.load_state_dict(torch.load(loc.encoder_file(), map_location=self.device))
-            q_head.load_state_dict(torch.load(loc.q_head_file(), map_location=self.device))
-            v_head.load_state_dict(torch.load(loc.v_head_file(), map_location=self.device))
-            pi_head.load_state_dict(torch.load(loc.pi_head_file(), map_location=self.device))
+            ok_enc = _safe_load(encoder, loc.encoder_file(), name=f"SICQL encoder[{dim}]", device=self.device, strict=True)
+            ok_q   = _safe_load(q_head,  loc.q_head_file(),  name=f"SICQL QHead[{dim}]",  device=self.device, strict=True)
+            ok_v   = _safe_load(v_head,  loc.v_head_file(),  name=f"SICQL VHead[{dim}]",  device=self.device, strict=True)
+            ok_pi  = _safe_load(pi_head, loc.pi_head_file(), name=f"SICQL Policy[{dim}]", device=self.device, strict=True)
+
+            load_ok = ok_enc and ok_q and ok_v and ok_pi
+            if not load_ok:
+                # This is the important part: fail fast with a clear message.
+                # (Or set a flag and skip this dimension.)
+                raise RuntimeError(f"SICQL model load failed for dim={dim} (see logs above for shape mismatch)")
 
             model = InContextQModel(
                 encoder=encoder,
@@ -223,3 +232,42 @@ class SICQLScorer(BaseScorer):
         if model is None:
             raise ValueError(f"Model for dimension '{dimension}' not loaded.")
         return model
+
+
+def _peek_shapes(sd: Dict[str, Any], keys: Tuple[str, ...]) -> Dict[str, Tuple[int, ...]]:
+    out = {}
+    for k in keys:
+        v = sd.get(k)
+        if isinstance(v, torch.Tensor):
+            out[k] = tuple(v.shape)
+    return out
+
+def _safe_load(module, path: str, *, name: str, device: str, strict: bool = True) -> bool:
+    """
+    Loads a checkpoint with useful shape logging.
+    Returns True on success, False on RuntimeError (shape mismatch, etc).
+    """
+    sd = torch.load(path, map_location=device)
+
+    # log a few likely keys so we can see in/out dims immediately
+    peek_keys = (
+        "encoder.0.weight", "encoder.0.bias",         # if TextEncoder uses nn.Sequential
+        "model.0.weight", "model.0.bias",             # QHead
+        "net.0.weight", "net.0.bias",                 # VHead
+        "linear.0.weight", "linear.0.bias",           # PolicyHead
+    )
+    peek = _peek_shapes(sd, peek_keys)
+    if peek:
+        log.info("%s shapes=%s ckpt=%s", name, peek, path)
+    else:
+        # fall back: show a couple first keys
+        some = list(sd.keys())[:6]
+        log.info("%s ckpt=%s keys_preview=%s", name, path, some)
+
+    try:
+        module.load_state_dict(sd, strict=strict)
+        log.info("%s loaded ok strict=%s", name, strict)
+        return True
+    except RuntimeError as e:
+        log.warning("%s FAILED to load strict=%s err=%s", name, strict, str(e).splitlines()[0])
+        return False
