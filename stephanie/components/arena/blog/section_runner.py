@@ -1,8 +1,10 @@
 # stephanie/components/arena/blog/section_runner.py
 from __future__ import annotations
+
 from typing import Any, Dict, List, Optional
 
-from stephanie.components.arena.knowledge_arena import KnowledgeArena  # your existing arena :contentReference[oaicite:1]{index=1}
+from stephanie.components.arena.knowledge_arena import \
+    KnowledgeArena  # your existing arena :contentReference[oaicite:1]{index=1}
 
 
 class ArenaBlogSectionRunner:

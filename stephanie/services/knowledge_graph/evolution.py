@@ -1,9 +1,9 @@
 # stephanie/services/knowledge_graph/evolution.py
 from __future__ import annotations
 
+import hashlib
 import json
 import os
-import hashlib
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple

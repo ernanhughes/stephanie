@@ -9,7 +9,8 @@ import torch
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
 from stephanie.scoring.scorable import Scorable
-from stephanie.tools.base_tool import BaseTool  # same interface as EmbeddingTool
+from stephanie.tools.base_tool import \
+    BaseTool  # same interface as EmbeddingTool
 
 log = logging.getLogger(__name__)
 

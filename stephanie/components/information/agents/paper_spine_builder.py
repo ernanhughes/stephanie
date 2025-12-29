@@ -7,15 +7,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from stephanie.components.information.utils.spine_dump import SpineDumper
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.components.information.data import (
-    BoundingBox,
-    DocumentElement,
-    PaperSection,
-    assign_page_ranges_to_semantic_sections,
-    attach_elements_to_sections,
-)
+    BoundingBox, DocumentElement, PaperSection,
+    assign_page_ranges_to_semantic_sections, attach_elements_to_sections)
+from stephanie.components.information.utils.spine_dump import SpineDumper
 from stephanie.scoring.scorable import Scorable
 from stephanie.tools.pdf_tool import extract_page_texts
 from stephanie.tools.smol_docling_tool import SmolDoclingTool
@@ -35,7 +31,7 @@ except ImportError:  # pragma: no cover
 try:  # pragma: no cover
     import torch
     from PIL import Image
-    from transformers import AutoProcessor, AutoModelForVision2Seq
+    from transformers import AutoModelForVision2Seq, AutoProcessor
 except Exception:  # pragma: no cover
     torch = None
     Image = None

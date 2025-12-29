@@ -1,15 +1,15 @@
 # stephanie/tools/smol_docling_tool.py
 from __future__ import annotations
 
-import logging
-from typing import Any, Dict, List, Optional
-import re
 import html
+import logging
+import re
 from inspect import Parameter, signature
+from typing import Any, Dict, List, Optional
 
 import torch
 from PIL import Image
-from transformers import AutoProcessor, AutoModelForVision2Seq
+from transformers import AutoModelForVision2Seq, AutoProcessor
 
 from stephanie.components.information.data import PaperSection
 from stephanie.tools.base_tool import BaseTool
@@ -163,7 +163,8 @@ class SmolDoclingTool(BaseTool):
         - accumulate text blocks under current section
         - fallback: one section per page (if no headings found)
         """
-        from stephanie.components.information.data import PaperSection  # local import to avoid cycles
+        from stephanie.components.information.data import \
+            PaperSection  # local import to avoid cycles
 
         heading_tags = heading_tags or ["section_header", "heading", "title"]
         text_tags = text_tags or ["text", "paragraph", "p"]

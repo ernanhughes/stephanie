@@ -415,6 +415,7 @@ class TinyModel(nn.Module):
 
     def self_test(self, *, device: str = "cpu", n_trials: int = 8) -> dict:
         import math
+
         import torch
 
         self.eval()
@@ -472,16 +473,14 @@ class TinyModel(nn.Module):
                 y = torch.randn(B, y_dim, device=dev)
                 z = torch.randn(B, z_dim, device=dev)
 
-                out = self(x, y, z)  # <-- correct signature
+                logits, halt_logits, z_final, aux = self(x, y, z, return_aux=True)
 
-                # Normalize a score tensor out of your return type
-                if isinstance(out, dict):
-                    s = out.get("score", None) or out.get("score01", None) or out.get("logits", None)
-                else:
-                    s = out
+                if not isinstance(aux, dict):
+                    return {"ok": False, "summary": f"Tiny self_test: expected dict, got {type(aux)}", "details": details}
 
+                s = aux.get("score") 
                 if not torch.is_tensor(s):
-                    return {"ok": False, "summary": f"Tiny self_test: forward returned {type(out)} (no tensor score found)", "details": details}
+                    return {"ok": False, "summary": "Tiny self_test: missing tensor score in aux['score'] or aux['score']", "details": details}
 
                 s = s.float().reshape(-1)
                 if not torch.isfinite(s).all():

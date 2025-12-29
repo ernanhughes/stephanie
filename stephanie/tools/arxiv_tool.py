@@ -1,6 +1,7 @@
 # stephanie/tools/arxiv_tool.py
 from __future__ import annotations
 
+import logging
 import re
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
@@ -10,7 +11,6 @@ from urllib.parse import urlparse
 import arxiv
 import requests
 
-import logging
 log = logging.getLogger(__name__)
 
 

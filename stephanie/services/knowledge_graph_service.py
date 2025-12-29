@@ -9,14 +9,17 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from stephanie.services.service_protocol import Service
-from stephanie.services.knowledge_graph.subgraphs.edge_index import JSONLEdgeIndex
-from stephanie.services.knowledge_graph.subgraphs.seed_finder import EmbeddingSeedFinder
-from stephanie.services.knowledge_graph.subgraphs.subgraph_builder import SubgraphBuilder, SubgraphConfig
+from stephanie.services.knowledge_graph.entity_canonicalizer import \
+    EntityCanonicalizer
 from stephanie.services.knowledge_graph.graph_indexer import GraphIndexer
-from stephanie.services.knowledge_graph.entity_canonicalizer import EntityCanonicalizer
+from stephanie.services.knowledge_graph.subgraphs.edge_index import \
+    JSONLEdgeIndex
+from stephanie.services.knowledge_graph.subgraphs.seed_finder import \
+    EmbeddingSeedFinder
+from stephanie.services.knowledge_graph.subgraphs.subgraph_builder import (
+    SubgraphBuilder, SubgraphConfig)
+from stephanie.services.service_protocol import Service
 from stephanie.tools.ner_tool import NerTool
-
 
 log = logging.getLogger(__name__)
 
@@ -240,8 +243,8 @@ class KnowledgeGraphService(Service):
         if self._initialized:
             return
         try:
-            from stephanie.memory.nexus_store import NexusStore
             from stephanie.memory.embedding_store import EmbeddingStore
+            from stephanie.memory.nexus_store import NexusStore
 
             self.nexus_store: NexusStore = self.memory.nexus
             self.embedding_store: EmbeddingStore = self.memory.embedding

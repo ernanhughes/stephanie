@@ -6,8 +6,10 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Set, Tuple
 
-from stephanie.services.knowledge_graph.subgraphs.edge_index import JSONLEdgeIndex, _rel_get
-from stephanie.services.knowledge_graph.subgraphs.seed_finder import EmbeddingSeedFinder
+from stephanie.services.knowledge_graph.subgraphs.edge_index import (
+    JSONLEdgeIndex, _rel_get)
+from stephanie.services.knowledge_graph.subgraphs.seed_finder import \
+    EmbeddingSeedFinder
 
 
 @dataclass(frozen=True)

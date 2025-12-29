@@ -3,9 +3,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from typing import Any, List
 
-import logging
 log = logging.getLogger(__name__)
 
 def _hash(data: bytes, algo: str = "sha256") -> str:

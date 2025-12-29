@@ -10,8 +10,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.components.information.data import (PaperReferenceGraph,
-                                                   PaperSection,
-                                                   PaperReferenceRecord)
+                                                   PaperReferenceRecord,
+                                                   PaperSection)
 from stephanie.components.information.tasks.paper_import_task import \
     PaperImportTask
 from stephanie.components.information.tasks.reference_graph_task import (

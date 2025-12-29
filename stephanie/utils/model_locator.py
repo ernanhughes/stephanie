@@ -10,8 +10,8 @@ import torch
 from joblib import load
 
 from stephanie.scoring.model.ebt_model import EBTModel
-from stephanie.scoring.model.incontext_q_model import InContextQModel
 from stephanie.scoring.model.mrq_model import MRQModel
+from stephanie.scoring.model.sicql import InContextQModel
 from stephanie.scoring.model.text_encoder import TextEncoder
 from stephanie.scoring.model.value_predictor import ValuePredictor
 

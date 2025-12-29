@@ -1,6 +1,8 @@
 # stephanie/training/hrm_trainer.py
 from __future__ import annotations
 
+import logging
+
 import numpy as np
 import torch
 import torch.nn as nn
@@ -10,8 +12,6 @@ from torch.utils.data import DataLoader, TensorDataset
 from stephanie.scoring.model.hrm_model import HRMModel  # Import the model
 from stephanie.scoring.training.base_trainer import \
     BaseTrainer  # Assuming this exists or adapt
-
-import logging
 
 log = logging.getLogger(__name__)
 

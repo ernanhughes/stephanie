@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import torch
-from transformers import AutoProcessor, AutoModelForVision2Seq  # may vary per model
+from transformers import (AutoModelForVision2Seq,  # may vary per model
+                          AutoProcessor)
+
 
 class HFVLMMixin:
     def _select_device(self) -> str:

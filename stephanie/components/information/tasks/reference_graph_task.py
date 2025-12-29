@@ -8,8 +8,8 @@ from typing import Dict, List, Optional, Protocol
 
 from stephanie.components.information.data import (PaperNode,
                                                    PaperReferenceGraph,
-                                                   ReferenceEdge,
-                                                   PaperReferenceRecord)
+                                                   PaperReferenceRecord,
+                                                   ReferenceEdge)
 from stephanie.components.information.tasks.paper_import_task import (
     PaperImportResult, PaperImportTask)
 

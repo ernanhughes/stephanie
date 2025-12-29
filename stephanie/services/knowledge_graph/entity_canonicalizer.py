@@ -1,6 +1,8 @@
 # stephanie/services/knowledge_graph/entity_canonicalizer.py
 import re
+
 from stephanie.utils.hash_utils import hash_text
+
 
 class EntityCanonicalizer:
     @staticmethod

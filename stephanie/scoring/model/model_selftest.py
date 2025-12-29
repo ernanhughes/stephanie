@@ -1,10 +1,10 @@
 # stephanie/scoring/model/model_selftest.py
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Any, Dict, Callable, List
-
 import math
+from dataclasses import dataclass
+from typing import Any, Callable, Dict, List
+
 import torch
 
 

@@ -10,7 +10,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import requests
 
-from stephanie.components.information.data import PaperNode, PaperReferenceRecord
+from stephanie.components.information.data import (PaperNode,
+                                                   PaperReferenceRecord)
 from stephanie.memory.paper_store import PaperStore
 from stephanie.tools.arxiv_tool import fetch_arxiv_metadata
 from stephanie.tools.pdf_tool import PDFConverter

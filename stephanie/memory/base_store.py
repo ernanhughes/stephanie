@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional, Type
 
@@ -7,7 +8,6 @@ from sqlalchemy import func
 from sqlalchemy.orm import sessionmaker
 
 from stephanie.utils.db_scope import retry, session_scope
-import logging
 
 log = logging.getLogger(__name__)
 

@@ -7,15 +7,15 @@ import json
 import logging
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Protocol, Optional, Sequence, Tuple
+from typing import (Any, Callable, Dict, List, Optional, Protocol, Sequence,
+                    Tuple)
 
 import torch
 
 from stephanie.data.score_bundle import ScoreBundle
 from stephanie.scoring.model.model_locator_mixin import ModelLocatorMixin
 from stephanie.scoring.scorable import Scorable
-from stephanie.scoring.scorer.model_health import ModelHealthLogger, LoadAudit
-
+from stephanie.scoring.scorer.model_health import LoadAudit, ModelHealthLogger
 
 log = logging.getLogger(__name__)
 

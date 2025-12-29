@@ -1,6 +1,7 @@
 # stephanie/components/arena/blog/synthesizer.py
 from __future__ import annotations
-from typing import Any, Dict, List, Optional, Callable
+
+from typing import Any, Callable, Dict, List, Optional
 
 
 class SectionSynthesizer:

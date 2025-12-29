@@ -7,7 +7,8 @@ from typing import Any, Dict, Optional
 import torch
 
 from stephanie.scoring.scorable import Scorable
-from stephanie.tools.base_tool import BaseTool  # same interface as EmbeddingTool
+from stephanie.tools.base_tool import \
+    BaseTool  # same interface as EmbeddingTool
 
 log = logging.getLogger(__name__)
 

@@ -6,17 +6,17 @@ import os
 from typing import Any, Dict, List
 
 import torch
+import torch.nn.functional as F
 
 from stephanie.constants import GOAL, GOAL_TEXT
 from stephanie.data.score_bundle import ScoreBundle
 from stephanie.data.score_result import ScoreResult
+from stephanie.scoring.analysis.trace_tap import TraceTap
 from stephanie.scoring.model.hrm_model import HRMModel
 from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.scorer.base_scorer import BaseScorer
 from stephanie.scoring.scorer.model_health import LoadAudit
 from stephanie.utils.file_utils import load_json  # To load meta file
-from stephanie.scoring.analysis.trace_tap import TraceTap
-import torch.nn.functional as F
 
 log = logging.getLogger(__name__)
 

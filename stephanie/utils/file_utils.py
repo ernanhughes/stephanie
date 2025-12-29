@@ -11,8 +11,8 @@ import tempfile
 from datetime import datetime
 from pathlib import Path
 
-from omegaconf import OmegaConf
 import yaml
+from omegaconf import OmegaConf
 
 from stephanie.data.plan_trace import ExecutionStep, PlanTrace
 
@@ -63,11 +63,12 @@ def save_yaml_result(log_path: str, result: dict):
 
 
 def default_serializer(obj):
-    import numpy as np
-    from dataclasses import is_dataclass, asdict
+    from dataclasses import asdict, is_dataclass
+    from datetime import date, datetime
     from enum import Enum
     from pathlib import Path
-    from datetime import datetime, date
+
+    import numpy as np
 
     if isinstance(obj, (datetime, date)):
         return obj.isoformat()

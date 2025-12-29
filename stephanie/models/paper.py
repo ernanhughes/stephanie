@@ -1,8 +1,8 @@
 # stephanie/models/paper.py
 from __future__ import annotations
 
-from sqlalchemy import (Column, DateTime, Float, ForeignKey, Index,
-                        Integer, String, Text, UniqueConstraint)
+from sqlalchemy import (Column, DateTime, Float, ForeignKey, Index, Integer,
+                        String, Text, UniqueConstraint)
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func

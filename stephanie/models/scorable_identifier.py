@@ -1,10 +1,12 @@
 # stephanie/models/identifier.py
 from __future__ import annotations
 
-from sqlalchemy import Column, DateTime, Integer, String, Text, UniqueConstraint
+from sqlalchemy import (Column, DateTime, Integer, String, Text,
+                        UniqueConstraint)
 from sqlalchemy.sql import func
 
-from stephanie.models.base import Base  # adjust to your declarative Base import
+from stephanie.models.base import \
+    Base  # adjust to your declarative Base import
 
 
 class ScorableIdentifierORM(Base):

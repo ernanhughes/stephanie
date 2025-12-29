@@ -1,10 +1,9 @@
 # stephanie/scoring/scorer/model_health.py
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import Any, Dict, Optional, Sequence
-
-import logging
 
 from stephanie.utils.hash_utils import hash_dict
 

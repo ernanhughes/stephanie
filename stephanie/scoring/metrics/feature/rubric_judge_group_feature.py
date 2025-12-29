@@ -4,7 +4,8 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List, Optional
 
-from stephanie.scoring.metrics.feature.base_group_feature import BaseGroupFeature
+from stephanie.scoring.metrics.feature.base_group_feature import \
+    BaseGroupFeature
 from stephanie.tools.rubric_judge_tool import RubricJudgeTool
 
 log = logging.getLogger(__name__)

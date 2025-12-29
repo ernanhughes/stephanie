@@ -3,8 +3,8 @@ from __future__ import annotations
 
 import argparse
 import subprocess
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
 
 
 def run(cmd: list[str], cwd: Path) -> str:

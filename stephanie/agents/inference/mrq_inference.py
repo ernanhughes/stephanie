@@ -9,12 +9,10 @@ import torch.nn.functional as F
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.data.score_bundle import ScoreBundle
 from stephanie.data.score_result import ScoreResult
-from stephanie.scoring.model.in_context_q import InContextQModel
 from stephanie.scoring.model.mrq_model import MRQModel
-from stephanie.scoring.model.policy_head import PolicyHead
-from stephanie.scoring.model.q_head import QHead
+from stephanie.scoring.model.sicql import (InContextQModel, PolicyHead, QHead,
+                                           VHead)
 from stephanie.scoring.model.text_encoder import TextEncoder
-from stephanie.scoring.model.v_head import VHead
 from stephanie.scoring.model.value_predictor import ValuePredictor
 from stephanie.scoring.scorable import ScorableFactory, ScorableType
 from stephanie.scoring.transforms.regression_tuner import RegressionTuner
@@ -37,7 +35,7 @@ class MRQInferenceAgent(BaseAgent):
         self.embedding_type = self.memory.embedding.name
         self.dimensions = cfg.get("dimensions", [])
         self.models = {}
-        self.model_meta = {} 
+        self.model_meta = {}
         self.tuners = {}
 
         self.logger.log(

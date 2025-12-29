@@ -1,11 +1,14 @@
 # stephanie/components/arena/blog/paper_blog_pipeline.py
 from __future__ import annotations
+
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
-from stephanie.components.arena.blog.section_runner import ArenaBlogSectionRunner
+from stephanie.components.arena.blog.section_runner import \
+    ArenaBlogSectionRunner
 from stephanie.components.arena.blog.synthesizer import SectionSynthesizer
-from stephanie.components.arena.sources.paper_sections import PaperSectionCandidateSource, PaperSectionRef
+from stephanie.components.arena.sources.paper_sections import (
+    PaperSectionCandidateSource, PaperSectionRef)
 
 
 @dataclass

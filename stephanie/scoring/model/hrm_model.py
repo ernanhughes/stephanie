@@ -27,12 +27,12 @@ Date: 2024
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, Optional, Tuple
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
 from stephanie.scoring.analysis.trace_tap import TraceTap
 
 log = logging.getLogger(__name__)
@@ -451,7 +451,8 @@ class HRMModel(nn.Module):
         - exploding temperature
         - collapsed latents (zH/zL near 0)
         """
-        from stephanie.scoring.model.model_selftest import ModelSelfTest, summarize_selftest
+        from stephanie.scoring.model.model_selftest import (ModelSelfTest,
+                                                            summarize_selftest)
 
         input_dim = int(getattr(self, "input_dim", 0) or getattr(self, "cfg", {}).get("input_dim", 0) or 0)
         if input_dim <= 0:

@@ -9,10 +9,11 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy import insert
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
-from stephanie.models.paper import (PaperORM, PaperReferenceGraphSnapshotORM, PaperReferenceORM,
-                                    PaperRunComparisonORM, PaperRunEventORM,
-                                    PaperRunFeatureORM, PaperRunORM,
-                                    PaperSectionORM, PaperSimilarORM)
+from stephanie.models.paper import (PaperORM, PaperReferenceGraphSnapshotORM,
+                                    PaperReferenceORM, PaperRunComparisonORM,
+                                    PaperRunEventORM, PaperRunFeatureORM,
+                                    PaperRunORM, PaperSectionORM,
+                                    PaperSimilarORM)
 
 
 def sha256_bytes(b: bytes) -> str:
