@@ -18,6 +18,11 @@ universal_scorer:
     # - ebt
     # - contrastive_ranker
 
+  target_types:
+    - conversation_turn
+    # - document
+    # - case_scorable
+
   include_ranking: true
   rank_top_k: 5
 
@@ -27,9 +32,6 @@ universal_scorer:
     - faithfulness
     - knowledge
     - reasoning
-
-  target_types:
-    - case_scorable
 
   dimension_config:
     alignment:

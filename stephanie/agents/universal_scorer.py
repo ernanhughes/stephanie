@@ -50,11 +50,6 @@ class UniversalScorerAgent(BaseAgent):
         self.target_types = cfg.get(
             "target_types",
             [
-                ScorableType.DOCUMENT,
-                ScorableType.CARTRIDGE,
-                ScorableType.THEOREM,
-                ScorableType.TRIPLE,
-                ScorableType.CASE_SCORABLE,
                 ScorableType.CONVERSATION_TURN
             ],
         )
