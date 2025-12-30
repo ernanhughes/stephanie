@@ -10,9 +10,9 @@ import torch.nn.functional as F
 from stephanie.constants import GOAL, GOAL_TEXT
 from stephanie.data.score_bundle import ScoreBundle
 from stephanie.data.score_result import ScoreResult
-from stephanie.scoring.model.sicql import (InContextQModel, PolicyHead, QHead,
+from stephanie.model.sicql import (InContextQModel, PolicyHead, QHead,
                                            VHead)
-from stephanie.scoring.model.text_encoder import TextEncoder
+from stephanie.model.text_encoder import TextEncoder
 from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.scorer.base_scorer import BaseScorer
 from stephanie.scoring.transforms.regression_tuner import RegressionTuner

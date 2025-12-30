@@ -9,8 +9,8 @@ import torch.nn.functional as F
 
 from stephanie.dataloaders import ARMDataLoader
 from stephanie.evaluator.base import BaseEvaluator
-from stephanie.scoring.model.text_encoder import TextEncoder
-from stephanie.scoring.model.value_predictor import ValuePredictor
+from stephanie.model.text_encoder import TextEncoder
+from stephanie.model.value_predictor import ValuePredictor
 
 
 class ARMReasoningSelfEvaluator(BaseEvaluator):

@@ -30,7 +30,7 @@ import torch.nn.functional as F
 from torch import optim
 from torch.utils.data import DataLoader, TensorDataset
 
-from stephanie.scoring.model.tiny import TinyModel
+from stephanie.model.tiny import TinyModel
 from stephanie.scoring.training.base_trainer import BaseTrainer
 
 try:

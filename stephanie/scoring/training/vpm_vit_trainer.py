@@ -14,7 +14,7 @@ from PIL import Image
 from torch.utils.data import DataLoader, Dataset
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.scoring.model.vpm_vit import VPMViT
+from stephanie.model.vpm_vit import VPMViT
 
 
 # Optional viz service (safe to no-op if missing)

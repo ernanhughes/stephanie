@@ -13,9 +13,9 @@ from torch.utils.data import DataLoader, TensorDataset
 from tqdm import tqdm
 
 from stephanie.orm.belief_cartridge import BeliefCartridgeORM
-from stephanie.scoring.model.sicql import (InContextQModel, PolicyHead, QHead,
+from stephanie.model.sicql import (InContextQModel, PolicyHead, QHead,
                                            VHead)
-from stephanie.scoring.model.text_encoder import TextEncoder
+from stephanie.model.text_encoder import TextEncoder
 from stephanie.scoring.scorable import ScorableFactory, ScorableType
 from stephanie.scoring.training.base_trainer import BaseTrainer
 from stephanie.scoring.transforms.regression_tuner import RegressionTuner

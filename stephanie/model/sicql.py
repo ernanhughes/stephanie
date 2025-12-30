@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 from torch.nn import Linear, ReLU
 
-from stephanie.scoring.model.text_encoder import TextEncoder
+from stephanie.model.text_encoder import TextEncoder
 
 
 import hashlib

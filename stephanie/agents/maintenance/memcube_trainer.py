@@ -5,7 +5,7 @@ from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.maintenance.srft_refinement_trainer import \
     SRFTRefinementTrainer
 from stephanie.agents.mixins.memcube_trainer_mixin import MemCubeTrainerMixin
-from stephanie.scoring.model.ebt_model import EBTModel
+from stephanie.model.ebt_model import EBTModel
 
 
 class MemCubeTrainerAgent(BaseAgent, MemCubeTrainerMixin):

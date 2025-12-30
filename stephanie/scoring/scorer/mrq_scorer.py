@@ -25,9 +25,9 @@ import torch
 from stephanie.constants import GOAL, GOAL_TEXT
 from stephanie.data.score_bundle import ScoreBundle
 from stephanie.data.score_result import ScoreResult
-from stephanie.scoring.model.mrq_model import MRQModel
-from stephanie.scoring.model.text_encoder import TextEncoder
-from stephanie.scoring.model.value_predictor import ValuePredictor
+from stephanie.model.mrq_model import MRQModel
+from stephanie.model.text_encoder import TextEncoder
+from stephanie.model.value_predictor import ValuePredictor
 from stephanie.scoring.scorer.base_scorer import BaseScorer
 from stephanie.scoring.transforms.regression_tuner import RegressionTuner
 from stephanie.utils.file_utils import load_json

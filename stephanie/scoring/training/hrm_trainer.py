@@ -9,7 +9,7 @@ import torch.nn as nn
 from torch.optim import AdamW  # As recommended by HRM paper
 from torch.utils.data import DataLoader, TensorDataset
 
-from stephanie.scoring.model.hrm_model import HRMModel  # Import the model
+from stephanie.model.hrm_model import HRMModel  # Import the model
 from stephanie.scoring.training.base_trainer import \
     BaseTrainer  # Assuming this exists or adapt
 

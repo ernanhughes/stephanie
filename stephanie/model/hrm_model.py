@@ -451,7 +451,7 @@ class HRMModel(nn.Module):
         - exploding temperature
         - collapsed latents (zH/zL near 0)
         """
-        from stephanie.scoring.model.model_selftest import (ModelSelfTest,
+        from stephanie.model.model_selftest import (ModelSelfTest,
                                                             summarize_selftest)
 
         input_dim = int(getattr(self, "input_dim", 0) or getattr(self, "cfg", {}).get("input_dim", 0) or 0)

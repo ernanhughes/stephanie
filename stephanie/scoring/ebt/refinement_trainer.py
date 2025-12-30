@@ -12,7 +12,7 @@ from torch.utils.data import DataLoader, Dataset
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.mixins.ebt_mixin import EBTMixin
-from stephanie.scoring.model.ebt_model import EBTModel
+from stephanie.model.ebt_model import EBTModel
 from stephanie.scoring.transforms.regression_tuner import RegressionTuner
 from stephanie.utils.file_utils import save_json
 from stephanie.utils.model_utils import get_model_path

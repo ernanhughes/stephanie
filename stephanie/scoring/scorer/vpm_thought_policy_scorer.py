@@ -7,7 +7,7 @@ import torch
 
 from stephanie.data.score_bundle import ScoreBundle
 from stephanie.data.score_result import ScoreResult
-from stephanie.scoring.model.vpm_thought_policy import (VPMThoughtModelConfig,
+from stephanie.model.vpm_thought_policy import (VPMThoughtModelConfig,
                                                         VPMThoughtPolicy)
 from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.scorer.base_scorer import BaseScorer

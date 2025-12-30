@@ -11,7 +11,7 @@ from torch import optim
 from torch.utils.data import DataLoader, TensorDataset, random_split
 
 from stephanie.scoring.calibration import ScoreCalibrator
-from stephanie.scoring.model.knowledge import KnowledgeModel
+from stephanie.model.knowledge import KnowledgeModel
 from stephanie.scoring.training.base_trainer import BaseTrainer
 from stephanie.scoring.transforms.regression_tuner import RegressionTuner
 

@@ -9,11 +9,11 @@ from typing import Dict
 import torch
 from joblib import load
 
-from stephanie.scoring.model.ebt_model import EBTModel
-from stephanie.scoring.model.mrq_model import MRQModel
-from stephanie.scoring.model.sicql import InContextQModel
-from stephanie.scoring.model.text_encoder import TextEncoder
-from stephanie.scoring.model.value_predictor import ValuePredictor
+from stephanie.model.ebt_model import EBTModel
+from stephanie.model.mrq_model import MRQModel
+from stephanie.model.sicql import InContextQModel
+from stephanie.model.text_encoder import TextEncoder
+from stephanie.model.value_predictor import ValuePredictor
 
 
 class ModelLocator:

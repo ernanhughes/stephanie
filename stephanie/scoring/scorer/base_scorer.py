@@ -2,18 +2,14 @@
 from __future__ import annotations
 
 import abc
-import hashlib
-import json
 import logging
 from collections.abc import Mapping
-from dataclasses import dataclass
-from typing import (Any, Callable, Dict, List, Optional, Protocol, Sequence,
-                    Tuple)
+from typing import (Any, Dict, List, Optional, Protocol)
 
 import torch
 
 from stephanie.data.score_bundle import ScoreBundle
-from stephanie.scoring.model.model_locator_mixin import ModelLocatorMixin
+from stephanie.model.model_locator_mixin import ModelLocatorMixin
 from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.scorer.model_health import LoadAudit, ModelHealthLogger
 
