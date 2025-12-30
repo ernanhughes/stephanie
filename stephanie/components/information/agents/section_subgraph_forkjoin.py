@@ -1,3 +1,4 @@
+# stephanie/components/information/agents/section_subgraph_forkjoin.py
 from __future__ import annotations
 
 import asyncio
@@ -256,7 +257,7 @@ class SectionSubgraphForkJoinAgent:
         # allow cfg override, default to your standard location
         run_dir = self.cfg.get("run_dir")
         if run_dir:
-            # user may already have interpolated ${run_id} at config-time
+            # user may already have interpolated ${runtime.run_id} at config-time
             return str(run_dir)
         return f"runs/paper_blogs/{run_id}"
 

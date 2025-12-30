@@ -1,0 +1,10 @@
+paper_graph_linker:
+  name: paper_graph_linker
+  _target_: stephanie.components.information.agents.paper_graph_linker_agent.PaperGraphLinkerAgent
+  run_dir: "runs/paper_blogs/${runtime.run_id}"
+  filename: "paper_graph.json"
+  similarity:
+    top_k: 8
+    min_sim: 0.40
+  enable_citations: false
+  enable_entity_overlap: false

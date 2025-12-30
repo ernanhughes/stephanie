@@ -1,7 +1,6 @@
 # stephanie/components/information/agents/paper_pipeline.py
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 import re
@@ -12,8 +11,6 @@ from stephanie.agents.base_agent import BaseAgent
 from stephanie.components.information.data import (PaperReferenceGraph,
                                                    PaperReferenceRecord,
                                                    PaperSection)
-from stephanie.components.information.tasks.paper_import_task import \
-    PaperImportTask
 from stephanie.components.information.tasks.reference_graph_task import (
     ReferenceGraphTask, ReferenceProvider, SimilarPaperProvider)
 from stephanie.components.information.tasks.section_build_task import (
@@ -25,6 +22,7 @@ from stephanie.memory.paper_store import PaperStore
 from stephanie.orm.paper import PaperORM
 from stephanie.scoring.scorable import Scorable, ScorableType
 from stephanie.tools.huggingface_tool import recommend_similar_papers
+from stephanie.tools.paper_import_tool import PaperImportTool
 from stephanie.tools.summarization_tool import SummarizationTool
 
 log = logging.getLogger(__name__)
@@ -37,11 +35,11 @@ log = logging.getLogger(__name__)
 
 class LocalJsonReferenceProvider(ReferenceProvider):
     """
-    Reference provider that reads the references your PaperImportTask
+    Reference provider that reads the references your PaperImportTool has
     already extracted and saved as `papers_root/<key>/references.json`.
 
     This means:
-      - PaperImportTask remains the *only* place that parses PDFs
+      - PaperImportTool remains the *only* place that parses PDFs
       - The graph/task code just consumes the structured JSON
     """
 
@@ -206,6 +204,9 @@ class PaperPipelineAgent(BaseAgent):
         # populated by _load_texts_for_graph so we know which Document
         # corresponds to which arxiv_id
         self._doc_by_arxiv: Dict[str, Any] = {}
+        self.import_tool = PaperImportTool(
+            self.cfg, self.memory, self.container, self.logger
+        )
 
     async def run(self, context: Dict[str, Any]) -> Dict[str, Any]:
         # ------------------------------------------------------------------
@@ -237,13 +238,9 @@ class PaperPipelineAgent(BaseAgent):
             self._get_similar_provider()
         )
 
-        import_task = PaperImportTask(
-            self.cfg, self.memory, self.container, self.logger
-        )
-
         graph_task = ReferenceGraphTask(
             papers_root=papers_root,
-            import_task=import_task,
+            import_tool=self.import_tool,
             ref_provider=ref_provider,
             similar_provider=sim_provider,
         )
@@ -393,10 +390,6 @@ class PaperPipelineAgent(BaseAgent):
             "PaperPipeline: cache hit %d/%d papers", len(texts), len(arxiv_ids)
         )
 
-        import_task = PaperImportTask(
-            self.cfg, self.memory, self.container, self.logger
-        )
-
         for arxiv_id, node in graph.nodes.items():
             # 1) Try to reuse stored Paper if available
             paper = self.paper_store.get_by_id(arxiv_id)
@@ -411,7 +404,7 @@ class PaperPipelineAgent(BaseAgent):
             # 2) If no stored text, import the paper
             if text is None:
                 try:
-                    res = await import_task.run(
+                    res = await self.import_tool.import_paper(
                         arxiv_id=arxiv_id,
                         role=getattr(node, "role", None),
                     )

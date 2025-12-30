@@ -1,11 +1,19 @@
+# stephanie/components/information/agents/paper_graph_linker.py
+from __future__ import annotations
 import re
 import hashlib
-from typing import Any, Dict, List, Optional, Sequence, Tuple
-from stephanie.components.information.data import GraphEdge, GraphNode, PaperGraphABI
+from typing import Any, Dict, List, Optional, Sequence
+from pathlib import Path
+from stephanie.components.information.graph.paper_graph_abi import GraphEdge, GraphNode, PaperGraphABI
 from stephanie.components.information.graph.paper_graph_dumper import PaperGraphDumper
+from stephanie.agents.base_agent import BaseAgent
+from stephanie.components.information.tasks.section_link_task import SectionLinkTask
 
 from stephanie.scoring.scorable import Scorable
+from stephanie.components.information.data import PaperSection
 import logging
+
+from stephanie.tools.pdf_tool import PDFConverter
 
 log = logging.getLogger(__name__)
 
@@ -25,21 +33,6 @@ def _clean_ws(s: str) -> str:
     s = re.sub(r"[ \t]+", " ", s)
     s = re.sub(r"\n{3,}", "\n\n", s)
     return s.strip()
-
-
-def _extract_pdf_text(pdf_path: str, max_pages: Optional[int] = None) -> str:
-    if fitz is None:
-        return ""
-    doc = fitz.open(pdf_path)
-    n = doc.page_count
-    if max_pages is not None:
-        n = min(n, int(max_pages))
-    parts: List[str] = []
-    for i in range(n):
-        page = doc.load_page(i)
-        parts.append(page.get_text("text") or "")
-    return "\n".join(parts)
-
 
 def _find_references_block(full_text: str) -> str:
     """
@@ -184,6 +177,52 @@ class BaseSectionLinker:
     ) -> List[GraphEdge]:
         raise NotImplementedError
 
+class SemanticKNNLinker(BaseSectionLinker):
+    """
+    Wraps your existing SectionLinkTask and converts SectionMatch -> GraphEdge.
+    """
+    name = "semantic_knn"
+
+    def __init__(self, *, top_k: int, min_sim: float, embed_model: Optional[str] = None) -> None:
+        self.top_k = int(top_k)
+        self.min_sim = float(min_sim)
+        self.embed_model = embed_model
+
+    def link(
+        self,
+        *,
+        root_arxiv_id: str,
+        root_sections: Sequence[PaperSection],
+        corpus_sections: Sequence[PaperSection],
+        context: Dict[str, Any],
+    ) -> List[GraphEdge]:
+        # SectionLinkTask expects a combined list (root + others), with embeddings prepopulated
+        all_sections: List[PaperSection] = list(root_sections) + [s for s in corpus_sections if s.paper_arxiv_id != root_arxiv_id]
+
+        task = SectionLinkTask(root_arxiv_id=root_arxiv_id, top_k=self.top_k, min_sim=self.min_sim)
+        matches, clusters = task.run(all_sections)
+
+        # expose clusters if you want them for reporting
+        context["concept_clusters"] = clusters
+
+        edges: List[GraphEdge] = []
+        for m in matches:
+            edges.append(
+                GraphEdge(
+                    src=f"section:{m.source_section_id}",
+                    dst=f"section:{m.target_section_id}",
+                    type="SIMILAR_SECTION",
+                    weight=float(m.score),
+                    evidence={
+                        "rank": int(m.rank),
+                        "min_sim": float(self.min_sim),
+                        "top_k": int(self.top_k),
+                        "embed_model": self.embed_model,
+                        "reason": m.reason,
+                    },
+                )
+            )
+        return edges
 
 class CitationLinker(BaseSectionLinker):
     """
@@ -303,7 +342,7 @@ class CitationLinker(BaseSectionLinker):
             return {}
 
         try:
-            full_text = _extract_pdf_text(str(pdf_path), max_pages=self.max_pdf_pages)
+            full_text = PDFConverter.pdf_to_text(str(pdf_path))
             ref_block = _find_references_block(full_text)
             bib_map = _parse_numeric_bib_entries(ref_block)
             return bib_map
@@ -337,3 +376,201 @@ class CitationLinker(BaseSectionLinker):
     def _lookup_ref_text(self, bib_index: Any, n: int) -> Optional[str]:
         m = self._coerce_bib_num_map(bib_index)
         return m.get(int(n))
+
+
+class EntityOverlapLinker(BaseSectionLinker):
+    """
+    Stub: cheap grounding edges via entity overlap.
+
+    Expected future inputs:
+      - context["entities_by_section"] = {section_id: ["CLIP","VLM",...]}
+    """
+    name = "entity_overlap"
+
+    def __init__(self, *, min_jaccard: float = 0.2) -> None:
+        self.min_jaccard = float(min_jaccard)
+
+    def link(self, *, root_arxiv_id: str, root_sections: Sequence[PaperSection], corpus_sections: Sequence[PaperSection], context: Dict[str, Any]) -> List[GraphEdge]:
+        return []
+
+
+# -----------------------------
+# Agent
+# -----------------------------
+
+class PaperGraphLinkerAgent(BaseAgent):
+    """
+    Stage: paper_graph_linker
+
+    Inputs (context):
+      - paper_sections: List[PaperSection]   (root paper semantic sections, in order)
+      - section_corpus: List[PaperSection]   (optional: other paper sections with embeddings)
+         OR any of: ["all_sections", "candidate_sections", "nexus_sections"]
+      - paper / paper_arxiv_id: for identity
+    Outputs (context):
+      - paper_graph: dict (ABI)
+      - section_links: list[dict] (flattened edges)
+      - paper_graph_stats: dict
+      - paper_graph_file: path
+    """
+
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg=cfg, memory=memory, container=container, logger=logger)
+
+        self.run_dir = self.cfg.get("run_dir", f"runs/paper_blogs/{self.run_id}")
+        self.filename = self.cfg.get("filename", "paper_graph.json")
+
+        # linkers config
+        sim_cfg = dict(self.cfg.get("similarity", {}) or {})
+        self.sim_top_k = int(sim_cfg.get("top_k", 8))
+        self.sim_min = float(sim_cfg.get("min_sim", 0.40))
+        self.embed_model = sim_cfg.get("embed_model")  # optional metadata string
+
+        self.enable_citations = bool(self.cfg.get("enable_citations", False))
+        self.enable_entity_overlap = bool(self.cfg.get("enable_entity_overlap", False))
+
+        ent_cfg = dict(self.cfg.get("entity_overlap", {}) or {})
+        self.ent_min_jaccard = float(ent_cfg.get("min_jaccard", 0.2))
+
+        self.papers_root = Path(self.cfg.get("papers_root", "data/papers"))
+        self._dumper = PaperGraphDumper(run_dir=self.run_dir)
+
+        self._linkers: List[BaseSectionLinker] = [
+            SemanticKNNLinker(top_k=self.sim_top_k, min_sim=self.sim_min, embed_model=self.embed_model),
+        ]
+        if self.enable_citations:
+            self._linkers.append(CitationLinker())
+        if self.enable_entity_overlap:
+            self._linkers.append(EntityOverlapLinker(min_jaccard=self.ent_min_jaccard))
+
+    async def run(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        root_arxiv_id = context.get("arxiv_id")
+
+        paper_pdf_path = context["paper_pdf_path"] or self.papers_root / f"{root_arxiv_id}/paper.pdf"
+
+        root_sections: List[PaperSection] = list(context.get("paper_sections") or [])
+        if not root_sections:
+            log.warning("PaperGraphLinkerAgent: no paper_sections in context; skipping")
+            return context
+
+        corpus_sections = self._load_section_corpus(context=context, root_arxiv_id=root_arxiv_id)
+
+        # Build nodes
+        nodes: List[GraphNode] = []
+        nodes.append(GraphNode(id=f"paper:{root_arxiv_id}", type="paper", title=context.get("paper_title")))
+
+        # root section nodes
+        for s in root_sections:
+            nodes.append(self._node_from_section(s, root=True))
+
+        # corpus section nodes (only those in other papers)
+        seen_section_ids = {s.id for s in root_sections}
+        for s in corpus_sections:
+            if s.id in seen_section_ids:
+                continue
+            nodes.append(self._node_from_section(s, root=False))
+            seen_section_ids.add(s.id)
+
+        # Link
+        edges: List[GraphEdge] = []
+        for linker in self._linkers:
+            try:
+                new_edges = linker.link(
+                    root_arxiv_id=root_arxiv_id,
+                    root_sections=root_sections,
+                    corpus_sections=corpus_sections,
+                    context=context,
+                )
+                edges.extend(new_edges)
+                log.info("PaperGraphLinkerAgent: linker=%s edges=%d", linker.name, len(new_edges))
+            except Exception:
+                log.exception("PaperGraphLinkerAgent: linker=%s failed", linker.name)
+
+        graph = PaperGraphABI(
+            version="paper_graph_abi_v1",
+            run_id=str(self.run_id),
+            root_arxiv_id=root_arxiv_id,
+            nodes=nodes,
+            edges=edges,
+            stats=self._build_stats(root_sections, corpus_sections, edges),
+        )
+
+        # Dump
+        graph_file = self._dumper.dump(arxiv_id=root_arxiv_id, graph=graph, filename=self.filename)
+
+        # Flatten edges for easy downstream consumption
+        section_links = [e.__dict__ for e in edges]
+
+        context["paper_graph"] = graph.to_dict()
+        context["section_links"] = section_links
+        context["paper_graph_stats"] = graph.stats
+        context["paper_graph_file"] = graph_file
+
+        log.info("PaperGraphLinkerAgent: wrote %s (nodes=%d edges=%d)", graph_file, len(nodes), len(edges))
+        return context
+
+    # -----------------------------
+    # helpers
+    # -----------------------------
+
+    def _resolve_root_arxiv_id(self, context: Dict[str, Any]) -> str:
+        arxiv_id = context.get("arxiv_id")
+        paper = context.get("paper")
+        if isinstance(paper, Scorable):
+            meta = paper.meta or {}
+            arxiv_id = arxiv_id or meta.get("arxiv_id") or meta.get("paper_arxiv_id")
+        return str(arxiv_id or "unknown")
+
+    def _load_section_corpus(self, *, context: Dict[str, Any], root_arxiv_id: str) -> List[PaperSection]:
+        """
+        Best-effort: use corpus already provided by upstream stages.
+        If you want DB-backed loading, add it here (e.g. memory.paper_sections.list_for_run()).
+        """
+        # common keys you might already have
+        for key in ("section_corpus", "all_sections", "candidate_sections", "nexus_sections"):
+            val = context.get(key)
+            if val:
+                try:
+                    sections = list(val)
+                    # Ensure corpus contains non-root too (it can include root; we filter later)
+                    return sections
+                except Exception:
+                    pass
+
+        # fallback: at least root sections so the stage doesn’t crash
+        log.warning("PaperGraphLinkerAgent: no section corpus found in context; similarity edges will be empty")
+        return list(context.get("paper_sections") or [])
+
+    def _node_from_section(self, s: PaperSection, *, root: bool) -> GraphNode:
+        meta = getattr(s, "meta", None) or {}
+        sp = getattr(s, "start_page", None) or meta.get("start_page")
+        ep = getattr(s, "end_page", None) or meta.get("end_page")
+
+        # NOTE: we namespace section node ids to avoid collisions across systems
+        node_id = f"section:{s.id}"
+        return GraphNode(
+            id=node_id,
+            type="section",
+            title=getattr(s, "title", None),
+            paper_id=getattr(s, "paper_arxiv_id", None),
+            section_id=getattr(s, "id", None),
+            start_page=int(sp) if sp is not None else None,
+            end_page=int(ep) if ep is not None else None,
+            meta={
+                "root": bool(root),
+                "section_index": getattr(s, "section_index", None),
+            },
+        )
+
+    def _build_stats(self, root_sections: Sequence[PaperSection], corpus_sections: Sequence[PaperSection], edges: Sequence[GraphEdge]) -> Dict[str, Any]:
+        by_type: Dict[str, int] = {}
+        for e in edges:
+            by_type[e.type] = by_type.get(e.type, 0) + 1
+
+        return {
+            "root_sections": len(root_sections),
+            "corpus_sections": len(corpus_sections),
+            "edges_total": len(edges),
+            "edges_by_type": by_type,
+            "similarity": {"top_k": self.sim_top_k, "min_sim": self.sim_min, "embed_model": self.embed_model},
+        }

@@ -10,8 +10,7 @@ from stephanie.components.information.data import (PaperNode,
                                                    PaperReferenceGraph,
                                                    PaperReferenceRecord,
                                                    ReferenceEdge)
-from stephanie.components.information.tasks.paper_import_task import (
-    PaperImportResult, PaperImportTask)
+from stephanie.tools.paper_import_tool import PaperImportTool, PaperImportResult
 
 log = logging.getLogger(__name__)
 
@@ -52,13 +51,13 @@ class ReferenceGraphTask:
     def __init__(
         self,
         papers_root: Path,
-        import_task: PaperImportTask,
+        import_tool: PaperImportTool,
         ref_provider: ReferenceProvider,
         similar_provider: Optional[SimilarPaperProvider] = None,
         graph_json_name: str = "graph.json",
     ) -> None:
         self.papers_root = Path(papers_root)
-        self.import_task = import_task
+        self.import_tool = import_tool
         self.ref_provider = ref_provider
         self.similar_provider = similar_provider
         self.graph_json_name = graph_json_name
@@ -79,8 +78,11 @@ class ReferenceGraphTask:
         log.info("[ReferenceGraphTask] Building graph for %s in %s", root_arxiv_id, root_dir)
 
         # 1) Import root paper
-        root_import: PaperImportResult = await self.import_task.run(
+        root_import: PaperImportResult = await self.import_tool.import_paper(
             arxiv_id=root_arxiv_id,
+            local_pdf_path=root_dir / "paper.pdf",
+            source="arxiv",
+            force_references=True,
             role="root",
         )
         root_node = root_import.node
@@ -113,7 +115,7 @@ class ReferenceGraphTask:
             node: Optional[PaperNode] = None
 
             try:
-                ref_import = await self.import_task.run(arxiv_id=ref_id, role="reference", force=True)
+                ref_import = await self.import_tool.import_paper(arxiv_id=ref_id, role="reference", force=True)
                 node = ref_import.node
             except Exception as e:
                 log.warning(
@@ -225,7 +227,7 @@ class ReferenceGraphTask:
 
             if aid not in graph_nodes:
                 try:
-                    imp = await self.import_task.run(
+                    imp = await self.import_tool.import_paper(
                         arxiv_id=aid,
                         role="similar_root",
                     )

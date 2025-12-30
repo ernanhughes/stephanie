@@ -13,6 +13,7 @@ defaults:
   - agents/paper_pipeline_report
   - agents/paper_blog_generator
   - agents/paper_spine_builder
+  - agents/paper_graph_linker
   - agents/paper_blog_judge
 
 embeddings:
@@ -105,6 +106,14 @@ pipeline:
         Build a structured spine for the research paper, organizing its
         content into key sections and concepts.
       cls: stephanie.components.information.agents.paper_spine_builder.PaperSpineBuilderAgent
+      enabled: true
+      iterations: 1
+
+    - name: paper_graph_linker
+      description: >
+        Create a graph representation of the paper's content, linking
+        related concepts and sections for better understanding.
+      cls: stephanie.components.information.agents.paper_graph_linker.PaperGraphLinkerAgent
       enabled: true
       iterations: 1
 

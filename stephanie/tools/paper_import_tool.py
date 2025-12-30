@@ -88,7 +88,7 @@ class PaperImportTool:
         *,
         arxiv_id: Optional[str] = None,
         url: Optional[str] = None,
-        local_pdf_path: str | Path = "data/papers",
+        local_pdf_path: str | Path = None,
         role: Optional[str] = "root",
         source: str = "arxiv",
         force: bool = True,
@@ -147,7 +147,7 @@ class PaperImportTool:
             )
         else:
             # 2) Resolve PDF path (local or downloaded)
-            pdf_path = self._resolve_pdf_path(
+            pdf_path = PDFConverter.resolve_pdf_path(
                 paper_dir=paper_dir,
                 paper_id=paper_id,
                 pdf_url=pdf_url,
@@ -435,82 +435,6 @@ class PaperImportTool:
                 self.paper_store.replace_references(arxiv_id, ref_dicts)
             except Exception as e:
                 log.warning("PaperReferenceStore replace_for_paper failed arxiv_id=%s err=%s", arxiv_id, e)
-
-    # -------------------------
-    # PDF + parsing
-    # -------------------------
-
-    def _resolve_pdf_path(
-        self,
-        *,
-        paper_dir: Path,
-        paper_id: str,
-        pdf_url: Optional[str],
-        local_pdf_path: Optional[str | Path],
-        force: bool,
-    ) -> str:
-        if local_pdf_path:
-            p = Path(local_pdf_path)
-            if not p.exists():
-                raise FileNotFoundError(f"local_pdf_path not found: {p}")
-            return str(p)
-
-        pdf_local_path = paper_dir / "paper.pdf"
-        if pdf_local_path.exists() and pdf_local_path.stat().st_size > 0 and not force:
-            return str(pdf_local_path)
-
-        if not pdf_url:
-            raise ValueError(f"No pdf_url and no local_pdf_path for paper_id={paper_id}")
-
-        self._download_pdf(pdf_url, pdf_local_path)
-        return str(pdf_local_path)
-
-    def _download_pdf(self, url: str, out_path: Path) -> bool:
-        """
-        Try to download a PDF to out_path.
-
-        Returns
-        -------
-        bool
-            True  -> download succeeded and file exists at out_path
-            False -> download failed (404, 5xx, network error, etc.)
-        """
-        tmp = out_path.with_suffix(".pdf.part")
-        headers = {"User-Agent": self.user_agent}
-
-        try:
-            with requests.get(url, stream=True, timeout=self.timeout_s, headers=headers) as r:
-                status = r.status_code
-
-                if status == 404:
-                    log.warning("PDF not found (404) at %s; skipping.", url)
-                    return False
-
-                if status != 200:
-                    log.warning(
-                        "Unexpected status %s when downloading PDF from %s; skipping.",
-                        status,
-                        url,
-                    )
-                    return False
-
-                tmp.parent.mkdir(parents=True, exist_ok=True)
-                with open(tmp, "wb") as f:
-                    for chunk in r.iter_content(chunk_size=1024 * 128):
-                        if chunk:
-                            f.write(chunk)
-
-            tmp.replace(out_path)
-            return True
-
-        except requests.RequestException as e:
-            # Network / timeout / connection errors
-            log.warning("Error downloading PDF from %s: %s. Skipping.", url, e)
-            return False
-
-    def _extract_text(self, pdf_path: str) -> str:
-        converter = PDFConverter()
-        return converter.convert_pdf_to_text(Path(pdf_path))
 
     # -------------------------
     # References
