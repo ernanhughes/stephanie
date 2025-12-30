@@ -3,16 +3,14 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import asdict, is_dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
+from stephanie.utils.json_sanitize import json_default
+from stephanie.utils.text_utils import safe_snip
 
+import logging
 
-def _safe_snip(text: Optional[str], n: int) -> Optional[str]:
-    if not text:
-        return None
-    t = re.sub(r"\s+", " ", text).strip()
-    return t[:n] + ("…" if len(t) > n else "")
+log = logging.getLogger(__name__)
 
 
 def _bbox_to_dict(bbox: Any) -> Optional[Dict[str, float]]:
@@ -30,17 +28,6 @@ def _bbox_to_dict(bbox: Any) -> Optional[Dict[str, float]]:
     }
 
 
-def _json_default(o: Any):
-    # Handles dataclasses + Paths safely
-    if isinstance(o, Path):
-        return str(o)
-    if is_dataclass(o):
-        return asdict(o)
-    if hasattr(o, "to_dict") and callable(getattr(o, "to_dict")):
-        return o.to_dict()
-    raise TypeError(f"Not JSON serializable: {type(o)}")
-
-
 class SpineDumper:
     """
     Writes:
@@ -51,7 +38,9 @@ class SpineDumper:
       - spine_preview.md     (quick human scan)
     """
 
-    def __init__(self, *, run_dir: Path, enabled: bool = True, max_text_chars: int = 240) -> None:
+    def __init__(
+        self, *, run_dir: Path, enabled: bool = True, max_text_chars: int = 240
+    ) -> None:
         self.run_dir = Path(run_dir)
         self.enabled = bool(enabled)
         self.max_text_chars = int(max_text_chars)
@@ -80,11 +69,21 @@ class SpineDumper:
         graph = self._build_graph(payload)
 
         out = {}
-        out["spine.json"] = self._write_json(self.run_dir / "spine.json", payload)
-        out["spine_graph.json"] = self._write_json(self.run_dir / "spine_graph.json", graph)
-        out["spine.dot"] = self._write_text(self.run_dir / "spine.dot", self._to_dot(graph))
-        out["spine.mmd"] = self._write_text(self.run_dir / "spine.mmd", self._to_mermaid(graph))
-        out["spine_preview.md"] = self._write_text(self.run_dir / "spine_preview.md", self._to_markdown(payload))
+        out["spine.json"] = self._write_json(
+            self.run_dir / "spine.json", payload
+        )
+        out["spine_graph.json"] = self._write_json(
+            self.run_dir / "spine_graph.json", graph
+        )
+        out["spine.dot"] = self._write_text(
+            self.run_dir / "spine.dot", self._to_dot(graph)
+        )
+        out["spine.mmd"] = self._write_text(
+            self.run_dir / "spine.mmd", self._to_mermaid(graph)
+        )
+        out["spine_preview.md"] = self._write_text(
+            self.run_dir / "spine_preview.md", self._to_markdown(payload)
+        )
 
         return out
 
@@ -109,10 +108,16 @@ class SpineDumper:
                     "title": getattr(s, "title", None),
                     "section_index": getattr(s, "section_index", None),
                     "paper_role": getattr(s, "paper_role", None),
-                    "start_page": getattr(s, "start_page", meta.get("start_page", None)),
-                    "end_page": getattr(s, "end_page", meta.get("end_page", None)),
-                    "text_snip": _safe_snip(getattr(s, "text", None), self.max_text_chars),
-                    "meta_keys": sorted(list(meta.keys()))[:40],
+                    "start_page": getattr(
+                        s, "start_page", meta.get("start_page", None)
+                    ),
+                    "end_page": getattr(
+                        s, "end_page", meta.get("end_page", None)
+                    ),
+                    "text_snip": safe_snip(
+                        getattr(s, "text", None), self.max_text_chars
+                    ),
+                    "meta_keys": sorted(meta.keys())[:40],
                 }
             )
 
@@ -127,8 +132,12 @@ class SpineDumper:
                     "page": getattr(e, "page", None),
                     "bbox": _bbox_to_dict(getattr(e, "bbox", None)),
                     "image_path": getattr(e, "image_path", None),
-                    "caption_snip": _safe_snip(getattr(e, "caption", None), self.max_text_chars),
-                    "text_snip": _safe_snip(getattr(e, "text", None), self.max_text_chars),
+                    "caption_snip": safe_snip(
+                        getattr(e, "caption", None), self.max_text_chars
+                    ),
+                    "text_snip": safe_snip(
+                        getattr(e, "text", None), self.max_text_chars
+                    ),
                     "meta": meta,
                 }
             )
@@ -140,8 +149,12 @@ class SpineDumper:
             elems = getattr(ss, "elements", None) or []
             spine_rows.append(
                 {
-                    "section_id": getattr(sec, "section_id", None) if sec else None,
-                    "section_title": getattr(sec, "title", None) if sec else None,
+                    "section_id": getattr(sec, "section_id", None)
+                    if sec
+                    else None,
+                    "section_title": getattr(sec, "title", None)
+                    if sec
+                    else None,
                     "start_page": getattr(ss, "start_page", None),
                     "end_page": getattr(ss, "end_page", None),
                     "element_ids": [getattr(x, "id", None) for x in elems],
@@ -214,7 +227,13 @@ class SpineDumper:
                 edges.append({"from": sid, "to": eid, "label": "contains"})
 
         # edges: section -> next section (by section_index)
-        sec_ids = [(s.get("section_index"), s.get("section_id") or f"sec:{s.get('section_index')}") for s in payload.get("sections", [])]
+        sec_ids = [
+            (
+                s.get("section_index"),
+                s.get("section_id") or f"sec:{s.get('section_index')}",
+            )
+            for s in payload.get("sections", [])
+        ]
         sec_ids = [(i, sid) for i, sid in sec_ids if i is not None]
         sec_ids.sort(key=lambda x: x[0])
         for (i1, sid1), (i2, sid2) in zip(sec_ids, sec_ids[1:]):
@@ -226,7 +245,12 @@ class SpineDumper:
 
     def _write_json(self, path: Path, obj: Any) -> str:
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(obj, indent=2, ensure_ascii=False, default=_json_default), encoding="utf-8")
+        path.write_text(
+            json.dumps(
+                obj, indent=2, ensure_ascii=False, default=json_default
+            ),
+            encoding="utf-8",
+        )
         return str(path)
 
     def _write_text(self, path: Path, text: str) -> str:
@@ -254,7 +278,7 @@ class SpineDumper:
     def _to_mermaid(self, graph: Dict[str, Any]) -> str:
         # Mermaid IDs can't like ":" reliably; sanitize but keep a map
         def mid(x: str) -> str:
-            return re.sub(r"[^a-zA-Z0-9_]", "_", x)
+            return re.sub(r"\W", "_", x)
 
         id_map = {n["id"]: mid(n["id"]) for n in graph.get("nodes", [])}
         lines = ["flowchart LR"]
@@ -274,16 +298,22 @@ class SpineDumper:
 
     def _to_markdown(self, payload: Dict[str, Any]) -> str:
         paper = payload.get("paper", {})
-        lines = [f"# Spine Preview — {paper.get('arxiv_id','unknown')}", ""]
-        lines.append(f"- Sections: {payload.get('summary', {}).get('num_sections')}")
-        lines.append(f"- Elements: {payload.get('summary', {}).get('num_elements')}")
+        lines = [f"# Spine Preview — {paper.get('arxiv_id', 'unknown')}", ""]
+        lines.append(
+            f"- Sections: {payload.get('summary', {}).get('num_sections')}"
+        )
+        lines.append(
+            f"- Elements: {payload.get('summary', {}).get('num_elements')}"
+        )
         lines.append("")
 
         # Spine list
         for row in payload.get("spine", []):
             title = row.get("section_title") or row.get("section_id")
             lines.append(f"## {title}")
-            lines.append(f"- Pages: {row.get('start_page')} → {row.get('end_page')}")
+            lines.append(
+                f"- Pages: {row.get('start_page')} → {row.get('end_page')}"
+            )
             lines.append(f"- Elements: {row.get('element_count')}")
             for eid in row.get("element_ids", [])[:50]:
                 lines.append(f"  - {eid}")

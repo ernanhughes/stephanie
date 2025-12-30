@@ -15,6 +15,8 @@ import yaml
 from omegaconf import OmegaConf
 
 from stephanie.data.plan_trace import ExecutionStep, PlanTrace
+from stephanie.utils.json_sanitize import dumps_safe
+from pathlib import Path
 
 log = logging.getLogger(__name__)
 
@@ -126,6 +128,14 @@ def get_text_from_file(file_path: str) -> str:
 
 
 def write_text_to_file(path: str, text: str):
+    """
+    save text to a file path
+    
+    :param path: Description
+    :type path: str
+    :param text: Description
+    :type text: str
+    """
     try:
         with open(path, "w", encoding="utf-8") as file:
             file.write(text)
@@ -134,13 +144,13 @@ def write_text_to_file(path: str, text: str):
         log.error(f"❌ Failed to write to {path}: {e}")
 
 
-def save_json(data, path: str):
+def save_json(data, file_path: str):
     """Save data to a JSON file"""
-    import json
-
     try:
+        path = Path(file_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
         with open(path, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=4)
+            f.write(dumps_safe(data, indent=2))
         log.debug(f"✅ Successfully saved JSON to {path}")
     except Exception as e:
         log.error(f"❌ Failed to save JSON to {path}: {e}")

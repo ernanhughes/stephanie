@@ -205,6 +205,13 @@ def safe_slice(t: str, start: int, end: int) -> str:
     return t[start:end]
 
 
+def safe_snip(text: Optional[str], n: int) -> Optional[str]:
+    if not text:
+        return None
+    t = re.sub(r"\s+", " ", text).strip()
+    return t[:n] + ("…" if len(t) > n else "")
+
+
 if __name__ == "__main__":
     # Simple test examples
     test_text = "This is a test. This is only a test! Do you understand?"

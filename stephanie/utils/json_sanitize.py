@@ -118,7 +118,7 @@ def _sanitize_any(obj: Any, *, max_depth: int = 100) -> Any:
         return str(obj)
 
 
-def _json_default(obj: Any):
+def json_default(obj: Any):
     """
     Default hook for json.dumps that mirrors _to_native_scalar behavior and
     gracefully stringifies unknown objects.
@@ -135,9 +135,9 @@ def _json_default(obj: Any):
     # Fallback
     # Ensure all keys are JSON-serializable
     if isinstance(obj, dict):
-        return {str(k): _json_default(v) for k, v in obj.items()}
+        return {str(k): json_default(v) for k, v in obj.items()}
     elif isinstance(obj, list):
-        return [_json_default(x) for x in obj]
+        return [json_default(x) for x in obj]
     elif isinstance(obj, (np.integer, np.int64, np.int32)):
         return int(obj)
     elif isinstance(obj, (np.floating, np.float32, np.float64)):
@@ -161,7 +161,7 @@ def dumps_safe(obj: Any, **kwargs) -> str:
     # Avoid duplicate kwargs by only setting defaults if absent
     kwargs = dict(kwargs)  # copy so we don't mutate caller's dict
     kwargs.setdefault("ensure_ascii", False)
-    kwargs.setdefault("default", _json_default)
+    kwargs.setdefault("default", json_default)
     return json.dumps(sanitized, **kwargs)
 
 def dumps_pretty(obj, **kwargs) -> str:
