@@ -1,4 +1,4 @@
-# stephanie/scoring/model/sicql.py
+# stephanie/model/sicql.py
 from __future__ import annotations
 
 import torch

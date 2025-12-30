@@ -21,7 +21,7 @@ class EBTTrainer(BaseTrainer):
         from torch import nn
         from torch.optim.lr_scheduler import ReduceLROnPlateau
 
-        from stephanie.model.ebt_model import EBTModel
+        from stephanie.model.ebt import EBTModel
 
         model = EBTModel(self.dim, self.hdim, self.num_actions, self.device).to(self.device)
         model.train()

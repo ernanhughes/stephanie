@@ -1,4 +1,4 @@
-# stephanie/scoring/model/model_selftest.py
+# stephanie/model/model_selftest.py
 from __future__ import annotations
 
 import math

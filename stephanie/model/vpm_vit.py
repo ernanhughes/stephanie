@@ -1,4 +1,4 @@
-# stephanie/scoring/model/vpm_vit.py
+# stephanie/model/vpm_vit.py
 from __future__ import annotations
 
 import torch

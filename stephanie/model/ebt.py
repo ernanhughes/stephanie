@@ -1,4 +1,4 @@
-# stephanie/scoring/model/ebt_model.py
+# stephanie/model/ebt.py
 from __future__ import annotations
 
 import torch

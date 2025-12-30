@@ -8,7 +8,7 @@ import torch
 import torch.nn as nn
 from torch.nn.functional import sigmoid
 
-from stephanie.model.ebt_model import EBTModel
+from stephanie.model.ebt import EBTModel
 from stephanie.utils.file_utils import load_json
 from stephanie.utils.model_utils import (discover_saved_dimensions,
                                          get_model_path)

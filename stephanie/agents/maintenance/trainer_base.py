@@ -11,7 +11,7 @@ from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.maintenance.ebt_trainer import EBTDataset
 from stephanie.agents.maintenance.model_evolution_manager import \
     ModelEvolutionManager
-from stephanie.model.ebt_model import EBTModel
+from stephanie.model.ebt import EBTModel
 from stephanie.model.text_encoder import TextEncoder
 from stephanie.model.value_predictor import ValuePredictor
 from stephanie.scoring.training.preference_pair_builder import \

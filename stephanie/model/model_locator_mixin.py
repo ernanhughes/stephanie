@@ -1,4 +1,4 @@
-# stephanie/scoring/model_locator_mixin.py
+# stephanie/model/model_locator_mixin.py
 from __future__ import annotations
 
 import os

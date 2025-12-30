@@ -38,7 +38,7 @@ from time import time
 from typing import Any, Dict, List, Tuple
 
 import numpy as np
-# stephanie/scoring/model/ner_retriever.py
+# stephanie/model/ner_retriever.py
 import torch
 import torch.nn as nn
 import torch.nn.functional as F

@@ -1,4 +1,4 @@
-# experiments/garden_critic_eval.py
+# stephanie/model/garden_critic_eval.py
 from __future__ import annotations
 
 import argparse

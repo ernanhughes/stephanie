@@ -9,7 +9,7 @@ import torch.nn.functional as F
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.data.score_bundle import ScoreBundle
 from stephanie.data.score_result import ScoreResult
-from stephanie.model.mrq_model import MRQModel
+from stephanie.model.mrq import MRQModel
 from stephanie.model.sicql import (InContextQModel, PolicyHead, QHead,
                                            VHead)
 from stephanie.model.text_encoder import TextEncoder

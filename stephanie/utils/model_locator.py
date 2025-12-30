@@ -9,8 +9,8 @@ from typing import Dict
 import torch
 from joblib import load
 
-from stephanie.model.ebt_model import EBTModel
-from stephanie.model.mrq_model import MRQModel
+from stephanie.model.ebt import EBTModel
+from stephanie.model.mrq import MRQModel
 from stephanie.model.sicql import InContextQModel
 from stephanie.model.text_encoder import TextEncoder
 from stephanie.model.value_predictor import ValuePredictor

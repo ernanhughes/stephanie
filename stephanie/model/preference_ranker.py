@@ -1,4 +1,4 @@
-# stephanie/scoring/model/preference_ranker.py
+# stephanie/model/preference_ranker.py
 from __future__ import annotations
 
 import torch

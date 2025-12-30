@@ -12,7 +12,7 @@ from stephanie.constants import GOAL, GOAL_TEXT
 from stephanie.data.score_bundle import ScoreBundle
 from stephanie.data.score_result import ScoreResult
 from stephanie.scoring.analysis.trace_tap import TraceTap
-from stephanie.model.hrm_model import HRMModel
+from stephanie.model.hrm import HRMModel
 from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.scorer.base_scorer import BaseScorer
 from stephanie.scoring.scorer.model_health import LoadAudit

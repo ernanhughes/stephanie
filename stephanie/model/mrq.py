@@ -1,4 +1,4 @@
-# stephanie/scoring/model/mrq_model.py
+# stephanie/model/mrq.py
 from __future__ import annotations
 
 import torch

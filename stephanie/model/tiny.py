@@ -1,5 +1,5 @@
 
-# stephanie/scoring/model/tiny_recursion.py
+# stephanie/model/tiny_recursion.py
 """
 Tiny Recursion Model (Tiny+) - Parameter-Efficient Recursive Neural Architecture
 

@@ -1,4 +1,4 @@
-# stephanie/scoring/mrq/encoder.py
+# stephanie/model/text_encoder.py
 from __future__ import annotations
 
 import torch

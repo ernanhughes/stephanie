@@ -1,3 +1,4 @@
+# stephanie/model/hrm.py
 """
 Hierarchical Reasoning Model (HRM) - Advanced Neural Architecture for Quality Assessment
 

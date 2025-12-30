@@ -1,4 +1,4 @@
-# stephanie/scoring/model/risk_predictor.py
+# stephanie/model/risk_predictor.py
 """
 Calibrated hallucination-risk scoring with per-domain thresholds.
 

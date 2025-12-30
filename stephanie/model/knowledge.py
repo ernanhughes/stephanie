@@ -1,4 +1,4 @@
-# stephanie/scoring/model/knowledge.py
+# stephanie/model/knowledge.py
 from __future__ import annotations
 
 import json
