@@ -119,7 +119,7 @@ class HNetValidationExperiment(BaseAgent):
 
 
 
-    def run(self, context):
+    async def run(self, context):
         """Run the complete HNet validation experiment"""
         try:
             self.logger.log("ExperimentStart", {

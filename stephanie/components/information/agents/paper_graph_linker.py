@@ -74,7 +74,7 @@ class PaperGraphLinkerAgent(BaseAgent):
         if self.enable_entity_overlap:
             self._linkers.append(EntityOverlapLinker(min_jaccard=self.ent_min_jaccard))
 
-    def run(self, context: Dict[str, Any]) -> Dict[str, Any]:
+    async def run(self, context: Dict[str, Any]) -> Dict[str, Any]:
         root_arxiv_id = _norm_pid(context.get("arxiv_id"))
 
         all_sections: List[PaperSection] = list(context.get("paper_sections") or [])
