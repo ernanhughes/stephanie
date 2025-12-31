@@ -10,10 +10,9 @@ from sqlalchemy import insert
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
 from stephanie.orm.paper import (PaperORM, PaperReferenceGraphSnapshotORM,
-                                    PaperReferenceORM, PaperRunComparisonORM,
-                                    PaperRunEventORM, PaperRunFeatureORM,
-                                    PaperRunORM, PaperSectionORM,
-                                    PaperSimilarORM)
+                                 PaperReferenceORM, PaperRunComparisonORM,
+                                 PaperRunEventORM, PaperRunFeatureORM,
+                                 PaperRunORM, PaperSectionORM, PaperSimilarORM)
 
 
 def sha256_bytes(b: bytes) -> str:

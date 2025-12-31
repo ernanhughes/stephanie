@@ -12,8 +12,7 @@ from torch.utils.data import DataLoader, TensorDataset
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.data.plan_trace import PlanTrace
-from stephanie.model.epistemic_trace_encoder import \
-    EpistemicTraceEncoder
+from stephanie.model.epistemic_trace_encoder import EpistemicTraceEncoder
 from stephanie.model.hrm import HRMModel
 from stephanie.model.model_locator_mixin import ModelLocatorMixin
 from stephanie.utils.trace_utils import (get_trace_score_stats,

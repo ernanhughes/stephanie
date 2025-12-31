@@ -7,8 +7,7 @@ import torch
 
 from stephanie.data.score_bundle import ScoreBundle
 from stephanie.data.score_result import ScoreResult
-from stephanie.model.epistemic_trace_encoder import \
-    EpistemicTraceEncoder
+from stephanie.model.epistemic_trace_encoder import EpistemicTraceEncoder
 from stephanie.model.hrm import HRMModel
 from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.scorer.base_scorer import BaseScorer

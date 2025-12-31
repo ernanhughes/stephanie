@@ -7,7 +7,8 @@ from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
-from stephanie.orm.memory_genotype import MemoryEvolutionRunORM, MemoryGenotypeORM
+from stephanie.orm.memory_genotype import (MemoryEvolutionRunORM,
+                                           MemoryGenotypeORM)
 
 
 class MemoryGenotypeStore(BaseSQLAlchemyStore):

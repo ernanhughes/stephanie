@@ -1,19 +1,8 @@
 # stephanie/orm/memory_genotype.py
 from __future__ import annotations
 
-from sqlalchemy import (
-    Column,
-    DateTime,
-    Float,
-    ForeignKey,
-    Integer,
-    JSON,
-    String,
-    Text,
-    UniqueConstraint,
-    Index,
-    func,
-)
+from sqlalchemy import (JSON, Column, DateTime, Float, ForeignKey, Index,
+                        Integer, String, Text, func)
 from sqlalchemy.orm import relationship
 
 from stephanie.orm.base import Base

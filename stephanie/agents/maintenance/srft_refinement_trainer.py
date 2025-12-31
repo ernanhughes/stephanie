@@ -10,8 +10,8 @@ from torch.utils.data import DataLoader
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.mixins.ebt_mixin import EBTMixin
-from stephanie.scoring.ebt.srft_refinement_dataset import SRFTRefinementDataset
 from stephanie.model.ebt import EBTModel
+from stephanie.scoring.ebt.srft_refinement_dataset import SRFTRefinementDataset
 from stephanie.utils.file_utils import save_json
 from stephanie.utils.model_locator import ModelLocator
 

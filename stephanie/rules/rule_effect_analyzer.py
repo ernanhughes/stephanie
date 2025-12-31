@@ -9,7 +9,7 @@ from typing import Optional
 from tabulate import tabulate
 
 from stephanie.orm import (EvaluationORM, EvaluationRuleLinkORM,
-                              PipelineRunORM, RuleApplicationORM)
+                           PipelineRunORM, RuleApplicationORM)
 
 
 class RuleEffectAnalyzer:

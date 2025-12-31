@@ -11,7 +11,7 @@ import imageio.v2 as iio
 import networkx as nx
 import numpy as np
 import torch
-from omegaconf import OmegaConf, DictConfig
+from omegaconf import DictConfig, OmegaConf
 from PIL import Image, ImageDraw
 
 from stephanie.components.nexus.graph.graph_layout import \

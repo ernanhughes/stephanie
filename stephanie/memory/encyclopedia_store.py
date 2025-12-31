@@ -7,7 +7,7 @@ from sqlalchemy import func
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
 from stephanie.orm.encyclopedia import (ConceptGemORM, ConceptORM,
-                                           ConceptQuizORM)
+                                        ConceptQuizORM)
 
 log = logging.getLogger(__name__)
 

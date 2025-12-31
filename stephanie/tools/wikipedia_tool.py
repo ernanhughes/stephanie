@@ -1,10 +1,11 @@
 # stephanie/tools/wikipedia_tool.py
 from __future__ import annotations
 
+import logging
+
 import wikipedia
 
 from stephanie.tools.similar_tool import get_top_k_similar
-import logging
 
 log = logging.getLogger(__name__)
 

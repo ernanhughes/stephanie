@@ -6,7 +6,8 @@ from typing import Any, Dict, List, Optional, Tuple
 from sqlalchemy.exc import IntegrityError
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
-from stephanie.orm.source import SourceCandidateORM, SourceORM, SourceQualityORM
+from stephanie.orm.source import (SourceCandidateORM, SourceORM,
+                                  SourceQualityORM)
 
 
 def _sha256_hex(text: str) -> str:

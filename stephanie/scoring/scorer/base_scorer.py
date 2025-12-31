@@ -4,7 +4,7 @@ from __future__ import annotations
 import abc
 import logging
 from collections.abc import Mapping
-from typing import (Any, Dict, List, Optional, Protocol)
+from typing import Any, Dict, List, Optional, Protocol
 
 import torch
 

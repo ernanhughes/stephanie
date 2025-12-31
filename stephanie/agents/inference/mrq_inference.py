@@ -10,8 +10,7 @@ from stephanie.agents.base_agent import BaseAgent
 from stephanie.data.score_bundle import ScoreBundle
 from stephanie.data.score_result import ScoreResult
 from stephanie.model.mrq import MRQModel
-from stephanie.model.sicql import (InContextQModel, PolicyHead, QHead,
-                                           VHead)
+from stephanie.model.sicql import InContextQModel, PolicyHead, QHead, VHead
 from stephanie.model.text_encoder import TextEncoder
 from stephanie.model.value_predictor import ValuePredictor
 from stephanie.scoring.scorable import ScorableFactory, ScorableType

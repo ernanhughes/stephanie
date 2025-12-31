@@ -1,17 +1,9 @@
 # stephanie/orm/pairrm_ranking.py
 from __future__ import annotations
 
-from sqlalchemy import (
-    Column,
-    DateTime,
-    Float,
-    Integer,
-    JSON,
-    String,
-    UniqueConstraint,
-    Index,
-    func,
-)
+from sqlalchemy import (JSON, Column, DateTime, Float, Index, Integer, String,
+                        UniqueConstraint, func)
+
 from stephanie.orm.base import Base
 
 

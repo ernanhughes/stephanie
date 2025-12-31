@@ -503,20 +503,12 @@ class PaperSpineBuilderAgent(BaseAgent):
     ) -> List[PaperSection]:
         """Build PaperSection list from Docling doctags pages.
 
-        Supports both:
-          - SmolDoclingTool.build_semantic_sections as @staticmethod/classmethod
-          - SmolDoclingTool.build_semantic_sections as instance method
         """
-        fn = getattr(SmolDoclingTool, "build_semantic_sections", None)
-        if fn is None:
-            raise RuntimeError("SmolDoclingTool.build_semantic_sections is not available")
 
-        try:
-            sections = fn(arxiv_id=arxiv_id, paper_role=paper_role, pages=pages, run_id=run_id)
-        except TypeError:
-            tool_cfg = dict(pcfg or {})
-            tool = SmolDoclingTool(cfg=tool_cfg, memory=self.memory, container=self.container, logger=self.logger)
-            sections = tool.build_semantic_sections(arxiv_id=arxiv_id, paper_role=paper_role, pages=pages, run_id=run_id)
+        tool_cfg = self.cfg.get("tool_cfg") or {}
+        tool = SmolDoclingTool(cfg=tool_cfg, memory=self.memory, container=self.container, logger=self.logger)
+        sections = tool.build_semantic_sections(arxiv_id=arxiv_id, paper_role=paper_role, pages=pages, run_id=run_id)
+
 
         if not sections:
             return []

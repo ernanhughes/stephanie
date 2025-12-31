@@ -3,17 +3,14 @@ from __future__ import annotations
 
 import json
 import logging
-from dataclasses import asdict, field
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Iterable, List, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import numpy as np
 
 from stephanie.memory.nexus_store import NexusStore
-from stephanie.orm.nexus import (NexusEdgeORM, NexusMetricsORM,
-                                    NexusScorableORM)
-from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from stephanie.orm.nexus import NexusEdgeORM, NexusMetricsORM, NexusScorableORM
 
 log = logging.getLogger(__name__)
 

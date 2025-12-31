@@ -16,7 +16,6 @@ from omegaconf import OmegaConf
 
 from stephanie.data.plan_trace import ExecutionStep, PlanTrace
 from stephanie.utils.json_sanitize import dumps_safe
-from pathlib import Path
 
 log = logging.getLogger(__name__)
 

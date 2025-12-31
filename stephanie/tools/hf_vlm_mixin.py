@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import torch
-from transformers import (AutoModelForVision2Seq,  # may vary per model
-                          AutoProcessor)
+from transformers import AutoModelForVision2Seq  # may vary per model
+from transformers import AutoProcessor
 
 
 class HFVLMMixin:

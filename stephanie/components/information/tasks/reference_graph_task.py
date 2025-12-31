@@ -10,7 +10,8 @@ from stephanie.components.information.data import (PaperNode,
                                                    PaperReferenceGraph,
                                                    PaperReferenceRecord,
                                                    ReferenceEdge)
-from stephanie.tools.paper_import_tool import PaperImportTool, PaperImportResult
+from stephanie.tools.paper_import_tool import (PaperImportResult,
+                                               PaperImportTool)
 
 log = logging.getLogger(__name__)
 

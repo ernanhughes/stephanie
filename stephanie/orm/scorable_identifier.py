@@ -5,8 +5,7 @@ from sqlalchemy import (Column, DateTime, Integer, String, Text,
                         UniqueConstraint)
 from sqlalchemy.sql import func
 
-from stephanie.orm.base import \
-    Base  # adjust to your declarative Base import
+from stephanie.orm.base import Base  # adjust to your declarative Base import
 
 
 class ScorableIdentifierORM(Base):

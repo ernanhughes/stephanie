@@ -26,8 +26,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Query, aliased, selectinload
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
-from stephanie.orm.chat import (ChatConversationORM, ChatMessageORM,
-                                   ChatTurnORM)
+from stephanie.orm.chat import ChatConversationORM, ChatMessageORM, ChatTurnORM
 from stephanie.scoring.scorable import Scorable, ScorableType
 
 log = logging.getLogger(__name__)

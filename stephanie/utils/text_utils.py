@@ -211,6 +211,14 @@ def safe_snip(text: Optional[str], n: int) -> Optional[str]:
     t = re.sub(r"\s+", " ", text).strip()
     return t[:n] + ("…" if len(t) > n else "")
 
+def clean_ws(s: str) -> str:
+    s = s or ""
+    s = s.replace("\u00ad", "")  # soft hyphen
+    s = re.sub(r"[ \t]+", " ", s)
+    s = re.sub(r"\n{3,}", "\n\n", s)
+    return s.strip()
+
+
 
 if __name__ == "__main__":
     # Simple test examples

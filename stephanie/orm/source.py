@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, Text, UniqueConstraint, Index
+from sqlalchemy import (Column, DateTime, Float, ForeignKey, Index, Integer,
+                        Text, UniqueConstraint)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.sql import func
 

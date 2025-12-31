@@ -9,8 +9,7 @@ from sqlalchemy.orm import joinedload
 from stephanie.data.plan_trace import PlanTrace
 from stephanie.memory.base_store import BaseSQLAlchemyStore
 from stephanie.orm.goal import GoalORM
-from stephanie.orm.plan_trace import (ExecutionStepORM, PlanTraceORM,
-                                         StepRunORM)
+from stephanie.orm.plan_trace import ExecutionStepORM, PlanTraceORM, StepRunORM
 from stephanie.orm.plan_trace_reuse_link import PlanTraceReuseLinkORM
 from stephanie.orm.plan_trace_revision import PlanTraceRevisionORM
 

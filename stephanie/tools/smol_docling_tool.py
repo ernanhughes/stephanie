@@ -138,8 +138,8 @@ class SmolDoclingTool(BaseTool):
             sec_idx += 1
         return sections
 
-    @staticmethod
     def build_semantic_sections(
+        self,
         *,
         arxiv_id: str,
         paper_role: str,
@@ -150,7 +150,7 @@ class SmolDoclingTool(BaseTool):
         min_heading_chars: int = 3,
         merge_small_sections_to_prev_if_under_chars: int = 200,
         fallback_to_page_sections: bool = True,
-    ) -> List[PaperSection]:
+    ) -> List["PaperSection"]:
         """
         Build semantic-ish sections from Docling doctags.
 
@@ -349,7 +349,7 @@ class SmolDoclingTool(BaseTool):
 
         # ---- merge tiny sections into previous (optional) -------------------
         if merge_small_sections_to_prev_if_under_chars and built:
-            merged: List[PaperSection] = []
+            merged: List["PaperSection"] = []
             for sec in built:
                 t = (getattr(sec, "text", None) or "").strip()
                 if merged and len(t) < merge_small_sections_to_prev_if_under_chars:

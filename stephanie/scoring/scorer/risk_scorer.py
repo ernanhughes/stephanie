@@ -7,8 +7,8 @@ from stephanie.constants import GOAL, GOAL_TEXT
 from stephanie.data.score_bundle import ScoreBundle
 from stephanie.data.score_result import ScoreResult
 # Model-layer imports (pure, no infra)
-from stephanie.model.risk_predictor import (
-    DomainCalibratedRiskPredictor, RiskFeaturizer)
+from stephanie.model.risk_predictor import (DomainCalibratedRiskPredictor,
+                                            RiskFeaturizer)
 from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.scorer.base_scorer import BaseScorer
 

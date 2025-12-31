@@ -10,8 +10,8 @@ from sqlalchemy.orm import Session
 from stephanie.memory.base_store import BaseSQLAlchemyStore
 # NOTE: your models live under singular "experiment" per your snippet
 from stephanie.orm.experiment import (ExperimentModelSnapshotORM,
-                                         ExperimentORM, TrialMetricORM,
-                                         TrialORM, VariantORM)
+                                      ExperimentORM, TrialMetricORM, TrialORM,
+                                      VariantORM)
 from stephanie.utils.statistics_utils import (bootstrap_ci, cohens_d,
                                               mann_whitney_u, mean_stdev,
                                               welch_ttest, winsorize)

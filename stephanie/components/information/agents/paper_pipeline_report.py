@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -54,18 +55,14 @@ class PaperPipelineReportAgent(BaseAgent):
 
     async def run(self, context: Dict[str, Any]) -> Dict[str, Any]:
         # ---- inputs from upstream pipeline ----
-        arxiv_id = (
-            context.get("arxiv_id")
-            or context.get("paper_arxiv_id")
-            or context.get("root_arxiv_id")
-            or "unknown"
-        )
+        arxiv_id = context.get("arxiv_id")
 
         graph: Optional[PaperReferenceGraph] = context.get("paper_graph")
         sections: List[PaperSection] = context.get("paper_sections") or []
         matches: List[SectionMatch] = context.get("section_matches") or []
         clusters: List[ConceptCluster] = context.get("concept_clusters") or []
         docs: List[Dict[str, Any]] = context.get("paper_documents") or []
+        graph_json_path = context.get("paper_graph_file")
 
         # cache for preview helpers
         self._last_sections = sections
@@ -97,6 +94,7 @@ class PaperPipelineReportAgent(BaseAgent):
                 arxiv_id=arxiv_id,
             )
             context["paper_graph_json_path"] = graph_json_path
+
 
         # ---- build markdown report ----
         md = self._build_markdown_report(

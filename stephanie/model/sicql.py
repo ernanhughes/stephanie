@@ -1,17 +1,15 @@
 # stephanie/model/sicql.py
 from __future__ import annotations
 
+import hashlib
+import logging
+from typing import Any, Dict, Optional, Tuple
+
 import torch
 import torch.nn as nn
 from torch.nn import Linear, ReLU
 
 from stephanie.model.text_encoder import TextEncoder
-
-
-import hashlib
-import logging
-from typing import Any, Dict, Optional, Tuple
-
 
 log = logging.getLogger(__name__)
 

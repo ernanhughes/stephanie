@@ -8,7 +8,7 @@ from stephanie.memory.base_store import BaseSQLAlchemyStore
 from stephanie.orm.metrics import CriticModelORM  # NEW
 from stephanie.orm.metrics import CriticRunORM  # NEW
 from stephanie.orm.metrics import (MetricDeltaORM, MetricGroupORM,
-                                      MetricVectorORM, MetricVPMORM)
+                                   MetricVectorORM, MetricVPMORM)
 
 
 class MetricStore(BaseSQLAlchemyStore):

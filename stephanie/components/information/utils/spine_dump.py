@@ -28,13 +28,13 @@ Usage:
 from __future__ import annotations
 
 import json
+import logging
 import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
 from stephanie.utils.json_sanitize import json_default
 from stephanie.utils.text_utils import safe_snip
-
-import logging
 
 log = logging.getLogger(__name__)
 

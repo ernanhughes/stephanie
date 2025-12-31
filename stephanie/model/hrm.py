@@ -453,7 +453,7 @@ class HRMModel(nn.Module):
         - collapsed latents (zH/zL near 0)
         """
         from stephanie.model.model_selftest import (ModelSelfTest,
-                                                            summarize_selftest)
+                                                    summarize_selftest)
 
         input_dim = int(getattr(self, "input_dim", 0) or getattr(self, "cfg", {}).get("input_dim", 0) or 0)
         if input_dim <= 0:

@@ -10,7 +10,7 @@ from sqlalchemy import text
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
 from stephanie.orm import (MRQMemoryEntryORM, MRQPreferencePairORM,
-                              ReflectionDeltaORM)
+                           ReflectionDeltaORM)
 
 
 class MRQStore(BaseSQLAlchemyStore):
