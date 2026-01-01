@@ -83,6 +83,10 @@ class PaperImportTool:
     def _pdf_url(self, arxiv_id: str) -> str:
         return f"https://arxiv.org/abs/{arxiv_id}"
     
+
+    def get_pdf_url(self, arxiv_id: str) -> str:
+        return f"https://arxiv.org/pdf/{arxiv_id}.pdf"
+    
     async def import_paper(
         self,
         *,
@@ -175,6 +179,8 @@ class PaperImportTool:
                         paper_id,
                         pdf_path,
                     )
+                    url = pdf_url
+                    PDFConverter.download_pdf(pdf_url, Path(pdf_path))
                     text = ""
                 text_hash = hash_text(text)
 

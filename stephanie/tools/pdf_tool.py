@@ -164,7 +164,7 @@ class PDFConverter:
         return str(pdf_local_path)
 
     @staticmethod
-    def download_pdf(url: str, out_path: Path) -> bool:
+    def download_pdf(url: str, out_path: Path, min_size: int = 1024) -> bool:
         """
         Try to download a PDF to out_path.
 
@@ -172,10 +172,20 @@ class PDFConverter:
         -------
         bool
             True  -> download succeeded and file exists at out_path
-            False -> download failed (404, 5xx, network error, etc.)
+            False -> download failed (404, 5xx, network error, etc.) or file too small
         """
+        # Check if file already exists and has reasonable size
+        if out_path.exists():
+            size = out_path.stat().st_size
+            if size >= min_size:
+                log.info("PDF already exists with sufficient size (%d bytes) at %s", size, out_path)
+                return True
+            else:
+                log.warning("Existing file at %s is too small (%d bytes), will re-download", out_path, size)
+                out_path.unlink()  # Remove the small file
+
         tmp = out_path.with_suffix(".pdf.part")
-        headers = {"User-Agent": "StephanieBot/1.0 (+https://programmer.ie/bot)"}
+        headers = {"User-Agent": "StephanieBot/1.0 (+https://programmer.ie/bot  )"}
 
         try:
             with requests.get(url, stream=True, timeout=30, headers=headers) as r:
@@ -199,6 +209,13 @@ class PDFConverter:
                         if chunk:
                             f.write(chunk)
 
+            # Check size after download
+            downloaded_size = tmp.stat().st_size
+            if downloaded_size < min_size:
+                log.warning("Downloaded file at %s is too small (%d bytes), removing", tmp, downloaded_size)
+                tmp.unlink()
+                return False
+
             tmp.replace(out_path)
             return True
 
@@ -206,7 +223,6 @@ class PDFConverter:
             # Network / timeout / connection errors
             log.warning("Error downloading PDF from %s: %s. Skipping.", url, e)
             return False
-
 
 _converter = PDFConverter()  # module-level singleton; easy to swap in tests
 

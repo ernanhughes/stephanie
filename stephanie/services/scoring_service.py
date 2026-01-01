@@ -252,9 +252,9 @@ class ScoringService(Service):
                 # create a lock for this scorer
                 import threading
                 self._scorer_locks.setdefault(name, threading.Lock())
-                log.info("ScoringServiceScorerConfigRegistered %s", name)
+                log.info("ScoringService Config Registered: %s", name)
             except Exception as e:
-                log.error("ScoringServiceRegisterCfgError %s %s", name, str(e))
+                log.error("Scoring ServiceRegisterCfgError %s %s", name, str(e))
 
     def register_from_cfg(self, names: List[str]) -> None:
         """
