@@ -34,7 +34,7 @@ import os
 import random
 import re
 from datetime import datetime, timedelta
-from time import time
+import time
 from typing import Any, Dict, List, Tuple
 
 import numpy as np
@@ -122,11 +122,43 @@ class EntityDetector:
         model_name: str | None = None,
         labels: list[str] | None = None,
         threshold: float = 0.35,
+        *,
+        max_chars: int = 200_000,
+        chunk_chars: int = 8_000,
+        chunk_overlap: int = 200,
+        max_chunks: int = 64,
+        max_entities: int = 5_000,
+        long_text_side: str = "head",  # head|tail
+        progress_every: int = 1,
+        progress_log_level: str = "info",
+        log_empty_chunks: bool = False,
+        log_entity_samples: int = 0,
     ):
         self.device = device
         self.threshold = float(threshold)
         self.model_name = model_name or "fastino/gliner2-large-v1"
         self.labels = labels or self.DEFAULT_LABELS
+
+        # Safety limits (avoid OOM on very long texts)
+        self.max_chars = int(max_chars) if max_chars else 0
+        self.chunk_chars = int(chunk_chars) if chunk_chars else 0
+        self.chunk_overlap = int(chunk_overlap) if chunk_overlap else 0
+        self.max_chunks = int(max_chunks) if max_chunks else 0
+        self.max_entities = int(max_entities) if max_entities else 0
+        self.long_text_side = (long_text_side or "head").lower().strip()
+        if self.long_text_side not in ("head", "tail"):
+            self.long_text_side = "head"
+
+        self.progress_every = max(0, int(progress_every or 0))
+        self.log_entity_samples = max(0, int(log_entity_samples or 0))
+        self.log_empty_chunks = bool(log_empty_chunks)
+
+        lvl_name = str(progress_log_level or "info").upper().strip()
+        self._progress_level = getattr(logging, lvl_name, logging.INFO)
+        # Guard against non-int levels
+        if not isinstance(self._progress_level, int):
+            self._progress_level = logging.INFO
+
 
         self.gliner_model = None
         self.ner_pipeline = None
@@ -136,6 +168,17 @@ class EntityDetector:
             from gliner2 import GLiNER2  # pip: gliner2
 
             self.gliner_model = GLiNER2.from_pretrained(self.model_name)
+            # Best-effort: move to desired device (if GLiNER2 exposes .to()).
+            try:
+                if self.device == "cuda" and torch.cuda.is_available():
+                    dev = "cuda"
+                else:
+                    dev = "cpu"
+                if hasattr(self.gliner_model, "to"):
+                    self.gliner_model = self.gliner_model.to(dev)
+            except Exception as _e:
+                pass
+
             log.info(
                 f"EntityDetector: using GLiNER2 model '{self.model_name}' "
                 f"with labels={self.labels}"
@@ -161,7 +204,81 @@ class EntityDetector:
             log.error(f"EntityDetector: failed to init BERT NER pipeline: {e}")
             self.ner_pipeline = None
 
-    def detect_entities(self, text: str) -> List[Dict[str, Any]]:
+
+    def _progress(self, msg: str, *, level: int | None = None) -> None:
+        """Internal helper to emit progress logs at a configurable level."""
+        try:
+            log.log(int(level or self._progress_level), msg)
+        except Exception:
+            # Never let logging break entity detection
+            log.info(msg)
+
+
+    # ---------------------------
+    # Chunking / safety helpers
+    # ---------------------------
+    def _chunk_text(self, text: str) -> List[Tuple[str, int]]:
+        """Split long text into overlapping character windows, trying to cut on boundaries."""
+        if not text:
+            return []
+        if self.chunk_chars <= 0 or len(text) <= self.chunk_chars:
+            return [(text, 0)]
+
+        n = len(text)
+        out: List[Tuple[str, int]] = []
+        start = 0
+        # Hard bound the number of chunks to avoid runaway compute
+        max_chunks = self.max_chunks if self.max_chunks > 0 else 10_000
+
+        while start < n and len(out) < max_chunks:
+            end = min(n, start + self.chunk_chars)
+
+            # Try to cut at a boundary within the last 300 chars of the chunk
+            if end < n:
+                window_start = max(start, end - 300)
+                cut = max(
+                    text.rfind("\n", window_start, end),
+                    text.rfind(".", window_start, end),
+                    text.rfind("!", window_start, end),
+                    text.rfind("?", window_start, end),
+                    text.rfind(" ", window_start, end),
+                )
+                if cut > start + 100:
+                    end = cut + 1
+
+            chunk = text[start:end]
+            out.append((chunk, start))
+
+            if end >= n:
+                break
+
+            # overlap
+            start = max(0, end - max(0, self.chunk_overlap))
+
+        return out
+
+    def _dedupe_entities(self, entities: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """De-duplicate entities by (start,end,type,text) keeping the highest score."""
+        best: Dict[Tuple[int, int, str, str], Dict[str, Any]] = {}
+        for e in entities:
+            try:
+                key = (
+                    int(e.get("start", -1)),
+                    int(e.get("end", -1)),
+                    str(e.get("type", "UNKNOWN")),
+                    str(e.get("text", "")).strip().lower(),
+                )
+            except Exception:
+                continue
+            if not key[3]:
+                continue
+            score = float(e.get("score", 0.0))
+            prev = best.get(key)
+            if prev is None or float(prev.get("score", 0.0)) < score:
+                best[key] = e
+        return list(best.values())
+
+    def _detect_entities_single(self, text: str) -> List[Dict[str, Any]]:
         """
         Detect entities in `text`.
 
@@ -182,7 +299,7 @@ class EntityDetector:
                 entities: List[Dict[str, Any]] = []
 
                 for r in raw:
-                    # --- NEW: handle multiple possible GLiNER2 return formats ---
+                    # --- handle multiple possible GLiNER2 return formats ---
                     if isinstance(r, dict):
                         ent_text = (r.get("text") or "").strip()
                         if not ent_text:
@@ -264,7 +381,11 @@ class EntityDetector:
 
                 return entities
             except Exception as e:
+                # If GLiNER2 explodes (OOM, etc.), degrade gracefully
                 log.error(f"EntityDetector (GLiNER2) failed: {e}")
+                # Optional: permanently disable GLiNER2 for this process
+                if "not enough memory" in str(e).lower() or "out of memory" in str(e).lower():
+                    self.gliner_model = None
 
         # 2) BERT-NER path
         if self.ner_pipeline is not None:
@@ -287,6 +408,140 @@ class EntityDetector:
 
         # 3) Heuristic fallback
         return self._heuristic_entity_detection(text)
+
+    def detect_entities(self, text: str) -> List[Dict[str, Any]]:
+        """Detect entities with chunking + safety limits to avoid OOM on very long texts.
+
+        Adds progress logging for long texts so you can see chunk-by-chunk progress.
+        """
+        if not text or len(text.strip()) < 2:
+            return []
+
+        t = text.strip()
+
+        # Optional: truncate extremely long texts (still chunked)
+        if self.max_chars > 0 and len(t) > self.max_chars:
+            if self.long_text_side == "tail":
+                log.warning(
+                    f"NERLongText: truncating to last {self.max_chars} chars (len={len(t)})"
+                )
+                t = t[-self.max_chars :]
+            else:
+                log.warning(
+                    f"NERLongText: truncating to first {self.max_chars} chars (len={len(t)})"
+                )
+                t = t[: self.max_chars]
+
+        t0 = time.perf_counter()
+        chunks = self._chunk_text(t)
+        total_chunks = len(chunks)
+        all_entities: List[Dict[str, Any]] = []
+
+        # Start progress
+        if self.progress_every > 0 and total_chunks > 1:
+            self._progress(
+                "NERDetectStart: "
+                f"len={len(t)} chunks={total_chunks} "
+                f"chunk_chars={self.chunk_chars} overlap={self.chunk_overlap} "
+                f"max_chunks={self.max_chunks} max_entities={self.max_entities} "
+                f"threshold={self.threshold} device={self.device}"
+            )
+
+        processed = 0
+        for i, (chunk, offset) in enumerate(chunks, start=1):
+            chunk_t0 = time.perf_counter()
+            try:
+                ents = self._detect_entities_single(chunk)
+            except Exception as e:
+                log.exception(
+                    "NERDetectChunkError: "
+                    f"chunk={i}/{total_chunks} offset={offset} len={len(chunk)} err={e}"
+                )
+                continue
+            chunk_ms = (time.perf_counter() - chunk_t0) * 1000.0
+
+            if not ents:
+                if self.log_empty_chunks and self.progress_every > 0 and (
+                    i == 1 or i % self.progress_every == 0 or i == total_chunks
+                ):
+                    self._progress(
+                        "NERDetectChunk: "
+                        f"{i}/{total_chunks} offset={offset} len={len(chunk)} "
+                        f"ents=0 total={len(all_entities)} chunk_ms={chunk_ms:.1f}",
+                        level=logging.DEBUG,
+                    )
+                processed = i
+                continue
+
+            # adjust spans to original text
+            for e in ents:
+                try:
+                    s = int(e.get("start", 0))
+                    en = int(e.get("end", 0))
+                    e["start"] = s + offset
+                    e["end"] = en + offset
+                except Exception:
+                    pass
+
+            all_entities.extend(ents)
+            processed = i
+
+            # Optional: log a tiny sample of entities (useful for sanity checks)
+            if self.log_entity_samples > 0 and ents:
+                try:
+                    sample = [
+                        f"{x.get('text','')!r}:{x.get('type','')}"
+                        for x in ents[: self.log_entity_samples]
+                    ]
+                    self._progress(
+                        f"NERDetectEntitiesSample: chunk={i}/{total_chunks} sample={sample}",
+                        level=logging.DEBUG,
+                    )
+                except Exception:
+                    pass
+
+            # progress log
+            if self.progress_every > 0 and (
+                i == 1 or i % self.progress_every == 0 or i == total_chunks
+            ):
+                elapsed = time.perf_counter() - t0
+                avg = elapsed / max(1, i)
+                eta = avg * max(0, total_chunks - i)
+                self._progress(
+                    "NERDetectChunk: "
+                    f"{i}/{total_chunks} offset={offset} len={len(chunk)} "
+                    f"ents={len(ents)} total={len(all_entities)} "
+                    f"chunk_ms={chunk_ms:.1f} elapsed_s={elapsed:.1f} eta_s={eta:.1f}"
+                )
+
+            # soft early exit if we already have plenty
+            if self.max_entities > 0 and len(all_entities) >= self.max_entities * 2:
+                if self.progress_every > 0:
+                    self._progress(
+                        "NERDetectEarlyExit: "
+                        f"chunk={i}/{total_chunks} total={len(all_entities)} "
+                        f"threshold={self.max_entities * 2}"
+                    )
+                break
+
+        raw_count = len(all_entities)
+        all_entities = self._dedupe_entities(all_entities)
+        deduped_count = len(all_entities)
+        all_entities.sort(key=lambda x: float(x.get("score", 0.0)), reverse=True)
+
+        if self.max_entities > 0:
+            all_entities = all_entities[: self.max_entities]
+
+        total_ms = (time.perf_counter() - t0) * 1000.0
+        if self.progress_every > 0 and total_chunks > 1:
+            self._progress(
+                "NERDetectEnd: "
+                f"chunks={processed}/{total_chunks} raw={raw_count} "
+                f"deduped={deduped_count} final={len(all_entities)} "
+                f"total_ms={total_ms:.1f}"
+            )
+
+        return all_entities
 
     def _map_entity_type(self, group: str) -> str:
         """Map BERT-NER entity types to simplified categories."""
@@ -317,7 +572,6 @@ class EntityDetector:
                         }
                     )
         return entities
-
 
 class NERRetrieverEmbedder:
     """Entity retriever using embedding store instead of custom projections."""

@@ -218,27 +218,140 @@ class KnowledgeGraphService(Service):
         # Placeholder: integrate with future InspectorAgent
         return {"nodes": nodes, "edges": edges, "meta": {"claim": claim}}
 
+    def _plan_to_query(self, plan: Dict[str, Any], k: int = 10) -> str:
+        """Create a compact KG query string from a fused plan.
+
+        We intentionally avoid dumping full paper/chat text into the query. Instead we
+        use: section title, top domains, a few claims, and top entity surfaces.
+        """
+        parts: List[str] = []
+
+        section_title = (
+            plan.get("section_title")
+            or plan.get("section_name")
+            or plan.get("title")
+            or ""
+        )
+        if isinstance(section_title, str) and section_title.strip():
+            parts.append(section_title.strip())
+
+        # domains: may be list[str] or list[dict]
+        domains = plan.get("domains") or []
+        dom_names: List[str] = []
+        if isinstance(domains, list):
+            for d in domains:
+                if isinstance(d, str):
+                    dom_names.append(d)
+                elif isinstance(d, dict):
+                    dom_names.append(d.get("domain") or d.get("name") or d.get("label") or "")
+        dom_names = [d.strip() for d in dom_names if isinstance(d, str) and d.strip()]
+        if dom_names:
+            parts.append("domains: " + ", ".join(dom_names[:5]))
+
+        # include a couple of claims (short)
+        units = plan.get("units") or []
+        if isinstance(units, list):
+            for u in units[:3]:
+                if not isinstance(u, dict):
+                    continue
+                claim = u.get("claim") or u.get("text") or ""
+                if isinstance(claim, str) and claim.strip():
+                    parts.append("claim: " + claim.strip()[:200])
+
+        # entities: plan.get("entities") tends to be dict[type -> (dict|list)]
+        ents = plan.get("entities") or {}
+        surfaces: List[str] = []
+        if isinstance(ents, dict):
+            for _, ev in ents.items():
+                if isinstance(ev, dict):
+                    # {surface: count} or {surface: {...}}
+                    for s in ev.keys():
+                        surfaces.append(str(s))
+                elif isinstance(ev, list):
+                    for item in ev:
+                        if isinstance(item, str):
+                            surfaces.append(item)
+                        elif isinstance(item, dict):
+                            surfaces.append(item.get("text") or item.get("entity") or "")
+
+        surfaces = [s.strip() for s in surfaces if isinstance(s, str) and s.strip()]
+        # de-dupe preserving order
+        seen = set()
+        uniq: List[str] = []
+        for s in surfaces:
+            key = s.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            # keep surfaces reasonably small
+            if len(s) <= 80:
+                uniq.append(s)
+
+        if uniq:
+            parts.append("entities: " + ", ".join(uniq[: max(1, int(k)) ]))
+
+        q = " | ".join(parts).strip()
+        # clamp query length
+        return q[:1000] if q else "plan context"
+
     def build_context_for_plan(
-        self, plan_scorable_id: str, query: str = ""
+        self,
+        plan_scorable_id: Any,
+        query: str = "",
+        k: int = 10,
     ) -> Dict[str, Any]:
-        """Build context for plan generation using KG subgraph."""
+        """Build context for plan generation using a KG subgraph.
+
+        Backwards compatible:
+        - build_context_for_plan(plan_scorable_id: str, query="")
+        - build_context_for_plan(plan: dict, k=5, query="")
+
+        Notes:
+        - `k` is used as a *query seed budget* (how many entity surfaces to include),
+            not as a hard retrieval limit inside SubgraphBuilder.
+        """
+        plan_id = None
+        derived_query = query
+
+        if isinstance(plan_scorable_id, dict):
+            plan = plan_scorable_id
+            plan_id = (
+                plan.get("plan_id")
+                or plan.get("id")
+                or plan.get("meta", {}).get("knowledge_hash")
+                or plan.get("meta", {}).get("plan_scorable_id")
+                or ""
+            )
+            if not derived_query:
+                derived_query = self._plan_to_query(plan, k=k)
+        else:
+            plan_id = str(plan_scorable_id)
+            if not derived_query:
+                derived_query = f"What supports plan {plan_id}?"
+
+        log.info("KG: build_context_for_plan start | plan_id=%s | k=%s | q_len=%s", plan_id, k, len(derived_query or ""))
+
         sg = self.build_query_subgraph(
-            query=query or f"What supports plan {plan_scorable_id}?",
+            query=derived_query,
             cfg=SubgraphConfig(max_hops=2, max_nodes=150),
         )
-        nodes = [n["id"] for n in sg["nodes"]]
+        nodes = [n["id"] for n in sg.get("nodes", [])]
         edges = [
             f"{e['source']} --[{e['type']}]--> {e['target']}"
-            for e in sg["edges"]
+            for e in sg.get("edges", [])
         ]
-        return {
+
+        out = {
+            "plan_id": plan_id,
             "subgraph_nodes": nodes,
             "subgraph_edges": edges,
             "node_count": len(nodes),
             "edge_count": len(edges),
-            "evidence_rate": sg["meta"]["stats"]["evidence_rate"],
-            "query": query,
+            "evidence_rate": (sg.get("meta", {}) or {}).get("stats", {}).get("evidence_rate"),
+            "query": derived_query,
         }
+        log.info("KG: build_context_for_plan end | plan_id=%s | nodes=%s | edges=%s", plan_id, out["node_count"], out["edge_count"])
+        return out
 
     # --- Lifecycle ----------------------------------------------------------
 

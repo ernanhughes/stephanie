@@ -49,7 +49,18 @@ class ChatKnowledgeBuilder:
             log.error(f"Failed to initialize ScorableClassifier: {e}")
 
         try:
-            self.entity_detector = EntityDetector()
+            self.entity_detector = EntityDetector(
+                device=cfg.get("ner_device", "cpu"),
+                model_name=cfg.get("ner_detector_model", None),
+                labels=cfg.get("ner_labels", None),
+                threshold=cfg.get("ner_detector_threshold", 0.35),
+                max_chars=cfg.get("ner_max_chars", 200_000),
+                chunk_chars=cfg.get("ner_chunk_chars", 8_000),
+                chunk_overlap=cfg.get("ner_chunk_overlap", 200),
+                max_chunks=cfg.get("ner_max_chunks", 64),
+                max_entities=cfg.get("ner_max_entities", 5_000),
+                long_text_side=cfg.get("ner_long_text_side", "head"),
+            )
             self.logger.info("NER detector loaded.")
         except Exception as e:
             self.entity_detector = None
@@ -303,4 +314,4 @@ class ChatKnowledgeBuilder:
             )
         except Exception as e:
             log.error(f"Context enrichment failed for conv={conversation_id}: {e}")
-            return KnowledgeUnit(text="", stats={"error": str(e)}) 
+            return KnowledgeUnit(text="", stats={"error": str(e)})
