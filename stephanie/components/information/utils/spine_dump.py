@@ -92,7 +92,12 @@ class SpineDumper:
     """
     
     def __init__(
-        self, *, run_dir: Path, enabled: bool = True, max_text_chars: int = 240
+        self, *, 
+        cfg: Dict[str, Any],
+        memory: Any,
+        container: Any,
+        logger: Any,
+        
     ) -> None:
         """
         Initialize the SpineDumper.
@@ -102,12 +107,17 @@ class SpineDumper:
             enabled: Whether dumping is enabled (useful for production vs debug)
             max_text_chars: Maximum characters for text snippets in output
         """
-        self.run_dir = Path(run_dir)
-        self.enabled = bool(enabled)
-        self.max_text_chars = int(max_text_chars)
+        self.cfg = cfg
+        self.memory = memory
+        self.container = container
+        self.logger = logger
+
+        self.run_dir = Path(cfg.get("run_dir", "runs/spine_dump"))
+        self.enabled = bool(cfg.get("enabled", True))
+        self.max_text_chars = int(cfg.get("max_text_chars", 240)                                )
         
-        log.info(f"Initialized SpineDumper: enabled={enabled}, run_dir={run_dir}")
-        log.debug(f"Configuration: max_text_chars={max_text_chars}")
+        log.info(f"Initialized SpineDumper: enabled={self.enabled}, run_dir={self.run_dir}")
+        log.debug(f"Configuration: max_text_chars={self.max_text_chars}")
 
     def dump(
         self,

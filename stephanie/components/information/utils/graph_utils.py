@@ -5,6 +5,9 @@ import logging
 import json
 from pathlib import Path
 from typing import Any, Dict, Optional
+from stephanie.components.information.data import PaperSection
+from stephanie.components.information.graph.paper_graph_abi import (
+    GraphNode)
 
 from stephanie.components.information.data import (
     PaperReferenceGraph,
@@ -133,3 +136,54 @@ def export_graph_pyvis(
             exc_info=True,
         )
         return None
+
+def node_from_section(s: PaperSection, *, root: bool) -> GraphNode:
+    meta = getattr(s, "meta", None) or {}
+    sp = getattr(s, "start_page", None) or meta.get("start_page")
+    ep = getattr(s, "end_page", None) or meta.get("end_page")
+
+    # NOTE: we namespace section node ids to avoid collisions across systems
+    node_id = f"section:{s.section_id}"
+    return GraphNode(
+        id=node_id,
+        type="section",
+        title=getattr(s, "title", None),
+        paper_id=getattr(s, "paper_arxiv_id", None),
+        section_id=getattr(s, "section_id", None),
+        start_page=int(sp) if sp is not None else None,
+        end_page=int(ep) if ep is not None else None,
+        meta={
+            "root": bool(root),
+            "section_index": getattr(s, "section_index", None),
+        },
+    )
+
+def write_graph_json(graph_json_name: str, root_dir: Path, graph: PaperReferenceGraph) -> None:
+    path = root_dir / graph_json_name
+    payload = {
+        "root_arxiv_id": graph.root_arxiv_id,
+        "nodes": {
+            aid: {
+                "arxiv_id": n.arxiv_id,
+                "role": n.role,
+                "title": n.title,
+                "url": n.url,
+                "pdf_path": str(n.pdf_path) if n.pdf_path else None,
+                "text_hash": n.text_hash,
+                "meta": n.meta,
+            }
+            for aid, n in graph.nodes.items()
+        },
+        "edges": [
+            {
+                "src": e.src,
+                "dst": e.dst,
+                "kind": e.kind,
+                "weight": e.weight,
+            }
+            for e in graph.edges
+        ],
+    }
+    path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+    log.info("Wrote graph.json to %s", path)
+

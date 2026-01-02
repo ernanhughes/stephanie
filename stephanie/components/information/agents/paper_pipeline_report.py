@@ -7,19 +7,11 @@ from typing import Any, Dict, Optional
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.constants import PIPELINE_RUN_ID
-from stephanie.components.information.paper.report_exporters import (
+from stephanie.components.information.paper.report import (
     PaperReportExporters,
-)
-from stephanie.components.information.paper.report_inputs import (
     PaperReportInputs,
-)
-from stephanie.components.information.paper.report_renderer import (
     PaperReportMarkdownRenderer,
-)
-from stephanie.components.information.paper.report_summarizer import (
     PaperReportSummarizer,
-)
-from stephanie.components.information.paper.report_artifact_writer import (
     ReportArtifactWriter,
 )
 

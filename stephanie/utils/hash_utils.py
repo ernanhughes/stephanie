@@ -93,3 +93,6 @@ def hash_list(names: List[str]) -> str:
         h.update((n + "\n").encode("utf-8"))
     return h.hexdigest()[:16]
 
+def sha256_bytes(b: bytes) -> str:
+    return hashlib.sha256(b).hexdigest()
+

@@ -1,7 +1,7 @@
 # stephanie/orm/paper.py
 from __future__ import annotations
 
-from sqlalchemy import (Column, DateTime, Float, ForeignKey, Index, Integer,
+from sqlalchemy import (BigInteger, Column, DateTime, Float, ForeignKey, Index, Integer,
                         String, Text, UniqueConstraint)
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import relationship
@@ -72,6 +72,7 @@ class PaperSectionORM(Base):
     level = Column(Integer, nullable=False, default=0)     # 0 = top, 1 = subsection, ...
     path = Column(String, nullable=False)                   # e.g. "1", "2.3", "4.1.5" — ✅ stable anchor
 
+    role = Column(String, nullable=False, default="reference")  # "reference" | "similar" | ... 
     # Position in original doc
     section_index = Column(Integer, nullable=False)        # flat index within this run (for fallback)
     start_char = Column(Integer, nullable=True)
@@ -383,32 +384,6 @@ class TrainingSourceLinkORM(Base):
     
 
 
-class PaperDoclingPageORM(Base):
-    """
-    Per-page DocTags cache from SmolDocling (or other doc-to-tags backends).
-    This is the canonical conversion artifact that downstream tools can re-parse.
-    """
-    __tablename__ = "paper_docling_pages"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    paper_id = Column(String, ForeignKey("papers.id", ondelete="CASCADE"), nullable=False, index=True)
-    run_id = Column(String, ForeignKey("paper_runs.id", ondelete="CASCADE"), nullable=True, index=True)
-
-    page_num = Column(Integer, nullable=False)      # 1-based
-    model_name = Column(String, nullable=True)
-    dpi = Column(Integer, nullable=True)
-
-    doctags = Column(Text, nullable=False)          # raw doctags string
-    meta = Column(JSONB, nullable=True)             # warnings, bbox flags, parse stats, etc.
-
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
-
-    __table_args__ = (
-        UniqueConstraint("paper_id", "run_id", "page_num", name="uq_docling_paper_run_page"),
-        Index("ix_docling_pages_paper_run", "paper_id", "run_id"),
-    )
-
 class PaperReferenceGraphSnapshotORM(Base):
     __tablename__ = "paper_reference_graph_snapshots"
 
@@ -426,3 +401,21 @@ class PaperReferenceGraphSnapshotORM(Base):
 
     # optional: dedupe / audit
     graph_hash = Column(String, index=True, nullable=True)
+
+class PaperDoclingPageORM(Base):
+    __tablename__ = "paper_docling_pages"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    paper_id = Column(String, ForeignKey("papers.id", ondelete="CASCADE"), nullable=False, index=True)
+    run_id = Column(String, nullable=True, index=True)
+    page_num = Column(Integer, nullable=False)
+    doctags = Column(Text, nullable=False) 
+
+    model_name = Column(String, nullable=True)
+    dpi = Column(Integer, nullable=True)
+
+    payload = Column(JSONB, nullable=False, default=dict)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+

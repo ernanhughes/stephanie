@@ -369,6 +369,7 @@ class NexusStore(BaseSQLAlchemyStore):
 
         return self._run(op) or []
 
+
     def update_edge(
         self,
         run_id: str,

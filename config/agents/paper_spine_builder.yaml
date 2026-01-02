@@ -132,5 +132,6 @@ paper_spine_builder:
   # paper_spine_builder.yaml (or wherever this agent cfg lives)
   dump:
     enabled: true
-    run_dir: "runs/paper_blogs/"   # optional; defaults to runs/paper_blogs/{self.run_id}
+    run_dir: "runs/paper_blogs/${runtime.run_id}"   # optional; defaults to runs/paper_blogs/{self.run_id}
     max_text_chars: 240
+

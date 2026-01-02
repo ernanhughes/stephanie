@@ -60,8 +60,13 @@ class SmolDoclingTool(BaseTool):
         pages_payload: List[Dict[str, Any]] = []
         for i, img_path in enumerate(page_paths, start=1):
             img = Image.open(img_path).convert("RGB")
-
-            inputs = self.processor(images=img, text=self.prompt, return_tensors="pt").to(self.device)
+            text_in = self._ensure_single_image_token(self.prompt)
+            
+            inputs = self.processor(
+                images=[img],
+                text=[text_in],
+                return_tensors="pt",
+            ).to(self.device)
 
             with torch.no_grad():
                 out = self.model.generate(**inputs, max_new_tokens=self.max_new_tokens)
@@ -92,6 +97,22 @@ class SmolDoclingTool(BaseTool):
         # Optionally: attach to scorable.meta for downstream steps
         scorable.meta.setdefault("docling", {})["pages"] = pages_payload
         return scorable
+
+    def _ensure_single_image_token(self, prompt: str) -> str:
+        base = (prompt or "").strip() or "Convert this page to Docling."
+
+        image_token = "<image>"
+        tok = getattr(self.processor, "tokenizer", None)
+        if tok is not None and getattr(tok, "image_token", None):
+            image_token = tok.image_token
+
+        # ensure exactly ONE image token for ONE image
+        if image_token not in base:
+            return f"{image_token}\n{base}"
+
+        first = base.find(image_token)
+        after = base[first + len(image_token):].replace(image_token, "")
+        return base[: first + len(image_token)] + after
 
 
     async def _infer_doctags(self, image_path: str) -> tuple[str, Dict[str, Any]]:
@@ -240,9 +261,9 @@ class SmolDoclingTool(BaseTool):
             }
 
             sec = _new_section(
-                id=sec_id,
+                section_id=sec_id,
                 paper_arxiv_id=arxiv_id,
-                paper_role=paper_role,
+                role=paper_role,
                 section_index=idx,
                 title=title,
                 text=text,
@@ -334,9 +355,9 @@ class SmolDoclingTool(BaseTool):
 
                 built.append(
                     _new_section(
-                        id=sec_id,
+                        section_id=sec_id,
                         paper_arxiv_id=arxiv_id,
-                        paper_role=paper_role,
+                        role=paper_role,
                         section_index=idx,
                         title=f"Page {page_num}",
                         text=text,

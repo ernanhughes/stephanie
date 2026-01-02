@@ -21,13 +21,13 @@ class ScorableIdentifierORM(Base):
     id = Column(Integer, primary_key=True)
 
     # what kind of identifier is this?
-    identifier_type = Column(String(64), nullable=False, index=True)
+    identifier_type = Column(Text, nullable=False, index=True)
 
     # the raw identifier string (this is the “name/value” you mentioned)
-    identifier_value = Column(String(512), nullable=False, index=True)
+    identifier_value = Column(Text, nullable=False, index=True)
 
     # optional: human-friendly label and description
-    name = Column(String(256), nullable=True)
+    name = Column(Text, nullable=True)
     description = Column(Text, nullable=True)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)

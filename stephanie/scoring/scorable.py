@@ -4,6 +4,7 @@ from __future__ import annotations
 import re
 from typing import Any, Dict, List, Optional
 
+from stephanie.components.information.data import PaperSection
 from stephanie.data.plan_trace import ExecutionStep, PlanTrace
 from stephanie.orm.cartridge_triple import CartridgeTripleORM
 from stephanie.orm.casebook import CaseORM
@@ -33,6 +34,8 @@ class ScorableType:
     GOAL = "goal"
     HYPOTHESIS = "hypothesis"
     IDEA = "idea"
+    PAPER = "paper"
+    PAPER_SECTION = "paper_section"
     PLAN_TRACE = "plan_trace"
     PLAN_TRACE_STEP = "plan_trace_step"
     PROMPT = "prompt"
@@ -542,6 +545,45 @@ class ScorableFactory:
             )
 
         return ScorableFactory.from_orm(orm)
+
+    @staticmethod
+    def from_paper_section(sec: PaperSection, mode: str = "default") -> Scorable:
+        # stable id: prefer section_id, else synthesize
+        sid = getattr(sec, "section_id", None) or f"{sec.paper_arxiv_id}::sec-{sec.section_index}"
+
+        title = (sec.title or "").strip()
+        summary = (sec.summary or "").strip()
+        text = (sec.text or "").strip()
+
+        # What text do we want to score / embed?
+        # - summary mode: title + summary if available
+        # - default/full: title + full section text (fallback to summary)
+        if mode == "summary" and summary:
+            body = f"{title}\n\n{summary}" if title else summary
+        else:
+            body = f"{title}\n\n{text or summary}" if title else (text or summary)
+
+        meta = {
+            "paper_arxiv_id": sec.paper_arxiv_id,
+            "role": sec.role,
+            "section_index": sec.section_index,
+            "start_char": sec.start_char,
+            "end_char": sec.end_char,
+            **(sec.meta or {}),
+        }
+
+        # domains/ner can live inside sec.meta if you’ve already computed them
+        domains = (sec.meta or {}).get("domains") or []
+        ner = (sec.meta or {}).get("ner") or (sec.meta or {}).get("entities") or {}
+
+        return Scorable(
+            id=str(sid),
+            text=body,
+            target_type=ScorableType.PAPER_SECTION,
+            meta=meta,
+            domains=domains,
+            ner=ner,
+        )
 
     @staticmethod
     def _strip_think_blocks(text: str) -> str:

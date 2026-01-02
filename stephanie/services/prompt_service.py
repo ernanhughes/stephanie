@@ -253,8 +253,8 @@ class PromptService(Service):
             out = resp["choices"][0]["message"]["content"]
             log.info(f"PS success: model={model.name} {out[:60]!r}...")
             return remove_think_blocks(out)
-        except Exception:
-            log.exception("PS failed extra=%s", model.name)
+        except Exception as e:
+            log.exception("PS failed model=%s error=%s", model.name, str(e))
             return ""
 
     async def _acomplete(

@@ -1,7 +1,6 @@
 # stephanie/components/information/tasks/reference_graph_task.py
 from __future__ import annotations
 
-import json
 import logging
 from pathlib import Path
 from typing import Dict, List, Optional, Protocol
@@ -10,6 +9,7 @@ from stephanie.components.information.data import (PaperNode,
                                                    PaperReferenceGraph,
                                                    PaperReferenceRecord,
                                                    ReferenceEdge)
+from stephanie.components.information.utils.graph_utils import write_graph_json
 from stephanie.tools.paper_import_tool import (PaperImportResult,
                                                PaperImportTool)
 
@@ -83,7 +83,7 @@ class ReferenceGraphTask:
             arxiv_id=root_arxiv_id,
             local_pdf_path=root_dir / "paper.pdf",
             source="arxiv",
-            force_references=True,
+            force_references=False,
             role="root",
         )
         root_node = root_import.node
@@ -116,7 +116,7 @@ class ReferenceGraphTask:
             node: Optional[PaperNode] = None
 
             try:
-                ref_import = await self.import_tool.import_paper(arxiv_id=ref_id, role="reference", force=True)
+                ref_import = await self.import_tool.import_paper(arxiv_id=ref_id, role="reference", force=False)
                 node = ref_import.node
             except Exception as e:
                 log.warning(
@@ -160,7 +160,7 @@ class ReferenceGraphTask:
         )
 
         # 5) Persist graph.json for inspection / reuse
-        self._write_graph_json(root_dir, graph)
+        write_graph_json("graph.json", root_dir, graph)
 
         return graph
 
@@ -169,35 +169,6 @@ class ReferenceGraphTask:
         root_dir = self.papers_root / root_arxiv_id
         root_dir.mkdir(parents=True, exist_ok=True)
         return root_dir
-
-    def _write_graph_json(self, root_dir: Path, graph: PaperReferenceGraph) -> None:
-        path = root_dir / self.graph_json_name
-        payload = {
-            "root_arxiv_id": graph.root_arxiv_id,
-            "nodes": {
-                aid: {
-                    "arxiv_id": n.arxiv_id,
-                    "role": n.role,
-                    "title": n.title,
-                    "url": n.url,
-                    "pdf_path": str(n.pdf_path) if n.pdf_path else None,
-                    "text_hash": n.text_hash,
-                    "meta": n.meta,
-                }
-                for aid, n in graph.nodes.items()
-            },
-            "edges": [
-                {
-                    "src": e.src,
-                    "dst": e.dst,
-                    "kind": e.kind,
-                    "weight": e.weight,
-                }
-                for e in graph.edges
-            ],
-        }
-        path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
-        log.info("[ReferenceGraphTask] Wrote graph.json to %s", path)
 
     async def _add_similar_papers(
         self,
