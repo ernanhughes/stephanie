@@ -32,6 +32,7 @@ import json
 import logging
 import os
 import random
+from collections import OrderedDict
 import re
 from datetime import datetime, timedelta
 import time
@@ -128,7 +129,9 @@ class EntityDetector:
         chunk_overlap: int = 200,
         max_chunks: int = 64,
         max_entities: int = 5_000,
-        long_text_side: str = "head",  # head|tail
+        long_text_side: str = "head",  # head|tail (used by max_chars truncation & slice mode)
+        long_text_mode: str = "chunk",  # chunk|slice
+        sample_chars: int = 2_000,      # used when long_text_mode="slice"
         progress_every: int = 1,
         progress_log_level: str = "info",
         log_empty_chunks: bool = False,
@@ -148,6 +151,11 @@ class EntityDetector:
         self.long_text_side = (long_text_side or "head").lower().strip()
         if self.long_text_side not in ("head", "tail"):
             self.long_text_side = "head"
+
+        self.long_text_mode = (long_text_mode or "chunk").lower().strip()
+        if self.long_text_mode not in ("chunk", "slice"):
+            self.long_text_mode = "chunk"
+        self.sample_chars = int(sample_chars) if sample_chars else 0
 
         self.progress_every = max(0, int(progress_every or 0))
         self.log_entity_samples = max(0, int(log_entity_samples or 0))
@@ -433,7 +441,30 @@ class EntityDetector:
                 t = t[: self.max_chars]
 
         t0 = time.perf_counter()
-        chunks = self._chunk_text(t)
+
+        # Optional fast path: only scan a small window of the text for entities.
+        # This is often enough (abstract/intro contains most salient entities) and avoids
+        # expensive chunking over huge documents.
+        if (
+            self.long_text_mode == "slice"
+            and self.sample_chars > 0
+            and len(t) > self.sample_chars
+        ):
+            if self.long_text_side == "tail":
+                slice_offset = max(0, len(t) - self.sample_chars)
+            else:
+                slice_offset = 0
+            t_slice = t[slice_offset : slice_offset + self.sample_chars]
+            chunks = [(t_slice, slice_offset)]
+            if self.progress_every > 0:
+                self._progress(
+                    "NERDetectSlice: "
+                    f"orig_len={len(t)} slice_len={len(t_slice)} "
+                    f"offset={slice_offset} side={self.long_text_side}"
+                )
+
+        else:
+            chunks = self._chunk_text(t)
         total_chunks = len(chunks)
         all_entities: List[Dict[str, Any]] = []
 
@@ -441,8 +472,8 @@ class EntityDetector:
         if self.progress_every > 0 and total_chunks > 1:
             self._progress(
                 "NERDetectStart: "
-                f"len={len(t)} chunks={total_chunks} "
-                f"chunk_chars={self.chunk_chars} overlap={self.chunk_overlap} "
+                f"len={len(t)} chunks={total_chunks} mode={self.long_text_mode} "
+                f"chunk_chars={self.chunk_chars} overlap={self.chunk_overlap} sample_chars={self.sample_chars} "
                 f"max_chunks={self.max_chunks} max_entities={self.max_entities} "
                 f"threshold={self.threshold} device={self.device}"
             )
@@ -621,6 +652,20 @@ class NERRetrieverEmbedder:
             model_name=self.cfg.get("ner_detector_model", None),
             labels=self.cfg.get("ner_labels", None),
             threshold=self.cfg.get("ner_detector_threshold", 0.35),
+            # Long-text handling (speed knobs)
+            long_text_mode=self.cfg.get("ner_long_text_mode", "chunk"),
+            sample_chars=int(self.cfg.get("ner_sample_chars", 2000) or 0),
+            max_chars=int(self.cfg.get("ner_detector_max_chars", 200_000) or 0),
+            chunk_chars=int(self.cfg.get("ner_detector_chunk_chars", 8_000) or 0),
+            chunk_overlap=int(self.cfg.get("ner_detector_chunk_overlap", 200) or 0),
+            max_chunks=int(self.cfg.get("ner_detector_max_chunks", 64) or 0),
+            max_entities=int(self.cfg.get("ner_detector_max_entities", 5_000) or 0),
+            long_text_side=self.cfg.get("ner_long_text_side", "head"),
+            # Progress logging
+            progress_every=int(self.cfg.get("ner_progress_every", 1) or 0),
+            progress_log_level=str(self.cfg.get("ner_progress_log_level", "info") or "info"),
+            log_empty_chunks=bool(self.cfg.get("ner_log_empty_chunks", False)),
+            log_entity_samples=int(self.cfg.get("ner_log_entity_samples", 0) or 0),
         )
 
         # optional projection
@@ -641,9 +686,18 @@ class NERRetrieverEmbedder:
             cfg=self.cfg, memory=self.memory, logger=self.logger
         )
 
-        # Attach KV cache (best-effort)
-        self._kv = self._attach_kv_cache()
-        self._kv_ttl_sec = self.cfg.get("ner_kv_ttl_sec", 3600)  # default 1h
+        # Attach KV caches (best-effort)
+        # - retrieve cache: query -> similar entities
+        # - detect cache: (scorable_id,type,text_hash,detector) -> detected entities
+        self._kv = self._attach_kv_retrieve_cache()
+        self._kv_ttl_sec = int(self.cfg.get("ner_kv_ttl_sec", 3600) or 0)  # default 1h
+        self._kv_detect = self._attach_kv_detect_cache()
+        self._kv_detect_ttl_sec = int(self.cfg.get("ner_detect_kv_ttl_sec", 7 * 24 * 3600) or 0)  # default 7d
+
+        # In-process memoization (avoids repeated detection within a single run)
+        self._ent_mem: "OrderedDict[str, tuple[float, list[dict]]]" = OrderedDict()
+        self._ent_mem_max = int(self.cfg.get("ner_detect_mem_max", 2048) or 0)
+        self._ent_mem_ttl_sec = int(self.cfg.get("ner_detect_mem_ttl_sec", 6 * 3600) or 0)  # default 6h
 
         log.debug(
             f"NER Retriever initialized with {model_name} "
@@ -913,7 +967,7 @@ class NERRetrieverEmbedder:
 
         for scorable in tqdm(scorables, desc="Indexing entities"):
             try:
-                entities = self.entity_detector.detect_entities(scorable.text)
+                entities = self.detect_entities_for_scorable(scorable)
                 if not entities:
                     continue
 
@@ -955,7 +1009,7 @@ class NERRetrieverEmbedder:
 
         return total_entities
 
-    def _attach_kv_cache(self):
+    def _attach_kv_retrieve_cache(self):
         """Attach NATS KV cache for entity retrieval results."""
         try:
             bus = getattr(self.memory, "bus", None)
@@ -968,6 +1022,22 @@ class NERRetrieverEmbedder:
                 return kv
         except Exception as e:
             log.error(f"NERKVUnavailable: {str(e)}")
+        return None
+
+
+    def _attach_kv_detect_cache(self):
+        """Attach NATS KV cache for detected entities per scorable (avoid re-detecting)."""
+        try:
+            bus = getattr(self.memory, "bus", None)
+            if bus and hasattr(bus, "get_kv"):
+                kv = bus.get_kv(
+                    bucket="ner.detect.cache",
+                    description="Detected entities per scorable (TTL ~days)",
+                    max_age_seconds=int(self.cfg.get("ner_detect_kv_ttl_sec", 7 * 24 * 3600) or 0),
+                )
+                return kv
+        except Exception as e:
+            log.error(f"NERDetectKVUnavailable: {str(e)}")
         return None
 
     def _cache_key(self, query: str, k: int, domain: str) -> str:
@@ -1001,6 +1071,173 @@ class NERRetrieverEmbedder:
             log.info(f"NERKVStored: key={key}, items={len(results)}")
         except Exception as e:
             log.error(f"NERKVPutError: {str(e)}")   
+
+    # ----------------------------
+    # Entity detection caching
+    # ----------------------------
+    def _detector_cache_key(self) -> str:
+        """Stable identifier for the detector configuration (affects caching)."""
+        try:
+            d = self.entity_detector
+            labels = getattr(d, "labels", None) or []
+            payload = {
+                "model": getattr(d, "model_name", None),
+                "threshold": float(getattr(d, "threshold", 0.0)),
+                "labels": list(labels),
+                "mode": getattr(d, "long_text_mode", "chunk"),
+                "sample_chars": int(getattr(d, "sample_chars", 0) or 0),
+                "max_chars": int(getattr(d, "max_chars", 0) or 0),
+                "chunk_chars": int(getattr(d, "chunk_chars", 0) or 0),
+                "chunk_overlap": int(getattr(d, "chunk_overlap", 0) or 0),
+                "max_chunks": int(getattr(d, "max_chunks", 0) or 0),
+            }
+            return hash_text(json.dumps(payload, sort_keys=True))
+        except Exception:
+            return "detector:unknown"
+
+    def _detect_cache_key(self, scorable_id: Any, scorable_type: str, doc_hash: str) -> str:
+        """Cache key for detected entities for a specific scorable."""
+        payload = {
+            "sid": str(scorable_id),
+            "stype": str(scorable_type or "unknown"),
+            "doc": str(doc_hash or ""),
+            "det": self._detector_cache_key(),
+        }
+        return hash_text(json.dumps(payload, sort_keys=True))
+
+    def _detect_mem_get(self, key: str):
+        if not key:
+            return None
+        try:
+            item = self._ent_mem.get(key)
+            if not item:
+                return None
+            ts, ents = item
+            if self._ent_mem_ttl_sec > 0 and (time.time() - float(ts)) > self._ent_mem_ttl_sec:
+                try:
+                    del self._ent_mem[key]
+                except Exception:
+                    pass
+                return None
+            # refresh LRU position
+            try:
+                self._ent_mem.move_to_end(key)
+            except Exception:
+                pass
+            return ents
+        except Exception:
+            return None
+
+    def _detect_mem_put(self, key: str, ents: List[Dict]):
+        if not key:
+            return
+        try:
+            self._ent_mem[key] = (time.time(), ents)
+            try:
+                self._ent_mem.move_to_end(key)
+            except Exception:
+                pass
+            # evict oldest
+            if self._ent_mem_max > 0:
+                while len(self._ent_mem) > self._ent_mem_max:
+                    try:
+                        self._ent_mem.popitem(last=False)
+                    except Exception:
+                        break
+        except Exception:
+            pass
+
+    def _detect_kv_get(self, key: str):
+        if not self._kv_detect:
+            return None
+        try:
+            raw = self._kv_detect.get(key)
+            if not raw:
+                return None
+            doc = json.loads(raw.decode("utf-8"))
+            ts = float(doc.get("ts", 0))
+            if self._kv_detect_ttl_sec > 0 and (time.time() - ts) > self._kv_detect_ttl_sec:
+                return None
+            return doc.get("entities")
+        except Exception as e:
+            log.error(f"NERDetectKVGetError: {str(e)}")
+        return None
+
+    def _detect_kv_put(self, key: str, scorable_id: Any, scorable_type: str, doc_hash: str, ents: List[Dict]):
+        if not self._kv_detect:
+            return
+        try:
+            payload = {
+                "ts": time.time(),
+                "scorable_id": str(scorable_id),
+                "scorable_type": str(scorable_type or "unknown"),
+                "doc_hash": str(doc_hash or ""),
+                "detector_key": self._detector_cache_key(),
+                "entities": ents,
+            }
+            self._kv_detect.put(key, json.dumps(payload).encode("utf-8"))
+            log.debug(f"NERDetectKVStored: sid={scorable_id} type={scorable_type} ents={len(ents)}")
+        except Exception as e:
+            log.error(f"NERDetectKVPutError: {str(e)}")
+
+
+    def detect_entities_cached(
+        self,
+        *,
+        scorable_id: Any,
+        scorable_type: str,
+        text: str,
+    ) -> List[Dict[str, Any]]:
+        """Detect entities with cache keys derived from scorable identity + doc hash."""
+        if not text or len(text.strip()) < 2:
+            return []
+
+        doc_hash = hash_text(text.strip())
+        key = self._detect_cache_key(scorable_id, scorable_type, doc_hash)
+
+        # 1) in-process LRU
+        hit = self._detect_mem_get(key)
+        if hit is not None:
+            return hit
+
+        # 2) KV persistence (optional)
+        hit = self._detect_kv_get(key)
+        if hit is not None:
+            self._detect_mem_put(key, hit)
+            return hit
+
+        # 3) compute
+        ents: List[Dict[str, Any]] = []
+        try:
+            ents = self.entity_detector.detect_entities(text) or []
+        except Exception:
+            log.warning("NERDetectFailed: entity_detector.detect_entities failed", exc_info=True)
+            ents = []
+
+        # store
+        self._detect_mem_put(key, ents)
+        self._detect_kv_put(key, scorable_id, scorable_type, doc_hash, ents)
+        return ents
+
+
+    def detect_entities_for_scorable(self, scorable: Scorable) -> List[Dict[str, Any]]:
+        """Detect entities for a scorable with memoization + KV persistence."""
+        if scorable is None:
+            return []
+
+        text = getattr(scorable, "text", "") or ""
+        if not text or len(text.strip()) < 2:
+            return []
+
+        scorable_id = getattr(scorable, "id", None)
+        scorable_type = getattr(scorable, "target_type", None) or getattr(scorable, "scorable_type", None) or "unknown"
+
+        return self.detect_entities_cached(
+            scorable_id=scorable_id,
+            scorable_type=scorable_type,
+            text=text,
+        )
+
 
     def _process_batch(self, texts, spans_list, scorables, new_embs, new_meta):
         all_spans = [[(a, b) for a, b, _ in spans] for spans in spans_list]
@@ -1681,7 +1918,7 @@ class NERRetrieverEmbedder:
         """Generate contrastive learning triplets from CaseBooks"""
         entities_by_type = {}
         for scorable in scorables:
-            for ent in self.entity_detector.detect_entities(scorable.text):
+            for ent in self.detect_entities_for_scorable(scorable):
                 entity_text = ent["text"].strip()
                 if len(entity_text) >= 2:
                     entities_by_type.setdefault(ent["type"], []).append(

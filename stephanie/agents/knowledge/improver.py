@@ -62,28 +62,23 @@ class Improver:
         self,
         cfg, 
         memory,
-        workdir: str = "./data/text_runs",
-        timeout: int = 60,
-        seed: int = 0,
-        faithfulness_topk: int = 5,
-        kb: KnowledgeBus | None = None,
-        casebooks: CaseBookStore | None = None,
-        calibration: CalibrationManager | None = None,  
-        logger=None,                                    
+        container: Any,
+        logger,
     ):
         self.cfg = cfg
         self.memory = memory
-        self.workdir = Path(workdir)
-        self.workdir.mkdir(parents=True, exist_ok=True)
-        self.run_id = 0
-        self.timeout = timeout
-        self.seed = seed
-        self.faithfulness_topk = faithfulness_topk
-        self.kb = kb or KnowledgeBus()
-        self.casebooks = casebooks or memory.casebooks
-
+        self.container = container
         self.logger = logger
-        self.calibration = calibration or CalibrationManager(
+
+        self.run_id = int(cfg.get("run_id", 0))
+        self.timeout = int(cfg.get("timeout_sec", 300))
+        self.seed = int(cfg.get("seed", 0))
+        self.faithfulness_topk = int(cfg.get("faithfulness_topk", 5))
+
+        self.kb = KnowledgeBus()
+        self.casebooks = memory.casebooks
+
+        self.calibration = CalibrationManager(
             cfg=self.cfg.get("calibration", {}),  # pass calibration sub-config
             memory=self.memory,
             logger=self.logger,
@@ -180,7 +175,7 @@ class Improver:
             meta={"plan_sha": plan_hash},
         )
         case = self.casebooks.add_case(
-            casebook_name=casebook_name,
+            casebook_id=cb.id,    
             prompt_text=json.dumps(content_plan),
             agent_name="text_improver",
             meta={"run_dir": str(run_dir)},

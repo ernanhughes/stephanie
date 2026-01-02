@@ -231,12 +231,24 @@ class GraphIndexer:
         doc_hash = hash_text(text)
         sent_spans = sentences(text)
 
-        fixed_entities = self._repair_entities(entities=entities, text=text, sent_spans=sent_spans, doc_hash=doc_hash)
+        entities = payload.get("entities") or []
         if not entities:
             try:
                 entities = self.detect_entities_fn(text) or []
             except Exception:
                 log.warning("GraphIndexer: detect_entities_fn failed", exc_info=True)
+                entities = []
+
+        fixed_entities = self._repair_entities(
+            entities=entities,
+            text=text,
+            sent_spans=sent_spans,
+            doc_hash=doc_hash,
+        )
+
+        if not fixed_entities:
+            await self.kg.publish("knowledge_graph.index_failed", {"scorable_id": scorable_id, "error": "No entities"})
+            return
 
         # upsert mention + canonical + MENTIONS edge
         for ent in fixed_entities:

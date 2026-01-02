@@ -34,7 +34,7 @@ class DraftGeneratorAgent(BaseAgent):
         self.section_name_fallback = cfg.get("section_name_fallback", "Blog Section")
         self.vpm: VPMController = default_controller()
         self.goals = GoalScorer()
-        self.ti = Improver(cfg, memory=memory, logger=logger, workdir=cfg.get("text_workdir", "./text_runs"))
+        self.ti = Improver(cfg, memory=memory, container=container, logger=logger)
         self.fuser = KnowledgeFuser(cfg, memory, container, logger)
 
         # chat ingestion options
