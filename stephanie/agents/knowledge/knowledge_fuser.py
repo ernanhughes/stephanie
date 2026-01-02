@@ -43,8 +43,6 @@ class KnowledgeFuser:
                 ),
                 metric=cfg.get("domain_metric", "cosine"),
             )
-            self.kg_service = self.container.get("knowledge_graph")
-            self.kg_service.initialize()  # ensure ready
         except Exception as e:
             log.error(
                 f"Failed to initialize KnowledgeFuser dependencies: {e}",

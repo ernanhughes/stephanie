@@ -1,26 +1,41 @@
 # stephanie/components/information/linkers/knn.py
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Sequence
 
 from stephanie.components.information.data import PaperSection
 from stephanie.components.information.graph.paper_graph_abi import GraphEdge
-from stephanie.components.information.linkers.base import (BaseSectionLinker,
-                                                           section_pid)
-from stephanie.components.information.tasks.section_link_task import \
-    SectionLinkTask
+from stephanie.components.information.linkers.base import (
+    BaseSectionLinker,
+    section_pid,
+)
+from stephanie.components.information.tasks.section_link_task import (
+    SectionLinkTask,
+)
 
 
 class SemanticKNNLinker(BaseSectionLinker):
     """
     Wraps your existing SectionLinkTask and converts SectionMatch -> GraphEdge.
     """
+
     name = "semantic_knn"
 
-    def __init__(self, *, top_k: int, min_sim: float, embed_model: Optional[str] = None) -> None:
-        self.top_k = int(top_k)
-        self.min_sim = float(min_sim)
-        self.embed_model = embed_model
+    def __init__(
+        self,
+        cfg: Dict[str, Any],
+        memory: Any,
+        container: Any,
+        logger: Any,
+    ) -> None:
+        self.cfg = cfg
+        self.memory = memory
+        self.container = container
+        self.logger = logger
+
+        self.top_k = int(cfg.get("top_k", 10))
+        self.min_sim = float(cfg.get("min_sim", 0.5))
+        self.embed_model = memory.embedding
 
     def link(
         self,
@@ -31,9 +46,13 @@ class SemanticKNNLinker(BaseSectionLinker):
         context: Dict[str, Any],
     ) -> List[GraphEdge]:
         # SectionLinkTask expects a combined list (root + others), with embeddings prepopulated
-        all_sections = list(root_sections) + [s for s in corpus_sections if section_pid(s) != root_arxiv_id]
+        all_sections = list(root_sections) + [
+            s for s in corpus_sections if section_pid(s) != root_arxiv_id
+        ]
 
-        task = SectionLinkTask(root_arxiv_id=root_arxiv_id, top_k=self.top_k, min_sim=self.min_sim)
+        task = SectionLinkTask(
+            root_arxiv_id=root_arxiv_id, top_k=self.top_k, min_sim=self.min_sim
+        )
         matches, clusters = task.run(all_sections)
 
         # expose clusters if you want them for reporting

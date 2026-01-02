@@ -37,7 +37,6 @@ class KnowledgeGraphService(Service):
     """
 
     def __init__(self, cfg: Dict, memory: Any, container: Any, logger: Any):
-        super().__init__(cfg)
         self.cfg = cfg
         self.memory = memory
         self.container = container
@@ -68,6 +67,10 @@ class KnowledgeGraphService(Service):
             "node_types": {},
             "edge_types": {},
         }
+
+    @property
+    def name(self):
+        return "knowledge-graph"
 
     # --- Collaborator factories (lazy init) ----------------------------------
 

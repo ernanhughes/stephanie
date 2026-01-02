@@ -2,12 +2,11 @@
 defaults:
   - _self_
   - db: postgres
+  - bus: zmq
   - plan_monitor: disabled
-  - bus: nats   
-  - logging/json_logger
-  - mars/default
-  - services/default
-  - scorer: all  
+  - logging: json_logger
+  - services: all
+  - scorer: all
 
 
   - agents/knowledge_infused_summarizer
