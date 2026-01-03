@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 from typing import Any, Dict, List, Optional, Union
+from stephanie.scoring.scorable import Scorable
 
 from gliner2 import GLiNER2  # pip install gliner2
 
@@ -25,7 +26,7 @@ class Gliner2EntityDetector:
     Thin wrapper around GLiNER2 for Stephanie-style NER.
 
     Exposes:
-        detect_entities(text: str) -> List[Dict[str, Any]]
+        detect_entities(scorable: Scorable) -> List[Dict[str, Any]]
 
     Each entity dict has:
         {
@@ -63,10 +64,11 @@ class Gliner2EntityDetector:
         log.info("[GLiNER2] Model loaded")
 
     # ------------------------------------------------------------------
-    def detect_entities(self, text: str) -> List[Dict[str, Any]]:
+    def detect_entities(self, scorable: Scorable) -> List[Dict[str, Any]]:
         """
         Main API: GLiNER2 → Stephanie-style entity list.
         """
+        text = scorable.text if hasattr(scorable, "text") else scorable.get("text", "")
         text = text or ""
         if not text.strip():
             return []

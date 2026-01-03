@@ -86,11 +86,8 @@ class PaperGraphLinkerAgent(BaseAgent):
         self._dumper = PaperGraphDumper(run_dir=self.run_dir)
 
         self._linkers: List[BaseSectionLinker] = [
-            SemanticKNNLinker(
-                top_k=self.sim_top_k,
-                min_sim=self.sim_min,
-                embed_model=self.embed_model,
-            ),
+            SemanticKNNLinker(self.cfg, memory=self.memory, container=self.container,
+                              logger=self.logger),
         ]
         if self.enable_citations:
             self._linkers.append(CitationLinker())

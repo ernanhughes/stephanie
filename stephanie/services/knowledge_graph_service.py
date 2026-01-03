@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from stephanie.scoring.scorable import Scorable
 from stephanie.services.knowledge_graph.entity_canonicalizer import \
     EntityCanonicalizer
 from stephanie.services.knowledge_graph.graph_indexer import GraphIndexer
@@ -198,7 +199,7 @@ class KnowledgeGraphService(Service):
 
     def detect_entities(self, text: str) -> List[Dict]:
         # Fallback: empty (requires external NER)
-        return self._entity_tool.detect(text)
+        return self._entity_tool.detect(text=text)
 
     def build_query_subgraph(self, *, query: str, cfg: SubgraphConfig | None = None) -> dict:
         cfg = cfg or SubgraphConfig()

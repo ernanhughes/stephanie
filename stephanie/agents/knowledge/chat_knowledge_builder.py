@@ -178,7 +178,7 @@ class ChatKnowledgeBuilder:
         # 2. Entity Detection
         if self.entity_detector:
             try:
-                raw_entities = self.entity_detector.detect_entities(text)
+                raw_entities = self.entity_detector.detect_entities(scorable)
                 for ent in raw_entities:
                     entities_by_type.setdefault(ent["type"], []).append(ent)
             except Exception as e:

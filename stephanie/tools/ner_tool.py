@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 
 from stephanie.orm.gliner2_entity_detector import Gliner2EntityDetector
+from stephanie.scoring.scorable import Scorable
 from stephanie.tools.base_tool import BaseTool
 
 log = logging.getLogger(__name__)
@@ -103,7 +104,7 @@ class NerTool(BaseTool):
         if not self.use_model or not self.detector:
             return []
 
-        return self._run_detector(text)    
+        return self._run_detector(Scorable(text=text))    
 
 
     # ------------------------------------------------------------------

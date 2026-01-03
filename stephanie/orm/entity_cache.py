@@ -3,13 +3,20 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import JSON, Column, DateTime, ForeignKey, Integer
+from sqlalchemy import (JSON, Column, DateTime, ForeignKey,
+                        Index, Integer, UniqueConstraint)
 
 from stephanie.orm.base import Base
 
 
 class EntityCacheORM(Base):
     __tablename__ = "entity_cache"
+    __table_args__ = (
+        UniqueConstraint("embedding_ref", name="uq_entity_cache_embedding_ref"),
+        Index("ix_entity_cache_embedding_ref", "embedding_ref"),
+        Index("ix_entity_cache_last_updated", "last_updated"),
+    )
+
 
     id = Column(Integer, primary_key=True, autoincrement=True)
 

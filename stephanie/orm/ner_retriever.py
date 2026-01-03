@@ -49,8 +49,76 @@ from transformers import AutoModel, AutoTokenizer, pipeline
 from stephanie.orm.hnsw_index import HNSWIndex
 from stephanie.scoring.scorable import Scorable
 from stephanie.utils.hash_utils import hash_text
+from functools import lru_cache
 
 log = logging.getLogger(__name__)
+
+@lru_cache(maxsize=16)
+def get_cached_tokenizer(model_name: str):
+    tok = AutoTokenizer.from_pretrained(model_name)
+    if tok.pad_token is None:
+        tok.pad_token = tok.eos_token
+    return tok
+
+@lru_cache(maxsize=16)
+def get_cached_model(model_name: str, device: str):
+    m = AutoModel.from_pretrained(
+        model_name,
+        output_hidden_states=True,
+        trust_remote_code=True,
+        ignore_mismatched_sizes=True,
+    ).eval()
+    try:
+        m = m.to(device)
+    except Exception:
+        pass
+    return m
+
+def _labels_key(labels: list[str] | None) -> str:
+    # stable + hashable for lru_cache
+    return json.dumps(list(labels or []), sort_keys=True)
+
+@lru_cache(maxsize=32)
+def get_cached_entity_detector(
+    *,
+    device: str,
+    model_name: str | None,
+    labels_json: str,
+    threshold: float,
+    long_text_mode: str,
+    sample_chars: int,
+    max_chars: int,
+    chunk_chars: int,
+    chunk_overlap: int,
+    max_chunks: int,
+    max_entities: int,
+    long_text_side: str,
+    progress_every: int,
+    progress_log_level: str,
+    log_empty_chunks: bool,
+    log_entity_samples: int,
+):
+    labels = json.loads(labels_json) if labels_json else None
+    return EntityDetector(
+        device=device,
+        model_name=model_name,
+        labels=labels,
+        threshold=float(threshold),
+        long_text_mode=long_text_mode,
+        sample_chars=int(sample_chars or 0),
+        max_chars=int(max_chars or 0),
+        chunk_chars=int(chunk_chars or 0),
+        chunk_overlap=int(chunk_overlap or 0),
+        max_chunks=int(max_chunks or 0),
+        max_entities=int(max_entities or 0),
+        long_text_side=long_text_side,
+        progress_every=int(progress_every or 0),
+        progress_log_level=str(progress_log_level or "info"),
+        log_empty_chunks=bool(log_empty_chunks),
+        log_entity_samples=int(log_entity_samples or 0),
+    )
+
+
 
 
 # -------------------------------
@@ -130,7 +198,7 @@ class EntityDetector:
         max_chunks: int = 64,
         max_entities: int = 5_000,
         long_text_side: str = "head",  # head|tail (used by max_chars truncation & slice mode)
-        long_text_mode: str = "chunk",  # chunk|slice
+        long_text_mode: str = "slice",  # chunk|slice
         sample_chars: int = 2_000,      # used when long_text_mode="slice"
         progress_every: int = 1,
         progress_log_level: str = "info",
@@ -417,11 +485,12 @@ class EntityDetector:
         # 3) Heuristic fallback
         return self._heuristic_entity_detection(text)
 
-    def detect_entities(self, text: str) -> List[Dict[str, Any]]:
+    def detect_entities(self, scorable: Scorable) -> List[Dict[str, Any]]:
         """Detect entities with chunking + safety limits to avoid OOM on very long texts.
 
         Adds progress logging for long texts so you can see chunk-by-chunk progress.
         """
+        text = scorable.text if hasattr(scorable, "text") else scorable.get("text", "")
         if not text or len(text.strip()) < 2:
             return []
 
@@ -621,52 +690,46 @@ class NERRetrieverEmbedder:
         projection_enabled=False,
         projection_dim=1024,
         projection_dropout=0.1,
+        *,
+        tokenizer=None,
+        model=None,
+        entity_detector=None,
     ):
         self.device = device
         self.logger = logger
         self.memory = memory
         self.cfg = cfg or {}
 
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-        if self.tokenizer.pad_token is None:
-            self.tokenizer.pad_token = self.tokenizer.eos_token
+        self.tokenizer = tokenizer or get_cached_tokenizer(model_name)
+        self.model = model or get_cached_model(model_name, device)
 
-        self.model = (
-            AutoModel.from_pretrained(
-                model_name, output_hidden_states=True, 
-                trust_remote_code=True,
-                ignore_mismatched_sizes=True  # Explicitly ignore size mismatches
+        det = entity_detector
+        if det is None:
+            det = get_cached_entity_detector(
+                device=device,
+                model_name=self.cfg.get("ner_detector_model", None),
+                labels_json=_labels_key(self.cfg.get("ner_labels", None)),
+                threshold=self.cfg.get("ner_detector_threshold", 0.35),
+                long_text_mode=self.cfg.get("ner_long_text_mode", "chunk"),
+                sample_chars=int(self.cfg.get("ner_sample_chars", 2000) or 0),
+                max_chars=int(self.cfg.get("ner_detector_max_chars", 200_000) or 0),
+                chunk_chars=int(self.cfg.get("ner_detector_chunk_chars", 8_000) or 0),
+                chunk_overlap=int(self.cfg.get("ner_detector_chunk_overlap", 200) or 0),
+                max_chunks=int(self.cfg.get("ner_detector_max_chunks", 64) or 0),
+                max_entities=int(self.cfg.get("ner_detector_max_entities", 5_000) or 0),
+                long_text_side=self.cfg.get("ner_long_text_side", "head"),
+                progress_every=int(self.cfg.get("ner_progress_every", 1) or 0),
+                progress_log_level=str(self.cfg.get("ner_progress_log_level", "info") or "info"),
+                log_empty_chunks=bool(self.cfg.get("ner_log_empty_chunks", False)),
+                log_entity_samples=int(self.cfg.get("ner_log_entity_samples", 0) or 0),
             )
-            .to(device)
-            .eval()
-        )
+        self.entity_detector = det
 
         self.layer = layer
         self.embedding_dim = embedding_dim
         from stephanie.scoring.calibration_manager import CalibrationManager
 
         self.index = HNSWIndex(dim=embedding_dim, index_path=index_path)
-        # Entity detector (GLiNER2-first, with configurable model/threshold)
-        self.entity_detector = EntityDetector(
-            device=device,
-            model_name=self.cfg.get("ner_detector_model", None),
-            labels=self.cfg.get("ner_labels", None),
-            threshold=self.cfg.get("ner_detector_threshold", 0.35),
-            # Long-text handling (speed knobs)
-            long_text_mode=self.cfg.get("ner_long_text_mode", "chunk"),
-            sample_chars=int(self.cfg.get("ner_sample_chars", 2000) or 0),
-            max_chars=int(self.cfg.get("ner_detector_max_chars", 200_000) or 0),
-            chunk_chars=int(self.cfg.get("ner_detector_chunk_chars", 8_000) or 0),
-            chunk_overlap=int(self.cfg.get("ner_detector_chunk_overlap", 200) or 0),
-            max_chunks=int(self.cfg.get("ner_detector_max_chunks", 64) or 0),
-            max_entities=int(self.cfg.get("ner_detector_max_entities", 5_000) or 0),
-            long_text_side=self.cfg.get("ner_long_text_side", "head"),
-            # Progress logging
-            progress_every=int(self.cfg.get("ner_progress_every", 1) or 0),
-            progress_log_level=str(self.cfg.get("ner_progress_log_level", "info") or "info"),
-            log_empty_chunks=bool(self.cfg.get("ner_log_empty_chunks", False)),
-            log_entity_samples=int(self.cfg.get("ner_log_entity_samples", 0) or 0),
-        )
 
         # optional projection
         self.projection_enabled = projection_enabled

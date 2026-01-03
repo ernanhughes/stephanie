@@ -96,7 +96,7 @@ class DraftGeneratorAgent(BaseAgent):
 
         for step in range(self.max_steps):
             # Generate/Improve draft
-            result = self.ti.improve(plan)  # TextImprover is self-contained; we rerun with the (improved) plan
+            result = self.ti.improve(plan, context=context)  # TextImprover is self-contained; we rerun with the (improved) plan
             last_result = result
 
             # Extract VPM dims into controller row

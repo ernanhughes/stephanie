@@ -1,9 +1,10 @@
 # stephanie/memcube/theorem_engine.py
 from __future__ import annotations
 
-from stephanie.memcubes.theorem import Theorem
-from stephanie.memcubes.theorem_validator import TheoremValidator
+from stephanie.memcube.theorem import Theorem
+from stephanie.memcube.theorem_validator import TheoremValidator
 
+from networkx import nx
 
 class TheoremEngine:
     def __init__(self, memory, belief_graph):

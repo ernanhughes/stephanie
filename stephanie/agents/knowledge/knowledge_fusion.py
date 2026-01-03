@@ -321,7 +321,7 @@ class KnowledgeFusionAgent(BaseAgent):
                 # 2) Entity detection (offload to thread)
                 results = await asyncio.to_thread(
                     self.entity_detector.detect_entities,
-                    text,
+                    scorable,
                 )
                 entities = self._format_entities(results, text, source="paper")
                 filtered_ents = [
@@ -461,7 +461,7 @@ class KnowledgeFusionAgent(BaseAgent):
                     # 2) Entity detection (thread) on chunk text
                     results = await asyncio.to_thread(
                         self.entity_detector.detect_entities,
-                        chunk["text"],
+                        scorable=chunk,
                     )
                     entities = self._format_entities(
                         results, chunk["text"], source="paper"
@@ -609,7 +609,14 @@ class KnowledgeFusionAgent(BaseAgent):
 
             # Run surface NER (entities as spans)
             try:
-                ner_results = self.entity_detector.detect_entities(text)
+                scorable = ScorableFactory.from_dict(
+                    {
+                        "id": str(sec_id),
+                        "text": text,
+                        "target_type": "document_section",
+                    }
+                )
+                ner_results = self.entity_detector.detect_entities(scorable)
             except Exception:
                 if not self.kfc.entity_detection_fallback:
                     log.warning(
