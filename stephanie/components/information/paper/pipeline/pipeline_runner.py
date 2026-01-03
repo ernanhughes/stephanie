@@ -1,6 +1,8 @@
 # stephanie/components/information/paper/pipeline/pipeline_runner.py
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -86,9 +88,15 @@ class PaperPipelineRunner:
                 summarizer=self._get_summarizer(),
                 embedder=self._get_embedder(),
             )
-
             sections = await section_task.run(graph=graph, texts=texts)
+
+        # attach casebooks/cases for every section (cached skip makes this cheap on reruns)
+        changed = self._ensure_section_casebooks(arxiv_id=arxiv_id, sections=sections, context=context)
+
+        # persist if we built OR if we attached case metadata
+        if sections is not None and (changed or context.get("_sections_built", False)):
             self.sections_cache.persist(arxiv_id=arxiv_id, sections=sections)
+
 
         # 4) Link + clusters
         link_task = SectionLinkTask(
@@ -135,3 +143,121 @@ class PaperPipelineRunner:
         def embedder(text: str):
             return self.memory.embedding.get_or_create(text)
         return embedder
+
+    def _sha1(self, s: str) -> str:
+        return hashlib.sha1((s or "").encode("utf-8", errors="ignore")).hexdigest()
+
+    def _sec_id(self, sec: Any) -> str:
+        return str(getattr(sec, "section_id", None) or getattr(sec, "id", None) or f"sec-{getattr(sec, 'section_index', 0)}")
+
+    def _ensure_section_casebooks(self, *, arxiv_id: str, sections: list, context: dict) -> bool:
+        """
+        Ensures:
+        - a CaseBook per section
+        - a Case per section (deduped via section_hash)
+        Writes:
+        sec.meta['casebook_id'], sec.meta['case_id'], sec.meta['section_hash'], sec.meta['casebook_name']
+        Returns True if anything changed (so caller can persist sections).
+        """
+        casebooks = self.memory.casebooks
+
+        run_id = context.get("pipeline_run_id")
+        run_id = int(run_id) if run_id is not None else 0
+
+        goal = context.get("goal") or {}
+        changed = False
+
+        for sec in sections:
+            text = getattr(sec, "text", "") or ""
+            if not text.strip():
+                continue
+
+            meta = getattr(sec, "meta", None) or {}
+            section_hash = self._sha1(text)
+
+            # ✅ Hard cache: if we already attached ids for this exact text, skip DB work entirely
+            if (
+                meta.get("section_hash") == section_hash
+                and meta.get("casebook_id")
+                and meta.get("case_id")
+            ):
+                continue
+
+            sec_id = self._sec_id(sec)
+            cb_name = f"paper:{arxiv_id}:{sec_id}"
+
+            cb = casebooks.ensure_casebook(
+                name=cb_name,
+                pipeline_run_id=run_id,
+                description=f"Paper section node: {arxiv_id} / {sec_id}",
+                tags=["paper", "section", str(arxiv_id)],
+                meta={
+                    "paper_arxiv_id": str(arxiv_id),
+                    "section_id": sec_id,
+                    "section_index": getattr(sec, "section_index", None),
+                    "paper_role": getattr(sec, "paper_role", None) or getattr(sec, "role", None),
+                    "title": getattr(sec, "title", None),
+                },
+            )
+
+            # ✅ Soft dedup: if latest case already matches section_hash, reuse it
+            last = casebooks.list_cases(casebook_id=cb.id, agent_name="section_build_task", limit=1)
+            if last and (last[0].meta or {}).get("section_hash") == section_hash:
+                case = last[0]
+            else:
+                scorables = [
+                    {
+                        "text": text,
+                        "target_type": "document_section",
+                        "role": "section",
+                        "meta": {
+                            "paper_arxiv_id": str(arxiv_id),
+                            "section_id": sec_id,
+                            "section_index": getattr(sec, "section_index", None),
+                            "paper_role": getattr(sec, "paper_role", None) or getattr(sec, "role", None),
+                        },
+                    }
+                ]
+
+                summary = getattr(sec, "summary", None) or ""
+                if summary.strip():
+                    scorables.append(
+                        {
+                            "text": summary,
+                            "target_type": "document_section_summary",
+                            "role": "summary",
+                            "meta": {
+                                "paper_arxiv_id": str(arxiv_id),
+                                "section_id": sec_id,
+                            },
+                        }
+                    )
+
+                case = casebooks.add_case(
+                    casebook_id=cb.id,
+                    goal_id=goal.get("id"),  # nullable is fine
+                    agent_name="section_build_task",
+                    name=sec_id,
+                    description=getattr(sec, "title", None) or "",
+                    prompt_text=json.dumps({"arxiv_id": str(arxiv_id), "section_id": sec_id}),
+                    scorables=scorables,
+                    meta={
+                        "section_hash": section_hash,
+                        "paper_arxiv_id": str(arxiv_id),
+                        "section_id": sec_id,
+                        "section_index": getattr(sec, "section_index", None),
+                    },
+                )
+
+            meta.update(
+                {
+                    "section_hash": section_hash,
+                    "casebook_name": cb_name,
+                    "casebook_id": cb.id,
+                    "case_id": case.id,
+                }
+            )
+            sec.meta = meta
+            changed = True
+
+        return changed

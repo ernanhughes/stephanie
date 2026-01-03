@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 from typing import Any, Dict, List, Optional
 
 from stephanie.components.information.data import PaperSection
@@ -52,7 +52,11 @@ class PaperSectionsCache:
         arxiv_id = str(arxiv_id)
 
         try:
-            self.paper_store.upsert_sections_for_arxiv(arxiv_id=arxiv_id, sections=sections)
+            for sec in sections:
+                s = asdict(sec)
+                s["id"] = arxiv_id
+                s["paper_id"] = arxiv_id
+                self.paper_store.upsert_section(s)
         except Exception:
             # fallback, some stores use different method names; keep it non-fatal
             log.warning("PaperSectionsCache: persist failed for %s", arxiv_id, exc_info=True)

@@ -144,12 +144,17 @@ class PaperSectionGraphIndexer:
         published = 0
         for sec in sections:
             scorable_id = make_section_scorable_id(arxiv_id=arxiv_id, section=sec)
+            meta = getattr(sec, "meta", None) or {}
             payload = {
                 "run_id": run_id,
                 "arxiv_id": str(arxiv_id),
                 "section_id": getattr(sec, "section_id", None) or getattr(sec, "id", None),
                 "scorable_id": str(scorable_id),
+                "casebook_id": meta.get("casebook_id"),
+                "case_id": meta.get("case_id"),
+                "casebook_name": meta.get("casebook_name"),
             }
+
             try: 
                 await bus.publish("kg.index.section", payload)
                 published += 1
