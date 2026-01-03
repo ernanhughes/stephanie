@@ -1,6 +1,7 @@
 # stephanie/services/knowledge_graph/edge_enricher.py
 from typing import Dict, Optional
 
+
 def enrich_relationship(
     rel: Dict,
     *,

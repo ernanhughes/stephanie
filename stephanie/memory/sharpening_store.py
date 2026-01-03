@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
-from stephanie.models.sharpening_prediction import SharpeningPredictionORM
+from stephanie.orm.sharpening_prediction import SharpeningPredictionORM
 
 
 class SharpeningStore(BaseSQLAlchemyStore):

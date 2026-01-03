@@ -5,10 +5,10 @@ from datetime import datetime
 
 from sqlalchemy.orm import Session
 
-from stephanie.models.belief import BeliefORM
-from stephanie.models.icl_example import ICLExampleORM
-from stephanie.models.theorem import CartridgeORM
-from stephanie.models.world_view import WorldviewORM
+from stephanie.orm.belief import BeliefORM
+from stephanie.orm.icl_example import ICLExampleORM
+from stephanie.orm.theorem import CartridgeORM
+from stephanie.orm.world_view import WorldviewORM
 
 
 class WorldviewMergerAgent:

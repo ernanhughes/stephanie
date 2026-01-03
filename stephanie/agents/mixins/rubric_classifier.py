@@ -10,7 +10,7 @@ from sklearn.cluster import AgglomerativeClustering
 from sklearn.metrics.pairwise import cosine_similarity
 
 from stephanie.constants import GOAL
-from stephanie.models import PatternStatORM
+from stephanie.orm import PatternStatORM
 
 
 class RubricClusterer:

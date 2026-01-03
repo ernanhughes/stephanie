@@ -12,12 +12,9 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader, TensorDataset
 from tqdm import tqdm
 
-from stephanie.models.belief_cartridge import BeliefCartridgeORM
-from stephanie.scoring.model.in_context_q import InContextQModel
-from stephanie.scoring.model.policy_head import PolicyHead
-from stephanie.scoring.model.q_head import QHead
-from stephanie.scoring.model.text_encoder import TextEncoder
-from stephanie.scoring.model.v_head import VHead
+from stephanie.model.sicql import InContextQModel, PolicyHead, QHead, VHead
+from stephanie.model.text_encoder import TextEncoder
+from stephanie.orm.belief_cartridge import BeliefCartridgeORM
 from stephanie.scoring.scorable import ScorableFactory, ScorableType
 from stephanie.scoring.training.base_trainer import BaseTrainer
 from stephanie.scoring.transforms.regression_tuner import RegressionTuner
@@ -599,10 +596,10 @@ class SICQLTrainer(BaseTrainer):
 
         # Build optimizers
         optimizers = {
-            "encoder": optim.Adam(model.encoder.parameters(), lr=self.lr),
-            "q_head": optim.Adam(model.q_head.parameters(), lr=self.lr),
-            "v_head": optim.Adam(model.v_head.parameters(), lr=self.lr),
-            "pi_head": optim.Adam(model.pi_head.parameters(), lr=self.lr),
+            "encoder": optim.Adam(model.encoder.parameters(), lr=self.lr, weight_decay=1e-5),
+            "q_head": optim.Adam(model.q_head.parameters(), lr=self.lr, weight_decay=1e-5),
+            "v_head": optim.Adam(model.v_head.parameters(), lr=self.lr, weight_decay=1e-5),
+            "pi_head": optim.Adam(model.pi_head.parameters(), lr=self.lr, weight_decay=1e-5),
         }
 
         # Build schedulers

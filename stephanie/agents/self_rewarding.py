@@ -8,7 +8,7 @@ from stephanie.agents.base_agent import BaseAgent
 from stephanie.constants import PIPELINE_RUN_ID
 from stephanie.evaluator.base import BaseEvaluator
 from stephanie.memory import SymbolicRuleStore
-from stephanie.models import EvaluationORM, ScoreORM
+from stephanie.orm import EvaluationORM, ScoreORM
 from stephanie.prompts import PromptLoader
 
 

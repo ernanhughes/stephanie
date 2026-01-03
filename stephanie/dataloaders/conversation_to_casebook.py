@@ -7,7 +7,7 @@ import re
 from datetime import datetime
 from typing import Any, Dict, Iterable, List, Tuple
 
-from stephanie.models.casebook import CaseBookORM, CaseORM, CaseScorableORM
+from stephanie.orm.casebook import CaseBookORM, CaseORM, CaseScorableORM
 from stephanie.utils.hash_utils import hash_text
 
 logger = logging.getLogger(__name__)

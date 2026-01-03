@@ -5,7 +5,7 @@ from datetime import datetime
 
 from sqlalchemy.orm import Session
 
-from stephanie.models.belief import BeliefORM
+from stephanie.orm.belief import BeliefORM
 
 
 class BeliefTunerAgent:

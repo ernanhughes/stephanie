@@ -21,8 +21,9 @@ from stephanie.scoring.scorable import ScorableType
 from stephanie.services.bus.knowledge_bus import KnowledgeBus
 from stephanie.utils.hash_utils import hash_text
 from stephanie.utils.json_sanitize import safe_json
+from stephanie.constants import PIPELINE_RUN_ID
 
-from ..paper_improver.faithfulness import FaithfulnessBot
+from ..paper_improver.faithfulness import FaithfulnessTool
 
 log = logging.getLogger(__name__)
 
@@ -62,28 +63,24 @@ class Improver:
         self,
         cfg, 
         memory,
-        workdir: str = "./data/text_runs",
-        timeout: int = 60,
-        seed: int = 0,
-        faithfulness_topk: int = 5,
-        kb: KnowledgeBus | None = None,
-        casebooks: CaseBookStore | None = None,
-        calibration: CalibrationManager | None = None,  
-        logger=None,                                    
+        container: Any,
+        logger,
     ):
         self.cfg = cfg
         self.memory = memory
-        self.workdir = Path(workdir)
-        self.workdir.mkdir(parents=True, exist_ok=True)
-        self.run_id = 0
-        self.timeout = timeout
-        self.seed = seed
-        self.faithfulness_topk = faithfulness_topk
-        self.kb = kb or KnowledgeBus()
-        self.casebooks = casebooks or memory.casebooks
-
+        self.container = container
         self.logger = logger
-        self.calibration = calibration or CalibrationManager(
+
+        self.workdir = Path(cfg.get("text_workdir", "./text_runs"))
+        self.run_id = int(cfg.get("run_id", 0))
+        self.timeout = int(cfg.get("timeout_sec", 300))
+        self.seed = int(cfg.get("seed", 0))
+        self.faithfulness_topk = int(cfg.get("faithfulness_topk", 5))
+
+        self.kb = KnowledgeBus()
+        self.casebooks = memory.casebooks
+
+        self.calibration = CalibrationManager(
             cfg=self.cfg.get("calibration", {}),  # pass calibration sub-config
             memory=self.memory,
             logger=self.logger,
@@ -93,7 +90,7 @@ class Improver:
 
     # --------------------------- public ---------------------------
 
-    def improve(self, content_plan: Dict[str, Any]) -> Dict[str, Any]:
+    def improve(self, content_plan: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
         # Optional timeout (Unix main thread only)
         alarm_installed = False
         if _supports_alarm():
@@ -102,8 +99,9 @@ class Improver:
             alarm_installed = True
 
         try:
-            return self._improve_inner(content_plan)
-        except TimeoutError:
+            return self._improve_inner(content_plan, context=context)
+        except Exception as e:
+            
             self._log("TextImproverTimeout", {"timeout_sec": self.timeout})
             result = {
                 "error": "timeout",
@@ -140,7 +138,7 @@ class Improver:
 
         return result
 
-    def _improve_inner(self, content_plan: Dict[str, Any]) -> Dict[str, Any]:
+    def _improve_inner(self, content_plan: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
         self._seed_everything(self.seed)
         self.run_id += 1
 
@@ -172,15 +170,17 @@ class Improver:
 
         # 2) Casebook + Case
         casebook_name = f"text_{plan_hash}_{(content_plan.get('section_title') or 'section')}"
-        pipeline_run_id = content_plan.get("pipeline_run_id")
+        pipeline_run_id = content_plan.get(PIPELINE_RUN_ID)
         cb = self.casebooks.ensure_casebook(
             name=casebook_name,
             pipeline_run_id=pipeline_run_id,
             tags=["text_improver", "exemplar_text"],
             meta={"plan_sha": plan_hash},
         )
+        goal_id = context.get("goal", {}).get("id")   
         case = self.casebooks.add_case(
-            casebook_name=casebook_name,
+            casebook_id=cb.id,    
+            goal_id=goal_id,
             prompt_text=json.dumps(content_plan),
             agent_name="text_improver",
             meta={"run_dir": str(run_dir)},
@@ -202,10 +202,11 @@ class Improver:
         # 5) Build VPM + log
         vpm_row = self._build_vpm_row(initial_scores, final_scores, plan_norm)
         goal_eval = self.gs.score("text", "academic_summary", vpm_row)
+        pipeline_run_id=context.get("pipeline_run_id") if context else None
 
         # Log to casebook
         self.casebooks.add_scorable(
-            casebook_name=casebook_name,
+            pipeline_run_id=pipeline_run_id,
             case_id=case.id,
             role="vpm",
             text=safe_json(vpm_row),
@@ -213,7 +214,7 @@ class Improver:
             scorable_type=ScorableType.DYNAMIC,
         )
         self.casebooks.add_scorable(
-            casebook_name=casebook_name,
+            pipeline_run_id=pipeline_run_id,
             case_id=case.id,
             role="text",
             text=(run_dir / "draft.md").read_text(),
@@ -234,7 +235,7 @@ class Improver:
 
         if paper_text and len(paper_text.strip()) > 100:
             try:
-                bot = FaithfulnessBot(top_k=self.faithfulness_topk)
+                bot = FaithfulnessTool(top_k=self.faithfulness_topk)
                 bot.prepare_paper(paper_text)
                 claims = [
                     {
@@ -286,7 +287,7 @@ class Improver:
 
         # Final logging
         self.casebooks.add_scorable(
-            casebook_name=casebook_name,
+            pipeline_run_id=pipeline_run_id,
             case_id=case.id,
             role="dpo_pair",
             text=safe_json(dpo_pair),
@@ -331,15 +332,14 @@ class Improver:
 
 
 
-        self.kb.publish(
-            "trajectory.step",
-            {
-                "casebook": cb.name if hasattr(cb, "name") else casebook_name,
-                "case_id": case.id,
-                "vpm": vpm_row,
-                "goal": goal_eval,
-            },
-        )
+        # self.kb.publish(
+        #     {
+        #         "casebook": cb.name if hasattr(cb, "name") else casebook_name,
+        #         "case_id": case.id,
+        #         "vpm": vpm_row,
+        #         "goal": goal_eval,
+        #     }
+        # )
 
         # 9) Pass criteria
         core_ok = all(

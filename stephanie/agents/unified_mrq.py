@@ -8,7 +8,7 @@ from collections import defaultdict
 import numpy as np
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.models.unified_mrq import UnifiedMRQModelORM
+from stephanie.orm.unified_mrq import UnifiedMRQModelORM
 from stephanie.scoring.training.mrq_trainer import MRQTrainer
 
 

@@ -6,9 +6,9 @@ from typing import List, Optional, Sequence
 import numpy as np
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
-from stephanie.models.goal import GoalORM
-from stephanie.models.hypothesis import HypothesisORM
-from stephanie.models.hypothesis_document_section import \
+from stephanie.orm.goal import GoalORM
+from stephanie.orm.hypothesis import HypothesisORM
+from stephanie.orm.hypothesis_document_section import \
     HypothesisDocumentSectionORM
 
 
@@ -99,7 +99,7 @@ class HypothesisStore(BaseSQLAlchemyStore):
         def op(s):
             q = s.query(HypothesisORM).join(GoalORM).filter(GoalORM.goal_text == goal_text)
             if source:
-                from stephanie.models import EvaluationORM
+                from stephanie.orm import EvaluationORM
                 q = q.join(EvaluationORM).filter(EvaluationORM.source == source)
             return q.limit(limit).all()
         return self._run(op)

@@ -5,7 +5,7 @@ from datetime import datetime
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.constants import PIPELINE_RUN_ID
-from stephanie.models import SymbolicRuleORM
+from stephanie.orm import SymbolicRuleORM
 from stephanie.rules.rule_effect_analyzer import RuleEffectAnalyzer
 
 

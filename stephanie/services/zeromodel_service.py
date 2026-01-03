@@ -812,6 +812,7 @@ class ZeroModelService(Service):
                     float(row.mean()),
                 )
 
+        os.makedirs(os.path.dirname(out_path), exist_ok=True)
         gif.save_gif(out_path, fps=fps)
         log.debug(
             f"ZeroModelService: rendered {len(gif.frames)} frames → {out_path}"

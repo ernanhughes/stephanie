@@ -5,8 +5,8 @@ import statistics
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.constants import PIPELINE_RUN_ID
-from stephanie.models.rule_application import RuleApplicationORM
-from stephanie.models.symbolic_rule import SymbolicRuleORM
+from stephanie.orm.rule_application import RuleApplicationORM
+from stephanie.orm.symbolic_rule import SymbolicRuleORM
 
 
 class RuleRefinerAgent(BaseAgent):

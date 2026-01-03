@@ -31,7 +31,8 @@ class HFSimilarPaperTask:
             pass
 
         # Import here to avoid import-time coupling if your HF tool loads lazily
-        from stephanie.tools.huggingface_tool import recommend_similar_papers  # <-- adjust to your real import path
+        from stephanie.tools.huggingface_tool import \
+            recommend_similar_papers  # <-- adjust to your real import path
 
         tool_cfg = HFSimilarPaperConfig(max_limit=max_limit)
         self.tool = HFSimilarPaperTool(cfg=tool_cfg, recommender=recommend_similar_papers, logger=logger or log)

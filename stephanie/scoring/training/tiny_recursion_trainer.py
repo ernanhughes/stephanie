@@ -30,7 +30,7 @@ import torch.nn.functional as F
 from torch import optim
 from torch.utils.data import DataLoader, TensorDataset
 
-from stephanie.scoring.model.tiny_recursion import TinyRecursionModel
+from stephanie.model.tiny import TinyModel
 from stephanie.scoring.training.base_trainer import BaseTrainer
 
 try:
@@ -132,7 +132,7 @@ class TinyTrainer(BaseTrainer):
             torch.cuda.manual_seed(self.seed)
 
         # --- Model ------------------------------------------------------------
-        self.model = TinyRecursionModel(
+        self.model = TinyModel(
             d_model=self.dim,
             n_layers=int(cfg.get("n_layers", 2)),
             n_recursions=self.n_recursions,
@@ -333,7 +333,7 @@ class TinyTrainer(BaseTrainer):
     # Epoch training
     # ------------------------------
 
-    def _train_epoch(self, model: TinyRecursionModel, dataloader: DataLoader, epoch_idx: int) -> float:
+    def _train_epoch(self, model: TinyModel, dataloader: DataLoader, epoch_idx: int) -> float:
         """
         Train model for one epoch.
         
@@ -461,7 +461,7 @@ class TinyTrainer(BaseTrainer):
     # ------------------------------
 
     @torch.no_grad()
-    def _validate(self, model: TinyRecursionModel, dataloader: Optional[DataLoader]) -> Dict[str, float]:
+    def _validate(self, model: TinyModel, dataloader: Optional[DataLoader]) -> Dict[str, float]:
         """
         Run validation and compute comprehensive metrics.
         

@@ -66,9 +66,21 @@ import torch
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.memory.casebook_store import CaseBookStore
-from stephanie.models.ner_retriever import EntityDetector, NERRetrieverEmbedder
+from stephanie.orm.ner_retriever import EntityDetector, NERRetrieverEmbedder, get_cached_entity_detector
 from stephanie.tools.scorable_classifier import ScorableClassifier
 from stephanie.utils.hash_utils import hash_text
+from stephanie.utils.text_utils import (
+    sentences,
+    lexical_overlap,
+    token_set,
+    jaccard_sets,
+    jaccard_token_set,
+    soft_dedup_dicts,
+    extract_claim_sentences,
+    norm_token_set,
+    compile_claim_regex,
+)
+
 
 log = logging.getLogger(__name__)
 
@@ -77,48 +89,6 @@ _MIN_INSIGHT_SCORE = 0.70
 _MAX_CLAIMS = 10
 _MIN_CONN_OVERLAP = 0.06
 
-def _sentences(t: str, max_sents: int = 80) -> List[str]:
-    """Split text into sentences with optional max limit."""
-    if not t:
-        return []
-    parts = re.split(r"(?<=[.!?])\s+", t.strip())
-    sentences = [p.strip() for p in parts if len(p.strip()) > 2]
-    return sentences[:max_sents] if max_sents and len(sentences) > max_sents else sentences
-
-def _extract_claim_sents(text: str, max_claims: int = _MAX_CLAIMS) -> List[str]:
-    """Extract claim sentences with improved heuristic."""
-    sents = _sentences(text)
-    claimish = [
-        s for s in sents 
-        if len(s) > 40 and re.search(
-            r"(show|demonstrat|result|achiev|improv|evidence|increase|decrease|prove|find|conclude)", 
-            s, 
-            re.I
-        )
-    ]
-    return (claimish or sents)[:max_claims]
-
-def _norm_token_set(t: str) -> Set[str]:
-    """Normalize text to token set for Jaccard similarity."""
-    return set(re.findall(r"[A-Za-z][A-Za-z0-9_\-]{2,}", (t or "").lower()))
-
-def _jaccard(a: Set[str], b: Set[str]) -> float:
-    """Calculate Jaccard similarity between two token sets."""
-    if not a or not b: 
-        return 0.0
-    i = len(a & b)
-    u = len(a | b)
-    return i / max(1, u)
-
-def _soft_dedup(items: List[Dict[str, Any]], key="text", thr=0.8) -> List[Dict[str, Any]]:
-    """Soft deduplication based on Jaccard similarity."""
-    out: List[Dict[str, Any]] = []
-    for it in items:
-        tw = _norm_token_set(it.get(key, ""))
-        if any(_jaccard(tw, _norm_token_set(o.get(key,""))) >= thr for o in out):
-            continue
-        out.append(it)
-    return out
 
 @dataclass
 class KTConfig:
@@ -178,9 +148,13 @@ class KnowledgeTreeBuilderAgent(BaseAgent):
         self.kt_cfg = KTConfig(**cfg.get("knowledge_graph", {}))
 
         # Components
-        self.casebooks: CaseBookStore = cfg.get("casebooks") or CaseBookStore()
-        self.classifier: Optional[ScorableClassifier] = cfg.get("classifier")
-        self.bus = getattr(self.memory, "bus", None)
+        self.casebooks: CaseBookStore= self.memory.casebooks
+        self.classifier: ScorableClassifier = ScorableClassifier(
+            memory,
+            logger,
+            cfg.get("domain_seed_config_path", "config/domain/seeds.yaml"),
+        )
+        self.bus = self.memory.bus
         
         # Entity extraction components (reuse from KnowledgeFusion)
         self._entity_detector = None
@@ -226,11 +200,10 @@ class KnowledgeTreeBuilderAgent(BaseAgent):
         fusion_entities = context.get("fusion_entities", {}) or {}
         
         if not paper_section:
-            self.logger.log("KnowledgeTreeBuilderSkipped", {
-                "reason": "missing_section",
-                "has_section": bool(paper_section),
-                "has_messages": bool(critical_messages)
-            })
+            log.info("KnowledgeTreeBuilderSkipped missing_section has_section=%s has_messages=%s",
+                bool(paper_section),
+                bool(critical_messages)
+            )
             return context
             
         # Clean and prepare data
@@ -239,10 +212,7 @@ class KnowledgeTreeBuilderAgent(BaseAgent):
         paper_id = paper_section.get("paper_id")
         
         if not section_text or len(section_text.strip()) < 10:
-            self.logger.log("KnowledgeTreeBuilderSkipped", {
-                "reason": "empty_section",
-                "section": section_name
-            })
+            log.info("KnowledgeTreeBuilderSkipped empty_section: %s", section_name)
             return context
             
         self.stats["total_sections"] += 1
@@ -268,15 +238,15 @@ class KnowledgeTreeBuilderAgent(BaseAgent):
             processing_time = time.time() - start_time
             self.stats["processing_time"] = processing_time
             
-            self.logger.log("KnowledgeTreeBuilt", {
-                "section": section_name,
-                "paper_id": paper_id,
-                "claims": len(knowledge_graph["claims"]),
-                "insights": len(knowledge_graph["insights"]),
-                "entities": len(knowledge_graph["entities"]),
-                "relationships": len(knowledge_graph["relationships"]),
-                "processing_time": f"{processing_time:.2f}s"
-            })
+            log.info("KnowledgeTreeBuilt section=%s paper_id=%s claims=%d insights=%d entities=%d relationships=%d time=%s",
+                section_name,
+                paper_id,
+                len(knowledge_graph["claims"]),
+                len(knowledge_graph["insights"]),
+                len(knowledge_graph["entities"]),
+                len(knowledge_graph["relationships"]),
+                f"{processing_time:.2f}s"
+            )
             
             # Optional: Publish tree to bus for verification
             if self.bus and context.get("publish_tree", True):
@@ -285,32 +255,48 @@ class KnowledgeTreeBuilderAgent(BaseAgent):
             return context
             
         except Exception as e:
-            self.logger.log("KnowledgeTreeBuildError", {
-                "error": str(e),
-                "traceback": traceback.format_exc(),
-                "section": section_name,
-                "paper_id": paper_id
-            })
+            log.error("KnowledgeTreeBuildError error=%s section=%s paper_id=%s traceback=%s",
+                str(e),
+                section_name,
+                paper_id,
+                traceback.format_exc()
+            )
             context["tree_build_error"] = str(e)
             return context
     
     def _init_entity_extraction(self):
         """Initialize entity extraction components if not already set up."""
-        try:
-            # Reuse the same components as KnowledgeFusionAgent
-            self._entity_detector = EntityDetector(
-                device=self.cfg.get("device", "cuda" if torch.cuda.is_available() else "cpu")
-            )
-            self._retriever = NERRetrieverEmbedder(
-                model_name=self.cfg.get("ner_model", "dslim/bert-base-NER"),
-                device=self.cfg.get("device", "cuda" if torch.cuda.is_available() else "cpu")
-            )
-            self.logger.info("Entity extraction components initialized")
-        except Exception as e:
-            log.warning("EntityExtractionInitFailed", {
-                "error": str(e),
-                "message": "Falling back to heuristic entity extraction"
-            })
+        device = self.cfg.get("device", "cuda" if torch.cuda.is_available() else "cpu")
+        cfg = self.cfg or {}
+
+        det = get_cached_entity_detector(
+            device=device,
+            model_name=cfg.get("ner_detector_model", None),
+            labels_json=json.dumps(cfg.get("ner_labels", []) or [], sort_keys=True),
+            threshold=cfg.get("ner_detector_threshold", 0.35),
+            long_text_mode=cfg.get("ner_long_text_mode", "chunk"),
+            sample_chars=int(cfg.get("ner_sample_chars", 2000) or 0),
+            max_chars=int(cfg.get("ner_detector_max_chars", 200_000) or 0),
+            chunk_chars=int(cfg.get("ner_detector_chunk_chars", 8_000) or 0),
+            chunk_overlap=int(cfg.get("ner_detector_chunk_overlap", 200) or 0),
+            max_chunks=int(cfg.get("ner_detector_max_chunks", 64) or 0),
+            max_entities=int(cfg.get("ner_detector_max_entities", 5_000) or 0),
+            long_text_side=cfg.get("ner_long_text_side", "head"),
+            progress_every=int(cfg.get("ner_progress_every", 1) or 0),
+            progress_log_level=str(cfg.get("ner_progress_log_level", "info") or "info"),
+            log_empty_chunks=bool(cfg.get("ner_log_empty_chunks", False)),
+            log_entity_samples=int(cfg.get("ner_log_entity_samples", 0) or 0),
+        )
+
+        self._entity_detector = det
+        self._retriever = NERRetrieverEmbedder(
+            logger=self.logger,
+            memory=getattr(self, "memory", None),
+            cfg=cfg,
+            model_name=cfg.get("ner_model", "dslim/bert-base-NER"),
+            device=device,
+            entity_detector=det,  # ✅ reuse
+        )
             # Will use heuristic fallback in _extract_entities
     
     def _build_knowledge_graph(self,
@@ -484,7 +470,7 @@ class KnowledgeTreeBuilderAgent(BaseAgent):
     def _extract_claims(self, text: str) -> List[Dict[str, Any]]:
         """Extract claims from section text with entity grounding."""
         # Use improved claim extraction from the new analysis
-        claim_texts = _extract_claim_sents(text)
+        claim_texts = extract_claim_sentences(text)
         self.stats["total_claims"] += len(claim_texts)
         
         claims = []
@@ -542,7 +528,7 @@ class KnowledgeTreeBuilderAgent(BaseAgent):
             raw_insights.append(insight)
         
         # Soft deduplicate insights
-        insights = _soft_dedup(raw_insights, key="text", thr=0.8)
+        insights = soft_dedup_dicts(raw_insights, key="text", thr=0.8)
         self.stats["total_insights"] += len(insights)
         
         return insights
@@ -559,11 +545,11 @@ class KnowledgeTreeBuilderAgent(BaseAgent):
         
         # 1. Claim-Insight relationships (using Jaccard + entity ping)
         for claim in claims:
-            cw = _norm_token_set(claim["text"])
+            cw = norm_token_set(claim["text"])
             for insight in insights:
-                iw = _norm_token_set(insight["text"])
+                iw = norm_token_set(insight["text"])
                 # lexical connection
-                lex = _jaccard(cw, iw)
+                lex = jaccard_sets(cw, iw)
                 # entity ping: any known entity inside insight?
                 ent_hit = 1 if any(ent in insight["text"].lower() for ent in ent_lexicon) else 0
                 # simple blend
@@ -833,12 +819,12 @@ class KnowledgeTreeBuilderAgent(BaseAgent):
     
     def _find_best_match_span(self, source: str, target: str) -> Dict[str, Any]:
         """Find the best matching span in source for the target text."""
-        source_sents = _sentences(source)
+        source_sents = sentences(source)
         best_score = 0.0
         best_span = ""
         
         for sent in source_sents:
-            score = _jaccard(_norm_token_set(sent), _norm_token_set(target))
+            score = jaccard_sets(norm_token_set(sent), norm_token_set(target))
             if score > best_score:
                 best_score = score
                 best_span = sent
@@ -917,16 +903,13 @@ class KnowledgeTreeBuilderAgent(BaseAgent):
             }
             await self.bus.publish("verify.section", envelope)
             
-            self.logger.log("VerificationJobEnqueued", {
-                "job_id": tree_hash,
-                "section": tree["section_name"],
-                "paper_id": tree["paper_id"]
-            })
+            log.info("VerificationJobEnqueued job_id=%s section=%s paper_id=%s",
+                tree_hash,
+                tree["section_name"],
+                tree["paper_id"]
+            )
         except Exception as e:
-            log.warning("TreePublishFailed", {
-                "error": str(e),
-                "section": tree.get("section_name")
-            })
+            log.warning("TreePublishFailed error: %s section: %s", str(e), tree.get("section_name"))
     
     def health_check(self) -> Dict[str, Any]:
         """Return health status and metrics for the tree builder agent."""

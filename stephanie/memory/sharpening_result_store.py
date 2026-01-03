@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import Any, Dict, List
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
-from stephanie.models.sharpening_result import SharpeningResultORM
+from stephanie.orm.sharpening_result import SharpeningResultORM
 
 
 class SharpeningResultStore(BaseSQLAlchemyStore):

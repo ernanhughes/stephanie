@@ -10,7 +10,7 @@ import torch
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.constants import GOAL, PIPELINE
-from stephanie.models.skill_filter import SkillFilterORM
+from stephanie.orm.skill_filter import SkillFilterORM
 
 
 class FilterBankAgent(BaseAgent):

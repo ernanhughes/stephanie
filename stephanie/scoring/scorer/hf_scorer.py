@@ -128,8 +128,6 @@ class HuggingFaceScorer(BaseScorer):
         except Exception as e_fast:
             # Fallback: slow tokenizer for compatibility
             log.warning("Fast tokenizer failed, falling back to slow tokenizer: %s", str(e_fast))
-            if self.logger:
-                self.logger.log("HFTokenizerFastFailed", {"model": tok_id, "error": str(e_fast)})
             self.tok = AutoTokenizer.from_pretrained(
                 tok_id,
                 use_fast=False,

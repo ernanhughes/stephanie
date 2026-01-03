@@ -29,7 +29,7 @@ from typing import Any, Dict, List, Optional
 
 from bs4 import BeautifulSoup
 
-from stephanie.models.casebook import CaseBookORM, CaseORM, CaseScorableORM
+from stephanie.orm.casebook import CaseBookORM, CaseORM, CaseScorableORM
 from stephanie.utils.file_utils import file_hash
 from stephanie.utils.hash_utils import hash_text
 

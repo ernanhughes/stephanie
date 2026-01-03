@@ -38,6 +38,45 @@ CREATE EXTENSION IF NOT EXISTS vector WITH SCHEMA public;
 COMMENT ON EXTENSION vector IS 'vector data type and ivfflat and hnsw access methods';
 
 --
+-- Name: set_scorable_summaries_timestamp(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.set_scorable_summaries_timestamp() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$;
+
+--
+-- Name: set_updated_at_memory_genotypes(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.set_updated_at_memory_genotypes() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+        BEGIN
+            NEW.updated_at = NOW();
+            RETURN NEW;
+        END;
+        $$;
+
+--
+-- Name: set_updated_at_pairrm_rankings(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.set_updated_at_pairrm_rankings() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+        BEGIN
+            NEW.updated_at = NOW();
+            RETURN NEW;
+        END;
+        $$;
+
+--
 -- Name: set_updated_at_timestamp(); Type: FUNCTION; Schema: public; Owner: -
 --
 
@@ -140,6 +179,19 @@ END;
 $$;
 
 --
+-- Name: update_blossom_outputs_modified(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.update_blossom_outputs_modified() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+    NEW.updated_at = CURRENT_TIMESTAMP;
+    RETURN NEW;
+END;
+$$;
+
+--
 -- Name: agent_lightning; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -203,6 +255,116 @@ CREATE SEQUENCE public.agent_transitions_id_seq
 --
 
 ALTER SEQUENCE public.agent_transitions_id_seq OWNED BY public.agent_transitions.id;
+
+--
+-- Name: ai_concept_gems; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.ai_concept_gems (
+    id integer NOT NULL,
+    concept_id_fk integer NOT NULL,
+    text text NOT NULL,
+    source_type character varying(64) NOT NULL,
+    source_id character varying(255),
+    source_section character varying(255),
+    source_offset integer,
+    gem_score double precision,
+    is_primary boolean DEFAULT false NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+--
+-- Name: ai_concept_gems_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.ai_concept_gems_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+--
+-- Name: ai_concept_gems_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.ai_concept_gems_id_seq OWNED BY public.ai_concept_gems.id;
+
+--
+-- Name: ai_concept_quizzes; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.ai_concept_quizzes (
+    id integer NOT NULL,
+    concept_id_fk integer NOT NULL,
+    paragraph_text text NOT NULL,
+    masked_text text NOT NULL,
+    ground_truth_span text NOT NULL,
+    predicted_span text,
+    exact_match boolean,
+    reward double precision,
+    is_frontier boolean DEFAULT false NOT NULL,
+    accuracy_estimate double precision,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+--
+-- Name: ai_concept_quizzes_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.ai_concept_quizzes_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+--
+-- Name: ai_concept_quizzes_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.ai_concept_quizzes_id_seq OWNED BY public.ai_concept_quizzes.id;
+
+--
+-- Name: ai_concepts; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.ai_concepts (
+    id integer NOT NULL,
+    concept_id character varying(255) NOT NULL,
+    name character varying(255) NOT NULL,
+    summary text NOT NULL,
+    wiki_url character varying(512),
+    sections jsonb,
+    domains jsonb DEFAULT '[]'::jsonb NOT NULL,
+    quiz_total integer DEFAULT 0 NOT NULL,
+    quiz_correct integer DEFAULT 0 NOT NULL,
+    quiz_accuracy double precision,
+    frontier_count integer DEFAULT 0 NOT NULL,
+    quiz_histogram jsonb,
+    last_quiz_at timestamp with time zone,
+    last_refreshed_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+--
+-- Name: ai_concepts_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.ai_concepts_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+--
+-- Name: ai_concepts_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.ai_concepts_id_seq OWNED BY public.ai_concepts.id;
 
 --
 -- Name: belief_cartridges; Type: TABLE; Schema: public; Owner: -
@@ -410,6 +572,71 @@ CREATE SEQUENCE public.blossom_nodes_id_seq
 --
 
 ALTER SEQUENCE public.blossom_nodes_id_seq OWNED BY public.blossom_nodes.id;
+
+--
+-- Name: blossom_outputs; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.blossom_outputs (
+    id integer NOT NULL,
+    blossom_id integer NOT NULL,
+    episode_id integer NOT NULL,
+    source_bn_id integer,
+    scorable_type character varying(50) NOT NULL,
+    scorable_id integer NOT NULL,
+    source_type character varying(50) NOT NULL,
+    source_id integer NOT NULL,
+    role character varying(20) NOT NULL,
+    reward double precision DEFAULT 0.0 NOT NULL,
+    metrics jsonb,
+    notes text,
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    extra_data jsonb,
+    CONSTRAINT blossom_outputs_role_check CHECK (((role)::text = ANY ((ARRAY['baseline'::character varying, 'winner'::character varying, 'candidate'::character varying])::text[])))
+);
+
+--
+-- Name: TABLE blossom_outputs; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON TABLE public.blossom_outputs IS 'Links Blossom nodes to scorables with quality metrics. Critical for non-regression checks and self-improvement.';
+
+--
+-- Name: COLUMN blossom_outputs.role; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.blossom_outputs.role IS 'baseline = original, winner = best candidate, candidate = runner-up';
+
+--
+-- Name: COLUMN blossom_outputs.reward; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.blossom_outputs.reward IS 'Quality score driving self-improvement (higher = better)';
+
+--
+-- Name: COLUMN blossom_outputs.metrics; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.blossom_outputs.metrics IS 'Detailed metrics: {"faithfulness": 0.92, "clarity": 0.87, ...}';
+
+--
+-- Name: blossom_outputs_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.blossom_outputs_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+--
+-- Name: blossom_outputs_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.blossom_outputs_id_seq OWNED BY public.blossom_outputs.id;
 
 --
 -- Name: blossom_winners; Type: TABLE; Schema: public; Owner: -
@@ -847,7 +1074,9 @@ CREATE TABLE public.cases (
     created_at timestamp without time zone DEFAULT now(),
     meta jsonb,
     rank jsonb,
-    prompt_text text
+    prompt_text text,
+    description text,
+    name text
 );
 
 --
@@ -983,6 +1212,149 @@ CREATE SEQUENCE public.chat_turns_id_seq
 --
 
 ALTER SEQUENCE public.chat_turns_id_seq OWNED BY public.chat_turns.id;
+
+--
+-- Name: codecheck_file; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.codecheck_file (
+    id integer NOT NULL,
+    run_id character varying NOT NULL,
+    path text NOT NULL,
+    language character varying,
+    module_name character varying,
+    loc integer,
+    num_classes integer,
+    num_functions integer,
+    num_methods integer,
+    num_inner_functions integer,
+    is_test boolean DEFAULT false NOT NULL,
+    content_hash character varying,
+    labels jsonb,
+    meta jsonb
+);
+
+--
+-- Name: codecheck_file_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.codecheck_file_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+--
+-- Name: codecheck_file_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.codecheck_file_id_seq OWNED BY public.codecheck_file.id;
+
+--
+-- Name: codecheck_file_metrics; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.codecheck_file_metrics (
+    file_id integer NOT NULL,
+    columns jsonb NOT NULL,
+    "values" jsonb NOT NULL,
+    vector jsonb
+);
+
+--
+-- Name: codecheck_issue; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.codecheck_issue (
+    id integer NOT NULL,
+    run_id character varying NOT NULL,
+    file_id integer NOT NULL,
+    line integer,
+    col integer,
+    source character varying NOT NULL,
+    code character varying,
+    type character varying,
+    severity character varying,
+    message text NOT NULL,
+    meta jsonb
+);
+
+--
+-- Name: codecheck_issue_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.codecheck_issue_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+--
+-- Name: codecheck_issue_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.codecheck_issue_id_seq OWNED BY public.codecheck_issue.id;
+
+--
+-- Name: codecheck_run; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.codecheck_run (
+    id character varying NOT NULL,
+    created_ts timestamp without time zone DEFAULT now() NOT NULL,
+    finished_ts timestamp without time zone,
+    status character varying DEFAULT 'pending'::character varying NOT NULL,
+    status_message text,
+    repo_root text NOT NULL,
+    rel_root text,
+    branch character varying,
+    commit_hash character varying,
+    language character varying,
+    config jsonb,
+    summary_metrics jsonb
+);
+
+--
+-- Name: codecheck_suggestion; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.codecheck_suggestion (
+    id integer NOT NULL,
+    run_id character varying NOT NULL,
+    file_id integer NOT NULL,
+    kind character varying NOT NULL,
+    title character varying NOT NULL,
+    summary text NOT NULL,
+    detail text,
+    patch text,
+    patch_type character varying,
+    status character varying DEFAULT 'pending'::character varying NOT NULL,
+    created_ts timestamp with time zone DEFAULT now() NOT NULL,
+    applied_ts timestamp with time zone,
+    meta jsonb
+);
+
+--
+-- Name: codecheck_suggestion_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.codecheck_suggestion_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+--
+-- Name: codecheck_suggestion_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.codecheck_suggestion_id_seq OWNED BY public.codecheck_suggestion.id;
 
 --
 -- Name: comparison_preferences; Type: TABLE; Schema: public; Owner: -
@@ -1140,6 +1512,80 @@ CREATE SEQUENCE public.cot_patterns_id_seq
 --
 
 ALTER SEQUENCE public.cot_patterns_id_seq OWNED BY public.cot_patterns.id;
+
+--
+-- Name: critic_models; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.critic_models (
+    id integer NOT NULL,
+    model_version character varying(255) NOT NULL,
+    run_id character varying(255) NOT NULL,
+    auc double precision NOT NULL,
+    band_separation double precision,
+    stability_score double precision,
+    feature_consistency double precision,
+    is_active boolean DEFAULT false,
+    is_best boolean DEFAULT false,
+    created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    promoted_at timestamp without time zone
+);
+
+--
+-- Name: critic_models_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.critic_models_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+--
+-- Name: critic_models_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.critic_models_id_seq OWNED BY public.critic_models.id;
+
+--
+-- Name: critic_runs; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.critic_runs (
+    id integer NOT NULL,
+    run_id character varying(255) NOT NULL,
+    model_version character varying(255) NOT NULL,
+    auc double precision NOT NULL,
+    band_separation double precision,
+    stability_score double precision,
+    feature_consistency double precision,
+    is_promoted boolean DEFAULT false,
+    decision_action character varying(50) NOT NULL,
+    decision_confidence double precision,
+    decision_reason text,
+    decision_advice text,
+    created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP
+);
+
+--
+-- Name: critic_runs_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.critic_runs_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+--
+-- Name: critic_runs_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.critic_runs_id_seq OWNED BY public.critic_runs.id;
 
 --
 -- Name: scorable_domains; Type: TABLE; Schema: public; Owner: -
@@ -1344,7 +1790,9 @@ CREATE TABLE public.document_sections (
     summary text,
     embedding json,
     extra_data json,
-    domains text[]
+    domains text[],
+    start_page integer,
+    end_page integer
 );
 
 --
@@ -2181,6 +2629,36 @@ CREATE SEQUENCE public.ideas_id_seq
 ALTER SEQUENCE public.ideas_id_seq OWNED BY public.ideas.id;
 
 --
+-- Name: identifiers; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.identifiers (
+    id bigint NOT NULL,
+    identifier_type character varying(64) NOT NULL,
+    identifier_value character varying(512) NOT NULL,
+    name character varying(256),
+    description text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+--
+-- Name: identifiers_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.identifiers_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+--
+-- Name: identifiers_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.identifiers_id_seq OWNED BY public.identifiers.id;
+
+--
 -- Name: knowledge_documents; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -2363,36 +2841,39 @@ CREATE SEQUENCE public.mars_results_id_seq
 ALTER SEQUENCE public.mars_results_id_seq OWNED BY public.mars_results.id;
 
 --
+-- Name: measurement_quality; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.measurement_quality (
+    id character varying NOT NULL,
+    measurement_id character varying NOT NULL,
+    quality_score double precision NOT NULL,
+    is_usable_for_training boolean DEFAULT false NOT NULL,
+    assessor_type character varying NOT NULL,
+    assessor_model_name character varying,
+    assessor_model_version character varying,
+    rationale text,
+    details jsonb DEFAULT '{}'::jsonb NOT NULL,
+    created_at timestamp without time zone DEFAULT now() NOT NULL
+);
+
+--
 -- Name: measurements; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.measurements (
-    id integer NOT NULL,
-    entity_type text NOT NULL,
-    entity_id integer NOT NULL,
-    metric_name text NOT NULL,
-    value jsonb NOT NULL,
-    context jsonb,
-    created_at timestamp with time zone DEFAULT now()
+    id character varying NOT NULL,
+    target_type character varying NOT NULL,
+    target_id character varying NOT NULL,
+    dimension character varying NOT NULL,
+    source character varying NOT NULL,
+    model_name character varying,
+    model_version character varying,
+    value double precision NOT NULL,
+    weight double precision DEFAULT 1.0 NOT NULL,
+    metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
+    created_at timestamp without time zone DEFAULT now() NOT NULL
 );
-
---
--- Name: measurements_id_seq; Type: SEQUENCE; Schema: public; Owner: -
---
-
-CREATE SEQUENCE public.measurements_id_seq
-    AS integer
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
---
--- Name: measurements_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
---
-
-ALTER SEQUENCE public.measurements_id_seq OWNED BY public.measurements.id;
 
 --
 -- Name: mem_cubes; Type: TABLE; Schema: public; Owner: -
@@ -2502,6 +2983,84 @@ CREATE TABLE public.memcubes (
 );
 
 --
+-- Name: memory_evolution_runs; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.memory_evolution_runs (
+    id bigint NOT NULL,
+    genotype_id bigint NOT NULL,
+    run_id text,
+    goal_id text,
+    suite text DEFAULT 'batch_01'::text NOT NULL,
+    domain text,
+    model_name text,
+    fitness double precision,
+    perf double precision,
+    cost double precision,
+    delay double precision,
+    epistemic double precision,
+    stability double precision,
+    memory_eff double precision,
+    metrics jsonb DEFAULT '{}'::jsonb NOT NULL,
+    diagnosis jsonb DEFAULT '{}'::jsonb NOT NULL,
+    notes text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+--
+-- Name: memory_evolution_runs_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.memory_evolution_runs_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+--
+-- Name: memory_evolution_runs_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.memory_evolution_runs_id_seq OWNED BY public.memory_evolution_runs.id;
+
+--
+-- Name: memory_genotypes; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.memory_genotypes (
+    id bigint NOT NULL,
+    parent_id bigint,
+    generation integer DEFAULT 0 NOT NULL,
+    name text NOT NULL,
+    description text,
+    spec jsonb DEFAULT '{}'::jsonb NOT NULL,
+    is_active integer DEFAULT 0 NOT NULL,
+    fitness_mean double precision,
+    fitness_count integer DEFAULT 0 NOT NULL,
+    tags jsonb DEFAULT '[]'::jsonb NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+--
+-- Name: memory_genotypes_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.memory_genotypes_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+--
+-- Name: memory_genotypes_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.memory_genotypes_id_seq OWNED BY public.memory_genotypes.id;
+
+--
 -- Name: method_plans; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -2552,6 +3111,123 @@ CREATE SEQUENCE public.method_plans_id_seq
 ALTER SEQUENCE public.method_plans_id_seq OWNED BY public.method_plans.id;
 
 --
+-- Name: metric_deltas; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.metric_deltas (
+    id integer NOT NULL,
+    run_id text NOT NULL,
+    scorable_id text NOT NULL,
+    scorable_type text NOT NULL,
+    deltas jsonb DEFAULT '{}'::jsonb NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+--
+-- Name: metric_deltas_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.metric_deltas ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME public.metric_deltas_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+--
+-- Name: metric_groups; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.metric_groups (
+    id integer NOT NULL,
+    run_id text NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    meta jsonb DEFAULT '{}'::jsonb NOT NULL,
+    frontier_metric character varying(255),
+    critic_status character varying(50),
+    critic_action character varying(50),
+    critic_confidence double precision,
+    is_best_model boolean DEFAULT false,
+    model_version character varying(255),
+    auc_score double precision,
+    band_separation double precision,
+    stability_score double precision,
+    feature_consistency double precision
+);
+
+--
+-- Name: metric_groups_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.metric_groups ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME public.metric_groups_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+--
+-- Name: metric_vectors; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.metric_vectors (
+    id integer NOT NULL,
+    run_id text NOT NULL,
+    scorable_id text NOT NULL,
+    scorable_type text NOT NULL,
+    metrics jsonb DEFAULT '{}'::jsonb NOT NULL,
+    reduced jsonb DEFAULT '{}'::jsonb NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+--
+-- Name: metric_vectors_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.metric_vectors ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME public.metric_vectors_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+--
+-- Name: metric_vpms; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.metric_vpms (
+    id integer NOT NULL,
+    run_id text NOT NULL,
+    scorable_id text NOT NULL,
+    scorable_type text NOT NULL,
+    dimension text,
+    width integer NOT NULL,
+    height integer NOT NULL,
+    image_bytes bytea NOT NULL,
+    meta jsonb DEFAULT '{}'::jsonb NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+--
+-- Name: metric_vpms_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+ALTER TABLE public.metric_vpms ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME public.metric_vpms_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+--
 -- Name: model_artifacts; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -2578,6 +3254,86 @@ ALTER TABLE public.model_artifacts ALTER COLUMN id ADD GENERATED ALWAYS AS IDENT
     NO MAXVALUE
     CACHE 1
 );
+
+--
+-- Name: model_divergence; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.model_divergence (
+    id integer NOT NULL,
+    logical_model_id integer NOT NULL,
+    measurement_id character varying NOT NULL,
+    model_name character varying,
+    model_version character varying,
+    predicted_value double precision NOT NULL,
+    observed_value double precision NOT NULL,
+    delta double precision NOT NULL,
+    abs_delta double precision NOT NULL,
+    divergence_score double precision NOT NULL,
+    sign_flip boolean DEFAULT false NOT NULL,
+    is_outlier boolean DEFAULT false NOT NULL,
+    created_at timestamp without time zone DEFAULT now() NOT NULL
+);
+
+--
+-- Name: model_divergence_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.model_divergence_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+--
+-- Name: model_divergence_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.model_divergence_id_seq OWNED BY public.model_divergence.id;
+
+--
+-- Name: model_health; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.model_health (
+    id integer NOT NULL,
+    model_id integer NOT NULL,
+    health_status character varying DEFAULT 'unknown'::character varying NOT NULL,
+    drift_score double precision,
+    mean_delta double precision,
+    mean_abs_delta double precision,
+    sign_flip_ratio double precision,
+    outlier_ratio double precision,
+    num_measurements integer,
+    num_training_examples integer,
+    data_freshness_days double precision,
+    last_retrain_at timestamp without time zone,
+    last_evaluated_at timestamp without time zone DEFAULT now() NOT NULL,
+    metrics jsonb DEFAULT '{}'::jsonb NOT NULL,
+    notes text,
+    created_at timestamp without time zone DEFAULT now() NOT NULL,
+    updated_at timestamp without time zone DEFAULT now() NOT NULL
+);
+
+--
+-- Name: model_health_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.model_health_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+--
+-- Name: model_health_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.model_health_id_seq OWNED BY public.model_health.id;
 
 --
 -- Name: model_performance; Type: TABLE; Schema: public; Owner: -
@@ -2655,6 +3411,42 @@ CREATE SEQUENCE public.model_versions_id_seq
 --
 
 ALTER SEQUENCE public.model_versions_id_seq OWNED BY public.model_versions.id;
+
+--
+-- Name: models; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.models (
+    id integer NOT NULL,
+    model_type text NOT NULL,
+    target_type text NOT NULL,
+    dimension text NOT NULL,
+    score_mode text,
+    active_version text,
+    status character varying DEFAULT 'unknown'::character varying NOT NULL,
+    description text,
+    meta jsonb DEFAULT '{}'::jsonb NOT NULL,
+    created_at timestamp without time zone DEFAULT now() NOT NULL,
+    updated_at timestamp without time zone DEFAULT now() NOT NULL
+);
+
+--
+-- Name: models_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.models_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+--
+-- Name: models_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.models_id_seq OWNED BY public.models.id;
 
 --
 -- Name: mrq_evaluations; Type: TABLE; Schema: public; Owner: -
@@ -2774,7 +3566,11 @@ CREATE TABLE public.nexus_edge (
     type character varying NOT NULL,
     weight double precision DEFAULT 0.0 NOT NULL,
     channels jsonb,
-    created_ts timestamp with time zone DEFAULT now()
+    created_ts timestamp without time zone DEFAULT now(),
+    index_keys jsonb DEFAULT '[]'::jsonb,
+    value_summary text,
+    source_ids jsonb DEFAULT '[]'::jsonb,
+    metric_snapshot jsonb DEFAULT '{}'::jsonb
 );
 
 --
@@ -2906,6 +3702,269 @@ CREATE SEQUENCE public.ollama_embeddings_id_seq
     CACHE 1;
 
 --
+-- Name: pairrm_rankings; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.pairrm_rankings (
+    id bigint NOT NULL,
+    scorable_type text NOT NULL,
+    scorable_id bigint NOT NULL,
+    tool_name text NOT NULL,
+    run_id text,
+    candidate_id text NOT NULL,
+    candidate_index integer DEFAULT 0 NOT NULL,
+    rank integer NOT NULL,
+    score double precision NOT NULL,
+    meta jsonb DEFAULT '{}'::jsonb NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+--
+-- Name: pairrm_rankings_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.pairrm_rankings_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+--
+-- Name: pairrm_rankings_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.pairrm_rankings_id_seq OWNED BY public.pairrm_rankings.id;
+
+--
+-- Name: paper_docling_pages; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.paper_docling_pages (
+    id integer NOT NULL,
+    paper_id text NOT NULL,
+    run_id text,
+    page_num integer NOT NULL,
+    model_name text,
+    dpi integer,
+    doctags text NOT NULL,
+    meta jsonb,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+--
+-- Name: paper_docling_pages_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.paper_docling_pages_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+--
+-- Name: paper_docling_pages_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.paper_docling_pages_id_seq OWNED BY public.paper_docling_pages.id;
+
+--
+-- Name: paper_references; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.paper_references (
+    id integer NOT NULL,
+    paper_id text NOT NULL,
+    order_idx integer,
+    ref_arxiv_id text,
+    doi text,
+    title text,
+    year integer,
+    url text,
+    raw_citation text,
+    source text DEFAULT 'parsed_pdf'::text NOT NULL,
+    raw jsonb,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    summary text,
+    authors jsonb
+);
+
+--
+-- Name: paper_references_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.paper_references_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+--
+-- Name: paper_references_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.paper_references_id_seq OWNED BY public.paper_references.id;
+
+--
+-- Name: paper_run_comparisons; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.paper_run_comparisons (
+    id text NOT NULL,
+    paper_id text NOT NULL,
+    run_a_id text NOT NULL,
+    run_b_id text NOT NULL,
+    preference double precision NOT NULL,
+    judge text,
+    rationale text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+--
+-- Name: paper_run_events; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.paper_run_events (
+    run_id text NOT NULL,
+    event_type text NOT NULL,
+    payload jsonb,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    stage text,
+    message text,
+    data jsonb,
+    id integer NOT NULL
+);
+
+--
+-- Name: paper_run_events_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.paper_run_events_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+--
+-- Name: paper_run_events_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.paper_run_events_id_seq OWNED BY public.paper_run_events.id;
+
+--
+-- Name: paper_run_features; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.paper_run_features (
+    id text NOT NULL,
+    run_id text NOT NULL,
+    features jsonb NOT NULL,
+    extractor text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+--
+-- Name: paper_runs; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.paper_runs (
+    id text NOT NULL,
+    paper_id text NOT NULL,
+    run_type text NOT NULL,
+    config jsonb NOT NULL,
+    stats jsonb,
+    artifact_path text,
+    ai_score double precision,
+    ai_rationale text,
+    ai_judge text,
+    ai_prompt_hash text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    variant text,
+    stage text,
+    meta jsonb,
+    status text,
+    error text,
+    ai_scores jsonb,
+    judge_meta jsonb,
+    duration_ms integer,
+    prompt_hash text,
+    code_version text,
+    updated_at timestamp without time zone
+);
+
+--
+-- Name: paper_sections; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.paper_sections (
+    id character varying(255) NOT NULL,
+    paper_id character varying(255) NOT NULL,
+    section_index integer NOT NULL,
+    start_char integer,
+    end_char integer,
+    start_page integer,
+    end_page integer,
+    text text,
+    title character varying(255),
+    summary text,
+    image_paths text[],
+    domains text[],
+    entities text[],
+    meta jsonb,
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+    updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+    run_id text,
+    parent_id integer,
+    level integer,
+    path text,
+    token_count integer,
+    content_hash text
+);
+
+--
+-- Name: paper_similar; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.paper_similar (
+    id integer NOT NULL,
+    paper_id text NOT NULL,
+    provider text DEFAULT 'hf_similar'::text NOT NULL,
+    rank integer,
+    score double precision,
+    similar_arxiv_id text NOT NULL,
+    url text,
+    title text,
+    raw jsonb,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+--
+-- Name: paper_similar_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.paper_similar_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+--
+-- Name: paper_similar_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.paper_similar_id_seq OWNED BY public.paper_similar.id;
+
+--
 -- Name: paper_source_queue; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -2937,6 +3996,28 @@ CREATE SEQUENCE public.paper_source_queue_id_seq
 --
 
 ALTER SEQUENCE public.paper_source_queue_id_seq OWNED BY public.paper_source_queue.id;
+
+--
+-- Name: papers; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.papers (
+    id text NOT NULL,
+    source text DEFAULT 'arxiv'::text NOT NULL,
+    url text,
+    title text,
+    summary text,
+    authors text[],
+    published text,
+    text text,
+    text_hash text,
+    pdf_path text,
+    pdf_bytes bytea,
+    pdf_sha256 text,
+    meta jsonb,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL
+);
 
 --
 -- Name: pipeline_references; Type: TABLE; Schema: public; Owner: -
@@ -3626,6 +4707,42 @@ CREATE SEQUENCE public.reflection_deltas_id_seq
 ALTER SEQUENCE public.reflection_deltas_id_seq OWNED BY public.reflection_deltas.id;
 
 --
+-- Name: reflections; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.reflections (
+    id integer NOT NULL,
+    task_id character varying(255) NOT NULL,
+    trace_id integer NOT NULL,
+    level character varying(32) DEFAULT 'micro'::character varying NOT NULL,
+    draft_text text NOT NULL,
+    reference_text text,
+    raw_text text,
+    score integer,
+    problems jsonb DEFAULT '[]'::jsonb NOT NULL,
+    action_plan jsonb DEFAULT '[]'::jsonb NOT NULL,
+    created_at timestamp without time zone DEFAULT now() NOT NULL
+);
+
+--
+-- Name: reflections_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.reflections_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+--
+-- Name: reflections_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.reflections_id_seq OWNED BY public.reflections.id;
+
+--
 -- Name: reports; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -3738,6 +4855,35 @@ CREATE SEQUENCE public.scorable_entities_id_seq
 ALTER SEQUENCE public.scorable_entities_id_seq OWNED BY public.scorable_entities.id;
 
 --
+-- Name: scorable_identifiers; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.scorable_identifiers (
+    id bigint NOT NULL,
+    scorable_type character varying(64) NOT NULL,
+    scorable_id character varying(128) NOT NULL,
+    identifier_id bigint NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+--
+-- Name: scorable_identifiers_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.scorable_identifiers_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+--
+-- Name: scorable_identifiers_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.scorable_identifiers_id_seq OWNED BY public.scorable_identifiers.id;
+
+--
 -- Name: scores; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -3806,6 +4952,50 @@ CREATE SEQUENCE public.scorable_ranks_id_seq
 --
 
 ALTER SEQUENCE public.scorable_ranks_id_seq OWNED BY public.scorable_ranks.id;
+
+--
+-- Name: scorable_summaries; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.scorable_summaries (
+    id integer NOT NULL,
+    scorable_type character varying(64) NOT NULL,
+    scorable_id character varying(64) NOT NULL,
+    run_id character varying(64),
+    tool_name character varying(128) NOT NULL,
+    summary_kind character varying(32),
+    model_name character varying(256) NOT NULL,
+    model_version character varying(64),
+    prompt_hash character varying(64),
+    title text NOT NULL,
+    summary text NOT NULL,
+    source_char_len integer,
+    summary_char_len integer,
+    compression_ratio double precision,
+    quality_label integer,
+    auto_quality_score double precision,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    meta jsonb
+);
+
+--
+-- Name: scorable_summaries_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.scorable_summaries_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+--
+-- Name: scorable_summaries_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.scorable_summaries_id_seq OWNED BY public.scorable_summaries.id;
 
 --
 -- Name: score_attributes; Type: TABLE; Schema: public; Owner: -
@@ -4237,6 +5427,30 @@ CREATE TABLE public.skill_filters (
 );
 
 --
+-- Name: step_runs; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.step_runs (
+    id text NOT NULL,
+    plan_trace_id text,
+    pipeline_run_id text,
+    stage_idx integer,
+    stage_name text,
+    agent_name text,
+    scorable_id text,
+    step_name text,
+    component text,
+    started_at timestamp with time zone DEFAULT now(),
+    finished_at timestamp with time zone,
+    duration_ms double precision,
+    status text DEFAULT 'ok'::text,
+    error_message text,
+    features_before jsonb,
+    features_after jsonb,
+    metrics jsonb
+);
+
+--
 -- Name: summaries; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -4643,6 +5857,24 @@ ALTER TABLE ONLY public.agent_lightning ALTER COLUMN id SET DEFAULT nextval('pub
 ALTER TABLE ONLY public.agent_transitions ALTER COLUMN id SET DEFAULT nextval('public.agent_transitions_id_seq'::regclass);
 
 --
+-- Name: ai_concept_gems id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.ai_concept_gems ALTER COLUMN id SET DEFAULT nextval('public.ai_concept_gems_id_seq'::regclass);
+
+--
+-- Name: ai_concept_quizzes id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.ai_concept_quizzes ALTER COLUMN id SET DEFAULT nextval('public.ai_concept_quizzes_id_seq'::regclass);
+
+--
+-- Name: ai_concepts id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.ai_concepts ALTER COLUMN id SET DEFAULT nextval('public.ai_concepts_id_seq'::regclass);
+
+--
 -- Name: belief_graph_versions id; Type: DEFAULT; Schema: public; Owner: -
 --
 
@@ -4665,6 +5897,12 @@ ALTER TABLE ONLY public.blossom_edges ALTER COLUMN id SET DEFAULT nextval('publi
 --
 
 ALTER TABLE ONLY public.blossom_nodes ALTER COLUMN id SET DEFAULT nextval('public.blossom_nodes_id_seq'::regclass);
+
+--
+-- Name: blossom_outputs id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.blossom_outputs ALTER COLUMN id SET DEFAULT nextval('public.blossom_outputs_id_seq'::regclass);
 
 --
 -- Name: blossom_winners id; Type: DEFAULT; Schema: public; Owner: -
@@ -4757,6 +5995,24 @@ ALTER TABLE ONLY public.chat_messages ALTER COLUMN id SET DEFAULT nextval('publi
 ALTER TABLE ONLY public.chat_turns ALTER COLUMN id SET DEFAULT nextval('public.chat_turns_id_seq'::regclass);
 
 --
+-- Name: codecheck_file id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.codecheck_file ALTER COLUMN id SET DEFAULT nextval('public.codecheck_file_id_seq'::regclass);
+
+--
+-- Name: codecheck_issue id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.codecheck_issue ALTER COLUMN id SET DEFAULT nextval('public.codecheck_issue_id_seq'::regclass);
+
+--
+-- Name: codecheck_suggestion id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.codecheck_suggestion ALTER COLUMN id SET DEFAULT nextval('public.codecheck_suggestion_id_seq'::regclass);
+
+--
 -- Name: context_states id; Type: DEFAULT; Schema: public; Owner: -
 --
 
@@ -4773,6 +6029,18 @@ ALTER TABLE ONLY public.cot_pattern_stats ALTER COLUMN id SET DEFAULT nextval('p
 --
 
 ALTER TABLE ONLY public.cot_patterns ALTER COLUMN id SET DEFAULT nextval('public.cot_patterns_id_seq'::regclass);
+
+--
+-- Name: critic_models id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.critic_models ALTER COLUMN id SET DEFAULT nextval('public.critic_models_id_seq'::regclass);
+
+--
+-- Name: critic_runs id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.critic_runs ALTER COLUMN id SET DEFAULT nextval('public.critic_runs_id_seq'::regclass);
 
 --
 -- Name: document_evaluations id; Type: DEFAULT; Schema: public; Owner: -
@@ -4913,6 +6181,12 @@ ALTER TABLE ONLY public.hypotheses ALTER COLUMN id SET DEFAULT nextval('public.h
 ALTER TABLE ONLY public.ideas ALTER COLUMN id SET DEFAULT nextval('public.ideas_id_seq'::regclass);
 
 --
+-- Name: identifiers id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.identifiers ALTER COLUMN id SET DEFAULT nextval('public.identifiers_id_seq'::regclass);
+
+--
 -- Name: knowledge_documents id; Type: DEFAULT; Schema: public; Owner: -
 --
 
@@ -4943,12 +6217,6 @@ ALTER TABLE ONLY public.mars_conflicts ALTER COLUMN id SET DEFAULT nextval('publ
 ALTER TABLE ONLY public.mars_results ALTER COLUMN id SET DEFAULT nextval('public.mars_results_id_seq'::regclass);
 
 --
--- Name: measurements id; Type: DEFAULT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.measurements ALTER COLUMN id SET DEFAULT nextval('public.measurements_id_seq'::regclass);
-
---
 -- Name: mem_cubes id; Type: DEFAULT; Schema: public; Owner: -
 --
 
@@ -4961,10 +6229,34 @@ ALTER TABLE ONLY public.mem_cubes ALTER COLUMN id SET DEFAULT nextval('public.me
 ALTER TABLE ONLY public.memcube_transformations ALTER COLUMN id SET DEFAULT nextval('public.memcube_transformations_id_seq'::regclass);
 
 --
+-- Name: memory_evolution_runs id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.memory_evolution_runs ALTER COLUMN id SET DEFAULT nextval('public.memory_evolution_runs_id_seq'::regclass);
+
+--
+-- Name: memory_genotypes id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.memory_genotypes ALTER COLUMN id SET DEFAULT nextval('public.memory_genotypes_id_seq'::regclass);
+
+--
 -- Name: method_plans id; Type: DEFAULT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.method_plans ALTER COLUMN id SET DEFAULT nextval('public.method_plans_id_seq'::regclass);
+
+--
+-- Name: model_divergence id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.model_divergence ALTER COLUMN id SET DEFAULT nextval('public.model_divergence_id_seq'::regclass);
+
+--
+-- Name: model_health id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.model_health ALTER COLUMN id SET DEFAULT nextval('public.model_health_id_seq'::regclass);
 
 --
 -- Name: model_performance id; Type: DEFAULT; Schema: public; Owner: -
@@ -4977,6 +6269,12 @@ ALTER TABLE ONLY public.model_performance ALTER COLUMN id SET DEFAULT nextval('p
 --
 
 ALTER TABLE ONLY public.model_versions ALTER COLUMN id SET DEFAULT nextval('public.model_versions_id_seq'::regclass);
+
+--
+-- Name: models id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.models ALTER COLUMN id SET DEFAULT nextval('public.models_id_seq'::regclass);
 
 --
 -- Name: mrq_evaluations id; Type: DEFAULT; Schema: public; Owner: -
@@ -5007,6 +6305,36 @@ ALTER TABLE ONLY public.nexus_pulse ALTER COLUMN id SET DEFAULT nextval('public.
 --
 
 ALTER TABLE ONLY public.nodes ALTER COLUMN id SET DEFAULT nextval('public.nodes_id_seq'::regclass);
+
+--
+-- Name: pairrm_rankings id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.pairrm_rankings ALTER COLUMN id SET DEFAULT nextval('public.pairrm_rankings_id_seq'::regclass);
+
+--
+-- Name: paper_docling_pages id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.paper_docling_pages ALTER COLUMN id SET DEFAULT nextval('public.paper_docling_pages_id_seq'::regclass);
+
+--
+-- Name: paper_references id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.paper_references ALTER COLUMN id SET DEFAULT nextval('public.paper_references_id_seq'::regclass);
+
+--
+-- Name: paper_run_events id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.paper_run_events ALTER COLUMN id SET DEFAULT nextval('public.paper_run_events_id_seq'::regclass);
+
+--
+-- Name: paper_similar id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.paper_similar ALTER COLUMN id SET DEFAULT nextval('public.paper_similar_id_seq'::regclass);
 
 --
 -- Name: paper_source_queue id; Type: DEFAULT; Schema: public; Owner: -
@@ -5099,6 +6427,12 @@ ALTER TABLE ONLY public.refinement_events ALTER COLUMN id SET DEFAULT nextval('p
 ALTER TABLE ONLY public.reflection_deltas ALTER COLUMN id SET DEFAULT nextval('public.reflection_deltas_id_seq'::regclass);
 
 --
+-- Name: reflections id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.reflections ALTER COLUMN id SET DEFAULT nextval('public.reflections_id_seq'::regclass);
+
+--
 -- Name: reports id; Type: DEFAULT; Schema: public; Owner: -
 --
 
@@ -5129,10 +6463,22 @@ ALTER TABLE ONLY public.scorable_embeddings ALTER COLUMN id SET DEFAULT nextval(
 ALTER TABLE ONLY public.scorable_entities ALTER COLUMN id SET DEFAULT nextval('public.scorable_entities_id_seq'::regclass);
 
 --
+-- Name: scorable_identifiers id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.scorable_identifiers ALTER COLUMN id SET DEFAULT nextval('public.scorable_identifiers_id_seq'::regclass);
+
+--
 -- Name: scorable_ranks id; Type: DEFAULT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.scorable_ranks ALTER COLUMN id SET DEFAULT nextval('public.scorable_ranks_id_seq'::regclass);
+
+--
+-- Name: scorable_summaries id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.scorable_summaries ALTER COLUMN id SET DEFAULT nextval('public.scorable_summaries_id_seq'::regclass);
 
 --
 -- Name: score_attributes id; Type: DEFAULT; Schema: public; Owner: -
@@ -5263,6 +6609,34 @@ ALTER TABLE ONLY public.agent_transitions
     ADD CONSTRAINT agent_transitions_pkey PRIMARY KEY (id);
 
 --
+-- Name: ai_concept_gems ai_concept_gems_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.ai_concept_gems
+    ADD CONSTRAINT ai_concept_gems_pkey PRIMARY KEY (id);
+
+--
+-- Name: ai_concept_quizzes ai_concept_quizzes_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.ai_concept_quizzes
+    ADD CONSTRAINT ai_concept_quizzes_pkey PRIMARY KEY (id);
+
+--
+-- Name: ai_concepts ai_concepts_concept_id_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.ai_concepts
+    ADD CONSTRAINT ai_concepts_concept_id_key UNIQUE (concept_id);
+
+--
+-- Name: ai_concepts ai_concepts_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.ai_concepts
+    ADD CONSTRAINT ai_concepts_pkey PRIMARY KEY (id);
+
+--
 -- Name: belief_cartridges belief_cartridges_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -5296,6 +6670,13 @@ ALTER TABLE ONLY public.blossom_edges
 
 ALTER TABLE ONLY public.blossom_nodes
     ADD CONSTRAINT blossom_nodes_pkey PRIMARY KEY (id);
+
+--
+-- Name: blossom_outputs blossom_outputs_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.blossom_outputs
+    ADD CONSTRAINT blossom_outputs_pkey PRIMARY KEY (id);
 
 --
 -- Name: blossom_winners blossom_winners_pkey; Type: CONSTRAINT; Schema: public; Owner: -
@@ -5410,6 +6791,41 @@ ALTER TABLE ONLY public.chat_turns
     ADD CONSTRAINT chat_turns_pkey PRIMARY KEY (id);
 
 --
+-- Name: codecheck_file_metrics codecheck_file_metrics_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.codecheck_file_metrics
+    ADD CONSTRAINT codecheck_file_metrics_pkey PRIMARY KEY (file_id);
+
+--
+-- Name: codecheck_file codecheck_file_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.codecheck_file
+    ADD CONSTRAINT codecheck_file_pkey PRIMARY KEY (id);
+
+--
+-- Name: codecheck_issue codecheck_issue_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.codecheck_issue
+    ADD CONSTRAINT codecheck_issue_pkey PRIMARY KEY (id);
+
+--
+-- Name: codecheck_run codecheck_run_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.codecheck_run
+    ADD CONSTRAINT codecheck_run_pkey PRIMARY KEY (id);
+
+--
+-- Name: codecheck_suggestion codecheck_suggestion_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.codecheck_suggestion
+    ADD CONSTRAINT codecheck_suggestion_pkey PRIMARY KEY (id);
+
+--
 -- Name: comparison_preferences comparison_preferences_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -5443,6 +6859,27 @@ ALTER TABLE ONLY public.cot_pattern_stats
 
 ALTER TABLE ONLY public.cot_patterns
     ADD CONSTRAINT cot_patterns_pkey PRIMARY KEY (id);
+
+--
+-- Name: critic_models critic_models_model_version_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.critic_models
+    ADD CONSTRAINT critic_models_model_version_key UNIQUE (model_version);
+
+--
+-- Name: critic_models critic_models_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.critic_models
+    ADD CONSTRAINT critic_models_pkey PRIMARY KEY (id);
+
+--
+-- Name: critic_runs critic_runs_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.critic_runs
+    ADD CONSTRAINT critic_runs_pkey PRIMARY KEY (id);
 
 --
 -- Name: scorable_domains document_domains_pkey; Type: CONSTRAINT; Schema: public; Owner: -
@@ -5662,6 +7099,13 @@ ALTER TABLE ONLY public.ideas
     ADD CONSTRAINT ideas_pkey PRIMARY KEY (id);
 
 --
+-- Name: identifiers identifiers_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.identifiers
+    ADD CONSTRAINT identifiers_pkey PRIMARY KEY (id);
+
+--
 -- Name: experiment_model_snapshots ix_model_snapshots_unique; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -5704,6 +7148,13 @@ ALTER TABLE ONLY public.mars_results
     ADD CONSTRAINT mars_results_pkey PRIMARY KEY (id);
 
 --
+-- Name: measurement_quality measurement_quality_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.measurement_quality
+    ADD CONSTRAINT measurement_quality_pkey PRIMARY KEY (id);
+
+--
 -- Name: measurements measurements_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -5739,6 +7190,27 @@ ALTER TABLE ONLY public.memcubes
     ADD CONSTRAINT memcubes_pkey PRIMARY KEY (id);
 
 --
+-- Name: memory_evolution_runs memory_evolution_runs_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.memory_evolution_runs
+    ADD CONSTRAINT memory_evolution_runs_pkey PRIMARY KEY (id);
+
+--
+-- Name: memory_genotypes memory_genotypes_name_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.memory_genotypes
+    ADD CONSTRAINT memory_genotypes_name_key UNIQUE (name);
+
+--
+-- Name: memory_genotypes memory_genotypes_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.memory_genotypes
+    ADD CONSTRAINT memory_genotypes_pkey PRIMARY KEY (id);
+
+--
 -- Name: method_plans method_plans_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -5746,11 +7218,67 @@ ALTER TABLE ONLY public.method_plans
     ADD CONSTRAINT method_plans_pkey PRIMARY KEY (id);
 
 --
+-- Name: metric_deltas metric_deltas_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.metric_deltas
+    ADD CONSTRAINT metric_deltas_pkey PRIMARY KEY (id);
+
+--
+-- Name: metric_groups metric_groups_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.metric_groups
+    ADD CONSTRAINT metric_groups_pkey PRIMARY KEY (id);
+
+--
+-- Name: metric_groups metric_groups_run_id_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.metric_groups
+    ADD CONSTRAINT metric_groups_run_id_key UNIQUE (run_id);
+
+--
+-- Name: metric_vectors metric_vectors_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.metric_vectors
+    ADD CONSTRAINT metric_vectors_pkey PRIMARY KEY (id);
+
+--
+-- Name: metric_vpms metric_vpms_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.metric_vpms
+    ADD CONSTRAINT metric_vpms_pkey PRIMARY KEY (id);
+
+--
 -- Name: model_artifacts model_artifacts_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.model_artifacts
     ADD CONSTRAINT model_artifacts_pkey PRIMARY KEY (id);
+
+--
+-- Name: model_divergence model_divergence_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.model_divergence
+    ADD CONSTRAINT model_divergence_pkey PRIMARY KEY (id);
+
+--
+-- Name: model_health model_health_model_id_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.model_health
+    ADD CONSTRAINT model_health_model_id_key UNIQUE (model_id);
+
+--
+-- Name: model_health model_health_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.model_health
+    ADD CONSTRAINT model_health_pkey PRIMARY KEY (id);
 
 --
 -- Name: model_performance model_performance_pkey; Type: CONSTRAINT; Schema: public; Owner: -
@@ -5765,6 +7293,13 @@ ALTER TABLE ONLY public.model_performance
 
 ALTER TABLE ONLY public.model_versions
     ADD CONSTRAINT model_versions_pkey PRIMARY KEY (id);
+
+--
+-- Name: models models_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.models
+    ADD CONSTRAINT models_pkey PRIMARY KEY (id);
 
 --
 -- Name: mrq_evaluations mrq_evaluations_pkey; Type: CONSTRAINT; Schema: public; Owner: -
@@ -5830,6 +7365,69 @@ ALTER TABLE ONLY public.nodes
     ADD CONSTRAINT nodes_pkey PRIMARY KEY (id);
 
 --
+-- Name: pairrm_rankings pairrm_rankings_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.pairrm_rankings
+    ADD CONSTRAINT pairrm_rankings_pkey PRIMARY KEY (id);
+
+--
+-- Name: paper_docling_pages paper_docling_pages_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.paper_docling_pages
+    ADD CONSTRAINT paper_docling_pages_pkey PRIMARY KEY (id);
+
+--
+-- Name: paper_references paper_references_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.paper_references
+    ADD CONSTRAINT paper_references_pkey PRIMARY KEY (id);
+
+--
+-- Name: paper_run_comparisons paper_run_comparisons_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.paper_run_comparisons
+    ADD CONSTRAINT paper_run_comparisons_pkey PRIMARY KEY (id);
+
+--
+-- Name: paper_run_events paper_run_events_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.paper_run_events
+    ADD CONSTRAINT paper_run_events_pkey PRIMARY KEY (id);
+
+--
+-- Name: paper_run_features paper_run_features_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.paper_run_features
+    ADD CONSTRAINT paper_run_features_pkey PRIMARY KEY (id);
+
+--
+-- Name: paper_runs paper_runs_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.paper_runs
+    ADD CONSTRAINT paper_runs_pkey PRIMARY KEY (id);
+
+--
+-- Name: paper_sections paper_sections_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.paper_sections
+    ADD CONSTRAINT paper_sections_pkey PRIMARY KEY (id);
+
+--
+-- Name: paper_similar paper_similar_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.paper_similar
+    ADD CONSTRAINT paper_similar_pkey PRIMARY KEY (id);
+
+--
 -- Name: paper_source_queue paper_source_queue_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -5842,6 +7440,13 @@ ALTER TABLE ONLY public.paper_source_queue
 
 ALTER TABLE ONLY public.paper_source_queue
     ADD CONSTRAINT paper_source_queue_url_key UNIQUE (url);
+
+--
+-- Name: papers papers_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.papers
+    ADD CONSTRAINT papers_pkey PRIMARY KEY (id);
 
 --
 -- Name: pipeline_references pipeline_references_pkey; Type: CONSTRAINT; Schema: public; Owner: -
@@ -5977,6 +7582,13 @@ ALTER TABLE ONLY public.reflection_deltas
     ADD CONSTRAINT reflection_deltas_pkey PRIMARY KEY (id);
 
 --
+-- Name: reflections reflections_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.reflections
+    ADD CONSTRAINT reflections_pkey PRIMARY KEY (id);
+
+--
 -- Name: reports reports_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -6005,11 +7617,25 @@ ALTER TABLE ONLY public.scorable_entities
     ADD CONSTRAINT scorable_entities_scorable_id_scorable_type_entity_text_key UNIQUE (scorable_id, scorable_type, entity_text);
 
 --
+-- Name: scorable_identifiers scorable_identifiers_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.scorable_identifiers
+    ADD CONSTRAINT scorable_identifiers_pkey PRIMARY KEY (id);
+
+--
 -- Name: scorable_ranks scorable_ranks_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.scorable_ranks
     ADD CONSTRAINT scorable_ranks_pkey PRIMARY KEY (id);
+
+--
+-- Name: scorable_summaries scorable_summaries_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.scorable_summaries
+    ADD CONSTRAINT scorable_summaries_pkey PRIMARY KEY (id);
 
 --
 -- Name: score_attributes score_attributes_pkey; Type: CONSTRAINT; Schema: public; Owner: -
@@ -6122,6 +7748,13 @@ ALTER TABLE ONLY public.sis_cards
 
 ALTER TABLE ONLY public.skill_filters
     ADD CONSTRAINT skill_filters_pkey PRIMARY KEY (id);
+
+--
+-- Name: step_runs step_runs_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.step_runs
+    ADD CONSTRAINT step_runs_pkey PRIMARY KEY (id);
 
 --
 -- Name: summaries summaries_pkey; Type: CONSTRAINT; Schema: public; Owner: -
@@ -6250,6 +7883,20 @@ ALTER TABLE ONLY public.case_goal_state
     ADD CONSTRAINT uq_case_goal_state UNIQUE (casebook_id, goal_id);
 
 --
+-- Name: ai_concept_gems uq_concept_gem_source; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.ai_concept_gems
+    ADD CONSTRAINT uq_concept_gem_source UNIQUE (concept_id_fk, source_type, source_id, source_offset);
+
+--
+-- Name: paper_docling_pages uq_docling_paper_run_page; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.paper_docling_pages
+    ADD CONSTRAINT uq_docling_paper_run_page UNIQUE (paper_id, run_id, page_num);
+
+--
 -- Name: experiments uq_experiment_name_domain; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -6257,11 +7904,46 @@ ALTER TABLE ONLY public.experiments
     ADD CONSTRAINT uq_experiment_name_domain UNIQUE (name, domain);
 
 --
+-- Name: identifiers uq_identifier_type_value; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.identifiers
+    ADD CONSTRAINT uq_identifier_type_value UNIQUE (identifier_type, identifier_value);
+
+--
 -- Name: model_artifacts uq_model_artifacts_name_version; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.model_artifacts
     ADD CONSTRAINT uq_model_artifacts_name_version UNIQUE (name, version);
+
+--
+-- Name: models uq_models_type_target_dim_score_mode; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.models
+    ADD CONSTRAINT uq_models_type_target_dim_score_mode UNIQUE (model_type, target_type, dimension, score_mode);
+
+--
+-- Name: pairrm_rankings uq_pairrm_rankings_nk; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.pairrm_rankings
+    ADD CONSTRAINT uq_pairrm_rankings_nk UNIQUE (scorable_type, scorable_id, tool_name, run_id, candidate_id);
+
+--
+-- Name: paper_references uq_paper_ref_order; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.paper_references
+    ADD CONSTRAINT uq_paper_ref_order UNIQUE (paper_id, order_idx);
+
+--
+-- Name: paper_similar uq_paper_similar_unique; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.paper_similar
+    ADD CONSTRAINT uq_paper_similar_unique UNIQUE (paper_id, provider, similar_arxiv_id);
 
 --
 -- Name: scorable_domains uq_scorable_domain; Type: CONSTRAINT; Schema: public; Owner: -
@@ -6276,6 +7958,13 @@ ALTER TABLE ONLY public.scorable_domains
 
 ALTER TABLE ONLY public.scorable_entities
     ADD CONSTRAINT uq_scorable_entity_norm UNIQUE (scorable_id, scorable_type, entity_text_norm);
+
+--
+-- Name: scorable_identifiers uq_scorable_identifier_link; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.scorable_identifiers
+    ADD CONSTRAINT uq_scorable_identifier_link UNIQUE (scorable_type, scorable_id, identifier_id);
 
 --
 -- Name: sis_cards uq_sis_cards_scope_key_hash; Type: CONSTRAINT; Schema: public; Owner: -
@@ -6550,6 +8239,192 @@ CREATE INDEX idx_chat_turns_domains_gin ON public.chat_turns USING gin (domains)
 CREATE INDEX idx_chat_turns_ner_gin ON public.chat_turns USING gin (ner) WHERE (ner IS NOT NULL);
 
 --
+-- Name: idx_codecheck_file_content_hash; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_codecheck_file_content_hash ON public.codecheck_file USING btree (content_hash);
+
+--
+-- Name: idx_codecheck_file_is_test; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_codecheck_file_is_test ON public.codecheck_file USING btree (is_test);
+
+--
+-- Name: idx_codecheck_file_language; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_codecheck_file_language ON public.codecheck_file USING btree (language);
+
+--
+-- Name: idx_codecheck_file_module_name; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_codecheck_file_module_name ON public.codecheck_file USING btree (module_name);
+
+--
+-- Name: idx_codecheck_file_path; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_codecheck_file_path ON public.codecheck_file USING btree (path);
+
+--
+-- Name: idx_codecheck_file_run_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_codecheck_file_run_id ON public.codecheck_file USING btree (run_id);
+
+--
+-- Name: idx_codecheck_file_run_path; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_codecheck_file_run_path ON public.codecheck_file USING btree (run_id, path);
+
+--
+-- Name: idx_codecheck_issue_code; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_codecheck_issue_code ON public.codecheck_issue USING btree (code);
+
+--
+-- Name: idx_codecheck_issue_file_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_codecheck_issue_file_id ON public.codecheck_issue USING btree (file_id);
+
+--
+-- Name: idx_codecheck_issue_line; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_codecheck_issue_line ON public.codecheck_issue USING btree (line);
+
+--
+-- Name: idx_codecheck_issue_run_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_codecheck_issue_run_id ON public.codecheck_issue USING btree (run_id);
+
+--
+-- Name: idx_codecheck_issue_run_severity; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_codecheck_issue_run_severity ON public.codecheck_issue USING btree (run_id, severity);
+
+--
+-- Name: idx_codecheck_issue_run_source; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_codecheck_issue_run_source ON public.codecheck_issue USING btree (run_id, source);
+
+--
+-- Name: idx_codecheck_issue_severity; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_codecheck_issue_severity ON public.codecheck_issue USING btree (severity);
+
+--
+-- Name: idx_codecheck_issue_source; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_codecheck_issue_source ON public.codecheck_issue USING btree (source);
+
+--
+-- Name: idx_codecheck_issue_type; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_codecheck_issue_type ON public.codecheck_issue USING btree (type);
+
+--
+-- Name: idx_codecheck_run_branch; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_codecheck_run_branch ON public.codecheck_run USING btree (branch);
+
+--
+-- Name: idx_codecheck_run_commit_hash; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_codecheck_run_commit_hash ON public.codecheck_run USING btree (commit_hash);
+
+--
+-- Name: idx_codecheck_run_created_ts; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_codecheck_run_created_ts ON public.codecheck_run USING btree (created_ts);
+
+--
+-- Name: idx_codecheck_run_finished_ts; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_codecheck_run_finished_ts ON public.codecheck_run USING btree (finished_ts);
+
+--
+-- Name: idx_codecheck_run_language; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_codecheck_run_language ON public.codecheck_run USING btree (language);
+
+--
+-- Name: idx_codecheck_suggestion_file_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_codecheck_suggestion_file_id ON public.codecheck_suggestion USING btree (file_id);
+
+--
+-- Name: idx_codecheck_suggestion_run_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_codecheck_suggestion_run_id ON public.codecheck_suggestion USING btree (run_id);
+
+--
+-- Name: idx_codecheck_suggestion_status; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_codecheck_suggestion_status ON public.codecheck_suggestion USING btree (status);
+
+--
+-- Name: idx_critic_models_auc; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_critic_models_auc ON public.critic_models USING btree (auc DESC);
+
+--
+-- Name: idx_critic_models_status; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_critic_models_status ON public.critic_models USING btree (is_active, is_best);
+
+--
+-- Name: idx_critic_models_version; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_critic_models_version ON public.critic_models USING btree (model_version);
+
+--
+-- Name: idx_critic_runs_decision_action; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_critic_runs_decision_action ON public.critic_runs USING btree (decision_action);
+
+--
+-- Name: idx_critic_runs_is_promoted; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_critic_runs_is_promoted ON public.critic_runs USING btree (is_promoted);
+
+--
+-- Name: idx_critic_runs_model_version; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_critic_runs_model_version ON public.critic_runs USING btree (model_version);
+
+--
+-- Name: idx_critic_runs_run_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_critic_runs_run_id ON public.critic_runs USING btree (run_id);
+
+--
 -- Name: idx_evaluation_attributes_duration; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -6634,22 +8509,28 @@ CREATE INDEX idx_mars_results_pipeline_run ON public.mars_results USING btree (p
 CREATE INDEX idx_mars_results_plan_trace ON public.mars_results USING btree (plan_trace_id);
 
 --
--- Name: idx_measurements_created_at; Type: INDEX; Schema: public; Owner: -
+-- Name: idx_metric_groups_critic_action; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX idx_measurements_created_at ON public.measurements USING btree (created_at);
+CREATE INDEX idx_metric_groups_critic_action ON public.metric_groups USING btree (critic_action);
 
 --
--- Name: idx_measurements_entity_metric; Type: INDEX; Schema: public; Owner: -
+-- Name: idx_metric_groups_critic_status; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX idx_measurements_entity_metric ON public.measurements USING btree (entity_type, entity_id, metric_name);
+CREATE INDEX idx_metric_groups_critic_status ON public.metric_groups USING btree (critic_status);
 
 --
--- Name: idx_measurements_value_gin; Type: INDEX; Schema: public; Owner: -
+-- Name: idx_metric_groups_frontier_metric; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX idx_measurements_value_gin ON public.measurements USING gin (value);
+CREATE INDEX idx_metric_groups_frontier_metric ON public.metric_groups USING btree (frontier_metric);
+
+--
+-- Name: idx_metric_groups_model_version; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_metric_groups_model_version ON public.metric_groups USING btree (model_version);
 
 --
 -- Name: idx_nexus_edge_dst; Type: INDEX; Schema: public; Owner: -
@@ -6680,6 +8561,48 @@ CREATE INDEX idx_nodes_pipeline_run_id ON public.nodes USING btree (pipeline_run
 --
 
 CREATE INDEX idx_nodes_stage_name ON public.nodes USING btree (stage_name);
+
+--
+-- Name: idx_paper_sections_end_char; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_paper_sections_end_char ON public.paper_sections USING btree (end_char);
+
+--
+-- Name: idx_paper_sections_end_page; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_paper_sections_end_page ON public.paper_sections USING btree (end_page);
+
+--
+-- Name: idx_paper_sections_meta; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_paper_sections_meta ON public.paper_sections USING gin (meta);
+
+--
+-- Name: idx_paper_sections_paper_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_paper_sections_paper_id ON public.paper_sections USING btree (paper_id);
+
+--
+-- Name: idx_paper_sections_section_index; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_paper_sections_section_index ON public.paper_sections USING btree (section_index);
+
+--
+-- Name: idx_paper_sections_start_char; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_paper_sections_start_char ON public.paper_sections USING btree (start_char);
+
+--
+-- Name: idx_paper_sections_start_page; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_paper_sections_start_page ON public.paper_sections USING btree (start_page);
 
 --
 -- Name: idx_pipeline_references_pipeline_run_id; Type: INDEX; Schema: public; Owner: -
@@ -6802,6 +8725,24 @@ CREATE INDEX idx_prompt_strategy ON public.prompts USING btree (strategy);
 CREATE INDEX idx_prompt_version ON public.prompts USING btree (version);
 
 --
+-- Name: idx_reflections_level; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_reflections_level ON public.reflections USING btree (level);
+
+--
+-- Name: idx_reflections_task_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_reflections_task_id ON public.reflections USING btree (task_id);
+
+--
+-- Name: idx_reflections_trace_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_reflections_trace_id ON public.reflections USING btree (trace_id);
+
+--
 -- Name: idx_scorable_domains_domain; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -6868,6 +8809,60 @@ CREATE INDEX idx_sis_cards_scope_key_ts ON public.sis_cards USING btree (scope, 
 CREATE INDEX idx_sis_cards_ts ON public.sis_cards USING btree (ts);
 
 --
+-- Name: idx_step_runs_agent_name; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_step_runs_agent_name ON public.step_runs USING btree (agent_name);
+
+--
+-- Name: idx_step_runs_component; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_step_runs_component ON public.step_runs USING btree (component);
+
+--
+-- Name: idx_step_runs_pipeline_run_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_step_runs_pipeline_run_id ON public.step_runs USING btree (pipeline_run_id);
+
+--
+-- Name: idx_step_runs_plan_trace_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_step_runs_plan_trace_id ON public.step_runs USING btree (plan_trace_id);
+
+--
+-- Name: idx_step_runs_scorable_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_step_runs_scorable_id ON public.step_runs USING btree (scorable_id);
+
+--
+-- Name: idx_step_runs_stage_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_step_runs_stage_idx ON public.step_runs USING btree (stage_idx);
+
+--
+-- Name: idx_step_runs_stage_name; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_step_runs_stage_name ON public.step_runs USING btree (stage_name);
+
+--
+-- Name: idx_step_runs_started_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_step_runs_started_at ON public.step_runs USING btree (started_at);
+
+--
+-- Name: idx_step_runs_step_name; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_step_runs_step_name ON public.step_runs USING btree (step_name);
+
+--
 -- Name: idx_theorem_cartridges_cartridge_id; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -6916,6 +8911,54 @@ CREATE INDEX idx_trials_experiment_group ON public.experiment_trials USING btree
 CREATE INDEX idx_trials_tags_used ON public.experiment_trials USING gin (tags_used);
 
 --
+-- Name: ix_ai_concept_gems_concept_id_fk; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_ai_concept_gems_concept_id_fk ON public.ai_concept_gems USING btree (concept_id_fk);
+
+--
+-- Name: ix_ai_concept_gems_primary_score; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_ai_concept_gems_primary_score ON public.ai_concept_gems USING btree (is_primary DESC, gem_score DESC NULLS LAST);
+
+--
+-- Name: ix_ai_concept_quizzes_concept_id_fk; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_ai_concept_quizzes_concept_id_fk ON public.ai_concept_quizzes USING btree (concept_id_fk);
+
+--
+-- Name: ix_ai_concept_quizzes_frontier; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_ai_concept_quizzes_frontier ON public.ai_concept_quizzes USING btree (concept_id_fk, is_frontier);
+
+--
+-- Name: ix_ai_concepts_concept_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_ai_concepts_concept_id ON public.ai_concepts USING btree (concept_id);
+
+--
+-- Name: ix_ai_concepts_domains_gin; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_ai_concepts_domains_gin ON public.ai_concepts USING gin (domains);
+
+--
+-- Name: ix_ai_concepts_frontier_count; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_ai_concepts_frontier_count ON public.ai_concepts USING btree (frontier_count);
+
+--
+-- Name: ix_ai_concepts_quiz_accuracy; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_ai_concepts_quiz_accuracy ON public.ai_concepts USING btree (quiz_accuracy);
+
+--
 -- Name: ix_blog_created_at; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -6946,10 +8989,40 @@ CREATE INDEX ix_blog_readability ON public.blog_drafts USING btree (readability)
 CREATE INDEX ix_blog_topic ON public.blog_drafts USING btree (topic);
 
 --
+-- Name: ix_blossom_outputs_episode; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_blossom_outputs_episode ON public.blossom_outputs USING btree (blossom_id);
+
+--
+-- Name: ix_blossom_outputs_node; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_blossom_outputs_node ON public.blossom_outputs USING btree (source_bn_id);
+
+--
+-- Name: ix_blossom_outputs_role; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_blossom_outputs_role ON public.blossom_outputs USING btree (blossom_id, role);
+
+--
+-- Name: ix_blossom_outputs_scorable; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_blossom_outputs_scorable ON public.blossom_outputs USING btree (scorable_type, scorable_id);
+
+--
 -- Name: ix_case_goal; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX ix_case_goal ON public.case_goal_state USING btree (casebook_id, goal_id);
+
+--
+-- Name: ix_docling_pages_paper_run; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_docling_pages_paper_run ON public.paper_docling_pages USING btree (paper_id, run_id);
 
 --
 -- Name: ix_dynamic_scorables_srcptr; Type: INDEX; Schema: public; Owner: -
@@ -7018,10 +9091,118 @@ CREATE INDEX ix_expo_doc_section ON public.expository_snippets USING btree (doc_
 CREATE INDEX ix_expo_expository_score ON public.expository_snippets USING btree (expository_score DESC);
 
 --
+-- Name: ix_identifiers_type; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_identifiers_type ON public.identifiers USING btree (identifier_type);
+
+--
+-- Name: ix_identifiers_value; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_identifiers_value ON public.identifiers USING btree (identifier_value);
+
+--
 -- Name: ix_lightning_run_step; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX ix_lightning_run_step ON public.agent_lightning USING btree (run_id, step_idx);
+
+--
+-- Name: ix_measurement_quality_measurement_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_measurement_quality_measurement_id ON public.measurement_quality USING btree (measurement_id);
+
+--
+-- Name: ix_measurement_quality_usable; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_measurement_quality_usable ON public.measurement_quality USING btree (is_usable_for_training);
+
+--
+-- Name: ix_measurements_target_dim_time; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_measurements_target_dim_time ON public.measurements USING btree (target_type, dimension, created_at);
+
+--
+-- Name: ix_memory_evolution_runs_created_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_memory_evolution_runs_created_at ON public.memory_evolution_runs USING btree (created_at);
+
+--
+-- Name: ix_memory_evolution_runs_genotype_created; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_memory_evolution_runs_genotype_created ON public.memory_evolution_runs USING btree (genotype_id, created_at);
+
+--
+-- Name: ix_memory_evolution_runs_genotype_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_memory_evolution_runs_genotype_id ON public.memory_evolution_runs USING btree (genotype_id);
+
+--
+-- Name: ix_memory_evolution_runs_goal_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_memory_evolution_runs_goal_id ON public.memory_evolution_runs USING btree (goal_id);
+
+--
+-- Name: ix_memory_evolution_runs_run_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_memory_evolution_runs_run_id ON public.memory_evolution_runs USING btree (run_id);
+
+--
+-- Name: ix_memory_evolution_runs_suite; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_memory_evolution_runs_suite ON public.memory_evolution_runs USING btree (suite);
+
+--
+-- Name: ix_memory_genotypes_created_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_memory_genotypes_created_at ON public.memory_genotypes USING btree (created_at);
+
+--
+-- Name: ix_memory_genotypes_is_active; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_memory_genotypes_is_active ON public.memory_genotypes USING btree (is_active);
+
+--
+-- Name: ix_memory_genotypes_parent_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_memory_genotypes_parent_id ON public.memory_genotypes USING btree (parent_id);
+
+--
+-- Name: ix_memory_genotypes_updated_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_memory_genotypes_updated_at ON public.memory_genotypes USING btree (updated_at);
+
+--
+-- Name: ix_metric_deltas_run_scorable; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_metric_deltas_run_scorable ON public.metric_deltas USING btree (run_id, scorable_id);
+
+--
+-- Name: ix_metric_vectors_run_scorable; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_metric_vectors_run_scorable ON public.metric_vectors USING btree (run_id, scorable_id);
+
+--
+-- Name: ix_metric_vpms_run_scorable_dim; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_metric_vpms_run_scorable_dim ON public.metric_vpms USING btree (run_id, scorable_id, dimension);
 
 --
 -- Name: ix_model_artifacts_name; Type: INDEX; Schema: public; Owner: -
@@ -7034,6 +9215,24 @@ CREATE INDEX ix_model_artifacts_name ON public.model_artifacts USING btree (name
 --
 
 CREATE INDEX ix_model_artifacts_tag ON public.model_artifacts USING btree (tag);
+
+--
+-- Name: ix_model_divergence_model_time; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_model_divergence_model_time ON public.model_divergence USING btree (logical_model_id, created_at);
+
+--
+-- Name: ix_model_health_model_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_model_health_model_id ON public.model_health USING btree (model_id);
+
+--
+-- Name: ix_model_health_status; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_model_health_status ON public.model_health USING btree (health_status);
 
 --
 -- Name: ix_model_snapshots_domain; Type: INDEX; Schema: public; Owner: -
@@ -7058,6 +9257,12 @@ CREATE INDEX ix_model_snapshots_name ON public.experiment_model_snapshots USING 
 --
 
 CREATE INDEX ix_model_snapshots_version ON public.experiment_model_snapshots USING btree (version);
+
+--
+-- Name: ix_models_model_type_target_dim; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_models_model_type_target_dim ON public.models USING btree (model_type, target_type, dimension);
 
 --
 -- Name: ix_nexus_pulse_goal_id; Type: INDEX; Schema: public; Owner: -
@@ -7102,10 +9307,178 @@ CREATE INDEX ix_nexus_scorable_target_type ON public.nexus_scorable USING btree 
 CREATE INDEX ix_nexus_scorable_turn_index ON public.nexus_scorable USING btree (turn_index);
 
 --
+-- Name: ix_pairrm_rankings_run_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_pairrm_rankings_run_id ON public.pairrm_rankings USING btree (run_id);
+
+--
+-- Name: ix_pairrm_rankings_scorable_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_pairrm_rankings_scorable_id ON public.pairrm_rankings USING btree (scorable_id);
+
+--
+-- Name: ix_pairrm_rankings_scorable_tool; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_pairrm_rankings_scorable_tool ON public.pairrm_rankings USING btree (scorable_type, scorable_id, tool_name);
+
+--
+-- Name: ix_pairrm_rankings_scorable_type; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_pairrm_rankings_scorable_type ON public.pairrm_rankings USING btree (scorable_type);
+
+--
+-- Name: ix_pairrm_rankings_tool_name; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_pairrm_rankings_tool_name ON public.pairrm_rankings USING btree (tool_name);
+
+--
+-- Name: ix_paper_references_combo; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_paper_references_combo ON public.paper_references USING btree (paper_id, ref_arxiv_id);
+
+--
+-- Name: ix_paper_references_doi; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_paper_references_doi ON public.paper_references USING btree (doi);
+
+--
+-- Name: ix_paper_references_paper_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_paper_references_paper_id ON public.paper_references USING btree (paper_id);
+
+--
+-- Name: ix_paper_references_ref_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_paper_references_ref_id ON public.paper_references USING btree (ref_arxiv_id);
+
+--
+-- Name: ix_paper_references_year; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_paper_references_year ON public.paper_references USING btree (year);
+
+--
+-- Name: ix_paper_run_comparisons_paper; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_paper_run_comparisons_paper ON public.paper_run_comparisons USING btree (paper_id);
+
+--
+-- Name: ix_paper_run_events_run; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_paper_run_events_run ON public.paper_run_events USING btree (run_id);
+
+--
+-- Name: ix_paper_run_events_type; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_paper_run_events_type ON public.paper_run_events USING btree (event_type);
+
+--
+-- Name: ix_paper_run_features_run; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_paper_run_features_run ON public.paper_run_features USING btree (run_id);
+
+--
+-- Name: ix_paper_runs_ai_score; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_paper_runs_ai_score ON public.paper_runs USING btree (ai_score);
+
+--
+-- Name: ix_paper_runs_created_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_paper_runs_created_at ON public.paper_runs USING btree (created_at DESC);
+
+--
+-- Name: ix_paper_runs_paper_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_paper_runs_paper_id ON public.paper_runs USING btree (paper_id);
+
+--
+-- Name: ix_paper_runs_paper_type; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_paper_runs_paper_type ON public.paper_runs USING btree (paper_id, run_type);
+
+--
+-- Name: ix_paper_similar_paper_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_paper_similar_paper_id ON public.paper_similar USING btree (paper_id);
+
+--
+-- Name: ix_paper_similar_rank; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_paper_similar_rank ON public.paper_similar USING btree (paper_id, rank);
+
+--
+-- Name: ix_paper_similar_sim_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_paper_similar_sim_id ON public.paper_similar USING btree (similar_arxiv_id);
+
+--
+-- Name: ix_papers_pdfsha; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_papers_pdfsha ON public.papers USING btree (pdf_sha256);
+
+--
+-- Name: ix_papers_texthash; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_papers_texthash ON public.papers USING btree (text_hash);
+
+--
+-- Name: ix_papers_url; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_papers_url ON public.papers USING btree (url);
+
+--
 -- Name: ix_psq_topic_status; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX ix_psq_topic_status ON public.paper_source_queue USING btree (topic, status);
+
+--
+-- Name: ix_scorable_identifiers_identifier_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_scorable_identifiers_identifier_id ON public.scorable_identifiers USING btree (identifier_id);
+
+--
+-- Name: ix_scorable_identifiers_scorable; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_scorable_identifiers_scorable ON public.scorable_identifiers USING btree (scorable_type, scorable_id);
+
+--
+-- Name: ix_scorable_summaries_scorable; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_scorable_summaries_scorable ON public.scorable_summaries USING btree (scorable_type, scorable_id);
+
+--
+-- Name: ix_scorable_summaries_tool_model; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_scorable_summaries_tool_model ON public.scorable_summaries USING btree (tool_name, model_name);
 
 --
 -- Name: ix_te_recent; Type: INDEX; Schema: public; Owner: -
@@ -7258,10 +9631,100 @@ CREATE INDEX ix_zmq_cache_entries_scope ON public.zmq_cache_entries USING btree 
 CREATE INDEX ix_zmq_cache_entries_value_json_gin ON public.zmq_cache_entries USING gin (value_json);
 
 --
+-- Name: paper_references_doi_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX paper_references_doi_idx ON public.paper_references USING btree (doi);
+
+--
+-- Name: paper_references_paper_doi_uniq; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX paper_references_paper_doi_uniq ON public.paper_references USING btree (paper_id, lower(doi)) WHERE ((doi IS NOT NULL) AND (length(TRIM(BOTH FROM doi)) > 0));
+
+--
+-- Name: paper_references_paper_id_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX paper_references_paper_id_idx ON public.paper_references USING btree (paper_id);
+
+--
+-- Name: paper_references_paper_order_uniq; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX paper_references_paper_order_uniq ON public.paper_references USING btree (paper_id, order_idx) WHERE (order_idx IS NOT NULL);
+
+--
+-- Name: paper_references_paper_ref_arxiv_uniq; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX paper_references_paper_ref_arxiv_uniq ON public.paper_references USING btree (paper_id, ref_arxiv_id) WHERE ((ref_arxiv_id IS NOT NULL) AND (length(TRIM(BOTH FROM ref_arxiv_id)) > 0));
+
+--
+-- Name: paper_references_ref_arxiv_id_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX paper_references_ref_arxiv_id_idx ON public.paper_references USING btree (ref_arxiv_id);
+
+--
+-- Name: paper_sections_paper_id_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX paper_sections_paper_id_idx ON public.paper_sections USING btree (paper_id);
+
+--
+-- Name: paper_similar_paper_id_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX paper_similar_paper_id_idx ON public.paper_similar USING btree (paper_id);
+
+--
+-- Name: paper_similar_paper_provider_similar_uniq; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX paper_similar_paper_provider_similar_uniq ON public.paper_similar USING btree (paper_id, provider, similar_arxiv_id);
+
+--
+-- Name: paper_similar_similar_arxiv_id_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX paper_similar_similar_arxiv_id_idx ON public.paper_similar USING btree (similar_arxiv_id);
+
+--
+-- Name: papers_pdf_sha256_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX papers_pdf_sha256_idx ON public.papers USING btree (pdf_sha256);
+
+--
+-- Name: papers_text_hash_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX papers_text_hash_idx ON public.papers USING btree (text_hash);
+
+--
 -- Name: unique_text_hash; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE UNIQUE INDEX unique_text_hash ON public.embeddings USING btree (text_hash);
+
+--
+-- Name: uq_metric_deltas_scorable; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX uq_metric_deltas_scorable ON public.metric_deltas USING btree (scorable_id, scorable_type);
+
+--
+-- Name: uq_metric_vectors_scorable; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX uq_metric_vectors_scorable ON public.metric_vectors USING btree (scorable_id, scorable_type);
+
+--
+-- Name: uq_metric_vpms_scorable_dim; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX uq_metric_vpms_scorable_dim ON public.metric_vpms USING btree (scorable_id, scorable_type, dimension);
 
 --
 -- Name: uq_plan_trace_reuse; Type: INDEX; Schema: public; Owner: -
@@ -7365,10 +9828,48 @@ CREATE OR REPLACE VIEW public.reasoning_samples_view AS
   GROUP BY e.id, e.pipeline_run_id, g.goal_text, d.id, d.title, d.text, d.summary, d.url, ds.id, ds.section_name, ds.section_text, ds.summary, h.id, p.id, pro.id, am.id, am.text;
 
 --
+-- Name: blossom_outputs trg_blossom_outputs_updated; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER trg_blossom_outputs_updated BEFORE UPDATE ON public.blossom_outputs FOR EACH ROW EXECUTE FUNCTION public.update_blossom_outputs_modified();
+
+--
 -- Name: case_goal_state trg_case_goal_state_set_updated_at; Type: TRIGGER; Schema: public; Owner: -
 --
 
 CREATE TRIGGER trg_case_goal_state_set_updated_at BEFORE UPDATE ON public.case_goal_state FOR EACH ROW EXECUTE FUNCTION public.set_updated_at_timestamp();
+
+--
+-- Name: memory_genotypes trg_memory_genotypes_updated_at; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER trg_memory_genotypes_updated_at BEFORE UPDATE ON public.memory_genotypes FOR EACH ROW EXECUTE FUNCTION public.set_updated_at_memory_genotypes();
+
+--
+-- Name: pairrm_rankings trg_pairrm_rankings_updated_at; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER trg_pairrm_rankings_updated_at BEFORE UPDATE ON public.pairrm_rankings FOR EACH ROW EXECUTE FUNCTION public.set_updated_at_pairrm_rankings();
+
+--
+-- Name: scorable_summaries trg_scorable_summaries_timestamp; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER trg_scorable_summaries_timestamp BEFORE UPDATE ON public.scorable_summaries FOR EACH ROW EXECUTE FUNCTION public.set_scorable_summaries_timestamp();
+
+--
+-- Name: ai_concept_gems ai_concept_gems_concept_id_fk_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.ai_concept_gems
+    ADD CONSTRAINT ai_concept_gems_concept_id_fk_fkey FOREIGN KEY (concept_id_fk) REFERENCES public.ai_concepts(id) ON DELETE CASCADE;
+
+--
+-- Name: ai_concept_quizzes ai_concept_quizzes_concept_id_fk_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.ai_concept_quizzes
+    ADD CONSTRAINT ai_concept_quizzes_concept_id_fk_fkey FOREIGN KEY (concept_id_fk) REFERENCES public.ai_concepts(id) ON DELETE CASCADE;
 
 --
 -- Name: belief_cartridges belief_cartridges_document_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
@@ -7397,6 +9898,27 @@ ALTER TABLE ONLY public.blossom_edges
 
 ALTER TABLE ONLY public.blossom_nodes
     ADD CONSTRAINT blossom_nodes_blossom_id_fkey FOREIGN KEY (blossom_id) REFERENCES public.blossoms(id) ON DELETE CASCADE;
+
+--
+-- Name: blossom_outputs blossom_outputs_blossom_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.blossom_outputs
+    ADD CONSTRAINT blossom_outputs_blossom_id_fkey FOREIGN KEY (blossom_id) REFERENCES public.blossoms(id) ON DELETE CASCADE;
+
+--
+-- Name: blossom_outputs blossom_outputs_episode_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.blossom_outputs
+    ADD CONSTRAINT blossom_outputs_episode_id_fkey FOREIGN KEY (episode_id) REFERENCES public.blossoms(id) ON DELETE CASCADE;
+
+--
+-- Name: blossom_outputs blossom_outputs_source_bn_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.blossom_outputs
+    ADD CONSTRAINT blossom_outputs_source_bn_id_fkey FOREIGN KEY (source_bn_id) REFERENCES public.blossom_nodes(id) ON DELETE SET NULL;
 
 --
 -- Name: cartridge_domains cartridge_domains_cartridge_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
@@ -7495,6 +10017,20 @@ ALTER TABLE ONLY public.chat_turns
 
 ALTER TABLE ONLY public.chat_turns
     ADD CONSTRAINT chat_turns_user_message_id_fkey FOREIGN KEY (user_message_id) REFERENCES public.chat_messages(id) ON DELETE CASCADE;
+
+--
+-- Name: codecheck_suggestion codecheck_suggestion_file_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.codecheck_suggestion
+    ADD CONSTRAINT codecheck_suggestion_file_id_fkey FOREIGN KEY (file_id) REFERENCES public.codecheck_file(id) ON DELETE CASCADE;
+
+--
+-- Name: codecheck_suggestion codecheck_suggestion_run_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.codecheck_suggestion
+    ADD CONSTRAINT codecheck_suggestion_run_id_fkey FOREIGN KEY (run_id) REFERENCES public.codecheck_run(id) ON DELETE CASCADE;
 
 --
 -- Name: component_interfaces component_interfaces_component_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
@@ -7644,6 +10180,62 @@ ALTER TABLE ONLY public.chat_messages
     ADD CONSTRAINT fk_chat_messages_parent FOREIGN KEY (parent_id) REFERENCES public.chat_messages(id) ON DELETE CASCADE;
 
 --
+-- Name: codecheck_file_metrics fk_codecheck_file_metrics_file; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.codecheck_file_metrics
+    ADD CONSTRAINT fk_codecheck_file_metrics_file FOREIGN KEY (file_id) REFERENCES public.codecheck_file(id) ON DELETE CASCADE;
+
+--
+-- Name: codecheck_file fk_codecheck_file_run; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.codecheck_file
+    ADD CONSTRAINT fk_codecheck_file_run FOREIGN KEY (run_id) REFERENCES public.codecheck_run(id) ON DELETE CASCADE;
+
+--
+-- Name: codecheck_issue fk_codecheck_issue_file; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.codecheck_issue
+    ADD CONSTRAINT fk_codecheck_issue_file FOREIGN KEY (file_id) REFERENCES public.codecheck_file(id) ON DELETE CASCADE;
+
+--
+-- Name: codecheck_issue fk_codecheck_issue_run; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.codecheck_issue
+    ADD CONSTRAINT fk_codecheck_issue_run FOREIGN KEY (run_id) REFERENCES public.codecheck_run(id) ON DELETE CASCADE;
+
+--
+-- Name: paper_run_comparisons fk_comparison_run_a; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.paper_run_comparisons
+    ADD CONSTRAINT fk_comparison_run_a FOREIGN KEY (run_a_id) REFERENCES public.paper_runs(id) ON DELETE CASCADE;
+
+--
+-- Name: paper_run_comparisons fk_comparison_run_b; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.paper_run_comparisons
+    ADD CONSTRAINT fk_comparison_run_b FOREIGN KEY (run_b_id) REFERENCES public.paper_runs(id) ON DELETE CASCADE;
+
+--
+-- Name: critic_models fk_critic_models_run_id; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.critic_models
+    ADD CONSTRAINT fk_critic_models_run_id FOREIGN KEY (run_id) REFERENCES public.metric_groups(run_id) ON DELETE CASCADE;
+
+--
+-- Name: critic_runs fk_critic_runs_run_id; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.critic_runs
+    ADD CONSTRAINT fk_critic_runs_run_id FOREIGN KEY (run_id) REFERENCES public.metric_groups(run_id) ON DELETE CASCADE;
+
+--
 -- Name: document_section_domains fk_document_section; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -7700,11 +10292,74 @@ ALTER TABLE ONLY public.prompts
     ADD CONSTRAINT fk_goal_prompt FOREIGN KEY (goal_id) REFERENCES public.goals(id);
 
 --
+-- Name: measurement_quality fk_measurement_quality_measurement; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.measurement_quality
+    ADD CONSTRAINT fk_measurement_quality_measurement FOREIGN KEY (measurement_id) REFERENCES public.measurements(id) ON DELETE CASCADE;
+
+--
+-- Name: metric_deltas fk_metric_deltas_group; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.metric_deltas
+    ADD CONSTRAINT fk_metric_deltas_group FOREIGN KEY (run_id) REFERENCES public.metric_groups(run_id) ON DELETE CASCADE;
+
+--
+-- Name: metric_vectors fk_metric_vectors_group; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.metric_vectors
+    ADD CONSTRAINT fk_metric_vectors_group FOREIGN KEY (run_id) REFERENCES public.metric_groups(run_id) ON DELETE CASCADE;
+
+--
+-- Name: metric_vpms fk_metric_vpms_group; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.metric_vpms
+    ADD CONSTRAINT fk_metric_vpms_group FOREIGN KEY (run_id) REFERENCES public.metric_groups(run_id) ON DELETE CASCADE;
+
+--
+-- Name: model_divergence fk_model_divergence_measurement; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.model_divergence
+    ADD CONSTRAINT fk_model_divergence_measurement FOREIGN KEY (measurement_id) REFERENCES public.measurements(id) ON DELETE CASCADE;
+
+--
+-- Name: model_divergence fk_model_divergence_model; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.model_divergence
+    ADD CONSTRAINT fk_model_divergence_model FOREIGN KEY (logical_model_id) REFERENCES public.models(id) ON DELETE CASCADE;
+
+--
+-- Name: model_health fk_model_health_model; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.model_health
+    ADD CONSTRAINT fk_model_health_model FOREIGN KEY (model_id) REFERENCES public.models(id) ON DELETE CASCADE;
+
+--
 -- Name: nexus_metrics fk_nexus_metrics_scorable; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.nexus_metrics
     ADD CONSTRAINT fk_nexus_metrics_scorable FOREIGN KEY (scorable_id) REFERENCES public.nexus_scorable(id) ON DELETE CASCADE;
+
+--
+-- Name: paper_runs fk_paper_runs_paper; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.paper_runs
+    ADD CONSTRAINT fk_paper_runs_paper FOREIGN KEY (paper_id) REFERENCES public.papers(id) ON DELETE CASCADE;
+
+--
+-- Name: paper_sections fk_paper_section; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.paper_sections
+    ADD CONSTRAINT fk_paper_section FOREIGN KEY (paper_id) REFERENCES public.papers(id) ON DELETE CASCADE;
 
 --
 -- Name: context_states fk_pipeline_run; Type: FK CONSTRAINT; Schema: public; Owner: -
@@ -7726,6 +10381,20 @@ ALTER TABLE ONLY public.hypotheses
 
 ALTER TABLE ONLY public.evaluations
     ADD CONSTRAINT fk_rule_application FOREIGN KEY (rule_application_id) REFERENCES public.rule_applications(id) ON DELETE SET NULL;
+
+--
+-- Name: paper_run_events fk_run_events_run; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.paper_run_events
+    ADD CONSTRAINT fk_run_events_run FOREIGN KEY (run_id) REFERENCES public.paper_runs(id) ON DELETE CASCADE;
+
+--
+-- Name: paper_run_features fk_run_features_run; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.paper_run_features
+    ADD CONSTRAINT fk_run_features_run FOREIGN KEY (run_id) REFERENCES public.paper_runs(id) ON DELETE CASCADE;
 
 --
 -- Name: scorable_ranks fk_scorable_ranks_evaluation; Type: FK CONSTRAINT; Schema: public; Owner: -
@@ -7826,6 +10495,20 @@ ALTER TABLE ONLY public.mars_results
     ADD CONSTRAINT mars_results_plan_trace_id_fkey FOREIGN KEY (plan_trace_id) REFERENCES public.plan_traces(trace_id) ON DELETE CASCADE;
 
 --
+-- Name: memory_evolution_runs memory_evolution_runs_genotype_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.memory_evolution_runs
+    ADD CONSTRAINT memory_evolution_runs_genotype_id_fkey FOREIGN KEY (genotype_id) REFERENCES public.memory_genotypes(id) ON DELETE CASCADE;
+
+--
+-- Name: memory_genotypes memory_genotypes_parent_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.memory_genotypes
+    ADD CONSTRAINT memory_genotypes_parent_id_fkey FOREIGN KEY (parent_id) REFERENCES public.memory_genotypes(id) ON DELETE SET NULL;
+
+--
 -- Name: method_plans method_plans_goal_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -7845,6 +10528,55 @@ ALTER TABLE ONLY public.method_plans
 
 ALTER TABLE ONLY public.method_plans
     ADD CONSTRAINT method_plans_parent_plan_id_fkey FOREIGN KEY (parent_plan_id) REFERENCES public.method_plans(id) ON DELETE SET NULL;
+
+--
+-- Name: paper_docling_pages paper_docling_pages_paper_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.paper_docling_pages
+    ADD CONSTRAINT paper_docling_pages_paper_id_fkey FOREIGN KEY (paper_id) REFERENCES public.papers(id) ON DELETE CASCADE;
+
+--
+-- Name: paper_docling_pages paper_docling_pages_run_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.paper_docling_pages
+    ADD CONSTRAINT paper_docling_pages_run_id_fkey FOREIGN KEY (run_id) REFERENCES public.paper_runs(id) ON DELETE CASCADE;
+
+--
+-- Name: paper_references paper_references_paper_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.paper_references
+    ADD CONSTRAINT paper_references_paper_fk FOREIGN KEY (paper_id) REFERENCES public.papers(id) ON DELETE CASCADE;
+
+--
+-- Name: paper_references paper_references_paper_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.paper_references
+    ADD CONSTRAINT paper_references_paper_id_fkey FOREIGN KEY (paper_id) REFERENCES public.papers(id) ON DELETE CASCADE;
+
+--
+-- Name: paper_sections paper_sections_paper_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.paper_sections
+    ADD CONSTRAINT paper_sections_paper_fk FOREIGN KEY (paper_id) REFERENCES public.papers(id) ON DELETE CASCADE;
+
+--
+-- Name: paper_similar paper_similar_paper_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.paper_similar
+    ADD CONSTRAINT paper_similar_paper_fk FOREIGN KEY (paper_id) REFERENCES public.papers(id) ON DELETE CASCADE;
+
+--
+-- Name: paper_similar paper_similar_paper_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.paper_similar
+    ADD CONSTRAINT paper_similar_paper_id_fkey FOREIGN KEY (paper_id) REFERENCES public.papers(id) ON DELETE CASCADE;
 
 --
 -- Name: pipeline_runs pipeline_runs_goal_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
@@ -7992,6 +10724,13 @@ ALTER TABLE ONLY public.rule_applications
 
 ALTER TABLE ONLY public.rule_applications
     ADD CONSTRAINT rule_applications_pipeline_run_id_fkey FOREIGN KEY (pipeline_run_id) REFERENCES public.pipeline_runs(id) ON DELETE CASCADE;
+
+--
+-- Name: scorable_identifiers scorable_identifiers_identifier_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.scorable_identifiers
+    ADD CONSTRAINT scorable_identifiers_identifier_id_fkey FOREIGN KEY (identifier_id) REFERENCES public.identifiers(id) ON DELETE CASCADE;
 
 --
 -- Name: score_attributes score_attributes_score_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -

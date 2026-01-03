@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from sqlalchemy import func, or_
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
-from stephanie.models.prompt_job import PromptJobORM
+from stephanie.orm.prompt_job import PromptJobORM
 
 PRIORITY_ORDER = {"high": 0, "normal": 1, "low": 2}
 

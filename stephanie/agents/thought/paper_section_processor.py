@@ -11,7 +11,7 @@ from typing import Any, Dict
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.thought.paper_blog import SimplePaperBlogAgent
-from stephanie.models.casebook import CaseBookORM
+from stephanie.orm.casebook import CaseBookORM
 from stephanie.scoring.scorable import ScorableType
 
 log = logging.getLogger(__name__)

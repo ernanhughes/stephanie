@@ -10,8 +10,8 @@ from sqlalchemy import func
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.constants import PIPELINE_RUN_ID
-from stephanie.models import EvaluationORM, ScoreORM
-from stephanie.models.comparison_preference import ComparisonPreferenceORM
+from stephanie.orm import EvaluationORM, ScoreORM
+from stephanie.orm.comparison_preference import ComparisonPreferenceORM
 from stephanie.rules.rule_effect_analyzer import RuleEffectAnalyzer
 
 
@@ -48,8 +48,7 @@ class PipelineComparisonAgent(BaseAgent):
         return context
 
     def compare_runs(self, tags: list[str], goal_id: int = None):
-        from stephanie.models.comparison_preference import \
-            ComparisonPreferenceORM
+        from stephanie.orm.comparison_preference import ComparisonPreferenceORM
 
         """
         Compare multiple sets of pipeline runs by tag across the same goals.

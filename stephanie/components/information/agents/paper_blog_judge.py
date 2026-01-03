@@ -7,9 +7,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from statistics import median
 from typing import Any, Dict, List, Optional, Union
-from stephanie.components.information.learning.judge_stack import JudgeStack
 
 from stephanie.agents.base_agent import BaseAgent
+from stephanie.components.information.learning.judge_stack import JudgeStack
 from stephanie.services.prompt_service import LLMRole
 
 log = logging.getLogger(__name__)

@@ -20,7 +20,7 @@ class AutoMindAgent(BaseAgent):
         self.coder = SelfAdaptiveCoder(cfg.coder)
         self.max_iters = cfg.get("max_iters", 25)
 
-    def run(self, goal):
+    async def run(self, goal):
         self.logger.log({"goal": goal})
         self.tree.initialize(goal)
 

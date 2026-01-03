@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import Dict, Iterable, List, Optional
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
-from stephanie.models.scorable_feature import ScorableFeatureORM
+from stephanie.orm.scorable_feature import ScorableFeatureORM
 
 
 class ScorableFeatureStore(BaseSQLAlchemyStore):

@@ -11,7 +11,7 @@ from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.knowledge.improver import Improver
 from stephanie.agents.knowledge.knowledge_fuser import KnowledgeFuser
 from stephanie.agents.paper_improver.goals import GoalScorer
-from stephanie.models.casebook import CaseBookORM
+from stephanie.orm.casebook import CaseBookORM
 from stephanie.scoring.scorable import ScorableFactory, ScorableType
 from stephanie.utils.json_sanitize import safe_json
 from stephanie.zeromodel.vpm_controller import (Signal, VPMController, VPMRow,
@@ -34,7 +34,7 @@ class DraftGeneratorAgent(BaseAgent):
         self.section_name_fallback = cfg.get("section_name_fallback", "Blog Section")
         self.vpm: VPMController = default_controller()
         self.goals = GoalScorer()
-        self.ti = Improver(cfg, memory=memory, logger=logger, workdir=cfg.get("text_workdir", "./text_runs"))
+        self.ti = Improver(cfg, memory=memory, container=container, logger=logger)
         self.fuser = KnowledgeFuser(cfg, memory, container, logger)
 
         # chat ingestion options
@@ -96,7 +96,7 @@ class DraftGeneratorAgent(BaseAgent):
 
         for step in range(self.max_steps):
             # Generate/Improve draft
-            result = self.ti.improve(plan)  # TextImprover is self-contained; we rerun with the (improved) plan
+            result = self.ti.improve(plan, context=context)  # TextImprover is self-contained; we rerun with the (improved) plan
             last_result = result
 
             # Extract VPM dims into controller row

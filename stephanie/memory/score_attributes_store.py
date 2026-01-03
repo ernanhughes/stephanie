@@ -7,8 +7,8 @@ from typing import Dict, List, Optional, Tuple
 from sqlalchemy import func
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
-from stephanie.models.score import ScoreORM
-from stephanie.models.score_attribute import ScoreAttributeORM
+from stephanie.orm.score import ScoreORM
+from stephanie.orm.score_attribute import ScoreAttributeORM
 
 
 class ScoreAttributeStore(BaseSQLAlchemyStore):

@@ -143,7 +143,7 @@ class GapAgent(BaseAgent):
         """
         self.logger.log("GapAnalysisStarted", {
             "run_id": context.get("pipeline_run_id", "unknown"),
-            "dimensions": self._config.dimensions,
+            "dimensions": self._config.dimensions, 
             "hrm_scorers": self._config.hrm_scorers,
             "tiny_scorers": self._config.tiny_scorers,
         })

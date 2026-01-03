@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
-from stephanie.models.document_section import DocumentSectionORM
+from stephanie.orm.document_section import DocumentSectionORM
 
 
 class DocumentSectionStore(BaseSQLAlchemyStore):

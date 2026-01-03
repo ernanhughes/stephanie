@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Any, Optional
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
-from stephanie.models.entity_cache import EntityCacheORM
+from stephanie.orm.entity_cache import EntityCacheORM
 from stephanie.utils.json_sanitize import to_json_safe
 
 
@@ -23,7 +23,11 @@ class EntityCacheStore(BaseSQLAlchemyStore):
 
     def get_by_embedding(self, embedding_ref: int) -> Optional[EntityCacheORM]:
         def op(s):
-            return s.query(EntityCacheORM).filter(EntityCacheORM.embedding_ref == embedding_ref).one_or_none()
+            return (
+                s.query(EntityCacheORM).filter(EntityCacheORM.embedding_ref == embedding_ref)
+                .order_by(EntityCacheORM.last_updated.desc())
+                .first()
+            )
         return self._run(op)
 
     def upsert(self, embedding_ref: int, results_json: Any) -> EntityCacheORM:

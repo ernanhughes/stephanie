@@ -22,7 +22,6 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional, Tuple
 
-
 # =============================================================================
 # TYPE ALIASES & CONSTANTS
 # =============================================================================
@@ -378,9 +377,9 @@ class PaperSection:
         meta: Additional metadata (section heading, confidence scores, etc.)
     """
     
-    id: str
+    section_id: str
     paper_arxiv_id: str
-    paper_role: str
+    role: str
     section_index: int
     
     text: str
@@ -388,9 +387,14 @@ class PaperSection:
     title: Optional[str] = None
     summary: Optional[str] = None
     
+
     # Character offsets for traceability
     start_char: Optional[int] = None
     end_char: Optional[int] = None
+    
+    # page range for visual element attachment
+    start_page: Optional[int] = None
+    end_page: Optional[int] = None
     
     # Embedding (can be raw vector or reference to embedding store)
     embedding: Any = None

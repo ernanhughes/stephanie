@@ -6,9 +6,9 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from tqdm import tqdm
 
-from stephanie.models.evaluation import EvaluationORM
-from stephanie.models.score import ScoreORM
-from stephanie.models.evaluation_attribute import EvaluationAttributeORM
+from stephanie.orm.evaluation import EvaluationORM
+from stephanie.orm.score import ScoreORM
+from stephanie.orm.evaluation_attribute import EvaluationAttributeORM
 
 # Increase CSV field size limit (safe for Windows)
 csv.field_size_limit(1_000_000_000)

@@ -8,9 +8,9 @@ from typing import Any, Dict, Iterable, List, Optional, Union
 from sqlalchemy import Integer, cast, func
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
-from stephanie.models.bus_event import BusEventORM
-from stephanie.models.goal import GoalORM
-from stephanie.models.pipeline_run import PipelineRunORM
+from stephanie.orm.bus_event import BusEventORM
+from stephanie.orm.goal import GoalORM
+from stephanie.orm.pipeline_run import PipelineRunORM
 from stephanie.utils.hash_utils import hash_bytes, hash_text
 
 

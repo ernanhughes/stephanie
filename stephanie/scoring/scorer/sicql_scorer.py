@@ -1,8 +1,9 @@
 # stephanie/scoring/scorer/sicql_scorer.py
 from __future__ import annotations
 
+import logging
 import os
-from typing import Dict, List
+from typing import Any, Dict, List, Tuple
 
 import torch
 import torch.nn.functional as F
@@ -10,17 +11,17 @@ import torch.nn.functional as F
 from stephanie.constants import GOAL, GOAL_TEXT
 from stephanie.data.score_bundle import ScoreBundle
 from stephanie.data.score_result import ScoreResult
-from stephanie.scoring.model.in_context_q import InContextQModel
-from stephanie.scoring.model.policy_head import PolicyHead
-from stephanie.scoring.model.q_head import QHead
-from stephanie.scoring.model.text_encoder import TextEncoder
-from stephanie.scoring.model.v_head import VHead
+from stephanie.model.sicql import InContextQModel, PolicyHead, QHead, VHead
+from stephanie.model.text_encoder import TextEncoder
 from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.scorer.base_scorer import BaseScorer
+from stephanie.scoring.scorer.model_health import (audit_load_state_dict,
+                                                   merge_load_audits)
 from stephanie.scoring.transforms.regression_tuner import RegressionTuner
 from stephanie.utils.file_utils import load_json
 from stephanie.utils.model_locator import ModelLocator
 
+log = logging.getLogger(__name__)
 
 class SICQLScorer(BaseScorer):
     """
@@ -58,19 +59,32 @@ class SICQLScorer(BaseScorer):
             t = t.view(-1)
         return t.tolist()
 
-    def _scale_with_tuner_or_sigmoid(self, dim: str, q_value: float, meta: dict) -> float:
+    def _clamp01(self, x: float) -> float:
+        return 0.0 if x != x else max(0.0, min(1.0, float(x)))
+
+    def _scale_with_tuner_or_sigmoid(self, dim: str, q_value: float, meta: dict) -> tuple[float, float]:
         """
-        If a RegressionTuner exists, use it. Otherwise, sigmoid → [0..1] → [min,max].
+        Always produce:
+        - score01 in [0,1]  (authoritative, returned as ScoreResult.score)
+        - score_scaled in [min,max] (kept as attribute for display)
         """
         min_val = float(meta.get("min_value", 0.0))
         max_val = float(meta.get("max_value", 100.0))
+        denom = (max_val - min_val) if (max_val - min_val) != 0 else 1.0
+
         if dim in self.tuners and self.tuners[dim] is not None:
-            s = float(self.tuners[dim].transform(q_value))
+            # tuner likely outputs in scaled units (often 0..100)
+            score_scaled = float(self.tuners[dim].transform(q_value))
+            score01 = self._clamp01((score_scaled - min_val) / denom)
         else:
-            s01 = torch.sigmoid(torch.tensor(q_value, dtype=torch.float32)).item()
-            s = s01 * (max_val - min_val) + min_val
-        # clamp to declared domain
-        return max(min(s, max_val), min_val)
+            # base path: sigmoid(q) gives score01 directly
+            score01 = float(torch.sigmoid(torch.tensor(q_value, dtype=torch.float32)).item())
+            score01 = self._clamp01(score01)
+            score_scaled = score01 * denom + min_val
+
+        # clamp scaled into declared range
+        score_scaled = max(min(score_scaled, max_val), min_val)
+        return score01, score_scaled
 
     def _get_locator(self, dim: str) -> ModelLocator:
         return ModelLocator(
@@ -95,10 +109,16 @@ class SICQLScorer(BaseScorer):
             pi_head = PolicyHead(zsa_dim=self.dim, hdim=self.hdim, num_actions=3).to(self.device)
 
             # load weights (best-effort)
-            encoder.load_state_dict(torch.load(loc.encoder_file(), map_location=self.device))
-            q_head.load_state_dict(torch.load(loc.q_head_file(), map_location=self.device))
-            v_head.load_state_dict(torch.load(loc.v_head_file(), map_location=self.device))
-            pi_head.load_state_dict(torch.load(loc.pi_head_file(), map_location=self.device))
+            ok_enc = _safe_load(encoder, loc.encoder_file(), name=f"SICQL encoder[{dim}]", device=self.device, strict=True)
+            ok_q   = _safe_load(q_head,  loc.q_head_file(),  name=f"SICQL QHead[{dim}]",  device=self.device, strict=True)
+            ok_v   = _safe_load(v_head,  loc.v_head_file(),  name=f"SICQL VHead[{dim}]",  device=self.device, strict=True)
+            ok_pi  = _safe_load(pi_head, loc.pi_head_file(), name=f"SICQL Policy[{dim}]", device=self.device, strict=True)
+
+            load_ok = ok_enc and ok_q and ok_v and ok_pi
+            if not load_ok:
+                # This is the important part: fail fast with a clear message.
+                # (Or set a flag and skip this dimension.)
+                raise RuntimeError(f"SICQL model load failed for dim={dim} (see logs above for shape mismatch)")
 
             model = InContextQModel(
                 encoder=encoder,
@@ -156,11 +176,12 @@ class SICQLScorer(BaseScorer):
                     zsa_tensor = model.encoder(prompt_emb, output_emb)  # already no_grad
 
             meta = self.model_meta.get(dim, {"min_value": 0.0, "max_value": 100.0})
-            final_score = round(self._scale_with_tuner_or_sigmoid(dim, q_value, meta), 4)
+            final_score, score_scaled = self._scale_with_tuner_or_sigmoid(dim, q_value, meta)
 
             rationale = f"Q={q_value:.4f}, V={v_value:.4f}, Δ={abs(advantage):.3f}, H={entropy:.3f}"
 
             attributes = {
+                "score_scaled": score_scaled,
                 "q_value": q_value,
                 "energy": q_value,            # legacy alias
                 "state_value": v_value,
@@ -211,3 +232,42 @@ class SICQLScorer(BaseScorer):
         if model is None:
             raise ValueError(f"Model for dimension '{dimension}' not loaded.")
         return model
+
+
+def _peek_shapes(sd: Dict[str, Any], keys: Tuple[str, ...]) -> Dict[str, Tuple[int, ...]]:
+    out = {}
+    for k in keys:
+        v = sd.get(k)
+        if isinstance(v, torch.Tensor):
+            out[k] = tuple(v.shape)
+    return out
+
+def _safe_load(module, path: str, *, name: str, device: str, strict: bool = True) -> bool:
+    """
+    Loads a checkpoint with useful shape logging.
+    Returns True on success, False on RuntimeError (shape mismatch, etc).
+    """
+    sd = torch.load(path, map_location=device)
+
+    # log a few likely keys so we can see in/out dims immediately
+    peek_keys = (
+        "encoder.0.weight", "encoder.0.bias",         # if TextEncoder uses nn.Sequential
+        "model.0.weight", "model.0.bias",             # QHead
+        "net.0.weight", "net.0.bias",                 # VHead
+        "linear.0.weight", "linear.0.bias",           # PolicyHead
+    )
+    peek = _peek_shapes(sd, peek_keys)
+    if peek:
+        log.info("%s shapes=%s ckpt=%s", name, peek, path)
+    else:
+        # fall back: show a couple first keys
+        some = list(sd.keys())[:6]
+        log.info("%s ckpt=%s keys_preview=%s", name, path, some)
+
+    try:
+        module.load_state_dict(sd, strict=strict)
+        log.info("%s loaded ok strict=%s", name, strict)
+        return True
+    except RuntimeError as e:
+        log.warning("%s FAILED to load strict=%s err=%s", name, strict, str(e).splitlines()[0])
+        return False

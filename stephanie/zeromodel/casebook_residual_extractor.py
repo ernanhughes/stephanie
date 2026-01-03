@@ -9,8 +9,8 @@ import numpy as np
 import torch
 
 from stephanie.db import Session
-from stephanie.models.casebook import CaseBookORM
-from stephanie.models.skill_filter import SkillFilterORM
+from stephanie.orm.casebook import CaseBookORM
+from stephanie.orm.skill_filter import SkillFilterORM
 from stephanie.zeromodel.vpm_builder import CaseBookVPMBuilder
 
 

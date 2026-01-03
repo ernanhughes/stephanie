@@ -7,12 +7,11 @@ from typing import Optional
 
 from stephanie.data.score_bundle import ScoreBundle
 from stephanie.memory.base_store import BaseSQLAlchemyStore
-from stephanie.models import RuleApplicationORM
-from stephanie.models.evaluation import EvaluationORM
-from stephanie.models.evaluation_rule_link import EvaluationRuleLinkORM
-from stephanie.models.goal import GoalORM
-from stephanie.models.score import ScoreORM
-from stephanie.models.score_attribute import ScoreAttributeORM
+from stephanie.orm import RuleApplicationORM
+from stephanie.orm.evaluation import EvaluationORM, EvaluationRuleLinkORM
+from stephanie.orm.goal import GoalORM
+from stephanie.orm.score import ScoreORM
+from stephanie.orm.score_attribute import ScoreAttributeORM
 from stephanie.scoring.scorable import Scorable
 
 

@@ -9,7 +9,7 @@ from typing import Optional
 import yaml
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
-from stephanie.models.context_state import ContextStateORM
+from stephanie.orm.context_state import ContextStateORM
 
 
 class ContextStore(BaseSQLAlchemyStore):

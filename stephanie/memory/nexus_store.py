@@ -9,9 +9,9 @@ from sqlalchemy import and_, desc, or_, text
 from sqlalchemy.orm import Session
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
-from stephanie.models.nexus import (NexusEdgeORM, NexusEmbeddingORM,
-                                    NexusMetricsORM, NexusPulseORM,
-                                    NexusScorableORM)
+from stephanie.orm.nexus import (NexusEdgeORM, NexusEmbeddingORM,
+                                 NexusMetricsORM, NexusPulseORM,
+                                 NexusScorableORM)
 from stephanie.utils.similarity_utils import cosine
 
 log = logging.getLogger(__name__)
@@ -368,6 +368,7 @@ class NexusStore(BaseSQLAlchemyStore):
             return q.order_by(desc(NexusEdgeORM.created_ts)).limit(limit).all()
 
         return self._run(op) or []
+
 
     def update_edge(
         self,

@@ -7,7 +7,7 @@ from typing import List
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
-from stephanie.models.scorable_domain import ScorableDomainORM
+from stephanie.orm.scorable_domain import ScorableDomainORM
 
 logger = logging.getLogger(__name__)
 

@@ -6,7 +6,7 @@ from typing import List, Optional
 from sqlalchemy import func
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
-from stephanie.models.model_artifact import ModelArtifactORM
+from stephanie.orm.model_artifact import ModelArtifactORM
 
 
 class ModelsStore(BaseSQLAlchemyStore):

@@ -5,12 +5,6 @@ hrm_trainer:
   save_context: false
   skip_if_completed: false
 
-  dimensions: 
-    - "alignment"
-    - "clarity"
-    - "implementability"
-    - "novelty"
-    - "relevance"
 
   hrm: 
     name: hrm

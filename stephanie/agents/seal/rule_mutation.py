@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.models import SymbolicRuleORM
+from stephanie.orm import SymbolicRuleORM
 from stephanie.rules.rule_options_config import RuleOptionsConfig
 from stephanie.rules.rule_tuner import RuleTuner
 

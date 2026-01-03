@@ -210,6 +210,11 @@ class SectionBuildTask:
                 start_char=start_char,
                 end_char=end_char,
                 embedding=embedding,
+                meta ={
+                    "heading": heading,                 # in parsed path
+                    "section_quality": float(scores.get(heading, 0.0)),
+                    "builder": "parser"                 # or "chunks"
+                },
             )
             sections.append(sec)
 

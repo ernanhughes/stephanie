@@ -49,6 +49,10 @@ class PaperBlogGeneratorConfig:
         }
     )
 
+    max_ticks: int = 3
+    quality_threshold: float = 0.80     # 0..1 or 0..100 depending on your judge output
+    tick_min_delta: float = 0.01        # stop if improvement is tiny
+
     @classmethod
     def from_cfg(cls, cfg: Dict[str, Any]) -> "PaperBlogGeneratorConfig":
         default_model = {

@@ -1,0 +1,12 @@
+sicql_trainer:
+  name: sicql_trainer
+  model_path: "${hydra:runtime.cwd}/models"
+  model_type: sicql
+  target_type: conversation_turn
+  use_sicql_style: true
+  dimensions: 
+    - alignment
+    - clarity
+    - implementability
+    - novelty
+    - relevance

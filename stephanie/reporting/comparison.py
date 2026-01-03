@@ -5,9 +5,9 @@ from typing import Dict, List
 
 from sqlalchemy.orm import Session
 
-from stephanie.models.evaluation import EvaluationORM
-from stephanie.models.pipeline_run import PipelineRunORM
-from stephanie.models.score import ScoreORM
+from stephanie.orm.evaluation import EvaluationORM
+from stephanie.orm.pipeline_run import PipelineRunORM
+from stephanie.orm.score import ScoreORM
 
 
 class ComparisonReporter:

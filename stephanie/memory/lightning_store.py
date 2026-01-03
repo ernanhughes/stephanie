@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import List
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
-from stephanie.models.lightning import \
+from stephanie.orm.lightning import \
     LightningORM  # simple ORM mirroring the table
 from stephanie.types.lightning import LightningResult
 

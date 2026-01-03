@@ -6,7 +6,7 @@ from typing import Dict, List, Optional
 
 from tabulate import tabulate
 
-from stephanie.models.rule_application import RuleApplicationORM
+from stephanie.orm.rule_application import RuleApplicationORM
 
 
 class RuleAnalytics:

@@ -7,12 +7,12 @@ from tqdm import tqdm
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.data.text_item import TextItem
-from stephanie.models.casebook import CaseORM
-from stephanie.models.chat import ChatTurnORM
-from stephanie.models.document import DocumentORM
-from stephanie.models.hypothesis import HypothesisORM
-from stephanie.models.plan_trace import PlanTraceORM
-from stephanie.models.prompt import PromptORM
+from stephanie.orm.casebook import CaseORM
+from stephanie.orm.chat import ChatTurnORM
+from stephanie.orm.document import DocumentORM
+from stephanie.orm.hypothesis import HypothesisORM
+from stephanie.orm.plan_trace import PlanTraceORM
+from stephanie.orm.prompt import PromptORM
 from stephanie.scoring.scorable import ScorableFactory, ScorableType
 from stephanie.utils.progress_mixin import ProgressMixin
 

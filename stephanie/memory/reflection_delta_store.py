@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import Optional
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
-from stephanie.models.reflection_delta import ReflectionDeltaORM
+from stephanie.orm.reflection_delta import ReflectionDeltaORM
 
 
 class ReflectionDeltaStore(BaseSQLAlchemyStore):

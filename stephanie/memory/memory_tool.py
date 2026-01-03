@@ -46,6 +46,7 @@ from stephanie.memory.lookahead_store import LookaheadStore
 from stephanie.memory.mars_conflict_store import MARSConflictStore
 from stephanie.memory.mars_result_store import MARSResultStore
 from stephanie.memory.memcube_store import MemCubeStore
+from stephanie.memory.memory_genotype_store import MemoryGenotypeStore
 from stephanie.memory.method_plan_store import MethodPlanStore
 from stephanie.memory.metric_store import MetricStore
 from stephanie.memory.models_store import ModelsStore
@@ -81,7 +82,7 @@ from stephanie.memory.training_event_store import TrainingEventStore
 from stephanie.memory.training_stats_store import TrainingStatsStore
 from stephanie.memory.trajectory_store import AgentTrajectoryStore
 from stephanie.memory.vpm_store import VPMStore
-from stephanie.models.base import engine  # From your SQLAlchemy setup
+from stephanie.orm.base import engine  # From your SQLAlchemy setup
 from stephanie.services.bus.hybrid_bus import HybridKnowledgeBus
 from stephanie.services.bus.knowledge_bus import KnowledgeBus
 from stephanie.utils.async_utils import retry
@@ -226,6 +227,7 @@ class MemoryTool:
         self.register_store(ScorableSummaryStore(self.session_maker, logger))
         self.register_store(EncyclopediaStore(self.session_maker, logger))
         self.register_store(PaperStore(self.session_maker, logger))
+        self.register_store(MemoryGenotypeStore(self.session_maker, logger))
 
         if cfg.get("extra_stores"):
             for store_class in cfg.get("extra_stores", []):

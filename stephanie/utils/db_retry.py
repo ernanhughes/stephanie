@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from sqlalchemy.exc import OperationalError
 
-from stephanie.models.base import engine
+from stephanie.orm.base import engine
 
 
 def with_db_retry(fn, tries: int = 2):

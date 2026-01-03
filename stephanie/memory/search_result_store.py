@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Dict, List, Optional
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
-from stephanie.models.search_result import SearchResultORM
+from stephanie.orm.search_result import SearchResultORM
 
 
 class SearchResultStore(BaseSQLAlchemyStore):

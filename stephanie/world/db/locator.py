@@ -6,8 +6,8 @@ import os
 
 from sqlalchemy import create_engine
 
-from stephanie.models.base import WorldviewBase
-from stephanie.models.worldview import WorldviewORM
+from stephanie.orm.base import WorldviewBase
+from stephanie.orm.worldview import WorldviewORM
 from stephanie.utils.hash_utils import hash_text
 from stephanie.utils.slug import slugify_with_max_length
 

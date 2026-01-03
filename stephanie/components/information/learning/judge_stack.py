@@ -4,7 +4,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable, Dict, List, Optional
 
-
 # Types for the tools we expect to receive.
 PairRMCallable = Callable[[str, List[str]], Awaitable[Dict[str, float]]]
 RubricCallable = Callable[[str, str], Awaitable[Dict[str, Any]]]

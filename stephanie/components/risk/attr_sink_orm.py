@@ -6,7 +6,7 @@ from typing import List, Tuple
 
 from sqlalchemy.orm import Session
 
-from stephanie.models.evaluation_attribute import \
+from stephanie.orm.evaluation_attribute import \
     EvaluationAttributeORM  # keep your actual import
 
 

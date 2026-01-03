@@ -3,15 +3,14 @@ from __future__ import annotations
 
 import json
 import logging
-from dataclasses import asdict, field
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Iterable, List, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import numpy as np
 
 from stephanie.memory.nexus_store import NexusStore
-from stephanie.models.nexus import (NexusEdgeORM, NexusMetricsORM,
-                                    NexusScorableORM)
+from stephanie.orm.nexus import NexusEdgeORM, NexusMetricsORM, NexusScorableORM
 
 log = logging.getLogger(__name__)
 
@@ -19,9 +18,6 @@ log = logging.getLogger(__name__)
 # --------------------------------------------------------------------------- #
 # Core types                                                                  #
 # --------------------------------------------------------------------------- #
-
-from dataclasses import dataclass
-from typing import Any, Dict, Optional
 
 
 @dataclass(slots=True)
@@ -537,19 +533,6 @@ class NexusGraph:
         )
 
     # ---- Graph construction -------------------------------------------------
-
-    def upsert_nodes(self, scorables: Iterable[Dict[str, Any]]) -> List[str]:
-        """
-        Upsert scorables + embeddings + basic metrics into the DB. Returns list of ids.
-        Required scorable keys: id, text (+ optional domains/entities/meta/turn_index/chat_id)
-        """
-        ids = [] 
-        for row in scorables:
-            s = self.store.upsert_scorable(row)
-            vec = self.embed(row.get("text") or "")
-            self.store.upsert_embedding(s.id, vec)
-            ids.append(s.id)
-        return ids
 
     def rebuild_edges(self, *, add_knn=True, add_temporal=True, channel_name="knn_global") -> int:
         """

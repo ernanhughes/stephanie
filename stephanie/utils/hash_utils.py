@@ -3,8 +3,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from typing import Any, List
 
+log = logging.getLogger(__name__)
 
 def _hash(data: bytes, algo: str = "sha256") -> str:
     """Internal helper that does the actual hashing."""
@@ -50,15 +52,18 @@ def hash_dict(
     Returns:
         str: Hex digest of the hash.
     """
-    if exclude_keys is None:
-        exclude_keys = []
+    if isinstance(data, dict):
+        if exclude_keys is None:
+            exclude_keys = []
 
-    # Filter out excluded keys
-    filtered_data = {k: v for k, v in data.items() if k not in exclude_keys}
+        # Filter out excluded keys
+        filtered_data = {k: v for k, v in data.items() if k not in exclude_keys}
 
-    # Convert to a canonical JSON string
-    canonical_str = json.dumps(filtered_data, sort_keys=sort_keys, ensure_ascii=True)
-
+        # Convert to a canonical JSON string
+        canonical_str = json.dumps(filtered_data, sort_keys=sort_keys, ensure_ascii=True)
+    else:
+        log.warning(f"hash_dict expected dict, got {type(data)}; using str()")
+        canonical_str = str(data)
     # Generate SHA-256 hash
     return hashlib.sha256(canonical_str.encode("utf-8")).hexdigest()
 
@@ -87,4 +92,7 @@ def hash_list(names: List[str]) -> str:
     for n in names:
         h.update((n + "\n").encode("utf-8"))
     return h.hexdigest()[:16]
+
+def sha256_bytes(b: bytes) -> str:
+    return hashlib.sha256(b).hexdigest()
 

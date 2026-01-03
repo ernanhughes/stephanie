@@ -54,7 +54,7 @@ critic_scorer:
         persist: false          # compute on the fly; DB persistence optional
         attach_scores: true
 
-      frontier_lens All the time I don't think there's really Mother Day it doesn't only mean is only me or All right it's probably OK:
+      frontier_lens:
         enabled: true
         # Preferred metric ordering (optional)
         metric_keys:

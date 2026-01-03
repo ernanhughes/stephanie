@@ -168,7 +168,7 @@ class Supervisor:
             "goal_id": goal_dict.get("id"),
             "embedding_type": self.memory.embedding.name,
             "embedding_dimensions": self.memory.embedding.dim,
-            "run_id": run_id,
+            RUN_ID: run_id,
             "pipeline": pipeline_list,  # Should be list of strings like ["generation", "judge"]
             "model_name": self.cfg.get("model.name", "unknown"),
             "run_config": OmegaConf.to_container(self.cfg),
@@ -176,6 +176,10 @@ class Supervisor:
         }
         run_id = self.memory.pipeline_runs.insert(pipeline_run_data)
         self.context[PIPELINE_RUN_ID] = run_id
+        self.context[RUN_ID] = run_id
+        OmegaConf.set_struct(self.cfg, False)
+        OmegaConf.update(self.cfg, "runtime.run_id", run_id, merge=False)
+        OmegaConf.update(self.cfg, "runtime.pipeline_run_id", run_id, merge=False)
 
         plan_trace_monitor: PlanTraceService = self.container.get("plan_trace")
         plan_trace_monitor.start_pipeline(self.context(), run_id)

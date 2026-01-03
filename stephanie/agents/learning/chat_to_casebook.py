@@ -26,8 +26,8 @@ from datetime import datetime
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.constants import GOAL
-from stephanie.models.casebook import CaseBookORM
-from stephanie.models.chat import ChatConversationORM
+from stephanie.orm.casebook import CaseBookORM
+from stephanie.orm.chat import ChatConversationORM
 
 
 class ChatToCaseBookAgent(BaseAgent):

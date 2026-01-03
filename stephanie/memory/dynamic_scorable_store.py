@@ -6,7 +6,7 @@ from typing import List, Optional
 from sqlalchemy import desc
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
-from stephanie.models.dynamic_scorable import DynamicScorableORM
+from stephanie.orm.dynamic_scorable import DynamicScorableORM
 
 
 class DynamicScorableStore(BaseSQLAlchemyStore):

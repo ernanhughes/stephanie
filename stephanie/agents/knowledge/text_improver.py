@@ -18,8 +18,7 @@ from typing import Any, Dict, List, Optional
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.paper_improver.goals import GoalScorer
-from stephanie.knowledge.casebook_store import CaseBookStore
-from stephanie.knowledge.knowledge_bus import KnowledgeBus
+from stephanie.memory.casebook_store import CaseBookStore
 from stephanie.scoring.calibration_manager import CalibrationManager
 from stephanie.scoring.scorable import ScorableType
 from stephanie.utils.json_sanitize import safe_json
@@ -57,8 +56,8 @@ class TextImproverAgent(BaseAgent):
         self.faithfulness_topk = cfg.get("faithfulness_topk", 5)
 
         # Optional services
-        self.kb = cfg.get("kb") or KnowledgeBus()
-        self.casebooks = cfg.get("casebooks") or CaseBookStore()
+        self.kb = container.get("knowledge_graph")  # type: ignore
+        self.casebooks = self.memory.casebooks
         self.calibration = cfg.get("calibration") or CalibrationManager(
             cfg=cfg.get("calibration", {}),
             memory=memory,

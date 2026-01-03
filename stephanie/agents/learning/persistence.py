@@ -7,7 +7,7 @@ import logging
 import time
 from typing import Any, Dict, List
 
-from stephanie.models.casebook import CaseBookORM, CaseORM
+from stephanie.orm.casebook import CaseBookORM, CaseORM
 from stephanie.scoring.scorable import ScorableType
 from stephanie.utils.casebook_utils import generate_casebook_name
 from stephanie.utils.json_sanitize import dumps_safe

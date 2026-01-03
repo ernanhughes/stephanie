@@ -5,7 +5,7 @@ from typing import Optional
 
 from stephanie.memory.model_divergence_store import ModelDivergenceStore
 from stephanie.memory.model_registry_store import ModelRegistryStore
-from stephanie.models.model import ModelORM
+from stephanie.orm.model import ModelORM
 
 
 class DriftDetectionJob:

@@ -9,8 +9,8 @@ from typing import Optional
 from sqlalchemy import text
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
-from stephanie.models.goal import GoalORM
-from stephanie.models.prompt import PromptORM
+from stephanie.orm.goal import GoalORM
+from stephanie.orm.prompt import PromptORM
 
 
 class PromptStore(BaseSQLAlchemyStore):

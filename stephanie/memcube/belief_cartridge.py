@@ -1,4 +1,4 @@
-# stephanie/models/memcube/belief_cartridge.py
+# stephanie/orm/memcube/belief_cartridge.py
 from __future__ import annotations
 
 from datetime import datetime
@@ -7,7 +7,7 @@ from sqlalchemy import (JSON, Boolean, Column, DateTime, ForeignKey, Integer,
                         String, Text)
 from sqlalchemy.orm import relationship
 
-from stephanie.models.base import Base
+from stephanie.orm.base import Base
 
 
 class BeliefCartridgeORM(Base):

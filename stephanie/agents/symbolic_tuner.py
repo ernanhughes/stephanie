@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 from collections import defaultdict
 
-from stephanie.models import NodeORM
+from stephanie.orm import NodeORM
 
 
 class SymbolicTunerAgent:

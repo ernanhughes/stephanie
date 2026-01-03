@@ -17,9 +17,9 @@ if matplotlib.get_backend().lower() != "agg":
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-from stephanie.models.evaluation import EvaluationORM
-from stephanie.models.evaluation_attribute import EvaluationAttributeORM
-from stephanie.models.score import ScoreORM
+from stephanie.orm.evaluation import EvaluationORM
+from stephanie.orm.evaluation_attribute import EvaluationAttributeORM
+from stephanie.orm.score import ScoreORM
 
 
 class PolicyAnalysisAgent(BaseAgent):

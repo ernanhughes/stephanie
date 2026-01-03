@@ -5,7 +5,7 @@ from contextlib import contextmanager
 
 from sqlalchemy.exc import OperationalError
 
-from stephanie.models.base import engine
+from stephanie.orm.base import engine
 
 
 @contextmanager

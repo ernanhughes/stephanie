@@ -5,7 +5,7 @@ import os
 from typing import Any, Dict, List
 
 from stephanie.agents.base_agent import BaseAgent
-from stephanie.models.learning_evidence import LearningEvidenceORM
+from stephanie.orm.learning_evidence import LearningEvidenceORM
 
 
 class LearningEvidenceAgent(BaseAgent):

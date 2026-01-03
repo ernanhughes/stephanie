@@ -82,7 +82,7 @@ class GapAnalysisOrchestrator(ProgressMixin):
         self.analysis_processor = AnalysisProcessor(self.cfg, container, logger)
         self.calibration_processor = CalibrationProcessor(self.cfg, container, logger)
 
-        self.base_dir = getattr(self.cfg, "base_dir", Path("./data/gap_runs"))
+        self.base_dir = getattr(self.cfg, "base_dir", Path("./data/gap_runs/"))
 
         # Register services (idempotent)
         try:
@@ -137,7 +137,7 @@ class GapAnalysisOrchestrator(ProgressMixin):
             pass  # already registered
 
         self.storage = self.container.get("storage")
-        self.manifest_manager = ManifestManager(self.storage)
+        self.manifest_manager = ManifestManager(self.cfg.base_dir)
 
         # Significance
         self.significance_processor = SignificanceProcessor(
@@ -170,7 +170,7 @@ class GapAnalysisOrchestrator(ProgressMixin):
         2) run IDs under cfg.out_dir (default: runs/nexus_vpm)
            - ab_targeted_run_id, ab_baseline_run_id Hello
         3) derive from pipeline_run_id: <out>/<id>-{targeted|baseline}
-        4) scan <out> for latest *-targeted/*-baseline that have run_metrics.json
+        4) scan <out> for latest */targeted/*-baseline that have run_metrics.json
         """
         # 1) paths
         tgt_dir = context.get("ab_targeted_run_dir")
@@ -197,8 +197,8 @@ class GapAnalysisOrchestrator(ProgressMixin):
         # 3) pipeline id
         pr = context.get("pipeline_run_id") or context.get("run_id") or ""
         if pr:
-            td = (nexus_root / f"{pr}-targeted").resolve()
-            bd = (nexus_root / f"{pr}-baseline").resolve()
+            td = (nexus_root / f"{pr}/targeted").resolve()
+            bd = (nexus_root / f"{pr}/baseline").resolve()
             if (td / "manifest.json").exists() and (bd / "manifest.json").exists():
                 self.logger.log("GapInputResolved", {"mode": "pipeline_id", "targeted": td.as_posix(), "baseline": bd.as_posix()})
                 return td, bd

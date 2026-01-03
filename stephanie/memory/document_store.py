@@ -6,7 +6,7 @@ from typing import List, Optional
 from sqlalchemy import desc, func
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
-from stephanie.models.document import DocumentORM
+from stephanie.orm.document import DocumentORM
 
 
 class DocumentStore(BaseSQLAlchemyStore):

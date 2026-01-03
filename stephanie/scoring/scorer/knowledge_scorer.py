@@ -6,7 +6,7 @@ import os
 from stephanie.constants import GOAL
 from stephanie.data.score_bundle import ScoreBundle
 from stephanie.data.score_result import ScoreResult
-from stephanie.scoring.model.knowledge import KnowledgeModel
+from stephanie.model.knowledge import KnowledgeModel
 from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.scorer.base_scorer import BaseScorer
 from stephanie.scoring.transforms.regression_tuner import RegressionTuner

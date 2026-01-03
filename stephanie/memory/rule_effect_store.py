@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import Dict, List, Optional
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
-from stephanie.models.rule_application import RuleApplicationORM
+from stephanie.orm.rule_application import RuleApplicationORM
 
 
 class RuleEffectStore(BaseSQLAlchemyStore):

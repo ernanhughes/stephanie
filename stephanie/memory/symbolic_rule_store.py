@@ -7,8 +7,8 @@ import yaml
 from sqlalchemy import and_, or_
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
-from stephanie.models.evaluation import EvaluationORM
-from stephanie.models.symbolic_rule import SymbolicRuleORM
+from stephanie.orm.evaluation import EvaluationORM
+from stephanie.orm.symbolic_rule import SymbolicRuleORM
 
 
 class SymbolicRuleStore(BaseSQLAlchemyStore):

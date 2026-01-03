@@ -6,7 +6,7 @@ from typing import List, Optional
 from sqlalchemy import desc
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
-from stephanie.models.rule_application import RuleApplicationORM
+from stephanie.orm.rule_application import RuleApplicationORM
 
 
 class RuleApplicationStore(BaseSQLAlchemyStore):

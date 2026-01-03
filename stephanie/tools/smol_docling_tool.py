@@ -1,15 +1,15 @@
 # stephanie/tools/smol_docling_tool.py
 from __future__ import annotations
 
-import logging
-from typing import Any, Dict, List, Optional
-import re
 import html
+import logging
+import re
 from inspect import Parameter, signature
+from typing import Any, Dict, List, Optional
 
 import torch
 from PIL import Image
-from transformers import AutoProcessor, AutoModelForVision2Seq
+from transformers import AutoModelForVision2Seq, AutoProcessor
 
 from stephanie.components.information.data import PaperSection
 from stephanie.tools.base_tool import BaseTool
@@ -60,8 +60,13 @@ class SmolDoclingTool(BaseTool):
         pages_payload: List[Dict[str, Any]] = []
         for i, img_path in enumerate(page_paths, start=1):
             img = Image.open(img_path).convert("RGB")
-
-            inputs = self.processor(images=img, text=self.prompt, return_tensors="pt").to(self.device)
+            text_in = self._ensure_single_image_token(self.prompt)
+            
+            inputs = self.processor(
+                images=[img],
+                text=[text_in],
+                return_tensors="pt",
+            ).to(self.device)
 
             with torch.no_grad():
                 out = self.model.generate(**inputs, max_new_tokens=self.max_new_tokens)
@@ -92,6 +97,22 @@ class SmolDoclingTool(BaseTool):
         # Optionally: attach to scorable.meta for downstream steps
         scorable.meta.setdefault("docling", {})["pages"] = pages_payload
         return scorable
+
+    def _ensure_single_image_token(self, prompt: str) -> str:
+        base = (prompt or "").strip() or "Convert this page to Docling."
+
+        image_token = "<image>"
+        tok = getattr(self.processor, "tokenizer", None)
+        if tok is not None and getattr(tok, "image_token", None):
+            image_token = tok.image_token
+
+        # ensure exactly ONE image token for ONE image
+        if image_token not in base:
+            return f"{image_token}\n{base}"
+
+        first = base.find(image_token)
+        after = base[first + len(image_token):].replace(image_token, "")
+        return base[: first + len(image_token)] + after
 
 
     async def _infer_doctags(self, image_path: str) -> tuple[str, Dict[str, Any]]:
@@ -138,8 +159,8 @@ class SmolDoclingTool(BaseTool):
             sec_idx += 1
         return sections
 
-    @staticmethod
     def build_semantic_sections(
+        self,
         *,
         arxiv_id: str,
         paper_role: str,
@@ -150,7 +171,7 @@ class SmolDoclingTool(BaseTool):
         min_heading_chars: int = 3,
         merge_small_sections_to_prev_if_under_chars: int = 200,
         fallback_to_page_sections: bool = True,
-    ) -> List[PaperSection]:
+    ) -> List["PaperSection"]:
         """
         Build semantic-ish sections from Docling doctags.
 
@@ -163,7 +184,8 @@ class SmolDoclingTool(BaseTool):
         - accumulate text blocks under current section
         - fallback: one section per page (if no headings found)
         """
-        from stephanie.components.information.data import PaperSection  # local import to avoid cycles
+        from stephanie.components.information.data import \
+            PaperSection  # local import to avoid cycles
 
         heading_tags = heading_tags or ["section_header", "heading", "title"]
         text_tags = text_tags or ["text", "paragraph", "p"]
@@ -239,9 +261,9 @@ class SmolDoclingTool(BaseTool):
             }
 
             sec = _new_section(
-                id=sec_id,
+                section_id=sec_id,
                 paper_arxiv_id=arxiv_id,
-                paper_role=paper_role,
+                role=paper_role,
                 section_index=idx,
                 title=title,
                 text=text,
@@ -333,9 +355,9 @@ class SmolDoclingTool(BaseTool):
 
                 built.append(
                     _new_section(
-                        id=sec_id,
+                        section_id=sec_id,
                         paper_arxiv_id=arxiv_id,
-                        paper_role=paper_role,
+                        role=paper_role,
                         section_index=idx,
                         title=f"Page {page_num}",
                         text=text,
@@ -348,7 +370,7 @@ class SmolDoclingTool(BaseTool):
 
         # ---- merge tiny sections into previous (optional) -------------------
         if merge_small_sections_to_prev_if_under_chars and built:
-            merged: List[PaperSection] = []
+            merged: List["PaperSection"] = []
             for sec in built:
                 t = (getattr(sec, "text", None) or "").strip()
                 if merged and len(t) < merge_small_sections_to_prev_if_under_chars:

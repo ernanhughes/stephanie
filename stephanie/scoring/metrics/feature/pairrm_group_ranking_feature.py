@@ -4,7 +4,8 @@ import logging
 from collections import defaultdict
 from typing import Any, DefaultDict, Dict, List, Optional
 
-from stephanie.scoring.metrics.feature.base_group_feature import BaseGroupFeature
+from stephanie.scoring.metrics.feature.base_group_feature import \
+    BaseGroupFeature
 from stephanie.tools.pairrm_ranking_tool import PairRMRankingTool
 
 log = logging.getLogger(__name__)

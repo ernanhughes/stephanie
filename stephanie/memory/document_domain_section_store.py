@@ -4,7 +4,7 @@ from __future__ import annotations
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
-from stephanie.models.document_section_domain import DocumentSectionDomainORM
+from stephanie.orm.document_section_domain import DocumentSectionDomainORM
 
 
 class DocumentSectionDomainStore(BaseSQLAlchemyStore):

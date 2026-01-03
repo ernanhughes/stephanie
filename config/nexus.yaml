@@ -8,6 +8,7 @@ defaults:
   - scorer: all  
 
   - agents/nexus_scorable_loader
+  - agents/universal_scorer
   - agents/scorable_annotate
   - agents/nexus
   - agents/nexus_improver
@@ -44,7 +45,7 @@ goal:
   success_criteria:
     min_goal_alignment_improvement: 0.05        # targ.mean - base.mean
     min_community_lift_p90: 0.05                # p90(goal_alignment in top communities)
-    prefer_lower_spatial_edge_len: true         # shorter edges indicate tighter coherence
+    prefer_lower_spatial_edge_len: true         # shorter edges indicate tighter Play Australian flag so I can change
   scorer_signals:
     - "SICQL"
     - "EBT"
@@ -70,6 +71,12 @@ pipeline:
        enabled: true
        iterations: 1    
 
+     - name: universal_scorer
+       description: "Score the loaded conversation turns with universal scorers"
+       cls: stephanie.agents.universal_scorer.UniversalScorerAgent
+       enabled: true
+       iterations: 1
+
      - name: scorable_annotate
        description: "Annotate the loaded conversation turns with scores"
        cls: stephanie.agents.maintenance.scorable_annotate.ScorableAnnotateAgent
@@ -79,7 +86,7 @@ pipeline:
      - name: nexus
        description: "Compare two scorables list runs"
        cls: stephanie.components.nexus.agents.compass.CompassAgent
-       enabled: false
+       enabled: true
        iterations: 1
 
      - name: nexus_vpm_refiner
@@ -109,5 +116,5 @@ pipeline:
      - name: gap
        description: "Understanding the Gap between two models using chat conversation_turns"
        cls: stephanie.components.gap.gap.GapAgent
-       enabled: false
+       enabled: true
        iterations: 1

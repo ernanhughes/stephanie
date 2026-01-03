@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from stephanie.memory.base_embedding_store import BaseEmbeddingStore
-from stephanie.models.embedding import EmbeddingORM
+from stephanie.orm.embedding import EmbeddingORM
 from stephanie.tools.ollama_embedding import get_embedding
 
 

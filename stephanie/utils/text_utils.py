@@ -12,13 +12,81 @@ Features:
 """
 from __future__ import annotations
 
+from typing import Any, Dict, Iterable, List, Optional, Pattern, Set
 import re
-from typing import List, Optional
 
 # Regular expressions compiled at module level for efficiency
 SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+")  # Split on sentence boundaries
 WORD_PATTERN = re.compile(r"\b\w+\b", re.UNICODE)  # Match words with Unicode support
 ALPHA_WORD_PATTERN = re.compile(r"[A-Za-z]+", re.UNICODE)  # Strict alphabetic words
+TOKEN_SET_PATTERN = re.compile(r"[A-Za-z][A-Za-z0-9_\-]{2,}")
+DEFAULT_CLAIM_RE = re.compile(
+    r"(show|demonstrat|result|achiev|improv|evidence|increase|decrease|prove|find|conclude)",
+    re.I,
+)
+
+def token_set(text: str, *, pattern: Pattern[str] = TOKEN_SET_PATTERN) -> Set[str]:
+    """Token-set used by some agents (keeps underscores/hyphens; min 3 chars)."""
+    return set(pattern.findall((text or "").lower()))
+
+def jaccard_sets(a: Set[str], b: Set[str]) -> float:
+    """Jaccard similarity between two sets."""
+    if not a or not b:
+        return 0.0
+    inter = len(a & b)
+    union = len(a | b)
+    return inter / max(1, union)
+
+def jaccard_token_set(a: str, b: str) -> float:
+    """Convenience: Jaccard over token_set(text)."""
+    return jaccard_sets(token_set(a), token_set(b))
+
+def norm_token_set(t: str) -> Set[str]:
+    """Normalize text to token set for Jaccard similarity."""
+    return set(re.findall(r"[A-Za-z][A-Za-z0-9_\-]{2,}", (t or "").lower()))
+
+def soft_dedup_dicts(
+    items: List[Dict[str, Any]],
+    *,
+    key: str = "text",
+    thr: float = 0.8,
+) -> List[Dict[str, Any]]:
+    """Soft dedup by token-set Jaccard over a dict field."""
+    out: List[Dict[str, Any]] = []
+    for it in items:
+        tw = token_set(it.get(key, ""))
+        if any(jaccard_sets(tw, token_set(o.get(key, ""))) >= thr for o in out):
+            continue
+        out.append(it)
+    return out
+
+def compile_claim_regex(keywords: Iterable[str]) -> Pattern[str]:
+    """
+    Compile a claim regex from keywords like ['show', 'improve', ...].
+    Escapes inputs and ORs them.
+    """
+    kws = [k.strip() for k in keywords if k and k.strip()]
+    if not kws:
+        return DEFAULT_CLAIM_RE
+    return re.compile(r"(" + "|".join(re.escape(k) for k in kws) + r")", re.I)
+
+def extract_claim_sentences(
+    text: str,
+    *,
+    max_claims: int = 10,
+    max_sents: Optional[int] = 80,
+    min_len: int = 40,
+    claim_re: Optional[Pattern[str]] = None,
+) -> List[str]:
+    """
+    Extract "claim-ish" sentences (heuristic) from text.
+    Falls back to normal sentence list if no claim matches exist.
+    """
+    sents = sentences(text, max_sents=max_sents)  # uses existing splitter:contentReference[oaicite:4]{index=4}
+    cre = claim_re or DEFAULT_CLAIM_RE
+    claimish = [s for s in sents if len(s) >= min_len and cre.search(s)]
+    return (claimish or sents)[:max_claims]
+
 
 def sentences(text: str, max_sents: Optional[int] = None) -> List[str]:
     """
@@ -203,6 +271,21 @@ def safe_slice(t: str, start: int, end: int) -> str:
     start = max(0, min(start, len(t)))
     end = max(start, min(end, len(t)))
     return t[start:end]
+
+
+def safe_snip(text: Optional[str], n: int) -> Optional[str]:
+    if not text:
+        return None
+    t = re.sub(r"\s+", " ", text).strip()
+    return t[:n] + ("…" if len(t) > n else "")
+
+def clean_ws(s: str) -> str:
+    s = s or ""
+    s = s.replace("\u00ad", "")  # soft hyphen
+    s = re.sub(r"[ \t]+", " ", s)
+    s = re.sub(r"\n{3,}", "\n\n", s)
+    return s.strip()
+
 
 
 if __name__ == "__main__":

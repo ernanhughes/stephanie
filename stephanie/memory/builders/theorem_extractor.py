@@ -1,7 +1,7 @@
 # stephanie/builders/theorem_extractor.py
 from __future__ import annotations
 
-from stephanie.models.theorem import TheoremORM
+from stephanie.orm.theorem import TheoremORM
 
 
 class TheoremExtractor:

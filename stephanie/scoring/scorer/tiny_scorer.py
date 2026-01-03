@@ -16,6 +16,13 @@ Key Features:
 
 The TinyScorer serves as the lightweight counterpart to HRM in the GAP
 analysis pipeline, enabling efficient model comparison and routing decisions.
+
+References:
+Less is More: Recursive Reasoning with Tiny Networks
+- arXiv:2510.04871 — https://arxiv.org/abs/2510.04871 
+
+Attribution:
+- This implementation is inspired by the referenced paper.
 """
 
 from __future__ import annotations
@@ -29,8 +36,10 @@ import torch
 from stephanie.constants import GOAL, GOAL_TEXT
 from stephanie.data.score_bundle import ScoreBundle
 from stephanie.data.score_result import ScoreResult
-from stephanie.scoring.model.tiny_recursion import TinyRecursionModel
+from stephanie.model.tiny import TinyModel
+from stephanie.scoring.analysis.trace_tap import TraceTap
 from stephanie.scoring.scorer.base_scorer import BaseScorer
+from stephanie.scoring.scorer.model_health import audit_load_state_dict
 from stephanie.utils.file_utils import load_json
 
 log = logging.getLogger(__name__)
@@ -100,7 +109,7 @@ class TinyScorer(BaseScorer):
         log.debug(f"Attribute level set to: {self.attr_level}")
 
         # Containers for per-dimension models and metadata
-        self.models: Dict[str, TinyRecursionModel] = {}
+        self.models: Dict[str, TinyModel] = {}
         self.model_meta: Dict[str, Dict[str, Any]] = {}
 
         # Attempt to load models up-front for all specified dimensions
@@ -131,10 +140,10 @@ class TinyScorer(BaseScorer):
             - Error: Model instantiation or weight loading failures
         """
         log.debug(f"Starting model loading for {len(dimensions)} dimensions")
-        
-        for dim in dimensions:
-            log.debug(f"Loading model for dimension: {dim}")
-            locator = self.get_locator(dim)
+
+        for dimension in dimensions:
+            log.debug(f"Loading model for dimension: {dimension}")
+            locator = self.get_locator(dimension)
 
             # Resolve model and metadata file paths
             model_path = locator.model_file(suffix="_tiny.pt")
@@ -142,10 +151,10 @@ class TinyScorer(BaseScorer):
             log.debug(f"Model path: {model_path}, Meta path: {meta_path}")
 
             if not os.path.exists(model_path):
-                log.warning(f"Model file missing for dimension {dim}: {model_path}")
+                log.warning(f"Model file missing for dimension {dimension}: {model_path}")
                 self.logger.log(
                     "TinyScorerModelMissing",
-                    {"dimension": dim, "path": model_path},
+                    {"dimension": dimension, "path": model_path},
                 )
                 continue
 
@@ -154,14 +163,14 @@ class TinyScorer(BaseScorer):
             if os.path.exists(meta_path):
                 try:
                     meta = load_json(meta_path) or {}
-                    log.debug(f"Loaded metadata for {dim}: {len(meta)} keys")
+                    log.debug(f"Loaded metadata for {dimension}: {len(meta)} keys")
                 except Exception as e:
-                    log.error(f"Failed to load metadata for {dim}: {e}")
+                    log.error(f"Failed to load metadata for {dimension}: {e}")
                     self.logger.log(
-                        "TinyScorerMetaLoadError", {"dimension": dim, "error": str(e)}
+                        "TinyScorerMetaLoadError", {"dimension": dimension, "error": str(e)}
                     )
             else:
-                log.warning(f"Metadata file missing for {dim}: {meta_path}")
+                log.warning(f"Metadata file missing for {dimension}: {meta_path}")
 
             # Extract model configuration from metadata with safe defaults
             cfg_meta = meta.get("cfg", {}) if isinstance(meta, dict) else {}
@@ -180,13 +189,13 @@ class TinyScorer(BaseScorer):
             enable_causal_sens_head = bool(cfg_meta.get("enable_causal_sens_head", True))
 
             log.debug(
-                f"Model config for {dim}: layers={n_layers}, recursions={n_recursions}, "
+                f"Model config for {dimension}: layers={n_layers}, recursions={n_recursions}, "
                 f"attention={use_attn}, dropout={dropout}"
             )
 
             # Instantiate model with exact same architecture as training
-            log.debug(f"Instantiating TRM for dimension {dim}")
-            model = TinyRecursionModel(
+            log.debug(f"Instantiating TRM for dimension {dimension}")
+            model = TinyModel(
                 d_model=self.dim,
                 n_layers=n_layers,
                 n_recursions=n_recursions,
@@ -205,22 +214,32 @@ class TinyScorer(BaseScorer):
             log.debug(f"Loading model weights from: {model_path}")
             try:
                 state = torch.load(model_path, map_location=self.device)
-                model.load_state_dict(state, strict=False)
+                # model.load_state_dict(state, strict=False)
+                load_audit = audit_load_state_dict(model, state, strict=False)
+
                 model.eval()  # Set to evaluation mode
-                log.debug(f"Successfully loaded weights for {dim}")
+
+                self.check_model_health(
+                    dimension=dimension,
+                    model_name=f"tiny::{model_path}",
+                    model=model,
+                    load_audit=load_audit,
+                    model_id=str(model_path),
+                )
+                log.debug(f"Successfully loaded weights for {dimension}")
             except Exception as e:
-                log.error(f"Failed to load weights for {dim}: {e}")
+                log.error(f"Failed to load weights for {dimension}: {e}")
                 continue
 
             # Register successfully loaded model
-            self.models[dim] = model
-            self.model_meta[dim] = meta
+            self.models[dimension] = model
+            self.model_meta[dimension] = meta
             
-            log.info(f"Successfully loaded TRM model for dimension: {dim}")
+            log.info(f"Successfully loaded TRM model for dimension: {dimension}")
             self.logger.log(
                 "TinyScorerModelLoaded",
                 {
-                    "dimension": dim, 
+                    "dimension": dimension, 
                     "model_path": model_path, 
                     "device": str(self.device)
                 },
@@ -288,9 +307,13 @@ class TinyScorer(BaseScorer):
             try:
                 # Run TRM inference with gradient disabled for efficiency
                 log.debug(f"Running TRM inference for {dim}")
+                trace_enabled = bool(getattr(self.cfg, "trace", {}).get("enabled", True)) if hasattr(self, "cfg") else True
+                tap = TraceTap(enabled=trace_enabled)
+                context.setdefault("trace_taps", {}).setdefault("tiny", {})[dim] = tap
+
                 with torch.no_grad():
                     _, halt_logits, _, aux = model(
-                        x, y, z, seq_len=seq_len, return_aux=True
+                        x, y, z, seq_len=seq_len, return_aux=True, tap=tap
                     )
                 log.debug(f"TRM inference completed for {dim}")
 
@@ -663,7 +686,7 @@ def _build_scm_from_tiny_attrs(attrs: Dict[str, Any]) -> Dict[str, float]:
     certainty = float(attrs.get("certainty01", 0.5))
     unc01     = 1.0 - max(0.0, min(1.0, certainty))
     cons01    = max(0.0, min(1.0, float(attrs.get("consistency_hat", 0.5))))
-    ood01     = max(0.0, min(1.0, float(attrs.get("ood_hat", 0.0))))
+    ood01     = max(0.0, min(1.0, float(attrs.get("ood_hat01", attrs.get("ood_hat", 0.0)))))
     len01     = max(0.0, min(1.0, float(attrs.get("len_effect", 0.0))))
     temp01    = max(0.0, min(1.0, float(attrs.get("temp01", 0.0))))
     agree01   = max(0.0, min(1.0, float(attrs.get("agree01", 0.5))))

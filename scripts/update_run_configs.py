@@ -1,6 +1,6 @@
 import json
 from sqlalchemy.orm import sessionmaker
-from stephanie.models import PipelineRunORM
+from stephanie.orm import PipelineRunORM
 import os
 from dotenv import load_dotenv
 from sqlalchemy import create_engine

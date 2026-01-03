@@ -10,8 +10,8 @@ from torch.utils.data import DataLoader
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.components.nexus.tools.train_vpm_thought_model import (  # reuse your iterable + loop
     GRPOTrainer, VPMThoughtDataset)
-from stephanie.scoring.model.vpm_thought_policy import (VPMThoughtModelConfig,
-                                                        VPMThoughtPolicy)
+from stephanie.model.vpm_thought_policy import (VPMThoughtModelConfig,
+                                                VPMThoughtPolicy)
 
 
 class VPMThoughtTrainerAgent(BaseAgent):

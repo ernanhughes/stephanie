@@ -8,7 +8,7 @@ from typing import Any, Dict, List
 import yaml
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
-from stephanie.models.belief_cartridge import BeliefCartridgeORM
+from stephanie.orm.belief_cartridge import BeliefCartridgeORM
 from stephanie.utils.file_utils import default_serializer
 
 

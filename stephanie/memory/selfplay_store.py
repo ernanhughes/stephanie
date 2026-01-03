@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
-from stephanie.models.selfplay_item import SelfPlayItemORM
+from stephanie.orm.selfplay_item import SelfPlayItemORM
 
 
 class SelfPlayStore(BaseSQLAlchemyStore):

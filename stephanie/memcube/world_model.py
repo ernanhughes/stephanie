@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import torch
 
+from stephanie.memcube.memcube_factory import MemCubeFactory
+
 
 class WorldModel:
     def __init__(self, beliefs: list):

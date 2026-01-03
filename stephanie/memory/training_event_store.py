@@ -5,7 +5,7 @@ import hashlib
 from typing import Dict, List, Optional
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
-from stephanie.models.training_event import TrainingEventORM
+from stephanie.orm.training_event import TrainingEventORM
 from stephanie.types.training_event import TrainingEventCreate
 from stephanie.utils.hash_utils import hash_text
 

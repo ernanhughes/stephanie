@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
-from stephanie.models.cartridge_domain import CartridgeDomainORM
+from stephanie.orm.cartridge_domain import CartridgeDomainORM
 
 
 class CartridgeDomainStore(BaseSQLAlchemyStore):

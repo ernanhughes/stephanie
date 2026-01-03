@@ -1,7 +1,7 @@
 # stephanie/tools/similar_tool.py
 from __future__ import annotations
 
-from typing import Callable, Iterable, List, Sequence, Tuple
+from typing import Callable, List, Sequence, Tuple
 
 import numpy as np
 

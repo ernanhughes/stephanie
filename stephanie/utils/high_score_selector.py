@@ -6,10 +6,10 @@ from collections import defaultdict
 
 from sqlalchemy.orm import joinedload
 
-from stephanie.models.evaluation import EvaluationORM
-from stephanie.models.pipeline_run import PipelineRunORM
-from stephanie.models.rule_application import RuleApplicationORM
-from stephanie.models.score import ScoreORM
+from stephanie.orm.evaluation import EvaluationORM
+from stephanie.orm.pipeline_run import PipelineRunORM
+from stephanie.orm.rule_application import RuleApplicationORM
+from stephanie.orm.score import ScoreORM
 
 
 def get_high_scoring_runs(

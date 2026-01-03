@@ -9,8 +9,7 @@ import torch
 
 from stephanie.data.score_bundle import ScoreBundle
 from stephanie.data.score_result import ScoreResult
-from stephanie.scoring.model.vpm_model import (TinyVisionTransformer,
-                                               VPMDimension)
+from stephanie.model.vpm import TinyVisionTransformer, VPMDimension
 from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.scorer.base_scorer import BaseScorer
 

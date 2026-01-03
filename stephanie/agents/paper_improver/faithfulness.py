@@ -13,6 +13,9 @@ import torch
 from sentence_transformers import SentenceTransformer, util
 
 from stephanie.utils.hash_utils import hash_text
+from functools import lru_cache
+from transformers import AutoTokenizer, AutoModelForSequenceClassification
+
 
 try:
     import nltk  # optional for sentence split
@@ -21,7 +24,68 @@ except Exception:
     _HAS_NLTK = False
 
 
-class FaithfulnessBot:
+@lru_cache(maxsize=4)
+def _load_nli(model_name: str, device: str):
+    tok = AutoTokenizer.from_pretrained(model_name)
+    kwargs = {}
+    if device.startswith("cuda"):
+        kwargs["torch_dtype"] = torch.float16  # important for 12GB VRAM
+    mdl = AutoModelForSequenceClassification.from_pretrained(model_name, **kwargs)
+    mdl.eval()
+    mdl.to(device)
+    return tok, mdl
+
+def _entailment_index(mdl) -> int:
+    # robustly find entailment label index
+    id2label = getattr(mdl.config, "id2label", {}) or {}
+    for i, lab in id2label.items():
+        if "entail" in str(lab).lower():
+            return int(i)
+    # common MNLI layout: 0=contradiction,1=neutral,2=entailment
+    return 2
+
+
+class NLIFaithfulnessJudge:
+    """
+    Premise = passage, Hypothesis = claim.
+    Returns ("YES"/"NO", entailment_prob)
+    """
+    def __init__(self, model_name: str, device: str, threshold: float = 0.5, max_length: int = 512):
+        self.model_name = model_name
+        self.device = device
+        self.threshold = float(threshold)
+        self.max_length = int(max_length)
+
+        self.tok, self.mdl = _load_nli(self.model_name, self.device)
+        self.ent_idx = _entailment_index(self.mdl)
+
+    @torch.inference_mode()
+    def judge(self, passage: str, claim: str) -> tuple[str, float]:
+        passage = (passage or "").strip()
+        claim = (claim or "").strip()
+        if not passage or not claim:
+            return "NO", 0.0
+
+        # premise=passage, hypothesis=claim
+        batch = self.tok(
+            passage,
+            claim,
+            return_tensors="pt",
+            truncation=True,
+            max_length=self.max_length,
+        )
+        batch = {k: v.to(self.device) for k, v in batch.items()}
+
+        logits = self.mdl(**batch).logits[0]
+        probs = torch.softmax(logits, dim=-1)
+        p_ent = float(probs[self.ent_idx].item())
+
+        pred = int(torch.argmax(probs).item())
+        yes = (pred == self.ent_idx) and (p_ent >= self.threshold)
+        return ("YES" if yes else "NO"), p_ent
+
+
+class FaithfulnessTool:
     """
     Verifies claims against a paper via dense retrieval + LLM judge.
     - Sentence-aware chunking with overlap
@@ -33,7 +97,7 @@ class FaithfulnessBot:
 
     def __init__(
         self,
-        model_name: str = "all-MiniLM-L6-v2",
+        model_name: str = "BAAI/bge-large-en-v1.5",
         top_k: int = 3,
         judge_prompt_template: Optional[str] = None,
         llm_judge_fn: Optional[Callable[[str], str]] = None,
@@ -42,6 +106,9 @@ class FaithfulnessBot:
         cache_dir: str = "./faithfulness_cache",
         device: Optional[str] = None,
         seed: int = 0,
+        nli_model_name: str = "MoritzLaurer/DeBERTa-v3-large-mnli-fever-anli-ling-wanli",
+        nli_threshold: float = 0.5,
+        use_nli_when_no_llm: bool = True,
     ):
         self.model_name = model_name
         self.model = SentenceTransformer(model_name)
@@ -50,7 +117,16 @@ class FaithfulnessBot:
 
         self.top_k = int(top_k)
         self.judge_prompt_template = judge_prompt_template or self._default_judge_prompt()
-        self.llm_judge_fn = llm_judge_fn or self._dummy_judge
+ 
+        self.llm_judge_fn = llm_judge_fn  # may be None
+        self.nli_judge = None
+        if use_nli_when_no_llm and self.llm_judge_fn is None:
+            self.nli_judge = NLIFaithfulnessJudge(
+                model_name=nli_model_name,
+                device=self.device,
+                threshold=nli_threshold,
+            )
+ 
         self.max_claim_length = int(max_claim_length)
         self.min_similarity_threshold = float(min_similarity_threshold)
 
@@ -63,6 +139,7 @@ class FaithfulnessBot:
 
         np.random.seed(seed)
         torch.manual_seed(seed)
+
 
     # -------------------- prompts / judge --------------------
 
@@ -81,6 +158,23 @@ class FaithfulnessBot:
         tokens = ("Table", "Figure", "Eq", "Algorithm", "%", "±")
         bias = sum(tok in prompt for tok in tokens)
         return "YES" if (hash(prompt) + bias) % 10 >= 3 else "NO"
+
+    def _judge(self, passage: str, claim: str) -> tuple[str, float]:
+        # Prefer NLI judge if configured
+        if self.nli_judge is not None:
+            return self.nli_judge.judge(passage, claim)
+
+        # Otherwise use LLM judge if provided
+        if self.llm_judge_fn is not None:
+            prompt = self.judge_prompt_template.format(passage=passage, claim=claim)
+            resp = (self.llm_judge_fn(prompt) or "").strip().upper()
+            return ("YES" if resp.startswith("Y") else "NO"), 0.0
+
+        # Final fallback
+        prompt = self.judge_prompt_template.format(passage=passage, claim=claim)
+        resp = (self._dummy_judge(prompt) or "").strip().upper()
+        return ("YES" if resp.startswith("Y") else "NO"), 0.0
+
 
     # -------------------- preparation --------------------
 
@@ -201,12 +295,10 @@ class FaithfulnessBot:
         # judge all retrieved passages
         votes, prompts = [], []
         for r in retrieved:
-            prompt = self.judge_prompt_template.format(passage=r["passage"], claim=claim)
-            resp = (self.llm_judge_fn(prompt) or "").strip().upper()
-            vote = 1 if resp.startswith("Y") else 0
+            resp, _ = self._judge(r["passage"], claim)
+            vote = 1 if resp == "YES" else 0
+            r["judge_response"] = resp  # you can also store p_ent if you want
             votes.append(vote)
-            r["judge_response"] = resp
-            prompts.append(prompt)
 
         yes = sum(votes)
         no = len(votes) - yes
@@ -288,12 +380,16 @@ class FaithfulnessBot:
 
             votes, prompts = [], []
             for r in retrieved:
-                prompt = self.judge_prompt_template.format(passage=r["passage"], claim=meta[i][1])
-                resp = (self.llm_judge_fn(prompt) or "").strip().upper()
-                vote = 1 if resp.startswith("Y") else 0
+                resp, p_ent = self._judge(r["passage"], meta[i][1])
+                vote = 1 if resp == "YES" else 0
                 votes.append(vote)
+
                 r["judge_response"] = resp
-                prompts.append(prompt)
+                r["entailment_prob"] = round(float(p_ent), 4)
+
+                # Only store prompts when an LLM judge is actually used
+                if self.llm_judge_fn is not None:
+                    prompts.append(self.judge_prompt_template.format(passage=r["passage"], claim=meta[i][1]))
 
             yes = sum(votes); no = len(votes) - yes
             supported = yes > no

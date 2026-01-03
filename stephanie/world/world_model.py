@@ -12,7 +12,7 @@ import torch
 from stephanie.agents.inference.ebt_inference import EBTInferenceAgent
 from stephanie.memcube.memcube import MemCube
 from stephanie.memcube.theorem import Theorem
-from stephanie.models.belief import BeliefORM
+from stephanie.orm.belief import BeliefORM
 from stephanie.utils.file_utils import save_json
 from stephanie.utils.model_utils import get_model_path
 

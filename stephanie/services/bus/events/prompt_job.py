@@ -20,7 +20,7 @@ from sqlalchemy.sql import func
 from sqlalchemy.types import Boolean
 
 from stephanie.constants import PROMPT_RESULT_TMPL
-from stephanie.models.base import Base  # declarative base
+from stephanie.orm.base import Base  # declarative base
 from stephanie.utils.hash_utils import hash_text
 from stephanie.utils.json_sanitize import dumps_safe
 

@@ -21,7 +21,7 @@ from stephanie.services.bus.knowledge_bus import KnowledgeBus
 from ...zeromodel.vpm_controller import VPMController
 from .code_improver import CodeImprover
 from .faithfulness import \
-    FaithfulnessBot  # optional use; safe if not provided at CLI
+    FaithfulnessTool  # optional use; safe if not provided at CLI
 from .goals import GoalScorer, build_templates_from_yaml, load_yaml
 from .repo_link import RepoLink
 
@@ -218,7 +218,7 @@ def run_paper_section(
     try:
         if paper_txt_path and text_result and text_result.get("vpm_row"):
             paper_text = Path(paper_txt_path).read_text()
-            fb = FaithfulnessBot(top_k=faithfulness_topk)
+            fb = FaithfulnessTool(top_k=faithfulness_topk)
             fb.prepare_paper(paper_text)
             # Expect text improver plan units with claim_id/claim; fallback to sampling bullets
             claims = plan.get("units") or []

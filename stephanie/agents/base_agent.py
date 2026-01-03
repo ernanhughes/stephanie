@@ -19,7 +19,7 @@ from stephanie.constants import (AGENT, API_BASE, API_KEY, BATCH_SIZE, CONTEXT,
                                  OUTPUT_KEY, PIPELINE, PIPELINE_RUN_ID,
                                  PROMPT_MATCH_RE, PROMPT_PATH, SAVE_CONTEXT,
                                  SAVE_PROMPT, SOURCE, STRATEGY)
-from stephanie.models.prompt import PromptORM
+from stephanie.orm.prompt import PromptORM
 from stephanie.prompts.prompt_loader import PromptLoader
 from stephanie.services.scoring_service import ScoringService
 from stephanie.utils.llm_utils import remove_think_blocks
@@ -372,7 +372,7 @@ class BaseAgent(ABC):
         """
         Central method to save hypotheses and track document section links.
         """
-        from stephanie.models.hypothesis import HypothesisORM
+        from stephanie.orm.hypothesis import HypothesisORM
 
         # Ensure metadata is set if not already in the dict
         goal = context.get(GOAL, {})

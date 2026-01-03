@@ -5,8 +5,8 @@ import json
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
-from stephanie.models.fragment import FragmentORM
-from stephanie.models.transition import TransitionORM
+from stephanie.orm.fragment import FragmentORM
+from stephanie.orm.transition import TransitionORM
 from stephanie.utils.hash_utils import hash_text
 
 

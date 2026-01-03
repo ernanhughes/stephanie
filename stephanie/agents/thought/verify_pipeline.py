@@ -16,7 +16,7 @@ from stephanie.agents.base_agent import BaseAgent
 from stephanie.agents.summary.paper_summarizer import SimplePaperBlogAgent
 from stephanie.knowledge.anti_hallucination import AntiHallucination
 from stephanie.knowledge.figure_grounding import FigureGrounding
-from stephanie.models.strategy import StrategyProfile
+from stephanie.orm.strategy import StrategyProfile
 from stephanie.scoring.scorable import ScorableFactory, ScorableType
 from stephanie.utils.casebook_utils import generate_casebook_name
 from stephanie.utils.json_sanitize import sanitize_for_json

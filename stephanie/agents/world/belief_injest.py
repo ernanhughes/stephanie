@@ -5,8 +5,8 @@ from datetime import datetime
 
 from sqlalchemy.orm import Session
 
-from stephanie.models.belief import BeliefORM
-from stephanie.models.goal import GoalORM
+from stephanie.orm.belief import BeliefORM
+from stephanie.orm.goal import GoalORM
 from stephanie.scoring.scorer.svm_scorer import SVMScorer
 from stephanie.utils.summarizer import summarize_text
 

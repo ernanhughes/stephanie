@@ -9,7 +9,7 @@ import pandas as pd
 from sqlalchemy.sql import text
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
-from stephanie.models.score import ScoreORM
+from stephanie.orm.score import ScoreORM
 
 if matplotlib.get_backend().lower() != "agg":
     matplotlib.use("Agg")

@@ -14,9 +14,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from stephanie.models.belief_cartridge import BeliefCartridgeORM
-from stephanie.models.model_version import ModelVersionORM
-from stephanie.models.training_stats import TrainingStatsORM
+from stephanie.orm.belief_cartridge import BeliefCartridgeORM
+from stephanie.orm.model_version import ModelVersionORM
+from stephanie.orm.training_stats import TrainingStatsORM
 from stephanie.scoring.scorable import ScorableType
 from stephanie.scoring.scorer.sicql_scorer import SICQLScorer
 from stephanie.scoring.training.base_trainer import BaseTrainer

@@ -7,7 +7,7 @@ from typing import List, Optional, Tuple
 from sqlalchemy import and_
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
-from stephanie.models.model import ModelHealthORM, ModelORM
+from stephanie.orm.model import ModelHealthORM, ModelORM
 
 
 class ModelRegistryStore(BaseSQLAlchemyStore):

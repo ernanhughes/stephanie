@@ -5,7 +5,7 @@ import re
 
 from stephanie.agents.base_agent import BaseAgent
 from stephanie.constants import GOAL, PIPELINE
-from stephanie.models import LookaheadORM
+from stephanie.orm import LookaheadORM
 
 
 class LookaheadAgent(BaseAgent):

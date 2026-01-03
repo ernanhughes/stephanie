@@ -10,7 +10,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import requests
 
-from stephanie.components.information.data import PaperNode, PaperReferenceRecord
+from stephanie.components.information.data import (PaperNode,
+                                                   PaperReferenceRecord)
 from stephanie.memory.paper_store import PaperStore
 from stephanie.tools.arxiv_tool import fetch_arxiv_metadata
 from stephanie.tools.pdf_tool import PDFConverter
@@ -79,18 +80,19 @@ class PaperImportTool:
     def _new_run_id(self) -> str:
         return uuid.uuid4().hex  # swap to UniversalID if you want
 
-    def _pdf_url(self, arxiv_id: str) -> str:
-        return f"https://arxiv.org/abs/{arxiv_id}"
+
+    def get_pdf_url(self, arxiv_id: str) -> str:
+        return f"https://export.arxiv.org/pdf/{arxiv_id}.pdf"
     
     async def import_paper(
         self,
         *,
         arxiv_id: Optional[str] = None,
         url: Optional[str] = None,
-        local_pdf_path: str | Path = "data/papers",
+        local_pdf_path: str | Path = None,
         role: Optional[str] = "root",
         source: str = "arxiv",
-        force: bool = True,
+        force: bool = False,
         force_references: bool = False,
         max_refs: int = 100,
     ) -> PaperImportResult:
@@ -106,7 +108,7 @@ class PaperImportTool:
         if not arxiv_id and url:
             arxiv_id = self._infer_arxiv_id(url)
 
-        store: PaperStore = self.memory.papers  # <-- single interface
+        store: PaperStore = self.memory.papers
 
         # 1) Fast path: already in DB (skip import unless forced)
         existing = store.get_by_id(arxiv_id)
@@ -116,12 +118,41 @@ class PaperImportTool:
                 run_type="paper_import",
                 variant="cache_hit",
                 stats={"cached": True},
+                config={},
             )
-            # Return a minimal, "cached" result; caller can re-load full node/text if needed
+            node = PaperNode(
+                arxiv_id=getattr(existing, "external_id", None) or existing.id,
+                role=role or "unknown",
+                source=getattr(existing, "source", None) or source,
+                url=getattr(existing, "url", None) or (self.get_pdf_url(arxiv_id) if arxiv_id else None),
+                pdf_path=getattr(existing, "pdf_path", None),
+                meta={
+                    "paper_id": existing.id,
+                    "text_hash": existing.text_hash,
+                    **(getattr(existing, "meta", None) or {}),
+                },
+            )
+            refs = None
+            if self.persist_references_json and arxiv_id and not force_references:
+                try:
+                    refs = self._load_references_from_store(arxiv_id)
+                except Exception:
+                    refs = None
+                    # Return a minimal, "cached" result; caller can re-load full node/text if needed
+                    return PaperImportResult(
+                        success=True,
+                        error=None,
+                    )
             return PaperImportResult(
-                success=True,
-                error=None,
-            )
+                    node=node,
+                    text=existing.text or "",
+                    text_hash=existing.text_hash,
+                    pdf_path=getattr(existing, "pdf_path", None),
+                    references=refs,
+                    success=True,
+                    error=None,
+                    raw={"paper_id": existing.id, "arxiv_id": arxiv_id, "cached": True},
+                )
 
         paper_id = arxiv_id or self._slugify(
             url or (str(local_pdf_path) if local_pdf_path else "paper")
@@ -132,7 +163,7 @@ class PaperImportTool:
         # Stable guess of a PDF URL if not provided
         pdf_url = url
         if not pdf_url and arxiv_id:
-            pdf_url = f"https://arxiv.org/pdf/{arxiv_id}.pdf"
+            pdf_url = self.get_pdf_url(arxiv_id)
 
         # 1) DB cache shortcut (text)
         cached_text, cached_hash = self._maybe_load_text_from_store(
@@ -146,7 +177,7 @@ class PaperImportTool:
             )
         else:
             # 2) Resolve PDF path (local or downloaded)
-            pdf_path = self._resolve_pdf_path(
+            pdf_path = PDFConverter.resolve_pdf_path(
                 paper_dir=paper_dir,
                 paper_id=paper_id,
                 pdf_url=pdf_url,
@@ -174,6 +205,8 @@ class PaperImportTool:
                         paper_id,
                         pdf_path,
                     )
+                    url = pdf_url
+                    PDFConverter.download_pdf(pdf_url, Path(pdf_path))
                     text = ""
                 text_hash = hash_text(text)
 
@@ -339,6 +372,19 @@ class PaperImportTool:
             },
         )
 
+        # Persist into PaperStore (first import) so next runs are instant
+        self._maybe_upsert_to_store(
+            paper_id=paper_id,            # whatever you use as stable key; usually arxiv_id
+            arxiv_id=arxiv_id,
+            pdf_url=pdf_url,
+            pdf_path=str(pdf_path) if pdf_path else None,
+            text=text or "",
+            text_hash=text_hash or "",
+            meta=meta,
+            references=refs or [],
+            force=force,
+        )
+
         return PaperImportResult(
             node=node,
             text=text,
@@ -398,118 +444,44 @@ class PaperImportTool:
         if not self.paper_store:
             return
 
-        # Upsert paper text + meta
+        # Pull arXiv metadata from meta (you already store it under meta["arxiv"])
+        arxiv_meta = (meta or {}).get("arxiv") or {}
+
+        fields = {
+            # Canonical paper identity + metadata
+            "source": "arxiv" if arxiv_id else (meta.get("source") if meta else "local"),
+            "url": arxiv_meta.get("url") or pdf_url,
+            "title": arxiv_meta.get("title"),
+            "summary": arxiv_meta.get("summary"),
+            "authors": arxiv_meta.get("authors"),
+            "published": arxiv_meta.get("published") or arxiv_meta.get("published_iso") or arxiv_meta.get("published_date"),
+
+            # Cached content
+            "text": text,
+            "text_hash": text_hash,
+
+            # File cache pointers
+            "pdf_path": pdf_path,
+
+            # Keep full raw metadata too (very useful later)
+            "meta": meta,
+        }
+
+        # Only overwrite with None if you really mean it
+        fields = {k: v for k, v in fields.items() if v is not None}
+
         try:
-            fields = {
-                "id": paper_id,
-                "external_id": arxiv_id or paper_id,
-                "url": pdf_url,
-                "pdf_path": pdf_path,
-                "text": text,
-                "text_hash": text_hash,
-                "meta": meta,
-            }
             self.paper_store.upsert_paper(paper_id, fields)
         except Exception as e:
             log.warning("PaperStore upsert failed paper_id=%s err=%s", paper_id, e)
 
-        # Upsert references
+        # References (optional): persist them too
         if arxiv_id and references:
             try:
-                ref_dicts = []
-                for idx, rr in enumerate(references):
-                    ref_dicts.append(
-                        {
-                            "order_idx": idx,
-                            "ref_arxiv_id": rr.get("arxiv_id"),
-                            "doi": rr.get("doi"),
-                            "title": rr.get("title"),
-                            "year": rr.get("year"),
-                            "url": rr.get("url"),
-                            "raw_citation": rr.get("raw_citation"),
-                            "source": "paper_import",
-                            "raw": rr,  # JSON-safe
-                        }
-                    )
+                ref_dicts = [asdict(r) if is_dataclass(r) else r for r in references]
                 self.paper_store.replace_references(arxiv_id, ref_dicts)
             except Exception as e:
-                log.warning("PaperReferenceStore replace_for_paper failed arxiv_id=%s err=%s", arxiv_id, e)
-
-    # -------------------------
-    # PDF + parsing
-    # -------------------------
-
-    def _resolve_pdf_path(
-        self,
-        *,
-        paper_dir: Path,
-        paper_id: str,
-        pdf_url: Optional[str],
-        local_pdf_path: Optional[str | Path],
-        force: bool,
-    ) -> str:
-        if local_pdf_path:
-            p = Path(local_pdf_path)
-            if not p.exists():
-                raise FileNotFoundError(f"local_pdf_path not found: {p}")
-            return str(p)
-
-        pdf_local_path = paper_dir / "paper.pdf"
-        if pdf_local_path.exists() and pdf_local_path.stat().st_size > 0 and not force:
-            return str(pdf_local_path)
-
-        if not pdf_url:
-            raise ValueError(f"No pdf_url and no local_pdf_path for paper_id={paper_id}")
-
-        self._download_pdf(pdf_url, pdf_local_path)
-        return str(pdf_local_path)
-
-    def _download_pdf(self, url: str, out_path: Path) -> bool:
-        """
-        Try to download a PDF to out_path.
-
-        Returns
-        -------
-        bool
-            True  -> download succeeded and file exists at out_path
-            False -> download failed (404, 5xx, network error, etc.)
-        """
-        tmp = out_path.with_suffix(".pdf.part")
-        headers = {"User-Agent": self.user_agent}
-
-        try:
-            with requests.get(url, stream=True, timeout=self.timeout_s, headers=headers) as r:
-                status = r.status_code
-
-                if status == 404:
-                    log.warning("PDF not found (404) at %s; skipping.", url)
-                    return False
-
-                if status != 200:
-                    log.warning(
-                        "Unexpected status %s when downloading PDF from %s; skipping.",
-                        status,
-                        url,
-                    )
-                    return False
-
-                tmp.parent.mkdir(parents=True, exist_ok=True)
-                with open(tmp, "wb") as f:
-                    for chunk in r.iter_content(chunk_size=1024 * 128):
-                        if chunk:
-                            f.write(chunk)
-
-            tmp.replace(out_path)
-            return True
-
-        except requests.RequestException as e:
-            # Network / timeout / connection errors
-            log.warning("Error downloading PDF from %s: %s. Skipping.", url, e)
-            return False
-
-    def _extract_text(self, pdf_path: str) -> str:
-        converter = PDFConverter()
-        return converter.convert_pdf_to_text(Path(pdf_path))
+                log.warning("replace_references failed arxiv_id=%s err=%s", arxiv_id, e)
 
     # -------------------------
     # References

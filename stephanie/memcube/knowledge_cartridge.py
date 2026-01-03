@@ -1,4 +1,4 @@
-# stephanie/models/memcube/knowledge_cartridge.py
+# stephanie/orm/memcube/knowledge_cartridge.py
 from __future__ import annotations
 
 import json

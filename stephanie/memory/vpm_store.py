@@ -10,7 +10,7 @@ from sqlalchemy import func
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
-from stephanie.models.vpm import VPMORM
+from stephanie.orm.vpm import VPMORM
 
 
 def _robust01_vec(v: np.ndarray, lo=1.0, hi=99.0) -> np.ndarray:

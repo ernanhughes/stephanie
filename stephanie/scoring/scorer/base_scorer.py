@@ -4,13 +4,14 @@ from __future__ import annotations
 import abc
 import logging
 from collections.abc import Mapping
-from typing import Any, Dict, List, Protocol
+from typing import Any, Dict, List, Optional, Protocol
 
 import torch
 
 from stephanie.data.score_bundle import ScoreBundle
-from stephanie.scoring.model.model_locator_mixin import ModelLocatorMixin
+from stephanie.model.model_locator_mixin import ModelLocatorMixin
 from stephanie.scoring.scorable import Scorable
+from stephanie.scoring.scorer.model_health import LoadAudit, ModelHealthLogger
 
 log = logging.getLogger(__name__)
 
@@ -53,9 +54,21 @@ class BaseScorer(ModelLocatorMixin, abc.ABC):
             except Exception as e:
                 log.error("ScorerPluginLoadError: %s", e)
 
+        # ---- Model health / self-test (shared across all scorers) ----
+        mh = dict(self.cfg.get("model_health", {}) or {})
+        
+        self.model_health = ModelHealthLogger(
+            enabled=bool(mh.get("enabled", True)),
+            self_test_enabled=bool(mh.get("self_test_enabled", True)),
+            self_test_device=str(mh.get("self_test_device", "cpu")),
+            self_test_trials=int(mh.get("self_test_trials", 8)),
+            warn_on_load_issues=bool(mh.get("warn_on_load_issues", True)),
+            warn_on_selftest_fail=bool(mh.get("warn_on_selftest_fail", True)),
+        )
+
     def score(
         self,
-        goal: dict,
+        context: Dict[str, Any],
         scorable: Scorable,
         dimensions: List[str],
     ) -> ScoreBundle:
@@ -63,15 +76,15 @@ class BaseScorer(ModelLocatorMixin, abc.ABC):
         Final score entrypoint. Subclasses implement _score_core; we then
         apply plugins and merge their outputs into attributes/vectors.
         """
-        bundle: ScoreBundle = self._score_core(goal, scorable, dimensions)
-        result = self._run_plugins_and_merge(bundle=bundle, goal=goal, scorable=scorable)
+        bundle: ScoreBundle = self._score_core(context, scorable, dimensions)
+        result = self._run_plugins_and_merge(bundle=bundle, context=context, scorable=scorable)
 
         return result
 
     @abc.abstractmethod
     def _score_core(
         self,
-        goal: dict,
+        context: Dict[str, Any],
         scorable: Scorable,
         dimensions: List[str],
     ) -> ScoreBundle:
@@ -99,11 +112,11 @@ class BaseScorer(ModelLocatorMixin, abc.ABC):
         return self.cfg.get("display_name", self.name)
 
     # ===== Plugin runner and merge =====
-    def _run_plugins_and_merge(self, *, bundle: ScoreBundle, goal: dict, scorable: Scorable) -> ScoreBundle:
+    def _run_plugins_and_merge(self, *, bundle: ScoreBundle, context: Dict[str, Any], scorable: Scorable) -> ScoreBundle:
         tap = {
-            "goal_text": goal.get("goal", {}).get("goal_text", ""),
+            "goal_text": context.get("goal", {}).get("goal_text", ""),
             "resp_text": scorable.text,
-            "context": goal,
+            "context": context,
             "model_alias": getattr(self, "model_alias", self.model_type),
             "attributes": {},
             "per_dim_scores": {},
@@ -265,3 +278,22 @@ class BaseScorer(ModelLocatorMixin, abc.ABC):
             log.debug("ScoringPluginLoaded(service): %s -> %s", service_name, type(svc).__name__)
 
         return plugins
+
+    # ===== Model health / self-test =====
+    def check_model_health(
+        self,
+        *,
+        dimension: str,
+        model_name: str,
+        model,
+        load_audit: Optional[LoadAudit] = None,
+        model_id: Optional[str] = None,
+    ) -> dict:
+        return self.model_health.check_loaded_model(
+            scorer_name=self.__class__.__name__,
+            dimension=dimension,
+            model_name=model_name,
+            model=model,
+            load_audit=load_audit,
+            model_id=model_id,
+        )

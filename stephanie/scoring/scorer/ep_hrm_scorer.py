@@ -1,4 +1,4 @@
-# stephanie/scoring/hrm/hrm_scorer.py
+# stephanie/scoring/scorer/ep_hrm_scorer.py
 from __future__ import annotations
 
 import os
@@ -7,9 +7,8 @@ import torch
 
 from stephanie.data.score_bundle import ScoreBundle
 from stephanie.data.score_result import ScoreResult
-from stephanie.scoring.model.epistemic_trace_encoder import \
-    EpistemicTraceEncoder
-from stephanie.scoring.model.hrm_model import HRMModel
+from stephanie.model.epistemic_trace_encoder import EpistemicTraceEncoder
+from stephanie.model.hrm import HRMModel
 from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.scorer.base_scorer import BaseScorer
 from stephanie.utils.file_utils import load_json  # To load meta file

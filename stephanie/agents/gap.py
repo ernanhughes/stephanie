@@ -1119,6 +1119,7 @@ def _align_mats_by_names(
     idxB = dict((n, i) for i, n in enumerate(names_B))
 
     if mode == "intersection":
+        shared = [n for n in names_A if n in idxB]
         A2 = A[:, [idxA[n] for n in shared]] if shared else np.zeros((A.shape[0], 0), A.dtype)
         B2 = B[:, [idxB[n] for n in shared]] if shared else np.zeros((B.shape[0], 0), B.dtype)
         info = {
@@ -1153,7 +1154,7 @@ def _fill_from_columns(row: Dict[str, float], cols: List[str], vals: List[float]
       - '{model}.{dim}.aggregate}'
     Prefers a strict match in that order; falls back gracefully.
     """
-    name2val = dict((str(c), float(v)) for c, v in zip(cols, vals))
+    name2val = {str(c): float(v) for c, v in zip(cols, vals)}
     for dim in dims:
         preferred = [
             f"{model_name}.{dim}",

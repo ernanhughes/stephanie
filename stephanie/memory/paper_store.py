@@ -5,18 +5,20 @@ import hashlib
 import json
 import uuid
 from typing import Any, Dict, List, Optional
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-from sqlalchemy import insert
+from sqlalchemy import insert, func
+import re
+from sqlalchemy import text
+
+from stephanie.utils.hash_utils import sha256_bytes
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
-from stephanie.models.paper import (PaperORM, PaperReferenceGraphSnapshotORM, PaperReferenceORM,
-                                    PaperRunComparisonORM, PaperRunEventORM,
-                                    PaperRunFeatureORM, PaperRunORM,
-                                    PaperSectionORM, PaperSimilarORM)
+from stephanie.orm.paper import (PaperDoclingPageORM, PaperORM, PaperReferenceGraphSnapshotORM,
+                                 PaperReferenceORM, PaperRunComparisonORM,
+                                 PaperRunEventORM, PaperRunFeatureORM,
+                                 PaperRunORM, PaperSectionORM, PaperSimilarORM)
 
-
-def sha256_bytes(b: bytes) -> str:
-    return hashlib.sha256(b).hexdigest()
 
 class PaperStore(BaseSQLAlchemyStore):
     orm_model = PaperORM
@@ -50,6 +52,73 @@ class PaperStore(BaseSQLAlchemyStore):
             return s.query(PaperORM).filter_by(url=url).first()
         return self._run(op)
 
+
+    def get_by_identifier(
+        self,
+        identifier_value: str,
+        identifier_type: str = "arxiv",
+        *,
+        scorable_type: str = "paper",
+    ) -> Optional[PaperORM]:
+        """
+        Resolve a PaperORM via identifiers + scorable_identifiers.
+
+        Assumes:
+        - identifiers(identifier_type, identifier_value) contains "arxiv" rows
+        - scorable_identifiers maps (scorable_type='paper', scorable_id=<PaperORM.id>) -> identifier_id
+
+        Returns None if no mapping exists.
+        """
+        if not identifier_value:
+            return None
+
+        # Normalize common arXiv forms
+        ident_val = normalize_arxiv_id(identifier_value) if identifier_type == "arxiv" else identifier_value.strip()
+
+        def _coerce_paper_id(scorable_id: str) -> str:
+            # allow either "2505.05522" OR "paper:2505.05522"
+            if not scorable_id:
+                return scorable_id
+            if scorable_id.startswith("paper:"):
+                return scorable_id.split("paper:", 1)[1]
+            return scorable_id
+
+        def op(s):
+            # 1) Lookup scorable_id via the mapping tables
+            sql = text(
+                """
+                SELECT si.scorable_id
+                FROM identifiers i
+                JOIN scorable_identifiers si ON si.identifier_id = i.id
+                WHERE i.identifier_type = :identifier_type
+                AND i.identifier_value = :identifier_value
+                AND si.scorable_type = :scorable_type
+                ORDER BY si.id DESC
+                LIMIT 1
+                """
+            )
+            scorable_id = s.execute(
+                sql,
+                {
+                    "identifier_type": identifier_type,
+                    "identifier_value": ident_val,
+                    "scorable_type": scorable_type,
+                },
+            ).scalar()
+
+            if not scorable_id:
+                return None
+
+            paper_id = _coerce_paper_id(str(scorable_id))
+
+            # 2) Fetch the paper
+            return s.get(PaperORM, paper_id)
+
+        return self._run(op)
+
+    def get_by_arxiv(self, arxiv_id: str) -> Optional[PaperORM]:
+        return self.get_by_identifier(arxiv_id, "arxiv")
+
     # ---------- Writes ----------
 
     def upsert_paper(self, paper_id: str, fields: Dict[str, Any]) -> PaperORM:
@@ -82,6 +151,47 @@ class PaperStore(BaseSQLAlchemyStore):
     def upsert_section(self, section_data: Dict[str, Any]) -> PaperSectionORM:
         """Upsert a single section."""
         return self._sections.upsert(section_data)
+
+
+    def upsert_docling_pages(
+        self,
+        *,
+        paper_id: str,
+        run_id: str | None,
+        pages: list[dict],
+        model_name: str | None = None,
+        dpi: int | None = None,
+    ) -> None:
+        """
+        Store Docling per-page payloads. Idempotent via unique key.
+        """
+        def op(s):
+            for idx, payload in enumerate(pages):
+                stmt = pg_insert(PaperDoclingPageORM).values(
+                    paper_id=paper_id,
+                    run_id=run_id,
+                    page_num=int(payload.get("page_num", idx)),
+                    model_name=model_name,
+                    dpi=dpi,
+                    payload=payload,
+                    doctags=payload.get("doctags", []),
+                )
+                stmt = stmt.on_conflict_do_update(
+                    index_elements=[
+                        PaperDoclingPageORM.paper_id,
+                        PaperDoclingPageORM.run_id,
+                        PaperDoclingPageORM.page_num,
+                        PaperDoclingPageORM.model_name,
+                        PaperDoclingPageORM.dpi,
+                    ],
+                    set_={
+                        "doctags": stmt.excluded.doctags,
+                        "payload": stmt.excluded.payload,
+                        "updated_at": func.now(),
+                    },
+                )
+                s.execute(stmt)
+        self._run(op)
 
     # ---------- References ----------
 
@@ -615,3 +725,17 @@ class PaperReferenceGraphSnapshotStore(BaseSQLAlchemyStore):
 
     def latest_for_root(self, *, root_arxiv_id: str) -> Optional[PaperReferenceGraphSnapshotORM]:
         return self.get_one(root_arxiv_id=root_arxiv_id)
+
+_ARXIV_ID_RE = re.compile(r"(\d{4}\.\d{4,5})(v\d+)?$", re.IGNORECASE)
+
+def normalize_arxiv_id(value: str) -> str:
+    if not value:
+        return value
+    v = value.strip()
+    v = v.replace("arXiv:", "").replace("arxiv:", "").strip()
+    v = v.rstrip("/")
+    if "/" in v:  # handle URLs like https://arxiv.org/abs/2505.05522v4
+        v = v.split("/")[-1]
+    m = _ARXIV_ID_RE.search(v)
+    return m.group(1) if m else v
+

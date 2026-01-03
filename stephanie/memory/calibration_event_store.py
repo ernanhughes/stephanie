@@ -9,7 +9,7 @@ import numpy as np
 from sqlalchemy import case, func
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
-from stephanie.models.calibration import CalibrationEventORM
+from stephanie.orm.calibration import CalibrationEventORM
 
 
 def _as_str(x, default: str = "") -> str:
