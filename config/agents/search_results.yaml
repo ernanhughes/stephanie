@@ -1,0 +1,8 @@
+search_results:
+  name: search_results
+  _target_: stephanie.components.information.agents.search_results.SearchResultsAgent
+  enabled: true
+  run_dir: "runs/paper_blogs/${run_id}"
+  out_subdir: "sources"
+  per_query: true
+  default_goal_type: "research"

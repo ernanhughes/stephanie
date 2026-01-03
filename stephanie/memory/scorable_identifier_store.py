@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy.exc import IntegrityError
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
-from stephanie.orm.scorable_identifier import ScorableIdentifierORM
+from stephanie.orm.scorable_identifier import IdentifierORM, ScorableIdentifierORM
 
 
 class ScorableIdentifierStore(BaseSQLAlchemyStore):
@@ -54,6 +54,19 @@ class ScorableIdentifierStore(BaseSQLAlchemyStore):
     # -------------------------
     # Public API
     # -------------------------
+
+    def list_identifiers(self, *, scorable_type: str, scorable_id: str):
+        def op(s):
+            return (
+                s.query(IdentifierORM)
+                 .join(ScorableIdentifierORM, ScorableIdentifierORM.identifier_id == IdentifierORM.id)
+                 .filter(
+                    ScorableIdentifierORM.scorable_type == scorable_type,
+                    ScorableIdentifierORM.scorable_id == str(scorable_id),
+                 )
+                 .all()
+            )
+        return self._run(op)
 
     def get_or_create_identifier_id(
         self,

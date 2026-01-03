@@ -5,7 +5,7 @@ import json
 import logging
 import uuid
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
 from sqlalchemy import and_, desc, func, or_
 from sqlalchemy.orm import Query, aliased, selectinload
@@ -88,25 +88,36 @@ class CaseBookStore(BaseSQLAlchemyStore):
         self,
         *,
         agent_name: Optional[str] = None,
-        tag: Optional[str] = None,
+        tag: Optional[Union[str, Sequence[str]]] = None,
         pipeline_run_id: Optional[int] = None,
         limit: int = 200,
     ) -> List[CaseBookORM]:
         def op(s):
             q = s.query(CaseBookORM)
+
             if agent_name is not None:
                 q = q.filter(CaseBookORM.agent_name == agent_name)
-            if tag is not None:
-                q = q.filter(CaseBookORM.tag == tag)
+
             if pipeline_run_id is not None:
                 q = q.filter(CaseBookORM.pipeline_run_id == pipeline_run_id)
 
+            # FIX: tags is JSONB list, not "tag" column
+            if tag is not None:
+                if isinstance(tag, str):
+                    # require the tag to be present in the JSONB array
+                    q = q.filter(CaseBookORM.tags.contains([tag]))
+                else:
+                    tags = [t for t in tag if t]  # sanitize
+                    if tags:
+                        # AND semantics: must contain all tags
+                        q = q.filter(CaseBookORM.tags.contains(tags))
+
+                        # If you prefer OR semantics (any tag matches), use this instead:
+                        # q = q.filter(or_(*[CaseBookORM.tags.contains([t]) for t in tags]))
+
             order_col = getattr(CaseBookORM, "created_at", None)
-            q = q.order_by(
-                order_col.desc()
-                if order_col is not None
-                else CaseBookORM.id.desc()
-            )
+            q = q.order_by(order_col.desc() if order_col is not None else CaseBookORM.id.desc())
+
             return q.limit(limit).all()
 
         return self._run(op)

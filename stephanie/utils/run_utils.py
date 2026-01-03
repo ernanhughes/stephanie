@@ -25,15 +25,14 @@ def generate_run_id(goal: str) -> str:
     return f"{slug}_{timestamp}_{short_uuid}"
 
 
-def get_log_file_path(run_id: str, cfg: DictConfig) -> str:
+def get_log_file_path(cfg: DictConfig) -> str:
     # Get the path to the log file
     if cfg.logging.logger.get("log_file", None):
         print(f"Log file path: {cfg.logging.logger.log_file}")
         return cfg.logging.logger.log_file
 
-    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H-%M-%S")
-    safe_run_id = re.sub(r"[\\W_]+", "_", run_id)  # remove/replace unsafe chars
-    log_filename = f"{safe_run_id}_{timestamp}.jsonl"
+    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H-%M-%S")
+    log_filename = f"evaluate_{timestamp}.jsonl"
     os.makedirs(cfg.logging.logger.log_path, exist_ok=True)
     log_file_path = os.path.join(cfg.logging.logger.log_path, log_filename)
     print(f"Log file path: {log_file_path}")

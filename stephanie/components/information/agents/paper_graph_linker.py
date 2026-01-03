@@ -179,6 +179,10 @@ class PaperGraphLinkerAgent(BaseAgent):
                     "PaperGraphLinkerAgent: linker=%s failed", linker.name
                 )
 
+        extra_nodes = list(context.get("paper_graph_extra_nodes") or [])
+        if extra_nodes:
+            nodes.extend(extra_nodes)
+
         graph = PaperGraphABI(
             version="paper_graph_abi_v1",
             run_id=str(self.run_id),

@@ -28,8 +28,7 @@ def run(cfg: DictConfig):
         save_to_timestamped_file(data=OmegaConf.to_yaml(cfg), file_prefix="used_config", file_extension="yaml", output_dir="logs")
 
         # Setup logger and memory
-        run_id = generate_run_id(cfg.goal.goal_text if "goal" in cfg else "batch")
-        log_path = get_log_file_path(run_id, cfg)
+        log_path = get_log_file_path(cfg)
         log = JSONLogger(log_path=log_path)
         await ZmqBrokerGuard.ensure_started()  # detached=True by default
         memory = MemoryTool(cfg=cfg, logger=log)
@@ -50,6 +49,7 @@ def run(cfg: DictConfig):
             return
 
         # ✅ Single goal mode
+        run_id = generate_run_id(cfg.goal.goal_text if "goal" in cfg else "batch")
         logger.info(f"🟢 Running pipeline with run_id={run_id}")
         logger.info(f"🧠 Goal: {cfg.goal}")
         logger.info(f"📁 Config source: {str(cfg)[:100]}...")

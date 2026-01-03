@@ -185,7 +185,7 @@ class SectionPack:
 # Agent
 # -----------------------------
 
-class SectionSubgraphForkJoinAgent:
+class SectionSubgraphAgent:
     """
     Build goal-conditioned subgraphs per section spine, in parallel, and dump artifacts:
 

@@ -1,0 +1,41 @@
+section_subgraphs:
+  name: section_subgraph
+  enabled: true
+  save_prompt: false
+  save_context: false
+  skip_if_completed: false
+  _target_: stephanie.components.information.agents.section_subgraph.SectionSubgraphAgent
+  max_inflight: 8
+  # run_dir: "runs/paper_blogs/${run_id}"   # optional, if you already interpolate it elsewhere
+
+  goals:
+    blog_write:
+      seed_k: 30
+      max_hops: 2
+      max_nodes: 250
+      max_edges: 900
+      min_confidence: 0.70
+      require_evidence: true
+      include_reverse: true
+      allowed_edge_types: ["CITES", "SIMILAR", "ENTITY_OVERLAP"]
+
+    reproduce_results:
+      seed_k: 40
+      max_hops: 3
+      max_nodes: 300
+      max_edges: 1200
+      min_confidence: 0.75
+      require_evidence: true
+      include_reverse: true
+      allowed_edge_types: ["CITES", "CODE_REPO", "DATASET_MATCH", "HYPERPARAM_MATCH"]
+
+  verifier_goal_type: "critique"
+  verifier_goal_cfg:
+    seed_k: 35
+    max_hops: 2
+    max_nodes: 220
+    max_edges: 800
+    min_confidence: 0.80
+    require_evidence: true
+    include_reverse: true
+    allowed_edge_types: ["DISAGREEMENT", "MISSING_CITATION", "CONTRADICTION", "CITES"]
