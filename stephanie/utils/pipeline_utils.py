@@ -4,6 +4,11 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from statistics import mean
 
+from stephanie.constants import PIPELINE_RUN_ID
+
+from tabulate import tabulate
+import logging
+log = logging.getLogger(__name__)
 
 def compare_pipeline_runs(memory, goal_id):
     runs = memory.pipeline_runs.get_by_goal_id(goal_id)
@@ -65,3 +70,9 @@ def compute_pipeline_delta(run_a, run_b, scores_a, scores_b):
         ),
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
+
+def print_pipeline_summary(context):
+    print(f"\n🖇️ Pipeline {context.get(PIPELINE_RUN_ID)} Execution Summary:\n")
+    summary = context.get("STAGE_DETAILS", [])
+    print(tabulate(summary, headers="keys", tablefmt="fancy_grid"))
+    log.debug("PipelineSummaryPrinted: summary ----\n%s\n---", summary)

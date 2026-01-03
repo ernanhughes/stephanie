@@ -74,7 +74,7 @@ def run(cfg: DictConfig):
 if __name__ == "__main__":
     # Suppress HTTPX logs
     logging.getLogger().addFilter(lambda record: len(record.getMessage().strip()) > 10)
-    for name in ("numba", "httpcore", "httpcore.http11", "httpx", "LiteLLM", "transformers", "zeromodel", "zeromodel.config", "hnswlib", "matplotlib", "urllib3", "asyncio","PIL", "pdfminer"):
+    for name in ("numba", "httpcore", "httpcore.http11", "httpx", "LiteLLM", "transformers", "zeromodel", "zeromodel.config", "hnswlib", "matplotlib", "urllib3", "asyncio","PIL", "pdfminer", "sentence_transformers"):
         logging.getLogger(name).setLevel(logging.CRITICAL)
         logging.getLogger(name).propagate = False
     run()

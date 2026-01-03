@@ -13,16 +13,17 @@ from stephanie.constants import (GOAL, NAME, PIPELINE, PIPELINE_RUN_ID,
                                  PROMPT_DIR, REPORTS, RUN_ID, SAVE_CONTEXT,
                                  SCORABLE_DETAILS, SKIP_IF_COMPLETED, STAGE)
 from stephanie.core.context.context_manager import ContextManager
-from stephanie.core.logging.json_logger import JSONLogger
-from stephanie.memory.memory_tool import MemoryTool
 from stephanie.reporting.formatter import ReportFormatter
-from stephanie.scoring.metrics.scorable_processor import ScorableProcessor
 from stephanie.services.plan_trace_service import PlanTraceService
 from stephanie.services.registry_loader import load_services_profile
 from stephanie.services.rules_service import RulesService
 from stephanie.services.scoring_service import ScoringService
 from stephanie.services.service_container import ServiceContainer
+from stephanie.utils.pipeline_utils import print_pipeline_summary
 from stephanie.utils.report_utils import get_stage_details
+
+import logging
+log = logging.getLogger(__name__)
 
 
 class PipelineStage:
@@ -38,8 +39,8 @@ class PipelineStage:
 class Supervisor:
     def __init__(self, cfg, memory, logger):
         self.cfg = cfg
-        self.memory = memory or MemoryTool(cfg=cfg.db, logger=logger)
-        self.logger = logger or JSONLogger(log_path=cfg.logger.log_path)
+        self.memory = memory
+        self.logger = logger
         self.logger.log("SupervisorInit", {"cfg": cfg})
 
         # DI container
@@ -55,16 +56,8 @@ class Supervisor:
             profile_path=profile_path,
             supervisor=self,  # enables ${supervisor:...} in YAML
         )
-        self.scorable_processor = ScorableProcessor(
-            cfg.get("scorable_processor", {}),
-            memory,
-            self.container,
-            self.logger,
-        )
 
-
-
-        print(f"Parsing pipeline stages from config: {cfg.pipeline}")
+        log.debug(f"Parsing pipeline stages from config: {cfg.pipeline}")
         self.pipeline_stages = self._parse_pipeline_stages(cfg.pipeline.stages)
 
         self.context = self._init_context()
@@ -323,7 +316,7 @@ class Supervisor:
             }) 
             context["final_output"] = context.get(final_output_key)
 
-        self._print_pipeline_summary() 
+        print_pipeline_summary(context)
         return context
 
     async def _maybe_run_pipeline_judge(self, context: dict) -> dict:
@@ -645,10 +638,4 @@ class Supervisor:
                     )
                 merged[key] = value
         return merged
-
-    def _print_pipeline_summary(self):
-        print(f"\n🖇️ Pipeline {self.context().get('pipeline_run_id')} Execution Summary:\n")
-        summary = self.context().get("STAGE_DETAILS", [])
-        print(tabulate(summary, headers="keys", tablefmt="fancy_grid"))
-        self.logger.log("PipelineSummaryPrinted", {"summary": summary})
 
