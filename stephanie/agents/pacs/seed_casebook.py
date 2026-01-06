@@ -10,13 +10,6 @@ from stephanie.constants import GOAL, PIPELINE_RUN_ID
 from stephanie.scoring.scorable import Scorable, ScorableType
 from stephanie.utils.slug import simple_slugify
 
-# Optional: if you want a separate goal-state table
-try:
-    from stephanie.orm.case_goal_state import CaseGoalStateORM
-except Exception:
-    CaseGoalStateORM = None
-
-
 class SeedCaseBookAgent(BaseAgent):
     """
     Usage: place this agent after KnowledgeDBLoaderAgent.

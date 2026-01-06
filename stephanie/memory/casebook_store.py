@@ -11,9 +11,13 @@ from sqlalchemy import and_, desc, func, or_
 from sqlalchemy.orm import Query, aliased, selectinload
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
-from stephanie.orm.case_goal_state import CaseGoalStateORM
-from stephanie.orm.casebook import (CaseAttributeORM, CaseBookORM, CaseORM,
-                                    CaseScorableORM)
+from stephanie.orm.casebook import (
+    CaseAttributeORM,
+    CaseBookORM,
+    CaseORM,
+    CaseScorableORM,
+    CaseGoalStateORM,
+)
 from stephanie.orm.dynamic_scorable import DynamicScorableORM
 from stephanie.orm.goal import GoalORM
 from stephanie.scoring.scorable import ScorableType
@@ -53,7 +57,11 @@ class CaseBookStore(BaseSQLAlchemyStore):
             if cb:
                 return cb
             cb = CaseBookORM(
-                name=name, description=description, pipeline_run_id=pipeline_run_id, tags=tags, meta=meta
+                name=name,
+                description=description,
+                pipeline_run_id=pipeline_run_id,
+                tags=tags,
+                meta=meta,
             )
             s.add(cb)
             s.flush()
@@ -116,7 +124,11 @@ class CaseBookStore(BaseSQLAlchemyStore):
                         # q = q.filter(or_(*[CaseBookORM.tags.contains([t]) for t in tags]))
 
             order_col = getattr(CaseBookORM, "created_at", None)
-            q = q.order_by(order_col.desc() if order_col is not None else CaseBookORM.id.desc())
+            q = q.order_by(
+                order_col.desc()
+                if order_col is not None
+                else CaseBookORM.id.desc()
+            )
 
             return q.limit(limit).all()
 
@@ -165,7 +177,7 @@ class CaseBookStore(BaseSQLAlchemyStore):
         self,
         tags: list[str],
         *,
-        match: str = "any",   # "any" (default) or "all"
+        match: str = "any",  # "any" (default) or "all"
         limit: int = 200,
         agent_name: Optional[str] = None,
         pipeline_run_id: Optional[int] = None,
@@ -186,7 +198,9 @@ class CaseBookStore(BaseSQLAlchemyStore):
                         q = q.filter(CaseBookORM.tags.contains([t]))
                 else:
                     # any of the tags
-                    q = q.filter(or_(*[CaseBookORM.tags.contains([t]) for t in tags]))
+                    q = q.filter(
+                        or_(*[CaseBookORM.tags.contains([t]) for t in tags])
+                    )
 
             if agent_name is not None:
                 q = q.filter(CaseBookORM.agent_name == agent_name)
@@ -203,7 +217,6 @@ class CaseBookStore(BaseSQLAlchemyStore):
 
         return self._run(op)
 
-
     def count_cases(self, casebook_id: int) -> int:
         def op(s):
             return (
@@ -218,7 +231,8 @@ class CaseBookStore(BaseSQLAlchemyStore):
     def get_for_run_id(self, run_id: int):
         def op(s):
             return (
-                s.query(CaseBookORM).filter_by(pipeline_run_id=run_id)
+                s.query(CaseBookORM)
+                .filter_by(pipeline_run_id=run_id)
                 .options(selectinload(CaseBookORM.cases))
                 .first()
             )
@@ -237,7 +251,7 @@ class CaseBookStore(BaseSQLAlchemyStore):
                 .filter(
                     CaseBookORM.pipeline_run_id == pipeline_run_id,
                     CaseBookORM.agent_name == agent_name,
-                    CaseBookORM.tags.contains([tag])  # JSONB containment
+                    CaseBookORM.tags.contains([tag]),  # JSONB containment
                 )
                 .first()
             )
@@ -257,7 +271,9 @@ class CaseBookStore(BaseSQLAlchemyStore):
                 .filter(
                     CaseBookORM.pipeline_run_id == pipeline_run_id,
                     CaseBookORM.agent_name == agent_name,
-                    CaseBookORM.tags.contains([tag])  # JSONB array containment
+                    CaseBookORM.tags.contains(
+                        [tag]
+                    ),  # JSONB array containment
                 )
                 .first()
             )
@@ -271,7 +287,7 @@ class CaseBookStore(BaseSQLAlchemyStore):
                 description="Scoped casebook",
                 pipeline_run_id=pipeline_run_id,
                 agent_name=agent_name,
-                tags=[tag],   # ← FIX: initialize as list
+                tags=[tag],  # ← FIX: initialize as list
             )
             s.add(cb)
             s.flush()
@@ -308,7 +324,8 @@ class CaseBookStore(BaseSQLAlchemyStore):
                 .filter(CaseORM.id == case_id)
                 .options(
                     selectinload(CaseORM.scorables),
-                ).first()
+                )
+                .first()
             )
 
         return self._run(op)
@@ -502,7 +519,6 @@ class CaseBookStore(BaseSQLAlchemyStore):
 
         return self._run(op)
 
-
     def get_cases_for_goal_in_casebook(
         self,
         casebook_id: int,
@@ -513,16 +529,18 @@ class CaseBookStore(BaseSQLAlchemyStore):
         """
         Return cases for a given (casebook_id, goal_id), newest first.
         """
+
         def op(s):
-            q = (
-                s.query(CaseORM)
-                .filter(
-                    CaseORM.casebook_id == casebook_id,
-                    CaseORM.goal_id == goal_id,
-                )
+            q = s.query(CaseORM).filter(
+                CaseORM.casebook_id == casebook_id,
+                CaseORM.goal_id == goal_id,
             )
             order_col = getattr(CaseORM, "created_at", None)
-            q = q.order_by(order_col.desc() if order_col is not None else CaseORM.id.desc())
+            q = q.order_by(
+                order_col.desc()
+                if order_col is not None
+                else CaseORM.id.desc()
+            )
             return q.limit(limit).all()
 
         return self._run(op)
@@ -538,14 +556,20 @@ class CaseBookStore(BaseSQLAlchemyStore):
         Return newest cases for a goal across one or more scopes (pipeline_run_id, agent_name, tag).
         Dedupes per case using ROW_NUMBER() OVER (PARTITION BY cases.id ORDER BY created_at DESC).
         """
+
         def op(s):
             base = (
                 s.query(
                     CaseORM.id.label("case_id"),
-                    func.row_number().over(
+                    func.row_number()
+                    .over(
                         partition_by=CaseORM.id,
-                        order_by=(CaseORM.created_at.desc(), CaseORM.id.desc()),
-                    ).label("rn"),
+                        order_by=(
+                            CaseORM.created_at.desc(),
+                            CaseORM.id.desc(),
+                        ),
+                    )
+                    .label("rn"),
                 )
                 .join(CaseBookORM, CaseBookORM.id == CaseORM.casebook_id)
                 .filter(CaseORM.goal_id == goal_id)
@@ -553,7 +577,7 @@ class CaseBookStore(BaseSQLAlchemyStore):
 
             # OR of ANDed scope conditions
             scope_conds = []
-            for (prid, agent_name, tag) in (scopes or []):
+            for prid, agent_name, tag in scopes or []:
                 cond_parts = []
                 if prid is not None:
                     cond_parts.append(CaseBookORM.pipeline_run_id == prid)
@@ -690,7 +714,7 @@ class CaseBookStore(BaseSQLAlchemyStore):
         goal_id: str,
         agent_name: str,
         name: Optional[str] = None,
-        description: Optional[str] = None,  
+        description: Optional[str] = None,
         scorables: Optional[list[dict]] = None,
         prompt_text: Optional[str] = None,
         meta: Optional[dict] = None,
@@ -702,7 +726,7 @@ class CaseBookStore(BaseSQLAlchemyStore):
                 goal_id=goal_id,
                 agent_name=agent_name,
                 name=name,
-                description=description, 
+                description=description,
                 prompt_text=prompt_text,
                 meta=meta or {},
             )

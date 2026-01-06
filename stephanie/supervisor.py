@@ -7,7 +7,6 @@ from uuid import uuid4
 
 import hydra
 from omegaconf import DictConfig, OmegaConf
-from tabulate import tabulate
 
 from stephanie.constants import (GOAL, NAME, PIPELINE, PIPELINE_RUN_ID,
                                  PROMPT_DIR, REPORTS, RUN_ID, SAVE_CONTEXT,

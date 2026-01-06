@@ -1,4 +1,5 @@
 .idea/
+.stephanie_cache/
 .paper_cache/
 outputs/
 /models/

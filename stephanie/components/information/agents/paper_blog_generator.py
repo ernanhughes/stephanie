@@ -14,8 +14,7 @@ from stephanie.components.information.data import (BlogConfig, ConceptCluster,
                                                    PaperReferenceGraph,
                                                    PaperSection)
 from stephanie.services.prompt_service import LLMRole, PromptService
-from stephanie.utils.file_utils import (save_to_timestamped_file,
-                                        write_last_copy)
+from stephanie.utils.file_utils import save_to_timestamped_file
 
 log = logging.getLogger(__name__)
 

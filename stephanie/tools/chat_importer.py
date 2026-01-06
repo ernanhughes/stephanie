@@ -176,7 +176,7 @@ def import_conversations(memory, path: str, context: dict) -> dict:
         # Process each conversation bundle in the file
         for bundle in bundles:
             try:
-                conv = conversation_to_chat(memory, bundle, context, fp)
+                conversation_to_chat(memory, bundle, context, fp)
                 # Add file metadata to conversation
 
                 total_convs += 1

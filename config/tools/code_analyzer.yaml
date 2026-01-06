@@ -1,0 +1,28 @@
+# config/tools/code_analyzer.yaml
+tools:
+  code_analyzer:
+    base_path: "stephanie/"
+    file_extensions: [".py"]
+    exclude_dirs: [".venv", "venv", "__pycache__", ".git", ".mypy_cache", ".ruff_cache", "build", "dist"]
+    exclude_globs: ["**/migrations/**", "**/site-packages/**", "**/.tox/**"]
+
+    max_file_size_bytes: 200000
+    max_read_bytes: 500000
+
+    force: false
+    store_to_memory: true
+
+    enable_ast_checks: true
+
+    enable_ruff: true
+    ruff_bin: "ruff"
+    ruff_timeout_s: 10.0
+
+    enable_llm: false
+    llm_model_name: "Qwen/Qwen2.5-Coder-0.5B-Instruct"
+    llm_device: "cpu"
+    llm_max_input_chars: 12000
+    llm_max_new_tokens: 400
+    llm_top_k: 25
+
+    cache_dir: ".stephanie_cache/code_analysis"

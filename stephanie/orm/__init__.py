@@ -4,7 +4,7 @@ from __future__ import annotations
 from .base import Base
 from .belief_cartridge import BeliefCartridgeORM
 from .cartridge_domain import CartridgeDomainORM
-from .case_goal_state import CaseGoalStateORM
+from .casebook import CaseGoalStateORM 
 from .chat import ChatConversationORM, ChatMessageORM
 from .comparison_preference import ComparisonPreferenceORM
 from .context_state import ContextStateORM
