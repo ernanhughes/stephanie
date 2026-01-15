@@ -21,12 +21,12 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List, Optional, Tuple
 
-from sqlalchemy import desc, func, or_, text
+from sqlalchemy import String, Text, desc, func, or_, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Query, aliased, selectinload
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
-from stephanie.orm.chat import ChatConversationORM, ChatMessageORM, ChatTurnORM
+from stephanie.orm.chat import ChatConversationORM, ChatMessageORM, ChatTurnORM, ChatORM
 from stephanie.scoring.scorable import Scorable, ScorableType
 
 log = logging.getLogger(__name__)
@@ -1593,4 +1593,77 @@ class ChatStore(BaseSQLAlchemyStore):
                 # advance keyset cursor
                 cursor_id = rows[-1].id if order_desc else rows[-1].id
 
+        return self._run(op)
+
+
+    def get_chat_messages_for_embedding(self, force_reembed: bool = False, limit: Optional[int] = None) -> List[Dict[str, Any]]:
+        """Get chat messages that need embedding processing as scorable items."""
+        def op(s):
+            # Get messages that don't have embeddings yet
+            query = s.query(
+                ChatMessageORM.id.label('message_id'),
+                ChatMessageORM.role,
+                ChatMessageORM.text,
+                ChatMessageORM.chat_id,
+                ChatORM.title.label('chat_title'),
+                ChatMessageORM.created_at
+            ).join(ChatORM, ChatMessageORM.chat_id == ChatORM.id).filter(
+                ChatMessageORM.text.isnot(None),
+                ChatMessageORM.text != '',
+                ChatMessageORM.is_active == True
+            )
+            
+            if not force_reembed:
+                # Only get messages without embedding mappings
+                query = query.outerjoin(
+                    ScorableEmbeddingORM,
+                    (func.concat('chat_message:', ChatMessageORM.id) == ScorableEmbeddingORM.scorable_id) &
+                    (ScorableEmbeddingORM.scorable_type == 'chat_message')
+                ).filter(ScorableEmbeddingORM.id.is_(None))
+            
+            # Order by creation time and limit results
+            query = query.order_by(ChatMessageORM.created_at)
+            if limit:
+                query = query.limit(limit)
+                
+            return [dict(row) for row in query.all()]
+        
+        return self._run(op)
+
+    def find_similar_chat_messages(self, query_embedding: List[float], top_k: int = 5, similarity_threshold: float = 0.7) -> List[Dict]:
+        """Find chat messages similar to the query embedding using the embedding store."""
+        def op(s):
+            # Use pgvector cosine similarity search
+            results = s.query(
+                ScorableEmbeddingORM.scorable_id,
+                ScorableEmbeddingORM.scorable_type,
+                ChatMessageORM.text.label('message_text'),
+                ChatMessageORM.role,
+                ChatMessageORM.created_at,
+                ChatORM.title.label('chat_title'),
+                ChatORM.id.label('chat_id'),
+                func.cosine_similarity(EmbeddingORM.embedding, query_embedding).label('similarity')
+            ).join(
+                EmbeddingORM, ScorableEmbeddingORM.embedding_id == EmbeddingORM.id
+            ).join(
+                ChatMessageORM, func.replace(ScorableEmbeddingORM.scorable_id, 'chat_message:', '') == ChatMessageORM.id.cast(String)
+            ).join(
+                ChatORM, ChatMessageORM.chat_id == ChatORM.id
+            ).filter(
+                ScorableEmbeddingORM.scorable_type == 'chat_message',
+                func.cosine_similarity(EmbeddingORM.embedding, query_embedding) >= similarity_threshold
+            ).order_by(
+                func.cosine_similarity(EmbeddingORM.embedding, query_embedding).desc()
+            ).limit(top_k).all()
+            
+            return [{
+                'message_id': str(row.scorable_id).replace('chat_message:', ''),
+                'chat_id': row.chat_id,
+                'chat_title': row.chat_title,
+                'role': row.role,
+                'text': row.message_text,
+                'created_at': row.created_at,
+                'similarity': float(row.similarity)
+            } for row in results]
+        
         return self._run(op)

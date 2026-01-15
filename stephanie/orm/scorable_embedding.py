@@ -15,8 +15,8 @@ class ScorableEmbeddingORM(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
 
     # Polymorphic owner of the embedding record
-    scorable_id = Column(String, nullable=False)      # e.g., source_uri or internal id
-    scorable_type = Column(String, nullable=False)    # e.g., 'document', 'hypothesis', 'cartridge'
+    scorable_id = Column(String, nullable=False)      # e.g., document.id or chat_message.id, etc.
+    scorable_type = Column(String, nullable=False)    # e.g., 'document', 'chat_message', etc   .
 
     # Backend embedding reference (id inside your HNet/HF/Llama stores)
     embedding_id = Column(Integer, nullable=False)
