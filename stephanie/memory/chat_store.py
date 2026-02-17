@@ -20,8 +20,10 @@ from __future__ import annotations
 
 import logging
 from typing import Any, Dict, List, Optional, Tuple
+from stephanie.orm.scorable_embedding import ScorableEmbeddingORM
+from stephanie.orm.embedding import EmbeddingORM
 
-from sqlalchemy import String, Text, desc, func, or_, text
+from sqlalchemy import String, desc, func, or_, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Query, aliased, selectinload
 

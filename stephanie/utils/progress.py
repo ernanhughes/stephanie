@@ -98,4 +98,4 @@ class AgentProgress:
             "elapsed_ms": self._ms(),
             "metrics": metrics,
             "meta": {"paper_id": self.current_paper_id, "section_name": name}
-        })
+        }) 

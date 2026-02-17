@@ -595,7 +595,7 @@ class PaperSectionStore(BaseSQLAlchemyStore):
 class PaperReferenceStore(BaseSQLAlchemyStore):
     orm_model = PaperReferenceORM
     default_order_by = "id"
-OK
+
     def __init__(self, session_or_maker, logger=None):
         super().__init__(session_or_maker, logger)
         self.name = "paper_references"
