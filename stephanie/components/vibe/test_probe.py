@@ -113,7 +113,7 @@ class ExpectedOutcome:
 # ---------------------------------------------------------------------------
 
 @dataclass
-class TestProbe:
+class ValidateProbe:
     """
     Atomic functional probe for a VibeFeatureTask.
 

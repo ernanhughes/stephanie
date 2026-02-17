@@ -1,9 +1,10 @@
+
 class ELMOrchestrator:
 
     def __init__(
         self,
-        core_evaluator,         # Stephanie's main evaluator
-        governance_reducer,     # ELM reducer
+        core_evaluator,
+        governance_reducer,
         reflection_engine
     ):
         self.core = core_evaluator
@@ -19,7 +20,7 @@ class ELMOrchestrator:
             output=model_output
         )
 
-        # 2. Governance layer
+        # 2. Governance reduction
         governed_bundle = self.governance.evaluate(
             context_pack=context_pack,
             plan_trace=plan_trace,
@@ -27,8 +28,9 @@ class ELMOrchestrator:
             base_bundle=base_bundle
         )
 
-        # 3. Reflection trigger
+        # 3. Reflection decision
         if governed_bundle.reward_vector.failure_signatures:
-            return self.reflector.generate(governed_bundle)
+            reflection = self.reflector.generate(governed_bundle)
+            return governed_bundle, reflection
 
-        return governed_bundle
+        return governed_bundle, None

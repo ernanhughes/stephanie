@@ -6,7 +6,7 @@ from typing import Any, Dict, List
 
 from stephanie.components.vibe.artifact_snapshot import ArtifactSnapshot
 from stephanie.components.vibe.concept_transform import ConceptTransform
-from stephanie.components.vibe.test_probe import TestProbe
+from stephanie.components.vibe.test_probe import ValidateProbe
 from stephanie.memcube.rubric import RubricMemCube
 
 
@@ -24,8 +24,8 @@ class VibeScore:
 class VibeFeatureTask:
     base_state: ArtifactSnapshot
     user_feature: str
-    f2p_tests: List[TestProbe]
-    p2p_tests: List[TestProbe]
+    f2p_tests: List[ValidateProbe]
+    p2p_tests: List[ValidateProbe]
     rubrics: List[RubricMemCube]
     perturbations: List[ConceptTransform]
     context_complexity: float = 0.0

@@ -4,23 +4,15 @@ ELM: Experimental Learning Module for governed self-improvement.
 """
 
 # Core primitives
+from stephanie.components.elm.orchestration.system_interface import SystemInterface
 from .core.context_pack import (
     ContextPack,
     ContextPackCollection,
     ContextType,
     Modality,
-    create_user_query_context,
-    create_document_context,
-    create_embedding_context,
-    create_goal_context,
-    create_reflection_context,
 )
-from .core.reward_vector import RewardVector, RewardAxis
 from .core.thresholds import (
     CalibratedThresholds,
-    create_from_baseline_stats,
-    create_conservative_thresholds,
-    create_permissive_thresholds,
 )
 
 # Tracking & diagnostics
@@ -33,7 +25,7 @@ from .governance.dominance_checker import DominanceChecker
 from .governance.regime_controller import RegimeController
 
 # Evaluation infrastructure
-from .evaluation.governance_reducer import GovernanceReducer, SignalProvider, SignalResult
+from .evaluation.governance_scorer import GovernanceScorer
 
 # Experiment harness
 from .experiment.baseline_calibrator import BaselineCalibrator
@@ -45,6 +37,8 @@ from .experiment.perturbation_injector import (
     create_perturbation_config,
     register_custom_severity
 )
+from .orchestration.orchestrator import ELMOrchestrator
+from .orchestration.system_interface import  SystemInterface
 
 __all__ = [
     # Core
@@ -68,10 +62,8 @@ __all__ = [
     "RegimeController",
     
     # Evaluation
-    "GovernanceReducer",
-    "SignalProvider",
-    "SignalResult",
-    
+    "GovernanceScorer",
+
     # Experiment
     "BaselineCalibrator",
     "ScoreBundleExperiment",

@@ -4,6 +4,44 @@
 
 
 ==================================================
+FILE: axes.py
+==================================================
+
+# components/elm/axes.py
+
+from enum import Enum
+
+
+class AxisDirection(str, Enum):
+    HIGHER_IS_BETTER = "higher"
+    LOWER_IS_BETTER = "lower"
+
+
+AXIS_SEMANTICS = {
+    "hrm_alignment": AxisDirection.HIGHER_IS_BETTER,
+    "hallucination_energy": AxisDirection.LOWER_IS_BETTER,
+    "embedding_margin": AxisDirection.HIGHER_IS_BETTER,
+    "policy_advantage": AxisDirection.HIGHER_IS_BETTER,
+    "metric_alignment": AxisDirection.HIGHER_IS_BETTER,
+    "coherence": AxisDirection.HIGHER_IS_BETTER,
+    "context_fidelity": AxisDirection.HIGHER_IS_BETTER,
+}
+
+
+==================================================
+FILE: config.py
+==================================================
+
+# ELM configuration definitions
+
+
+==================================================
+FILE: evaluator.py
+==================================================
+
+
+
+==================================================
 FILE: __init__.py
 ==================================================
 
@@ -13,23 +51,15 @@ ELM: Experimental Learning Module for governed self-improvement.
 """
 
 # Core primitives
+from stephanie.components.elm.orchestration.system_interface import SystemInterface
 from .core.context_pack import (
     ContextPack,
     ContextPackCollection,
     ContextType,
     Modality,
-    create_user_query_context,
-    create_document_context,
-    create_embedding_context,
-    create_goal_context,
-    create_reflection_context,
 )
-from .core.reward_vector import RewardVector, RewardAxis
 from .core.thresholds import (
     CalibratedThresholds,
-    create_from_baseline_stats,
-    create_conservative_thresholds,
-    create_permissive_thresholds,
 )
 
 # Tracking & diagnostics
@@ -42,7 +72,7 @@ from .governance.dominance_checker import DominanceChecker
 from .governance.regime_controller import RegimeController
 
 # Evaluation infrastructure
-from .evaluation.governance_reducer import GovernanceReducer, SignalProvider, SignalResult
+from .evaluation.governance_scorer import GovernanceScorer
 
 # Experiment harness
 from .experiment.baseline_calibrator import BaselineCalibrator
@@ -54,6 +84,8 @@ from .experiment.perturbation_injector import (
     create_perturbation_config,
     register_custom_severity
 )
+from .orchestration.orchestrator import ELMOrchestrator
+from .orchestration.system_interface import  SystemInterface
 
 __all__ = [
     # Core
@@ -77,10 +109,8 @@ __all__ = [
     "RegimeController",
     
     # Evaluation
-    "GovernanceReducer",
-    "SignalProvider",
-    "SignalResult",
-    
+    "GovernanceScorer",
+
     # Experiment
     "BaselineCalibrator",
     "ScoreBundleExperiment",
@@ -1007,109 +1037,6 @@ __all__ = [
 ]
 
 ==================================================
-FILE: core\reward_vector.py
-==================================================
-
-from dataclasses import dataclass, field
-from typing import Dict, List
-from enum import Enum
-import time
-import uuid
-
-class RewardAxis(str, Enum):
-    """Explicit semantic axes - no ambiguous scalars"""
-    HRM_ALIGNMENT = "hrm_alignment"          # Higher = better (truthfulness)
-    HALLUCINATION_ENERGY = "hallucination_energy"  # Lower = better (Certum)
-    EMBEDDING_MARGIN = "embedding_margin"    # Higher = better (Embed-RL)
-    POLICY_ADVANTAGE = "policy_advantage"    # Higher = better (task progress)
-    METRIC_ALIGNMENT = "metric_alignment"    # Higher = better (goal fidelity)
-    COHERENCE = "coherence"                  # Higher = better (narrative flow)
-    CONTEXT_FIDELITY = "context_fidelity"    # Higher = better (VPM stability)
-
-@dataclass(frozen=True)
-class RewardVector:
-    """
-    Multi-dimensional reward primitive for trace-native self-improvement.
-    Immutable. Always tied to a trace. Always interpretable.
-    """
-    # Core axes (normalized to [-1.0, 1.0] where semantics allow)
-    values: Dict[RewardAxis, float] = field(default_factory=dict)
-    
-    # Trace provenance (critical for MemCube + forensic auditing)
-    trace_id: str = field(default_factory=lambda: str(uuid.uuid4()))
-    timestamp: float = field(default_factory=time.time)
-    source_model: str = "unknown"  # e.g., "HRM-v3", "Certum-Energy", "Embed-RL"
-    
-    # Diagnostic metadata (for reflection engine)
-    confidence: float = 1.0  # Est. reliability of this vector (0.0-1.0)
-    failure_signatures: List[str] = field(default_factory=list)  # e.g., ["energy_spike", "margin_collapse"]
-    
-    def __post_init__(self):
-        # Enforce normalization boundaries where defined
-        for axis, val in self.values.items():
-            if axis == RewardAxis.HALLUCINATION_ENERGY:
-                assert -1.0 <= val <= 1.0, f"Energy must be normalized: {val}"
-            elif axis in [RewardAxis.HRM_ALIGNMENT, RewardAxis.EMBEDDING_MARGIN]:
-                assert 0.0 <= val <= 1.0, f"{axis} must be [0,1]: {val}"
-    
-    def delta(self, other: "RewardVector") -> "RewardVector":
-        """Compute improvement vector (self - other). Preserves provenance of *this* vector."""
-        delta_vals = {
-            axis: self.values.get(axis, 0.0) - other.values.get(axis, 0.0)
-            for axis in set(self.values) | set(other.values)
-        }
-        return RewardVector(
-            values=delta_vals,
-            trace_id=f"delta_{self.trace_id}_{other.trace_id}",
-            source_model="reward_delta",
-            confidence=min(self.confidence, other.confidence),
-            failure_signatures=[]  # Delta has no failures
-        )
-    
-    def dominates(self, other: "RewardVector", critical_axes: List[RewardAxis]) -> bool:
-        """
-        True iff self improves on *all* critical_axes vs other.
-        Prevents reward hacking (e.g., boosting HRM while collapsing embedding margin).
-        """
-        for axis in critical_axes:
-            self_val = self.values.get(axis, -float('inf'))
-            other_val = other.values.get(axis, -float('inf'))
-            
-            # Special handling: lower energy = better
-            if axis == RewardAxis.HALLUCINATION_ENERGY:
-                if self_val > other_val:  # Higher energy = worse
-                    return False
-            else:
-                if self_val <= other_val:  # Must strictly improve
-                    return False
-        return True
-    
-    def to_memcube_payload(self) -> Dict:
-        """Structured export for MemCube storage"""
-        return {
-            "reward_vector": {k.value: v for k, v in self.values.items()},
-            "trace_id": self.trace_id,
-            "failure_signatures": self.failure_signatures,
-            "critical_axes": [ax.value for ax in self._infer_critical_axes()],
-            "timestamp": self.timestamp
-        }
-    
-    def _infer_critical_axes(self) -> List[RewardAxis]:
-        """Heuristic: axes where value is below threshold OR has failure signature"""
-        critical = []
-        thresholds = {
-            RewardAxis.HRM_ALIGNMENT: 0.6,
-            RewardAxis.HALLUCINATION_ENERGY: 0.3,  # Lower = better, so high value = bad
-            RewardAxis.EMBEDDING_MARGIN: 0.4
-        }
-        for axis, thresh in thresholds.items():
-            val = self.values.get(axis, 0.0)
-            if (axis == RewardAxis.HALLUCINATION_ENERGY and val > thresh) or \
-               (axis != RewardAxis.HALLUCINATION_ENERGY and val < thresh):
-                critical.append(axis)
-        return critical + [RewardAxis(sig) for sig in self.failure_signatures if sig in RewardAxis.__members__]
-
-==================================================
 FILE: core\thresholds.py
 ==================================================
 
@@ -1496,261 +1423,266 @@ __all__ = [
 ]
 
 ==================================================
-FILE: evaluation\governance_reducer.py
+FILE: evaluation\bundle_comparator.py
 ==================================================
 
-# evaluation/governance_reducer.py
-from dataclasses import dataclass, field
-from typing import Dict, List, Protocol, Any
-from stephanie.components.elm.core.reward_vector import RewardVector
-from stephanie.components.elm.core.context_pack import ContextPack
-from stephanie.data.score_bundle import ScoreBundle
+# components/elm/dominance/bundle_comparator.py
 
-class SignalProvider(Protocol):
-    """Provider interface for governance signals"""
+from typing import List, Dict
+from stephanie.data.score_bundle import ScoreBundle
+from components.elm.axes import AXIS_SEMANTICS, AxisDirection
+
+
+class BundleComparator:
+
+    @staticmethod
+    def delta(
+        before: ScoreBundle,
+        after: ScoreBundle,
+    ) -> Dict[str, float]:
+        """
+        Direction-normalized delta.
+        Positive = improvement.
+        """
+
+        deltas: Dict[str, float] = {}
+
+        dims = set(before.results.keys()) | set(after.results.keys())
+
+        for dim in dims:
+            b = before.get(dim)
+            a = after.get(dim)
+
+            if not b or not a:
+                continue
+
+            direction = AXIS_SEMANTICS.get(dim, AxisDirection.HIGHER_IS_BETTER)
+
+            if direction == AxisDirection.HIGHER_IS_BETTER:
+                delta = a.score - b.score
+            else:
+                delta = b.score - a.score
+
+            deltas[dim] = delta
+
+        return deltas
+
+    @staticmethod
+    def dominates(
+        before: ScoreBundle,
+        after: ScoreBundle,
+        critical_axes: List[str],
+    ) -> bool:
+        """
+        Strict Pareto dominance on critical axes.
+        """
+
+        for dim in critical_axes:
+            b = before.get(dim)
+            a = after.get(dim)
+
+            if not b or not a:
+                return False
+
+            direction = AXIS_SEMANTICS.get(dim, AxisDirection.HIGHER_IS_BETTER)
+
+            if direction == AxisDirection.HIGHER_IS_BETTER:
+                if a.score <= b.score:
+                    return False
+            else:
+                if a.score >= b.score:
+                    return False
+
+        return True
+
+
+==================================================
+FILE: evaluation\governance_scorer.py
+==================================================
+
+# stephanie/scoring/governance/governance_scorer.py
+
+from __future__ import annotations
+
+import logging
+from typing import Any, Dict, List, Protocol
+
+from stephanie.data.score_bundle import ScoreBundle
+from stephanie.data.score_result import ScoreResult
+from stephanie.scoring.scorer.base_scorer import BaseScorer
+from stephanie.scoring.scorable import Scorable
+
+log = logging.getLogger(__name__)
+
+
+# ----------------------------------------
+# Provider Protocol
+# ----------------------------------------
+
+class GovernanceProvider(Protocol):
     def compute(
         self,
-        context_pack: ContextPack,
-        plan_trace: Any,
-        output: Any,
-        base_bundle: ScoreBundle
-    ) -> "SignalResult":
+        context: dict,
+        scorable: Scorable,
+    ) -> Dict[str, Dict[str, Any]]:
+        """
+        Returns:
+            {
+                "dimension_name": {
+                    "score": float,
+                    "rationale": str,
+                    "attributes": dict
+                }
+            }
+        """
         ...
 
-@dataclass
-class SignalResult:
-    """Atomic signal contribution from one provider"""
-    axis_values: Dict[str, float]
-    diagnostics: Dict[str, Any] = field(default_factory=dict)
-    failure_signatures: List[str] = field(default_factory=list)
-    confidence: float = 1.0
 
-class GovernanceReducer:
-    """Pure reducer - aggregates provider signals into governance metrics"""
-    
-    def __init__(self, providers: List[SignalProvider]):
-        self.providers = providers
-    
-    def evaluate(
+# ----------------------------------------
+# GovernanceScorer
+# ----------------------------------------
+
+class GovernanceScorer(BaseScorer):
+    """
+    Governance layer implemented as a standard Stephanie scorer.
+
+    - Each provider emits dimensions
+    - Dimensions become ScoreResult objects
+    - Attributes store diagnostics
+    - No custom reward vector
+    """
+
+    def __init__(self, cfg, memory, container, logger):
+        super().__init__(cfg, memory, container, logger)
+
+        self.model_type = "governance"
+        self.providers: List[GovernanceProvider] = cfg.get("providers", [])
+
+        if not self.providers:
+            log.warning("GovernanceScorer initialized with no providers")
+
+    # ----------------------------------------
+    # Core Scoring
+    # ----------------------------------------
+
+    def _score_core(
         self,
-        context_pack: ContextPack,
-        plan_trace: Any,
-        output: Any,
-        base_bundle: ScoreBundle
+        context: dict,
+        scorable: Scorable,
+        dimensions: List[str]
     ) -> ScoreBundle:
-        aggregated_values = {}
-        diagnostics = {}
-        failures = []
-        confidences = []
+
+        results: Dict[str, ScoreResult] = {}
 
         for provider in self.providers:
-            result = provider.compute(
-                context_pack=context_pack,
-                plan_trace=plan_trace,
-                output=output,
-                base_bundle=base_bundle
-            )
-            
-            aggregated_values.update(result.axis_values)
-            diagnostics.update(result.diagnostics)
-            failures.extend(result.failure_signatures)
-            confidences.append(result.confidence)
+            try:
+                provider_output = provider.compute(
+                    context=context,
+                    scorable=scorable,
+                )
 
-        # Build reward vector
-        reward_vector = RewardVector(
-            values=aggregated_values,
-            trace_id=plan_trace.trace_id,
-            source_model="ELM_Governance",
-            confidence=sum(confidences) / len(confidences) if confidences else 1.0,
-            failure_signatures=failures
-        )
+                for dim, payload in provider_output.items():
 
-        return ScoreBundle(
-            reward_vector=reward_vector,
-            plan_trace=plan_trace,
-            context_pack=context_pack,
-            raw_output=output,
-            raw_diagnostics=diagnostics
-        )
+                    if dimensions and dim not in dimensions:
+                        continue
+
+                    score = float(payload.get("score", 0.0))
+                    rationale = payload.get("rationale", "")
+                    attributes = payload.get("attributes", {})
+
+                    results[dim] = ScoreResult(
+                        dimension=dim,
+                        score=score,
+                        weight=1.0,
+                        rationale=rationale,
+                        source=self.model_type,
+                        attributes=attributes,
+                    )
+
+            except Exception as e:
+                log.error(f"Governance provider failure: {e}")
+                self.logger.log(
+                    "GovernanceProviderError",
+                    {"error": str(e)}
+                )
+
+        return ScoreBundle(results=results)
+
 
 ==================================================
 FILE: evaluation\multi_layer_evaluator.py
 ==================================================
 
-from __future__ import annotations
+# elm/evaluation/multi_layer_evaluator.py
 
-from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Protocol, runtime_checkable
-from enum import Enum
-import logging
-import torch
+from typing import List, Dict, Any
+from datetime import datetime
+
 from stephanie.data.score_bundle import ScoreBundle
-from stephanie.data.plan_trace import PlanTrace
-from stephanie.components.elm.core.context_pack import ContextPack
-from stephanie.components.elm.core.reward_vector import RewardVector
-from stephanie.components.elm.governance.signal_extractor import AxisDirection, RewardAxis
-from stephanie.components.elm.evaluation.governance_reducer import SignalProvider
+from stephanie.data.score_result import ScoreResult
 
-logger = logging.getLogger(__name__)
+from elm.providers.base import SignalProvider, SignalResult
 
-# ============================================================================
-# INTERFACE LAYER — What the evaluator expects from Stephanie's components
-# ============================================================================
 
-@runtime_checkable
-class HRMInterface(Protocol):
-    """Human Reasoning Model alignment scorer"""
-    def score_alignment(self, plan_trace: 'PlanTrace', output: Any) -> float:
-        """Returns [0.0, 1.0] — higher = more human-aligned"""
-        ...
+class MultiLayerEvaluator:
+    """
+    Stephanie-compatible reducer.
 
-@runtime_checkable
-class CertumInterface(Protocol):
-    """Hallucination detection and energy projection"""
-    def compute_energy(self, output: Any, context_pack: 'ContextPack') -> float:
-        """Returns normalized energy [0.0, 1.0] — lower = less hallucinated"""
-        ...
-    
-    def detect_failures(self, energy: float) -> List[str]:
-        """Returns failure signatures like ['energy_spike', 'speculative_leap']"""
-        ...
+    Produces:
+        stephanie.scoring.score_bundle.ScoreBundle
+    """
 
-@runtime_checkable
-class EmbeddingStoreInterface(Protocol):
-    """Embedding geometry and margin analysis"""
-    def compute_margin(self, input_emb: torch.Tensor, output_emb: torch.Tensor, goal_emb: torch.Tensor) -> float:
-        """Returns cosine margin [0.0, 1.0] — higher = better alignment"""
-        ...
-    
-    def compute_metric_stability(self, embeddings: List[torch.Tensor]) -> float:
-        """Returns stability score [0.0, 1.0] — higher = more consistent"""
-        ...
-
-@runtime_checkable
-class PolicyAnalyzerInterface(Protocol):
-    """Policy advantage and context fidelity analysis"""
-    def compute_advantage(self, plan_trace: 'PlanTrace', baseline_trace: Optional['PlanTrace'] = None) -> float:
-        """Returns advantage score [-1.0, 1.0] — higher = better policy choice"""
-        ...
-    
-    def compute_context_fidelity(self, output: Any, context_pack: 'ContextPack') -> float:
-        """Returns [0.0, 1.0] — higher = better context grounding"""
-        ...
-
-# ============================================================================
-# CONFIGURATION — What makes this evaluator adaptive
-# ============================================================================
-
-class EvaluationMode(str, Enum):
-    """Predefined evaluation profiles"""
-    WIKIPEDIA = "wikipedia"        # Strict on energy, HRM
-    RESEARCH = "research"          # Strict on margin, metric stability
-    EXPLORATION = "exploration"    # Loose thresholds, high creativity tolerance
-    AGGRESSIVE = "aggressive"      # Maximize improvement velocity
-    CONSERVATIVE = "conservative"  # Prioritize stability over novelty
-
-@dataclass
-class AxisConfig:
-    """Per-axis evaluation configuration"""
-    enabled: bool = True
-    weight: float = 1.0
-    threshold: Optional[float] = None  # For reflection triggers
-    direction: 'AxisDirection' = AxisDirection.HIGHER_IS_BETTER
-
-@dataclass
-class MultiLayerEvaluatorConfig:
-    """Full evaluator configuration"""
-    mode: EvaluationMode = EvaluationMode.CONSERVATIVE
-    
-    # Per-axis configs
-    axes: Dict[RewardAxis, AxisConfig] = field(default_factory=dict)
-    
-    # Component toggles
-    use_hrm: bool = True
-    use_certum: bool = True
-    use_embedding_store: bool = True
-    use_policy_analyzer: bool = True
-    
-    # Normalization
-    normalize_to_unit_sphere: bool = True
-    
-    def __post_init__(self):
-        # Default axis configs by mode
-        if not self.axes:
-            defaults = {
-                EvaluationMode.WIKIPEDIA: {
-                    RewardAxis.HRM_ALIGNMENT: AxisConfig(weight=1.5, threshold=0.7),
-                    RewardAxis.HALLUCINATION_ENERGY: AxisConfig(weight=2.0, threshold=0.3, direction=AxisDirection.LOWER_IS_BETTER),
-                    RewardAxis.EMBEDDING_MARGIN: AxisConfig(weight=1.0),
-                },
-                EvaluationMode.RESEARCH: {
-                    RewardAxis.EMBEDDING_MARGIN: AxisConfig(weight=1.5, threshold=0.5),
-                    RewardAxis.METRIC_ALIGNMENT: AxisConfig(weight=1.5, threshold=0.6),
-                    RewardAxis.HRM_ALIGNMENT: AxisConfig(weight=1.0),
-                },
-                EvaluationMode.EXPLORATION: {
-                    RewardAxis.POLICY_ADVANTAGE: AxisConfig(weight=1.2),
-                    RewardAxis.COHERENCE: AxisConfig(weight=1.0),
-                    # Higher energy tolerance
-                    RewardAxis.HALLUCINATION_ENERGY: AxisConfig(weight=0.5, threshold=0.6, direction=AxisDirection.LOWER_IS_BETTER),
-                },
-                EvaluationMode.CONSERVATIVE: {
-                    RewardAxis.HRM_ALIGNMENT: AxisConfig(weight=1.0, threshold=0.6),
-                    RewardAxis.CONTEXT_FIDELITY: AxisConfig(weight=1.0, threshold=0.6),
-                    RewardAxis.HALLUCINATION_ENERGY: AxisConfig(weight=1.0, threshold=0.4, direction=AxisDirection.LOWER_IS_BETTER),
-                }
-            }
-            self.axes = defaults[self.mode]
-
-# ============================================================================
-# MAIN EVALUATOR — The integration engine
-# ============================================================================
-
-class GovernanceReducer:
     def __init__(self, providers: List[SignalProvider]):
         self.providers = providers
 
     def evaluate(
         self,
-        context_pack: ContextPack,
-        plan_trace: PlanTrace,
-        output: Any,
-        base_bundle: ScoreBundle
+        context_pack,
+        plan_trace,
+        output,
+        **kwargs
     ) -> ScoreBundle:
 
-        aggregated_values = {}
-        diagnostics = {}
-        failures = []
-        confidences = []
+        results: Dict[str, ScoreResult] = {}
+        meta: Dict[str, Any] = {
+            "trace_id": getattr(plan_trace, "trace_id", None),
+            "evaluated_at": datetime.utcnow().isoformat(),
+        }
 
         for provider in self.providers:
-            result = provider.compute(
+            signal: SignalResult = provider.compute(
                 context_pack=context_pack,
                 plan_trace=plan_trace,
                 output=output,
-                score_bundle=base_bundle
+                **kwargs
             )
 
-            aggregated_values.update(result.axis_values)
-            diagnostics.update(result.diagnostics)
-            failures.extend(result.failure_signatures)
-            confidences.append(result.confidence)
+            for axis, value in signal.axis_values.items():
 
-        reward_vector = RewardVector(
-            values=aggregated_values,
-            trace_id=plan_trace.trace_id,
-            source_model="ELM_Governance",
-            confidence=sum(confidences)/len(confidences) if confidences else 1.0,
-            failure_signatures=failures
-        )
+                dim_name = axis.value  # dimension string
 
-        return ScoreBundle(
-            reward_vector=reward_vector,
-            plan_trace=plan_trace,
-            context_pack=context_pack,
-            raw_output=output,
-            raw_diagnostics=diagnostics
-        )
+                results[dim_name] = ScoreResult(
+                    dimension=dim_name,
+                    score=float(value) * 100.0,   # Stephanie uses 0-100 scale
+                    weight=1.0,
+                    rationale="ELM signal",
+                    source=provider.__class__.__name__,
+                    target_type="plan_trace",
+                    prompt_hash=None,
+                    attributes={
+                        "confidence": signal.confidence,
+                        "failures": signal.failure_signatures,
+                    }
+                )
+
+        return ScoreBundle(results=results, meta=meta)
+
+
+==================================================
+FILE: experiment\ablations.py
+==================================================
+
+# Ablation wrappers
 
 
 ==================================================
@@ -1811,33 +1743,66 @@ class BaselineCalibrator:
         return thresholds
 
 ==================================================
+FILE: experiment\dynamic_stability_benchmark.py
+==================================================
+
+from dataclasses import dataclass
+from typing import List, Any
+
+
+@dataclass
+class EpisodeLog:
+    episode: int
+    energy: float
+    variance: float
+    dominance: bool
+
+
+class DynamicStabilityBenchmark:
+    def __init__(self, system: Any):
+        self.system = system
+        self.logs: List[EpisodeLog] = []
+
+    def run(self, queries: List[Any], episodes: int = 100):
+        for ep in range(episodes):
+            query = queries[ep % len(queries)]
+            result = self.system.step(query)
+
+            self.logs.append(
+                EpisodeLog(
+                    episode=ep,
+                    energy=result.reward_vector.values.get("hallucination_energy", 0.0),
+                    variance=0.0,
+                    dominance=True,
+                )
+            )
+
+
+==================================================
 FILE: experiment\experiment.py
 ==================================================
 
-
+# experiment/experiment.py
 from typing import Any, Dict, List, Optional
 import numpy as np
-from ..governance.signal_extractor import GovernanceSignalExtractor
-from ..core.thresholds import CalibratedThresholds
+import logging
+from stephanie.components.elm.core.thresholds import CalibratedThresholds
+from stephanie.components.elm.governance.signal_extractor import GovernanceSignalExtractor
 from stephanie.components.elm.tracking.retention_tracker import RetentionTracker
+from stephanie.components.elm.tracking.collapse_detector import CollapseDetector
 
+logger = logging.getLogger(__name__)
 
 class ScoreBundleExperiment:
-    """
-    Experimental harness that works WITH your ScoreBundle system.
-    
-    Leverages existing persistence, logging, and scoring infrastructure.
-    """
-    
     def __init__(
         self,
-        system: Any,  # Your Stephanie engine with ScoreBundle output
+        system: Any,
         queries: List[Any],
-        thresholds: "CalibratedThresholds",
+        thresholds: CalibratedThresholds,
         extractor: GovernanceSignalExtractor,
         episodes: int = 1000,
         perturbation_episode: Optional[int] = None,
-        log_to_db: bool = True,  # Use your existing DB persistence
+        log_to_db: bool = True,
         seed: int = 42
     ):
         self.system = system
@@ -1855,92 +1820,76 @@ class ScoreBundleExperiment:
         self.collapse_detector = CollapseDetector(thresholds)
         
         np.random.seed(seed)
-    
+        logger.info(f"Experiment initialized: {episodes} episodes")
+
     def run(self) -> Dict[str, Any]:
-        """Execute experiment using your ScoreBundle infrastructure"""
-        
         for episode in range(self.episodes):
             query = np.random.choice(self.queries)
-            
-            # Your system returns ScoreBundle
             bundle_before = self.system.evaluate(query)
             
-            # Attempt improvement (reflection, retry, etc.)
             improved = self.system.attempt_improvement(query, bundle_before)
             
             if improved:
                 bundle_after = improved["bundle"]
-                reflection_trace = improved.get("reflection")
-                
-                # Check dominance using ScoreBundle.diff()
                 dominance_achieved = self.extractor.compute_dominance(
                     bundle_before, bundle_after
                 )
                 
                 if dominance_achieved:
-                    # Commit improvement (your existing persistence)
                     if self.log_to_db:
-                        self.system.commit_improvement(
-                            query, bundle_after, reflection_trace
-                        )
+                        self.system.commit_improvement(query, bundle_after)
                     
-                    # Extract governance metrics
                     metrics = self.extractor.extract_from_bundle(bundle_after)
-                    delta_vector = self.extractor.compute_delta_vector(
-                        bundle_before, bundle_after
-                    )
-                    
-                    episode_data = {
+                    self.episode_history.append({
                         "episode": episode,
-                        "query_id": query.id if hasattr(query, "id") else None,
                         "dominance_achieved": dominance_achieved,
-                        "metrics": metrics,
-                        "delta_vector": delta_vector,
-                        "bundle_before": bundle_before.to_dict(),
-                        "bundle_after": bundle_after.to_dict(),
-                    }
+                        "metrics": metrics
+                    })
                     
-                    self.episode_history.append(episode_data)
                     self.retention_tracker.update(episode, metrics)
                     
-                    # Real-time failure detection
                     failure = self._check_failure(metrics)
                     if failure:
                         return self._build_failure_result(episode, failure)
             
-            # Progress logging
             if episode % 100 == 0:
                 self._log_progress(episode)
         
         return self._build_success_result()
     
     def _check_failure(self, metrics: Dict[str, float]) -> Optional[str]:
-        """Check governance metrics against calibrated thresholds"""
-        
-        # Energy check
         energy = metrics.get("energy_raw", 0)
         if energy > self.thresholds.energy_max:
-            return f"Energy exceeded: {energy:.2f} > {self.thresholds.energy_max:.2f}"
+            return f"Energy exceeded: {energy:.2f}"
         
-        # HRM alignment check
         hrm = metrics.get("hrm_alignment", 1.0)
         if hrm < self.thresholds.hrm_min:
-            return f"HRM alignment collapsed: {hrm:.2f} < {self.thresholds.hrm_min:.2f}"
+            return f"HRM alignment collapsed: {hrm:.2f}"
         
-        # Embedding margin check
         margin = metrics.get("embedding_margin", 0.0)
         if margin < self.thresholds.margin_min:
-            return f"Embedding margin collapsed: {margin:.2f} < {self.thresholds.margin_min:.2f}"
+            return f"Embedding margin collapsed: {margin:.2f}"
         
         return None
     
-    def _build_success_result(self) -> Dict[str, Any]:
-        """Aggregate results across all episodes"""
+    def _log_progress(self, episode: int):
+        if not self.episode_history:
+            return
         
+        recent = self.episode_history[-100:] if len(self.episode_history) >= 100 else self.episode_history
+        energies = [ep["metrics"].get("energy_raw", 0) for ep in recent]
+        dominances = [ep["dominance_achieved"] for ep in recent]
+        
+        logger.info(
+            f"Episode {episode}/{self.episodes} | "
+            f"Energy: {np.mean(energies):.3f} | "
+            f"Dominance: {np.mean(dominances):.2%}"
+        )
+    
+    def _build_success_result(self) -> Dict[str, Any]:
         if not self.episode_history:
             return {"status": "failed", "reason": "no episodes completed"}
         
-        # Extract metrics arrays
         energies = [ep["metrics"].get("energy_raw", 0) for ep in self.episode_history]
         hrms = [ep["metrics"].get("hrm_alignment", 0) for ep in self.episode_history]
         dominances = [ep["dominance_achieved"] for ep in self.episode_history]
@@ -1962,6 +1911,14 @@ class ScoreBundleExperiment:
                 "dominance_rate": float(np.mean(dominances)),
             },
             "retention_scores": self.retention_tracker.get_scores(),
+        }
+    
+    def _build_failure_result(self, episode: int, failure: str) -> Dict[str, Any]:
+        return {
+            "status": "failed",
+            "episode": episode,
+            "failure": failure,
+            "metrics_summary": self._build_success_result()["metrics_summary"],
         }
 
 ==================================================
@@ -2231,6 +2188,13 @@ class ExperimentPersistence:
                 }
                 for eval in results
             ]
+
+==================================================
+FILE: experiment\logging_schema.py
+==================================================
+
+# JSONL logging schema
+
 
 ==================================================
 FILE: experiment\perturbation_injector.py
@@ -2585,6 +2549,12 @@ __all__ = [
     "create_perturbation_config",
     "register_custom_severity"
 ]
+
+==================================================
+FILE: experiment\__init__.py
+==================================================
+
+
 
 ==================================================
 FILE: governance\dominance_checker.py
@@ -3248,7 +3218,7 @@ FILE: governance\signal_extractor.py
 from typing import Dict, List
 from enum import Enum
 from stephanie.data.score_bundle import ScoreBundle
-from stephanie.components.elm.core.reward_vector import RewardAxis
+from stephanie.components.elm.reward_vector import RewardAxis
 from stephanie.data.score_result import ScoreResult
 
 class AxisDirection(str, Enum):
@@ -3429,12 +3399,13 @@ class GovernanceSignalExtractor:
 FILE: orchestration\orchestrator.py
 ==================================================
 
+
 class ELMOrchestrator:
 
     def __init__(
         self,
-        core_evaluator,         # Stephanie's main evaluator
-        governance_reducer,     # ELM reducer
+        core_evaluator,
+        governance_reducer,
         reflection_engine
     ):
         self.core = core_evaluator
@@ -3450,7 +3421,7 @@ class ELMOrchestrator:
             output=model_output
         )
 
-        # 2. Governance layer
+        # 2. Governance reduction
         governed_bundle = self.governance.evaluate(
             context_pack=context_pack,
             plan_trace=plan_trace,
@@ -3458,11 +3429,12 @@ class ELMOrchestrator:
             base_bundle=base_bundle
         )
 
-        # 3. Reflection trigger
+        # 3. Reflection decision
         if governed_bundle.reward_vector.failure_signatures:
-            return self.reflector.generate(governed_bundle)
+            reflection = self.reflector.generate(governed_bundle)
+            return governed_bundle, reflection
 
-        return governed_bundle
+        return governed_bundle, None
 
 
 ==================================================
@@ -3846,6 +3818,377 @@ __all__ = [
     "MockSystem",
     "validate_system_implementation"
 ]
+
+==================================================
+FILE: plugin\adaptive_improvement_plugin.py
+==================================================
+
+class AdaptiveImprovementPlugin:
+
+    def __init__(self, evaluator, comparator, governor, reflection_engine, applier):
+        self.evaluator = evaluator
+        self.comparator = comparator
+        self.governor = governor
+        self.reflection_engine = reflection_engine
+        self.applier = applier
+
+    def improve(self, context, trace, output, model):
+
+        before_bundle = self.evaluator.evaluate(context, trace, output)
+
+        reflection_trace = self.reflection_engine.generate_reflection(before_bundle)
+
+        improved_output = self.applier.apply_reflection(
+            original_output=output,
+            reflection=reflection_trace,
+            model=model,
+            context_pack=context,
+        )
+
+        after_bundle = self.evaluator.evaluate(context, trace, improved_output)
+
+        if not self.governor.should_accept_update(before_bundle, after_bundle):
+            return output, before_bundle
+
+        if self.comparator.dominates(
+            before_bundle,
+            after_bundle,
+            critical_axes=["hallucination_energy", "hrm_alignment"],
+        ):
+            return improved_output, after_bundle
+
+        return output, before_bundle
+
+
+==================================================
+FILE: plugin\__init__.py
+==================================================
+
+
+
+==================================================
+FILE: policy\adaptive_policy.py
+==================================================
+
+# AdaptivePolicy implementation
+
+
+==================================================
+FILE: policy\policy_container.py
+==================================================
+
+# PolicyContainer implementation
+
+
+==================================================
+FILE: policy\regime_controller.py
+==================================================
+
+# RegimeController implementation
+
+
+==================================================
+FILE: policy\__init__.py
+==================================================
+
+
+
+==================================================
+FILE: providers\base.py
+==================================================
+
+from dataclasses import dataclass, field
+from typing import Dict, List, Protocol, Any
+
+from ..axes import RewardAxis
+
+
+@dataclass
+class SignalResult:
+    axis_values: Dict[RewardAxis, float]
+    diagnostics: Dict[str, Any] = field(default_factory=dict)
+    failure_signatures: List[str] = field(default_factory=list)
+    confidence: float = 1.0
+
+
+class SignalProvider(Protocol):
+    def compute(
+        self,
+        context_pack: Any,
+        plan_trace: Any,
+        output: Any,
+        **kwargs
+    ) -> SignalResult:
+        ...
+
+
+==================================================
+FILE: providers\certum_provider.py
+==================================================
+
+from typing import Any
+from .base import SignalProvider, SignalResult
+from ..axes import RewardAxis
+
+
+class CertumProvider(SignalProvider):
+    def __init__(self, energy_model: Any):
+        self.model = energy_model
+
+    def compute(self, context_pack: Any, plan_trace: Any, output: Any, **kwargs) -> SignalResult:
+        energy = float(self.model.compute_energy(output))
+        failures = ["energy_spike"] if energy > 0.5 else []
+
+        return SignalResult(
+            axis_values={RewardAxis.HALLUCINATION_ENERGY: energy},
+            diagnostics={"energy_raw": energy},
+            failure_signatures=failures,
+            confidence=1.0,
+        )
+
+
+==================================================
+FILE: providers\embedding_provider.py
+==================================================
+
+import torch
+from typing import Any
+from .base import SignalProvider, SignalResult
+from ..axes import RewardAxis
+
+
+class EmbeddingProvider(SignalProvider):
+    def __init__(self, embedder: Any):
+        self.embedder = embedder
+
+    def compute(self, context_pack: Any, plan_trace: Any, output: Any, **kwargs) -> SignalResult:
+        goal_emb = kwargs.get("goal_embedding")
+        output_emb = self.embedder.encode(output)
+
+        margin = torch.nn.functional.cosine_similarity(output_emb, goal_emb, dim=0).item()
+
+        return SignalResult(
+            axis_values={RewardAxis.EMBEDDING_MARGIN: margin},
+            diagnostics={"margin": margin},
+            confidence=0.95,
+        )
+
+
+==================================================
+FILE: providers\embedding_ptovider.py
+==================================================
+
+
+
+==================================================
+FILE: providers\hrm_provider.py
+==================================================
+
+from typing import Any
+from .base import SignalProvider, SignalResult
+from ..axes import RewardAxis
+
+
+class HRMProvider(SignalProvider):
+    def __init__(self, hrm_model: Any):
+        self.model = hrm_model
+
+    def compute(self, context_pack: Any, plan_trace: Any, output: Any, **kwargs) -> SignalResult:
+        score = float(self.model.score(output))
+
+        return SignalResult(
+            axis_values={RewardAxis.HRM_ALIGNMENT: score},
+            diagnostics={"hrm_raw": score},
+            confidence=0.9,
+        )
+
+
+==================================================
+FILE: providers\policy_provider.py
+==================================================
+
+# PolicyProvider implementation
+
+
+==================================================
+FILE: providers\__init__.py
+==================================================
+
+
+
+==================================================
+FILE: reflection\reflection_application.py
+==================================================
+
+from stephanie.components.elm.reflection.reflection_trace import ReflectionTrace
+
+
+class ReflectionApplier:
+
+    def apply_reflection(
+        self,
+        original_output: str,
+        reflection: ReflectionTrace,
+        model,
+        context_pack,
+    ) -> str:
+        """
+        Applies structured reflection by re-running model
+        with corrective constraints.
+        """
+
+        if not reflection.failed_axes:
+            return original_output
+
+        correction_prompt = (
+            "You previously produced the following output:\n\n"
+            f"{original_output}\n\n"
+            "It had the following issues:\n"
+        )
+
+        for axis in reflection.failed_axes:
+            correction_prompt += f"- {axis}\n"
+
+        correction_prompt += "\nPlease revise the output to correct these issues.\n"
+
+        return model.generate(
+            context=context_pack,
+            additional_constraints=correction_prompt,
+        )
+
+
+==================================================
+FILE: reflection\reflection_engine.py
+==================================================
+
+# components/elm/reflection/reflection_engine.py
+
+from typing import List
+from stephanie.data.score_bundle import ScoreBundle
+from components.elm.reflection.reflection_trace import ReflectionTrace
+
+
+class ReflectionEngine:
+
+    def __init__(self, energy_threshold: float = 55.0, hrm_threshold: float = 60.0):
+        self.energy_threshold = energy_threshold
+        self.hrm_threshold = hrm_threshold
+
+    def generate_reflection(self, bundle: ScoreBundle) -> ReflectionTrace:
+
+        failed_axes: List[str] = []
+        instructions = {}
+        focus = []
+
+        # --- Hallucination Energy ---
+        energy = bundle.get("hallucination_energy")
+        if energy and energy.score > self.energy_threshold:
+            failed_axes.append("hallucination_energy")
+            focus.append("hallucination_energy")
+            instructions["grounding"] = (
+                "Re-evaluate claims against retrieved context. "
+                "Remove speculative statements not supported by evidence."
+            )
+
+        # --- HRM Alignment ---
+        hrm = bundle.get("hrm_alignment")
+        if hrm and hrm.score < self.hrm_threshold:
+            failed_axes.append("hrm_alignment")
+            focus.append("hrm_alignment")
+            instructions["reasoning"] = (
+                "Clarify logical steps. Make reasoning explicit. "
+                "Avoid implicit assumptions."
+            )
+
+        # --- Embedding Margin ---
+        margin = bundle.get("embedding_margin")
+        if margin and margin.score < 50.0:
+            failed_axes.append("embedding_margin")
+            focus.append("embedding_margin")
+            instructions["alignment"] = (
+                "Align output terminology with retrieved context anchors."
+            )
+
+        confidence = 1.0 if failed_axes else 0.0
+
+        return ReflectionTrace(
+            original_trace_id=bundle.meta.get("trace_id", "unknown"),
+            failed_axes=failed_axes,
+            correction_instructions=instructions,
+            focus_axes=focus,
+            confidence=confidence,
+        )
+
+
+==================================================
+FILE: reflection\reflection_trace.py
+==================================================
+
+# components/elm/reflection/reflection_trace.py
+
+from dataclasses import dataclass
+from typing import List, Dict
+
+
+@dataclass
+class ReflectionTrace:
+    original_trace_id: str
+    failed_axes: List[str]
+    correction_instructions: Dict[str, str]
+    focus_axes: List[str]
+    confidence: float
+
+
+==================================================
+FILE: reflection\__init__.py
+==================================================
+
+
+
+==================================================
+FILE: stability\geometry_stability.py
+==================================================
+
+# geometry_governor.py
+
+from stephanie.data.score_bundle import ScoreBundle
+
+
+class GeometryStabilityGovernor:
+
+    def should_accept_update(
+        self,
+        before: ScoreBundle,
+        after: ScoreBundle,
+    ) -> bool:
+
+        energy_before = before.get("hallucination_energy")
+        energy_after = after.get("hallucination_energy")
+
+        if energy_before and energy_after:
+            if energy_after.score > 55.0:  # critical threshold
+                return False
+
+        # embedding variance check
+        var = after.get("embedding_variance")
+        if var and var.score < 30.0:
+            return False
+
+        return True
+
+
+==================================================
+FILE: stability\retention_metrics.py
+==================================================
+
+# Retention metric formalization
+
+
+==================================================
+FILE: stability\__init__.py
+==================================================
+
+
 
 ==================================================
 FILE: tracking\collapse_detector.py
@@ -4608,3 +4951,16 @@ class RetentionTracker:
     
     def __repr__(self) -> str:
         return self.__str__()
+
+==================================================
+FILE: utils\metrics.py
+==================================================
+
+# Utility metrics helpers
+
+
+==================================================
+FILE: utils\__init__.py
+==================================================
+
+
