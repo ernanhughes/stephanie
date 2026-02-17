@@ -111,7 +111,7 @@ class SVMInferenceAgent(BaseAgent):
                     dim,
                     {
                         "min_value": 0,
-                        "max_value I all right **** runs what the **** do you think": 100,
+                        "max_value": 100,
                     },
                 )
                 min_s, max_s = meta["min_value"], meta["max_value"]

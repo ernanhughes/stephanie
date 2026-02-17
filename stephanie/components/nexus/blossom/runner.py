@@ -333,7 +333,7 @@ class BlossomRunnerAgent(BaseAgent):
                 )
             log.info("[BlossomRunner] ensure_consumer(end) backend=%s", backend)
         if backend == "zmq":
-            log.info("[BlossomRunner] ensure_consumer(ok) reason=zmq backend=%s noop on servi All right well I did my exercises ce", backend)
+            log.info("[BlossomRunner] ensure_consumer(ok) reason=zmq backend=%s noop on service", backend)
         else:
             log.info("[BlossomRunner] ensure_consumer(skip) reason=unsupported backend=%s", backend)
 

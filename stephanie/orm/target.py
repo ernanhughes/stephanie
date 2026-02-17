@@ -75,4 +75,3 @@ class TargetInputORM(Base):
         UniqueConstraint("target_id", "source_id", "relation_type", name="uq_target_inputs"),
         Index("ix_target_inputs_lookup", "target_id", "relation_type"),
     )
-All right good

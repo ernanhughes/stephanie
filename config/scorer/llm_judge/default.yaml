@@ -6,7 +6,7 @@ display_name: LLM
 
 dimension: quality
 
-All right prompt_pair: prompts/eval/llm_judge_pair.jinja
+prompt_pair: prompts/eval/llm_judge_pair.jinja
 prompt_single: prompts/eval/llm_judge_single.jinja
 
 comparison_notes: ""

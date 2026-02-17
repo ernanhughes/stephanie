@@ -49,7 +49,7 @@ class DocumentSectionProfilerAgent(BaseAgent):
 
     async def run(self, context: dict) -> dict:
         """
-        Main execution method. All right I don't need this 9:00 AM OK
+        Main execution method. 
 
         Input:
             context[self.input_key]: list of documents with fields:

@@ -1,4 +1,4 @@
-All right and then we just I don't need this and that's that's a conversation right well rather than MondayYou are evaluating the implementability of a paper’s ideas.
+You are evaluating the implementability of a paper’s ideas.
 
 Paper title: {{ document.title }}
 Paper summary: {{ document.summary }}

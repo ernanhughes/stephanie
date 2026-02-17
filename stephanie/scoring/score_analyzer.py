@@ -15,7 +15,7 @@ from sklearn.linear_model import LinearRegression
 class ScoreAnalyzer:
     def __init__(self, score_data: pd.DataFrame):
         """
-        Expected format:All right
+        Expected format:
         - 'hypothesis_id': str
         - 'dimension': str
         - 'score': float
