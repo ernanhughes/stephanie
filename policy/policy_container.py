@@ -8,10 +8,7 @@ from typing import Callable, Any, Dict, List, Optional
 
 import numpy as np
 
-from policy.calibration.adaptive_calibrator import (
-    AdaptiveCalibrator,
-    CalibrationResult,
-)
+from policy.core.protocols import CalibratorProtocol
 
 
 # ============================================================
@@ -20,10 +17,10 @@ from policy.calibration.adaptive_calibrator import (
 
 @dataclass
 class PolicyDecision:
-    verdict: str              # "ACCEPT", "REVIEW", "REJECT"
+    verdict: str
     energy: float
     margin: float
-    drift_detected: bool
+    drift_score: float
     timestamp: float
     metadata: Dict[str, Any]
 
@@ -39,47 +36,22 @@ class PolicyContainer:
     Wraps ANY AI system and enforces calibrated
     hallucination-energy-based governance.
 
-    Completely independent of Stephanie.
+    Completely independent of Stephanie internals.
     """
 
     def __init__(
         self,
         ai_callable: Callable[..., Any],
         energy_function: Callable[[Any, Dict], float],
-        calibrator: AdaptiveCalibrator,
-        calibration: CalibrationResult,
+        calibrator: Optional[CalibratorProtocol] = None,
         review_margin: float = 0.0,
         reject_margin: float = -2.0,
         drift_threshold: float = 2.0,
     ):
-        """
-        Args:
-            ai_callable:
-                Black-box AI system (e.g. Stephanie.run)
-
-            energy_function:
-                Callable that computes energy from AI output + context
-
-            calibrator:
-                AdaptiveCalibrator instance
-
-            calibration:
-                Precomputed calibration result
-
-            review_margin:
-                Z-score margin below which we go to REVIEW
-
-            reject_margin:
-                Z-score margin below which we REJECT
-
-            drift_threshold:
-                Z-score shift threshold for drift detection
-        """
 
         self.ai_callable = ai_callable
         self.energy_function = energy_function
         self.calibrator = calibrator
-        self.calibration = calibration
 
         self.review_margin = review_margin
         self.reject_margin = reject_margin
@@ -91,10 +63,7 @@ class PolicyContainer:
     # Main Execution
     # ------------------------------------------------------------
 
-    def execute(self, *args, context: Optional[Dict] = None, **kwargs) -> tuple[Any, PolicyDecision]:
-        """
-        Execute AI system under policy governance.
-        """
+    def execute(self, *args, context: Optional[Dict] = None, **kwargs):
 
         context = context or {}
 
@@ -106,42 +75,33 @@ class PolicyContainer:
 
         self.recent_energies.append(energy)
 
-        # 3️⃣ Compute normalized margin
-        # -------------------------------------------------------
-        # Calibration / Margin Handling (Optional)
-        # -------------------------------------------------------
-        if self.calibrator is not None:
+        # 3️⃣ Update calibrator (optional)
+        if self.calibrator:
             self.calibrator.update(energy)
 
-        if self.calibrator is not None:
-            margin = self.calibrator.margin_score(
-                energy=energy,
-                calibration=self.calibration,
+        # 4️⃣ Compute margin
+        if self.calibrator:
+            margin = self.calibrator.margin_score(energy)
+        else:
+            # raw fallback
+            margin = -energy
+
+        # 5️⃣ Drift detection
+        if self.calibrator:
+            drift_score = self.calibrator.detect_drift(
+                self.recent_energies[-100:]
             )
         else:
-            # Fallback simple margin logic
-            if self.calibration and hasattr(self.calibration, "tau_accept"):
-                tau = float(self.calibration.tau_accept)
-                margin = tau - float(energy)
-            else:
-                # No calibration → raw margin
-                margin = -float(energy)
+            drift_score = 0.0
 
-        # 4️⃣ Drift detection
-        drift = self.calibrator.detect_drift(
-            self.recent_energies[-100:],  # rolling window
-            self.calibration,
-            drift_threshold=self.drift_threshold,
-        )
-
-        # 5️⃣ Decision logic
+        # 6️⃣ Decision
         verdict = self._decide(margin)
 
         decision = PolicyDecision(
             verdict=verdict,
             energy=energy,
             margin=margin,
-            drift_detected=drift,
+            drift_score=drift_score,
             timestamp=time.time(),
             metadata=context,
         )
@@ -153,9 +113,6 @@ class PolicyContainer:
     # ------------------------------------------------------------
 
     def _decide(self, margin: float) -> str:
-        """
-        Decision boundary in normalized Z-space.
-        """
 
         if margin <= self.reject_margin:
             return "REJECT"
@@ -166,36 +123,17 @@ class PolicyContainer:
         return "ACCEPT"
 
     # ------------------------------------------------------------
-    # Recalibration Hook
-    # ------------------------------------------------------------
-
-    def recalibrate(
-        self,
-        positive_energies: List[float],
-        hard_negative_energies: Optional[List[float]] = None,
-    ):
-        """
-        Update calibration live.
-        """
-
-        self.calibration = self.calibrator.calibrate(
-            positive_energies,
-            hard_negative_energies,
-        )
-
-    # ------------------------------------------------------------
     # Diagnostics
     # ------------------------------------------------------------
 
     def diagnostics(self) -> Dict[str, Any]:
-        """
-        Return current policy state.
-        """
+
+        recent_mean = (
+            float(np.mean(self.recent_energies[-50:]))
+            if self.recent_energies else None
+        )
 
         return {
-            "tau_energy": self.calibration.tau_energy,
-            "energy_mean": self.calibration.energy_mean,
-            "energy_std": self.calibration.energy_std,
-            "hard_negative_gap_norm": self.calibration.hard_negative_gap_norm,
-            "recent_energy_mean": float(np.mean(self.recent_energies[-50:])) if self.recent_energies else None,
+            "recent_energy_mean": recent_mean,
+            "recent_count": len(self.recent_energies),
         }

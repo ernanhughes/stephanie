@@ -46,7 +46,6 @@ __all__ = [
     "ContextPackCollection",
     "ContextType",
     "Modality",
-    "RewardVector",
     "RewardAxis",
     "CalibratedThresholds",
     

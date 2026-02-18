@@ -7,7 +7,6 @@ class GovernanceSignalExtractor:
     """
     Governance logic operating directly on ScoreBundle.
 
-    No RewardVector.
     No static axis enums.
     Fully dimension-native.
     """

@@ -1,7 +1,6 @@
 # policy/adapters/geometry_adapter.py
 
-from typing import Dict, List
-import numpy as np
+from typing import Dict
 
 from policy.geometry.claim_evidence import ClaimEvidenceGeometry
 from policy.protocols.embedder import Embedder

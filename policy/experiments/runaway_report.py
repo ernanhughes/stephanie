@@ -8,6 +8,8 @@ import matplotlib.pyplot as plt
 from pathlib import Path
 from typing import Dict
 
+import scipy
+
 from policy.experiments.runaway_experiment import RunawayDeclineExperiment
 
 
@@ -32,7 +34,7 @@ class RunawayReportHarness:
         policy_container=None,
         episodes: int = 1000,
         noise_scale: float = 0.05,
-        out_dir: str = "policy_runs",
+        out_dir: str = "data/policy_runs",
     ):
         self.ai_callable = ai_callable
         self.energy_function = energy_function
@@ -72,6 +74,22 @@ class RunawayReportHarness:
 
         bounded = policy_exp.run()
 
+
+        from policy.experiments.plotting import (
+            plot_trajectories,
+            plot_rolling_variance,
+            plot_rolling_mean,
+            plot_histogram,
+        )
+
+        out_dir = self.out_dir / "plots"
+        out_dir.mkdir(parents=True, exist_ok=True)
+
+        plot_trajectories(baseline["energies"], bounded["energies"], out_dir)
+        plot_rolling_variance(baseline["energies"], bounded["energies"], out_dir)
+        plot_rolling_mean(baseline["energies"], bounded["energies"], out_dir)
+        plot_histogram(baseline["energies"], bounded["energies"], out_dir)
+
         report = self._analyze(baseline, bounded)
 
         self._plot_timeseries(baseline["energies"], bounded["energies"])
@@ -101,13 +119,19 @@ class RunawayReportHarness:
                 "max_energy": float(np.max(baseline["energies"])),
                 "final_energy": float(baseline["energies"][-1]),
                 "slope": slope(baseline["energies"]),
+                "variance": float(np.var(baseline["energies"])),
+                "energy_std": float(np.std(baseline["energies"])),
+                "wasserstein_distance": float(scipy.stats.wasserstein_distance(baseline["energies"], bounded["energies"]))
             },
             "bounded": {
                 "mean_energy": float(np.mean(bounded["energies"])),
                 "max_energy": float(np.max(bounded["energies"])),
                 "final_energy": float(bounded["energies"][-1]),
                 "slope": slope(bounded["energies"]),
+                "variance": float(np.var(bounded["energies"])),
                 "accept_rate": bounded["accept_rate"],
+                "energy_std": float(np.std(bounded["energies"])),
+                "wasserstein_distance": float(scipy.stats.wasserstein_distance(bounded["energies"], baseline["energies"]))
             }
         }
 

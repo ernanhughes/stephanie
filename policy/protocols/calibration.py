@@ -4,6 +4,31 @@ import numpy as np
 
 
 class Calibrator(Protocol):
+
+    from typing import Protocol, List, Optional
+
+
+class CalibratorProtocol(Protocol):
+
+    def update(self, energy: float) -> None:
+        ...
+
+    def margin_score(self, energy: float) -> float:
+        ...
+
+    def detect_drift(self, recent_history: List[float]) -> float:
+        ...
+
+    def recalibrate(
+        self,
+        positive_energies: List[float],
+        hard_negative_energies: Optional[List[float]] = None,
+    ) -> None:
+        ...
+
+    def diagnostics(self) -> dict:
+        ...
+
     """
     Threshold calibration interface.
 

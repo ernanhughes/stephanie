@@ -76,6 +76,25 @@ class SupportDiagnostics:
         }
 
 
+@dataclass
+class GovernanceVector:
+    """
+    Normalized governance metrics in [-inf, +inf] space.
+
+    All values must be direction-corrected:
+        positive = improvement
+        negative = risk
+    """
+
+    axes: Dict[str, float]
+
+    def get(self, key: str, default: float = 0.0) -> float:
+        return self.axes.get(key, default)
+
+    def as_dict(self) -> Dict[str, float]:
+        return dict(self.axes)
+
+
 @dataclass(frozen=True)
 class GeometryDiagnostics:
     """
