@@ -107,10 +107,25 @@ class PolicyContainer:
         self.recent_energies.append(energy)
 
         # 3️⃣ Compute normalized margin
-        margin = self.calibrator.margin_score(
-            energy=energy,
-            calibration=self.calibration,
-        )
+        # -------------------------------------------------------
+        # Calibration / Margin Handling (Optional)
+        # -------------------------------------------------------
+        if self.calibrator is not None:
+            self.calibrator.update(energy)
+
+        if self.calibrator is not None:
+            margin = self.calibrator.margin_score(
+                energy=energy,
+                calibration=self.calibration,
+            )
+        else:
+            # Fallback simple margin logic
+            if self.calibration and hasattr(self.calibration, "tau_accept"):
+                tau = float(self.calibration.tau_accept)
+                margin = tau - float(energy)
+            else:
+                # No calibration → raw margin
+                margin = -float(energy)
 
         # 4️⃣ Drift detection
         drift = self.calibrator.detect_drift(
