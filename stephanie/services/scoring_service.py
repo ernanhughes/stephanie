@@ -319,6 +319,9 @@ class ScoringService(Service):
             if name == "vpm":
                 from stephanie.scoring.scorer.vpm_scorer import VPMScorer
                 return VPMScorer(scorer_cfg, memory=self.memory, container=self.container, logger=self.logger)
+            if name == "hallucination":
+                from stephanie.scoring.scorer.hallucination_scorer import HallucinationScorer
+                return HallucinationScorer(scorer_cfg, memory=self.memory, container=self.container, logger=self.logger)
             if name in ("contrastive_ranker", "contrastive", "reward"):
                 # We allow "reward" to be an alias for contrastive pairwise scorer.
                 from stephanie.scoring.scorer.contrastive_ranker_scorer import \
