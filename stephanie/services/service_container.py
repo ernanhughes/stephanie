@@ -24,6 +24,7 @@ from typing import Any, Callable, Dict, List
 from stephanie.services.bus.hybrid_bus import HybridKnowledgeBus
 from stephanie.services.service_protocol import Service
 
+logger = logging.getLogger(__name__)
 
 class ServiceContainer:
     """
@@ -47,10 +48,9 @@ class ServiceContainer:
         db_service = container.get('database')  # Initializes config first, then database
     """
 
-    def __init__(self, cfg: Dict[str, Any], memory, logger=None):
+    def __init__(self, cfg: Dict[str, Any], memory: Any):
         self.cfg = cfg
         self.memory = memory
-        self.logger = logger or logging.getLogger("services")
         self._factories: Dict[str, Callable[[], Service]] = {}
         self._services: Dict[str, Service] = {}
         self._dependencies: Dict[
@@ -65,9 +65,9 @@ class ServiceContainer:
         self._bus = HybridKnowledgeBus(self.cfg.get("bus", {}), self.logger)
         connected = await self._bus.connect()
         if not connected:
-            self.logger.error("Failed to connect to event bus")
+            logger.error("Failed to connect to event bus")
         else:
-            self.logger.info(
+            logger.info(
                 f"Connected to event bus backend: {self._bus.get_backend()}"
             )
 
@@ -166,7 +166,7 @@ class ServiceContainer:
                 if hasattr(self._services[name], "shutdown"):
                     await self._services[name].shutdown()
             except Exception as e:
-                self.logger.error(f"Error shutting down {name}: {str(e)}")
+                logger.error(f"Error shutting down {name}: {str(e)}")
 
         # Shutdown the bus last
         if self._bus:
