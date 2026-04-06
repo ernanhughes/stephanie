@@ -173,8 +173,8 @@ class Supervisor:
         OmegaConf.update(self.cfg, "runtime.run_id", run_id, merge=False)
         OmegaConf.update(self.cfg, "runtime.pipeline_run_id", run_id, merge=False)
 
-        plan_trace_monitor: PlanTraceService = self.container.get("plan_trace")
-        plan_trace_monitor.start_pipeline(self.context(), run_id)
+        plan_trace_service: PlanTraceService = self.container.get("plan_trace")
+        plan_trace_service.start_pipeline(self.context(), run_id)
 
         # Adjust pipeline if needed
         await self.maybe_adjust_pipeline(self.context())
@@ -187,17 +187,17 @@ class Supervisor:
             # Run pipeline stages with simple dict (agents stay unaware of ContextManager)
             result_context = await self._run_pipeline_stages(self.context())
 
-            await plan_trace_monitor.complete_pipeline(result_context)
-            await plan_trace_monitor.score_pipeline(result_context)
+            await plan_trace_service.complete_pipeline(result_context)
+            await plan_trace_service.score_pipeline(result_context)
             
 
             return result_context
         except Exception as e:
             self.logger.log("PipelineRunFailed", {"error": str(e)})
-            plan_trace_monitor.handle_pipeline_error(e, self.context())
+            plan_trace_service.handle_pipeline_error(e, self.context())
             raise e
         finally:
-            plan_trace_monitor.reset()
+            plan_trace_service.reset()
             # Save context to DB if configured
             if self.cfg.get(SAVE_CONTEXT, False):
                 self.context.save_to_db()
@@ -217,7 +217,7 @@ class Supervisor:
         ]
 
     async def _run_pipeline_stages(self, context: dict) -> dict:
-        plan_trace_monitor: PlanTraceService = self.container.get("plan_trace")
+        plan_trace_service: PlanTraceService = self.container.get("plan_trace")
         final_output_key = ""
         for stage_idx, stage in enumerate(self.pipeline_stages):
             stage_details = {
@@ -232,7 +232,7 @@ class Supervisor:
             context.setdefault(REPORTS, []).append(stage_report)
 
             # Record stage start
-            plan_trace_monitor.start_stage(stage.name, context, stage_idx)
+            plan_trace_service.start_stage(stage.name, context, stage_idx)
             
             if not stage.enabled:
                 self.logger.log("PipelineStageSkipped", {STAGE: stage.name})
@@ -293,13 +293,13 @@ class Supervisor:
                 context[SCORABLE_DETAILS] = agent.get_scorable_details()
 
                 # Record stage completion
-                await plan_trace_monitor.complete_stage(stage.name, context, stage_idx)
+                await plan_trace_service.complete_stage(stage.name, context, stage_idx)
                 
                 stage_details["status"] = "✅ completed"
                 stage_details["end_time"] = datetime.now().strftime("%H:%M:%S")
                 
             except Exception as e:
-                plan_trace_monitor.handle_stage_error(stage.name, e, stage_idx)
+                plan_trace_service.handle_stage_error(stage.name, e, stage_idx)
                 
                 self.logger.log("PipelineStageFailed", {"stage": stage.name, "error": str(e)})
                 stage_details["status"] = "💀 failed"

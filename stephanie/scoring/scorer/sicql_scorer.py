@@ -15,8 +15,6 @@ from stephanie.model.sicql import InContextQModel, PolicyHead, QHead, VHead
 from stephanie.model.text_encoder import TextEncoder
 from stephanie.scoring.scorable import Scorable
 from stephanie.scoring.scorer.base_scorer import BaseScorer
-from stephanie.scoring.scorer.model_health import (audit_load_state_dict,
-                                                   merge_load_audits)
 from stephanie.scoring.transforms.regression_tuner import RegressionTuner
 from stephanie.utils.file_utils import load_json
 from stephanie.utils.model_locator import ModelLocator

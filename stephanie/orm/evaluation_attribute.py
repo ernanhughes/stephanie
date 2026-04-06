@@ -46,17 +46,3 @@ class EvaluationAttributeORM(Base):
     extra = Column(JSON, nullable=True)  # For future extensibility
     created_at = Column(DateTime, default=datetime.now)
 
-    def to_dict(self):
-        return {
-            "dimension": self.dimension,
-            "source": self.source,
-            "q": self.q_value,
-            "v": self.v_value,
-            "advantage": self.advantage,
-            "pi": self.pi_value,
-            "entropy": self.entropy,
-            "uncertainty": self.uncertainty,
-            "td_error": self.td_error,
-            "expected_return": self.expected_return,
-            "policy_logits": self.policy_logits
-        }
