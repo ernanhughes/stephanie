@@ -69,11 +69,23 @@ def run(cfg: DictConfig):
     asyncio.run(main())
 
 
-
 if __name__ == "__main__":
-    # Suppress HTTPX logs
-    logging.getLogger().addFilter(lambda record: len(record.getMessage().strip()) > 10)
-    for name in ("numba", "httpcore", "httpcore.http11", "httpx", "LiteLLM", "transformers", "zeromodel", "zeromodel.config", "hnswlib", "matplotlib", "urllib3", "asyncio","PIL", "pdfminer"):
+    # Constants for log suppression
+    SUPPRESSED_LOGGERS = (
+        "numba", "httpcore", "httpcore.http11", "httpx", "LiteLLM", 
+        "transformers", "zeromodel", "zeromodel.config", "hnswlib", 
+        "matplotlib", "urllib3", "asyncio", "PIL", "pdfminer"
+    )
+    MIN_LOG_MESSAGE_LENGTH = 10
+    
+    # Suppress short log messages
+    logging.getLogger().addFilter(
+        lambda record: len(record.getMessage().strip()) > MIN_LOG_MESSAGE_LENGTH
+    )
+    
+    # Suppress verbose library loggers
+    for name in SUPPRESSED_LOGGERS:
         logging.getLogger(name).setLevel(logging.CRITICAL)
         logging.getLogger(name).propagate = False
+    
     run()
