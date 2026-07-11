@@ -332,3 +332,15 @@ def import_any(
         raise FileNotFoundError(f"Input path does not exist or is not a URL: {s}")
 
 
+
+def extract_page_texts(pdf_path: str) -> dict[int, str]:
+    try:
+        import fitz  # PyMuPDF
+    except Exception as e:
+        raise RuntimeError("PyMuPDF (fitz) is required for extract_page_texts(). Install pymupdf.") from e
+    doc = fitz.open(pdf_path)
+    out = {}
+    for i in range(doc.page_count):
+        page = doc.load_page(i)
+        out[i + 1] = page.get_text("text") or ""
+    return out

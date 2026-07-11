@@ -128,3 +128,9 @@ paper_spine_builder:
     api_key: null
     max_tokens: 512
     temperature: 0.2
+
+  # paper_spine_builder.yaml (or wherever this agent cfg lives)
+  dump:
+    enabled: true
+    run_dir: "runs/paper_blogs/"   # optional; defaults to runs/paper_blogs/{self.run_id}
+    max_text_chars: 240

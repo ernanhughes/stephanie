@@ -97,7 +97,7 @@ pipeline:
         Load input documents from specified sources (e.g., local files,
         URLs, databases) into the system for processing.
       cls: stephanie.components.information.agents.paper_pipeline.PaperPipelineAgent
-      enabled: true What
+      enabled: true
       iterations: 1
 
     - name: paper_spine_builder

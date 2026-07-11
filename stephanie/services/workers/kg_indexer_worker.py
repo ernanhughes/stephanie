@@ -50,6 +50,7 @@ class KnowledgeGraphIndexerWorker(BaseWorker):
         self.kg_service: KnowledgeGraphService = KnowledgeGraphService(
             cfg=cfg,
             memory=memory,
+            container=container,
             logger=log,
         )
         self.kg_service.initialize()
@@ -84,6 +85,7 @@ class KnowledgeGraphIndexerWorker(BaseWorker):
         self.kg_service = KnowledgeGraphService(
             cfg=self.cfg,
             memory=self.memory,
+            container=self.container,
             logger=log,
         )
         self.kg_service.initialize()

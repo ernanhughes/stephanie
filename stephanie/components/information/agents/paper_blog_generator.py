@@ -184,6 +184,10 @@ class PaperBlogGeneratorAgent(BaseAgent):
             section_spine = (
                 selected_spine[idx] if idx < len(selected_spine) else None
             )
+            matches = context.get("section_matches") or []
+
+            log.info("found %d matches for section %s", len(matches), getattr(sec, "section_id", "unknown"))
+
             section_tasks.append(
                 self._generate_section_block(
                     arxiv_id=arxiv_id,
@@ -194,6 +198,8 @@ class PaperBlogGeneratorAgent(BaseAgent):
                     clusters=clusters,
                     section_spine=section_spine,
                     context=context,
+                    all_sections=sections,          # NEW
+                    section_matches=matches,        # NEW
                 )
             )
 
@@ -379,6 +385,8 @@ Write a Markdown section that:
         clusters: List[ConceptCluster],
         section_spine: Optional[Any] = None,
         context: Dict[str, Any],
+        all_sections: List[PaperSection],
+        section_matches: List[Any],
     ) -> str:
         """
         Generate a single blog section for a given DocumentSection.
@@ -423,6 +431,26 @@ Write a Markdown section that:
 
         visuals_hint = self._build_visuals_markdown_for_spine(section_spine)
 
+        supports = self.select_support_sections(
+            root_section=section,
+            all_sections=all_sections,
+            section_matches=section_matches,
+            max_supports=8,
+        )
+
+        support_blocks = []
+        for s in supports:
+            title = getattr(s, "title", None) or getattr(s, "section_name", None) or "Section"
+            pid = getattr(s, "paper_arxiv_id", None) or getattr(s, "paper_id", None) or "unknown"
+            txt = (getattr(s, "summary", None) or getattr(s, "text", "") or "").strip()
+            if not txt:
+                continue
+            support_blocks.append(f"### {pid} — {title}\n{txt[:900]}")
+
+        support_context = "\n\n".join(support_blocks) if support_blocks else "(none)"
+
+        log.info("found %d support sections for section %s", len(supports), getattr(section, "section_id", "unknown"))  
+
         prompt = f"""
 You are an iterative writing assistant tasked with improving a technical blog section
 using the **GROWS Loop**:
@@ -461,6 +489,13 @@ Visual elements attached to this section (figures / tables) will be rendered
 automatically after your text. You do not need to write the Markdown image
 tags yourself, but you may briefly reference visuals in natural language if it
 helps the story.
+
+---
+Supporting excerpts from related papers (use these to strengthen accuracy & context; do not copy verbatim):
+{support_context}
+---
+
+##  Final task
 
 Your task:
 
@@ -592,6 +627,82 @@ Do NOT include any commentary about scores, the GROWS loop, or your process.
             len(blog_markdown or ""),
         )
         return blog_markdown or ""
+
+    @staticmethod
+    def _section_id(sec: Any) -> str:
+        return str(getattr(sec, "id", None) or getattr(sec, "section_id", None) or "")
+
+    @staticmethod
+    def _paper_id(sec: Any) -> str:
+        return str(getattr(sec, "paper_arxiv_id", None) or getattr(sec, "paper_id", None) or "")
+
+    @staticmethod
+    def _match_fields(m: Any) -> dict:
+        if isinstance(m, dict):
+            return m
+        # dataclass / object fallback
+        return {k: getattr(m, k) for k in dir(m) if not k.startswith("_")}
+
+    @staticmethod
+    def _extract_pair(m: dict) -> tuple[str, str, float]:
+        # try common patterns
+        a = m.get("a") or m.get("a_id") or m.get("left") or m.get("source") or m.get("source_id") or m.get("section_id")
+        b = m.get("b") or m.get(" I b_id") or m.get("right") or m.get("target") or m.get("target_id") or m.get("match_section_id")
+        s = m.get("score") or m.get("sim") or m.get("similarity") or m.get("cosine") or 0.0
+        return (str(a or ""), str(b or ""), float(s or 0.0))
+
+    @staticmethod
+    def select_support_sections(
+        *,
+        root_section: Any,
+        all_sections: list[Any],
+        section_matches: list[Any],
+        max_supports: int = 12,
+    ) -> list[Any]:
+        root_id = PaperBlogGeneratorAgent._section_id(root_section)
+        root_paper = PaperBlogGeneratorAgent._paper_id(root_section)
+        if not root_id:
+            return []
+
+        by_id = {PaperBlogGeneratorAgent._section_id(s): s for s in all_sections if PaperBlogGeneratorAgent._section_id(s)}
+        scored: list[tuple[float, Any]] = []
+
+        for m in section_matches or []:
+            d = PaperBlogGeneratorAgent._match_fields(m)
+            a, b, score = PaperBlogGeneratorAgent._extract_pair(d)
+            if not a or not b:
+                continue
+
+            other_id = None
+            if a == root_id:
+                other_id = b
+            elif b == root_id:
+                other_id = a
+            else:
+                continue
+
+            sec = by_id.get(other_id)
+            if not sec:
+                continue
+            # only pull from other papers
+            if PaperBlogGeneratorAgent._paper_id(sec) == root_paper:
+                continue
+
+            scored.append((score, sec))
+
+        scored.sort(key=lambda x: x[0], reverse=True)
+
+        out = []
+        seen = set()
+        for _, sec in scored:
+            sid = PaperBlogGeneratorAgent._section_id(sec)
+            if sid in seen:
+                continue
+            seen.add(sid)
+            out.append(sec)
+            if len(out) >= max_supports:
+                break
+        return out
 
 
     @staticmethod

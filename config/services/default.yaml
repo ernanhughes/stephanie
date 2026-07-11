@@ -196,4 +196,5 @@ services:
     args:
       cfg: ${cfg}
       memory: ${memory}
+      container: ${container}
       logger: ${logger}

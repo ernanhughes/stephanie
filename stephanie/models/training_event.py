@@ -34,7 +34,7 @@ class TrainingEventORM(Base):
     source       = Column(String, nullable=False, default="memento")
     meta         = Column(JSONB, nullable=False, default=dict)
 
-    fp           = Column(String(40), nullable=True, unique=True)
+    fp           = Column(String, nullable=True, unique=True)
     processed    = Column(Boolean, nullable=False, default=False)
     created_at   = Column(DateTime, nullable=False, default=datetime.now)
 

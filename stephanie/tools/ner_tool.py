@@ -96,6 +96,16 @@ class NerTool(BaseTool):
             log.error(f"[NER] DB hydration failed for {scorable.id}: {e}")
             return None
 
+    def detect(self, text: str):
+        """
+        Public method to detect entities in text.
+        """
+        if not self.use_model or not self.detector:
+            return []
+
+        return self._run_detector(text)    
+
+
     # ------------------------------------------------------------------
     def _run_detector(self, text: str):
         """

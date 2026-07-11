@@ -5,13 +5,11 @@ import os
 from datetime import datetime
 from typing import Any, Dict, List
 
-import numpy as np
-import torch
 import yaml
 
-from stephanie.data.score_bundle import ScoreBundle
 from stephanie.memory.base_store import BaseSQLAlchemyStore
 from stephanie.models.belief_cartridge import BeliefCartridgeORM
+from stephanie.utils.file_utils import default_serializer
 
 
 class BeliefCartridgeStore(BaseSQLAlchemyStore):
@@ -117,7 +115,7 @@ class BeliefCartridgeStore(BaseSQLAlchemyStore):
             os.makedirs(export_dir, exist_ok=True)
             file_path = os.path.join(export_dir, f"{cartridge_id}.json")
             with open(file_path, "w", encoding="utf-8") as f:
-                json.dump(data, f, indent=2, default=self._default_serializer)
+                json.dump(data, f, indent=2, default=default_serializer)
             return file_path
         return self._run(op)
 
@@ -162,19 +160,6 @@ class BeliefCartridgeStore(BaseSQLAlchemyStore):
                     scores[dim] = round(float(score), 2)
             data["scores"] = scores
         return data
-
-    def _default_serializer(self, obj):
-        if isinstance(obj, ScoreBundle):
-            return obj.to_dict()
-        if isinstance(obj, datetime):
-            return obj.isoformat()
-        if isinstance(obj, set):
-            return list(obj)
-        if isinstance(obj, np.ndarray):
-            return obj.tolist()
-        if isinstance(obj, torch.Tensor):
-            return obj.tolist()
-        raise TypeError(f"Type {type(obj)} not serializable")
 
     def _deserialize_json(self, value: Any) -> Any:
         if isinstance(value, (str, int, float, bool)) or value is None:
