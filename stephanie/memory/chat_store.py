@@ -28,7 +28,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Query, aliased, selectinload
 
 from stephanie.memory.base_store import BaseSQLAlchemyStore
-from stephanie.orm.chat import ChatConversationORM, ChatMessageORM, ChatTurnORM, ChatORM
+from stephanie.orm.chat import ChatConversationORM, ChatMessageORM, ChatTurnORM
 from stephanie.scoring.scorable import Scorable, ScorableType
 
 log = logging.getLogger(__name__)
@@ -1607,9 +1607,9 @@ class ChatStore(BaseSQLAlchemyStore):
                 ChatMessageORM.role,
                 ChatMessageORM.text,
                 ChatMessageORM.chat_id,
-                ChatORM.title.label('chat_title'),
+                ChatConversationORM.title.label('chat_title'),
                 ChatMessageORM.created_at
-            ).join(ChatORM, ChatMessageORM.chat_id == ChatORM.id).filter(
+            ).join(ChatConversationORM, ChatMessageORM.chat_id == ChatConversationORM.id).filter(
                 ChatMessageORM.text.isnot(None),
                 ChatMessageORM.text != '',
                 ChatMessageORM.is_active == True
@@ -1642,15 +1642,15 @@ class ChatStore(BaseSQLAlchemyStore):
                 ChatMessageORM.text.label('message_text'),
                 ChatMessageORM.role,
                 ChatMessageORM.created_at,
-                ChatORM.title.label('chat_title'),
-                ChatORM.id.label('chat_id'),
+                ChatConversationORM.title.label('chat_title'),
+                ChatConversationORM.id.label('chat_id'),
                 func.cosine_similarity(EmbeddingORM.embedding, query_embedding).label('similarity')
             ).join(
                 EmbeddingORM, ScorableEmbeddingORM.embedding_id == EmbeddingORM.id
             ).join(
                 ChatMessageORM, func.replace(ScorableEmbeddingORM.scorable_id, 'chat_message:', '') == ChatMessageORM.id.cast(String)
             ).join(
-                ChatORM, ChatMessageORM.chat_id == ChatORM.id
+                ChatConversationORM, ChatMessageORM.chat_id == ChatConversationORM.id
             ).filter(
                 ScorableEmbeddingORM.scorable_type == 'chat_message',
                 func.cosine_similarity(EmbeddingORM.embedding, query_embedding) >= similarity_threshold

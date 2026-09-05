@@ -18,9 +18,9 @@ import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import scipy.stats as spstats  # optional, but nice if available
-from zeromodel.pipeline.executor import PipelineExecutor
-from zeromodel.tools.gif_logger import GifLogger
-from zeromodel.tools.spatial_optimizer import SpatialOptimizer
+# from zeromodel.pipeline.executor import PipelineExecutor
+# from zeromodel.tools.gif_logger import GifLogger
+# from zeromodel.tools.spatial_optimizer import SpatialOptimizer
 
 from stephanie.scoring.scorable import Scorable
 from stephanie.services.event_service import EventService
@@ -254,7 +254,7 @@ class ZeroModelService(Service):
         pipeline_cfg = (
             self.cfg.get("zero_model", {}).get("pipeline") or _DEFAULT_PIPELINE
         )
-        self._pipeline = PipelineExecutor(pipeline_cfg)
+        # self._pipeline = PipelineExecutor(pipeline_cfg)
         self._evt = EventService(self.cfg, self.memory, self.logger)
         self._evt.initialize()
         self._initialized = True

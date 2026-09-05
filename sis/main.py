@@ -30,7 +30,7 @@ app = FastAPI(title="Stephanie Insight System (SIS)")
 app.state.cfg = load_sis_cfg()
 app.state.logger = JSONLogger("logs/sis.jsonl")
 app.state.memory = MemoryTool(cfg=app.state.cfg, logger=app.state.logger)
-app.state.container = ServiceContainer(cfg=app.state.cfg, memory=app.state.memory, logger=app.state.logger)
+app.state.container = ServiceContainer(cfg=app.state.cfg, memory=app.state.memory)
 
 # Put into app.state so routers can access without importing main
 app.state.templates = Jinja2Templates(directory="sis/templates")

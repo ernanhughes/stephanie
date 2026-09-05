@@ -8,7 +8,6 @@ from typing import (Any, DefaultDict, Dict, Iterable, List, Optional, Set,
                     Tuple, Union)
 
 import numpy as np
-from omegaconf import DictConfig, OmegaConf
 
 from stephanie.components.nexus.app.manifest import ManifestItem
 from stephanie.components.nexus.app.types import NexusEdge, NexusNode
