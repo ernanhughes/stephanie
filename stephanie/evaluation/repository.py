@@ -92,6 +92,26 @@ class InMemoryEvaluationRepository(EvaluationReader, EvaluationWriter):
     async def link_evidence(self, link: EvaluationEvidenceLink) -> None:
         self.evidence_links.append(link)
 
+    async def performance_history(
+        self,
+        *,
+        model_id: str | None = None,
+        task_type: str | None = None,
+        criterion: str | None = None,
+        limit: int = 200,
+    ) -> Sequence[Evaluation]:
+        """Gate query (§33): how has this model performed on this kind of work?"""
+        matches = [
+            e
+            for e in self.evaluations.values()
+            if e.is_active
+            and (model_id is None or e.model_id == model_id)
+            and (task_type is None or e.task_type == task_type)
+            and (criterion is None or e.criterion.name == criterion)
+        ]
+        matches.sort(key=lambda e: e.created_at, reverse=True)
+        return matches[:limit]
+
     async def purge(self, evaluation_id: str) -> None:
         """Hard delete with cascade (score attrs die with their evaluation)."""
         evaluation = self.evaluations.pop(evaluation_id, None)

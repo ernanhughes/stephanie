@@ -58,15 +58,16 @@ class EvaluationRuntime:
         provider: Optional[str] = None,
     ) -> Evaluation:
         """Attach Stage 1 model-invocation provenance (§32) then record."""
-        observation.model_id = observation.model_id or model_id
-        observation.provenance = EvaluationProvenance.from_model_invocation(
-            evaluator_name=observation.evaluator.name,
-            model_id=observation.model_id,
+        from stephanie.evaluation.context import EvaluationContext
+
+        context = EvaluationContext.from_model_response(
+            task_type=task_type,
             request_id=request_id,
             trace_id=trace_id,
-            task_type=task_type,
+            model_id=model_id,
             provider=provider,
         )
+        context.apply_to(observation, observation.evaluator.name)
         return await self.record(observation)
 
     async def fuse(

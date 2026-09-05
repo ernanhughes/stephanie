@@ -149,6 +149,23 @@ class EvaluationStore(BaseSQLAlchemyStore):
 
         eval_orm = self._run(op)
 
+        # ---- Stage 2.5 canary: canonical shadow (env-gated, default OFF) ----
+        try:
+            from stephanie.evaluation.shadow import maybe_shadow_bundle
+
+            maybe_shadow_bundle(
+                bundle=bundle,
+                scorable=scorable,
+                agent_name=agent_name or cfg.get("name"),
+                evaluator=evaluator,
+                model_name=model_name or cfg.get("model", {}).get("name"),
+                source=source,
+                strategy=cfg.get("strategy"),
+                run_id=context.get("pipeline_run_id"),
+            )
+        except Exception:
+            pass
+
         # ---- Post-persistence hooks ----
         if self.logger:
             self.logger.log(

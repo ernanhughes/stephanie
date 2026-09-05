@@ -287,3 +287,218 @@ def test_dual_write_tracks_successes_separately():
     # Legacy failure must not fail production (canonical still records).
     evaluation2, legacy_ok2, canonical_ok2 = _run(runtime.dual_write(obs, bad_legacy))
     assert legacy_ok2 is False and canonical_ok2 is True
+
+
+# -- Stage 2.5: attribute persistence round-trip (sqlite) --------------------
+
+
+def _sqlite_repo():
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    from stephanie.evaluation.persistence.orm import CanonicalBase
+    from stephanie.evaluation.persistence.repository import SqlAlchemyEvaluationRepository
+
+    engine = create_engine("sqlite:///:memory:")
+    CanonicalBase.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    return SqlAlchemyEvaluationRepository(factory)
+
+
+def test_sqlite_canonical_round_trip_with_attributes():
+    repo = _sqlite_repo()
+    obs = EvaluationObservation(
+        subject=_subject(), criterion=_criterion(), evaluator=_evaluator(),
+        scores=[Score(score_id="s1", evaluation_id="", dimension="correctness", value=0.71,
+                       scale=ScoreScale(0.0, 1.0), weight=2.0, confidence=0.82,
+                       confidence_source="judge_self_report", scorer="judge",
+                       rationale="solid")],
+        confidence=0.82, confidence_source="judge_self_report",
+        task_type="research.claim.verify", model_id="ollama:qwen3", run_id="run_7",
+    )
+    obs.attributes = [EvaluationAttribute(evaluation_id="", namespace="sicql", name="q_value", value=0.5)]
+    obs.score_attributes = [ScoreAttribute(score_id="s1", namespace="judge", name="raw", value="x")]
+    evaluation = _run(append_observation_sql(repo, obs))
+    fetched = _run(repo.get(evaluation.evaluation_id))
+    assert fetched.task_type == "research.claim.verify"
+    assert fetched.model_id == "ollama:qwen3"
+    assert fetched.confidence == 0.82
+    scores = _run(repo.scores(evaluation.evaluation_id))
+    assert scores[0].value == 0.71 and scores[0].scale.maximum == 1.0
+    eval_attrs = _run(repo.evaluation_attributes(evaluation.evaluation_id))
+    assert eval_attrs[0].qualified_name == "sicql.q_value"
+    score_attrs = _run(repo.score_attributes("s1"))
+    assert score_attrs[0].qualified_name == "judge.raw"
+
+
+def append_observation_sql(repo, observation):
+    from stephanie.evaluation.writer import append_observation as _append
+
+    async def _go():
+        evaluation = await _append(repo, observation)
+        # Re-target attribute rows at the assigned evaluation id.
+        from dataclasses import replace
+
+        fixed_eval_attrs = [
+            replace(a, evaluation_id=evaluation.evaluation_id) for a in observation.attributes
+        ]
+        if fixed_eval_attrs:
+            await repo.add_evaluation_attributes(fixed_eval_attrs)
+        if observation.score_attributes:
+            await repo.add_score_attributes(observation.score_attributes)
+        return evaluation
+
+    return _go()
+
+
+# -- Stage 2.5: save_bundle shadow hook --------------------------------------
+
+
+def test_shadow_hook_off_by_default():
+    import os
+
+    from stephanie.evaluation.shadow import agent_family, maybe_shadow_bundle
+
+    os.environ.pop("STEPHANIE_CANONICAL_SHADOW", None)
+    assert agent_family("llm") == "A"
+    assert agent_family("scorable_ranker") == "?"
+    attempted, ok, err = maybe_shadow_bundle(bundle=None, scorable=None, agent_name="llm")
+    assert (attempted, ok, err) == (False, True, None)
+
+
+def test_shadow_hook_family_gate():
+    import os
+
+    from stephanie.evaluation.shadow import maybe_shadow_bundle
+
+    os.environ["STEPHANIE_CANONICAL_SHADOW"] = "1"
+    os.environ["STEPHANIE_SHADOW_FAMILIES"] = "A"
+    try:
+        attempted, ok, _ = maybe_shadow_bundle(bundle=None, scorable=None, agent_name="scorable_ranker")
+        assert attempted is False  # family B not enabled
+    finally:
+        os.environ.pop("STEPHANIE_CANONICAL_SHADOW", None)
+        os.environ.pop("STEPHANIE_SHADOW_FAMILIES", None)
+
+
+def test_shadow_hook_writes_canonical_rows_sqlite():
+    import os
+    import tempfile
+
+    import stephanie.evaluation.shadow as shadow_mod
+    from stephanie.evaluation.shadow import maybe_shadow_bundle
+
+    os.environ["STEPHANIE_CANONICAL_SHADOW"] = "1"
+    os.environ["STEPHANIE_SHADOW_FAMILIES"] = "A"
+    tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+    tmp.close()
+    try:
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import sessionmaker
+
+        from stephanie.evaluation.persistence.orm import CanonicalBase
+        from stephanie.evaluation.persistence.repository import SqlAlchemyEvaluationRepository
+
+        # File-backed sqlite: shared across the shadow worker thread
+        # (":memory:" gives each connection a fresh empty DB).
+        engine = create_engine(f"sqlite:///{tmp.name}")
+        CanonicalBase.metadata.create_all(engine)
+        shadow_mod._repo = SqlAlchemyEvaluationRepository(
+            sessionmaker(bind=engine, expire_on_commit=False)
+        )
+
+        class FakeResult:
+            dimension = "relevance"
+            score = 0.66
+            weight = 1.0
+            source = "llm"
+            rationale = "r"
+
+        class FakeBundle:
+            results = {"relevance": FakeResult()}
+
+        class FakeScorable:
+            target_type = "hypothesis"
+            id = "h9"
+            text = "t"
+
+        attempted, ok, err = maybe_shadow_bundle(
+            bundle=FakeBundle(), scorable=FakeScorable(), agent_name="llm",
+            evaluator="llm", model_name="ollama:qwen3", source="llm",
+            strategy="relevance",
+        )
+        assert attempted and ok, err
+        history = _run(shadow_mod._repo.performance_history(
+            model_id="ollama:qwen3", criterion="relevance"))
+        assert len(history) == 1
+        assert history[0].subject.key == ("hypothesis", "h9")
+    finally:
+        shadow_mod._repo = None
+        try:
+            os.unlink(tmp.name)
+        except OSError:
+            pass
+        os.environ.pop("STEPHANIE_CANONICAL_SHADOW", None)
+        os.environ.pop("STEPHANIE_SHADOW_FAMILIES", None)
+
+
+def test_performance_history_gate_query():
+    repo = InMemoryEvaluationRepository()
+    base = _eval(eid="h1")
+    from dataclasses import replace
+
+    _run(repo.append(base, [_score(eid="h1", sid="hs1")]))
+    _run(repo.append(
+        replace(base, evaluation_id="h2", model_id="ollama:qwen3",
+                task_type="research.claim.verify",
+                created_at=datetime(2026, 2, 1)),
+        [_score(0.9, eid="h2", sid="hs2")],
+    ))
+    history = _run(repo.performance_history(
+        model_id="ollama:qwen3", task_type="research.claim.verify",
+        criterion="technical_correctness"))
+    assert [e.evaluation_id for e in history] == ["h2"]
+    assert _run(repo.performance_history(model_id="nope")) == []
+
+
+# -- Stage 2.5: causal chain -------------------------------------------------
+
+
+def test_invocation_to_evaluation_causal_chain():
+    from stephanie.evaluation import EvaluationContext
+    from stephanie.models import ModelRequest
+    from stephanie.models import Model as RuntimeModel
+    from stephanie.services.model_runtime import ModelRuntime
+    from stephanie.models import StubProvider
+
+    model = RuntimeModel.from_ref("stub:cheap")
+    runtime = ModelRuntime()
+    runtime.register_model(model)
+    runtime.register_provider("stub", StubProvider())
+    request = ModelRequest(model="stub:cheap", prompt="verify this claim",
+                           task_type="research.claim.verify", trace_id="trace_9")
+    response = _run(runtime.invoke(request))
+
+    context = EvaluationContext.from_model_response(
+        task_type=request.task_type, request_id=response.request_id,
+        trace_id=request.trace_id, model_id=response.model_id, provider=response.provider,
+    )
+    obs = EvaluationObservation(
+        subject=_subject(), criterion=_criterion(), evaluator=_evaluator(),
+        scores=[Score(score_id="", evaluation_id="", dimension="correctness", value=0.8)],
+    )
+    context.apply_to(obs, "judge")
+    evaluation_runtime = EvaluationRuntime()
+    evaluation = _run(evaluation_runtime.record(obs))
+
+    summary = context.chain_summary(evaluation_id=evaluation.evaluation_id)
+    assert summary["request_id"] == response.request_id
+    assert summary["model_id"] == "stub:cheap"
+    assert evaluation.task_type == "research.claim.verify"
+    assert evaluation.model_id == "stub:cheap"
+    assert evaluation.metadata["provenance"]["trace_id"] == "trace_9"
+    # Gate: performance history answers the portfolio question.
+    history = _run(evaluation_runtime.repository.performance_history(
+        model_id="stub:cheap", task_type="research.claim.verify",
+        criterion="technical_correctness"))
+    assert [e.evaluation_id for e in history] == [evaluation.evaluation_id]

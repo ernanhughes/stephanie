@@ -39,6 +39,7 @@ class Evaluation:
     experiment_id: Optional[str] = None
 
     model_id: Optional[str] = None
+    task_type: Optional[str] = None
 
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
@@ -86,6 +87,7 @@ class EvaluationObservation:
     experiment_id: Optional[str] = None
 
     model_id: Optional[str] = None
+    task_type: Optional[str] = None
 
     evidence: list = field(default_factory=list)  # list[EvidenceRef]
 

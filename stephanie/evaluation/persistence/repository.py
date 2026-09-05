@@ -52,6 +52,7 @@ class SqlAlchemyEvaluationRepository:
                     criterion_version=evaluation.criterion.version,
                     evaluator_name=evaluation.evaluator.name,
                     model_id=evaluation.model_id,
+                    task_type=evaluation.task_type,
                     run_id=evaluation.run_id,
                     experiment_id=evaluation.experiment_id,
                     confidence=evaluation.confidence,
@@ -100,6 +101,105 @@ class SqlAlchemyEvaluationRepository:
                 return
             row.is_active = False
             session.commit()
+
+    async def add_evaluation_attributes(self, attrs: Sequence[EvaluationAttribute]) -> None:
+        with self._sessions() as session:
+            for attr in attrs:
+                session.add(
+                    EvaluationAttributeV2ORM(
+                        evaluation_id=attr.evaluation_id,
+                        namespace=attr.namespace,
+                        name=attr.name,
+                        value=_encode_value(attr.value),
+                        source=attr.source,
+                    )
+                )
+            session.commit()
+
+    async def add_score_attributes(self, attrs: Sequence[ScoreAttribute]) -> None:
+        with self._sessions() as session:
+            for attr in attrs:
+                session.add(
+                    ScoreAttributeV2ORM(
+                        score_id=attr.score_id,
+                        namespace=attr.namespace,
+                        name=attr.name,
+                        value=_encode_value(attr.value),
+                    )
+                )
+            session.commit()
+
+    async def evaluation_attributes(
+        self, evaluation_id: str
+    ) -> Sequence[EvaluationAttribute]:
+        with self._sessions() as session:
+            rows = (
+                session.query(EvaluationAttributeV2ORM)
+                .filter(EvaluationAttributeV2ORM.evaluation_id == evaluation_id)
+                .all()
+            )
+            return [
+                EvaluationAttribute(
+                    evaluation_id=row.evaluation_id,
+                    namespace=row.namespace,
+                    name=row.name,
+                    value=row.value,
+                    source=row.source,
+                )
+                for row in rows
+            ]
+
+    async def score_attributes(self, score_id: str) -> Sequence[ScoreAttribute]:
+        with self._sessions() as session:
+            rows = (
+                session.query(ScoreAttributeV2ORM)
+                .filter(ScoreAttributeV2ORM.score_id == score_id)
+                .all()
+            )
+            return [
+                ScoreAttribute(
+                    score_id=row.score_id,
+                    namespace=row.namespace,
+                    name=row.name,
+                    value=row.value,
+                )
+                for row in rows
+            ]
+
+    async def link_evidence(self, link) -> None:
+        from stephanie.evaluation.persistence.orm import EvaluationEvidenceLinkV2ORM
+
+        with self._sessions() as session:
+            session.add(
+                EvaluationEvidenceLinkV2ORM(
+                    evaluation_id=link.evaluation_id,
+                    evidence_id=link.evidence_id,
+                    relationship=link.relationship,
+                )
+            )
+            session.commit()
+
+    async def performance_history(
+        self,
+        *,
+        model_id: str | None = None,
+        task_type: str | None = None,
+        criterion: str | None = None,
+        limit: int = 200,
+    ) -> Sequence[Evaluation]:
+        """Gate query (§33): how has this model performed on this kind of work?"""
+        with self._sessions() as session:
+            query = session.query(EvaluationV2ORM).filter(
+                EvaluationV2ORM.is_active.is_(True)
+            )
+            if model_id:
+                query = query.filter(EvaluationV2ORM.model_id == model_id)
+            if task_type:
+                query = query.filter(EvaluationV2ORM.task_type == task_type)
+            if criterion:
+                query = query.filter(EvaluationV2ORM.criterion_name == criterion)
+            rows = query.order_by(EvaluationV2ORM.created_at.desc()).limit(limit).all()
+            return [_to_evaluation(row) for row in rows]
 
     # -- reads ----------------------------------------------------------
 
@@ -165,6 +265,7 @@ def _to_evaluation(row: EvaluationV2ORM) -> Evaluation:
         run_id=row.run_id,
         experiment_id=row.experiment_id,
         model_id=row.model_id,
+        task_type=row.task_type,
         metadata=dict(row.meta or {}),
         is_active=row.is_active,
         supersedes_id=row.supersedes_id,

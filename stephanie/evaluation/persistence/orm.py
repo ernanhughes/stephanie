@@ -27,6 +27,7 @@ class EvaluationV2ORM(CanonicalBase):
     evaluator_name: Mapped[str] = mapped_column(Text, nullable=False)
 
     model_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    task_type: Mapped[str | None] = mapped_column(Text, nullable=True)
     run_id: Mapped[str | None] = mapped_column(Text, nullable=True)
     experiment_id: Mapped[str | None] = mapped_column(Text, nullable=True)
 
@@ -48,6 +49,7 @@ class EvaluationV2ORM(CanonicalBase):
         Index("ix_evalv2_subject", "subject_type", "subject_id"),
         Index("ix_evalv2_criterion", "criterion_name"),
         Index("ix_evalv2_model", "model_id"),
+        Index("ix_evalv2_task", "task_type"),
         Index("ix_evalv2_run", "run_id"),
         Index("ix_evalv2_experiment", "experiment_id"),
         Index("ix_evalv2_created", "created_at"),

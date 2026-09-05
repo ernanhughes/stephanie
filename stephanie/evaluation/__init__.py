@@ -14,6 +14,7 @@ from stephanie.evaluation.compare import (
     ComparisonOutcome,
     compare_evaluations,
 )
+from stephanie.evaluation.context import EvaluationContext
 from stephanie.evaluation.confidence import (
     BOOTSTRAP,
     CALIBRATION_MODEL,
@@ -79,6 +80,7 @@ __all__ = [
     "InMemoryEvaluationRepository",
     "ComparisonOutcome",
     "compare_evaluations",
+    "EvaluationContext",
     "EvaluationDiagnostic",
     "validate_confidence",
     "is_measured",

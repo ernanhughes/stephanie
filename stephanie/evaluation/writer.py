@@ -24,6 +24,7 @@ def build_evaluation(observation: EvaluationObservation, evaluation_id: str | No
         run_id=observation.run_id,
         experiment_id=observation.experiment_id,
         model_id=observation.model_id,
+        task_type=observation.task_type,
         metadata=dict(observation.metadata or {}),
     )
 
