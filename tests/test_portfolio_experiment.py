@@ -56,9 +56,11 @@ def test_unmatched_is_unverifiable_not_fp():
     assert result.classification == FindingClass.UNVERIFIABLE
 
 
-def test_parse_truncated_json_falls_back():
-    findings = parse_findings('[{"category": "X", "claim": "abc"', "c", "A", "cand")
-    assert len(findings) == 1 and findings[0].category == "OTHER"
+def test_parse_truncated_json_salvages_complete_objects():
+    findings = parse_findings(
+        '[{"category": "X", "claim": "abc"}, {"category": "Y", "claim": "def"',
+        "c", "A", "cand")
+    assert len(findings) == 1 and findings[0].category == "X"
 
 
 def test_parse_valid_json_array():

@@ -39,6 +39,9 @@ class OllamaChatProvider(ModelProvider):
             "model": model.name,
             "messages": request.to_messages(),
             "stream": False,
+            # Thinking blocks bury task output and burn the token budget;
+            # classification-style review tasks run with thinking disabled.
+            "think": False,
             "options": {"temperature": 0, "num_predict": self.num_predict},
         }
         body = json.dumps(payload).encode()

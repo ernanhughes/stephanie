@@ -159,12 +159,10 @@ def _with_model(candidate, model_ref: str):
 
 
 def parse_findings(output: str, case_id: str, arm: str, candidate_id: str) -> list[Finding]:
-    try:
-        start, end = output.index("["), output.rindex("]") + 1
-        items = json.loads(output[start:end])
-        if not isinstance(items, list):
-            raise ValueError
-    except (ValueError, json.JSONDecodeError):
+    items = _parse_json_array(output)
+    if items is None:
+        items = _salvage_objects(output)
+    if not items:
         items = [{"category": "OTHER", "claim": output[:500], "location": None}]
     findings = []
     for i, item in enumerate(items):
@@ -178,6 +176,36 @@ def parse_findings(output: str, case_id: str, arm: str, candidate_id: str) -> li
             location=str(item.get("location")) if item.get("location") else None,
         ))
     return findings
+
+
+def _parse_json_array(output: str):
+    try:
+        start, end = output.index("["), output.rindex("]") + 1
+        items = json.loads(output[start:end])
+        return items if isinstance(items, list) else None
+    except (ValueError, json.JSONDecodeError):
+        return None
+
+
+def _salvage_objects(output: str) -> list:
+    """Recover complete {...} objects from truncated JSON (partial credit
+    for findings actually emitted before the token cap)."""
+    decoder = json.JSONDecoder()
+    items: list = []
+    idx = 0
+    while idx < len(output):
+        start = output.find("{", idx)
+        if start < 0:
+            break
+        try:
+            obj, end = decoder.raw_decode(output, start)
+        except json.JSONDecodeError:
+            idx = start + 1
+            continue
+        if isinstance(obj, dict):
+            items.append(obj)
+        idx = end
+    return items
 
 
 # ---------------------------------------------------------------- main
@@ -288,7 +316,9 @@ async def run_case(case, runtime, eval_runtime, planner, adjudicator, rep: int,
         out_records.append({
             "run_id": run.run_id, "arm": arm.value, "case_id": case.case_id,
             "primary_request_id": run.primary_request_id,
-            "findings": [{"claim": f.claim[:200], "classification": f.classification.value,
+            "candidate_roles": {e.candidate_id: e.role.value for e in executions},
+            "findings": [{"candidate_id": f.candidate_id, "claim": f.claim[:200],
+                          "classification": f.classification.value,
                           "matched_code": f.matched_code} for f in adjudicated],
             "raw_outputs": run.metadata.get("raw_outputs", {}),
             "tokens": [in_tokens, out_tokens], "latency_ms": latency,
@@ -299,6 +329,8 @@ async def run_case(case, runtime, eval_runtime, planner, adjudicator, rep: int,
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--cases", default="07,08,09,10,11")
+    parser.add_argument("--corpus-dir", default="")
+    parser.add_argument("--case-filter", default="")
     parser.add_argument("--limit-cases", type=int, default=0)
     parser.add_argument("--reps", type=int, default=1)
     parser.add_argument("--max-chars", type=int, default=3500)
@@ -306,10 +338,30 @@ def main() -> int:
     parser.add_argument("--out", default="outputs/portfolio_exp001")
     args = parser.parse_args()
 
-    chapters = [c.strip() for c in args.cases.split(",") if c.strip()]
-    if args.limit_cases:
-        chapters = chapters[: args.limit_cases]
-    cases = build_cases(chapters, args.max_chars)
+    corpus_meta = None
+    if args.corpus_dir:
+        from stephanie.portfolio.experiment.corpus import load_corpus
+
+        cases, corpus_meta = load_corpus(args.corpus_dir)
+        if args.case_filter:
+            keys = [k.strip() for k in args.case_filter.split(",") if k.strip()]
+            cases = [c for c in cases if any(
+                k in c.case_id or k == (c.metadata or {}).get("pair_id") for k in keys)]
+        elif args.limit_cases:
+            # Keep pairs intact: first N pairs (defect + twin) in manifest order.
+            wanted: list[str] = []
+            for case in cases:
+                pair = (case.metadata or {}).get("pair_id", case.case_id)
+                if pair not in wanted:
+                    wanted.append(pair)
+            wanted = wanted[: args.limit_cases]
+            cases = [c for c in cases
+                     if (c.metadata or {}).get("pair_id", c.case_id) in wanted]
+    else:
+        chapters = [c.strip() for c in args.cases.split(",") if c.strip()]
+        if args.limit_cases:
+            chapters = chapters[: args.limit_cases]
+        cases = build_cases(chapters, args.max_chars)
     print(f"cases: {[c.case_id for c in cases]}")
     for case in cases:
         print(f"  {case.case_id}: {len(case.expected)} expected TP codes, hash={case.source_hash}")
@@ -392,9 +444,45 @@ def main() -> int:
                            sorted({c.task_type for c in cases}), notes)
     report += "\nFAILURE OVERLAP WITH PRIMARY (missed-given-A-missed)\n----------------------------------\n"
     report += "\n".join(overlap_lines) + "\n"
+
+    status = {
+        "experiment": "exp001",
+        "corpus_version": (corpus_meta or {}).get("version", "legacy-chapters"),
+        "adjudication_version": __import__(
+            "stephanie.portfolio.experiment.adjudication",
+            fromlist=["ADJUDICATION_VERSION"]).ADJUDICATION_VERSION,
+        "reps": args.reps,
+        "runs": len(experiment.runs),
+        "status": "CANARY",
+        "gates": {},
+    }
+    if corpus_meta is not None:
+        from stephanie.portfolio.experiment.paired import (
+            paired_analysis,
+            render_paired_section,
+            verdict,
+        )
+
+        analysis = paired_analysis(
+            [{"run_id": r["run_id"], "case_id": r["case_id"], "arm": r["arm"],
+              "findings": r["findings"], "raw_outputs": r.get("raw_outputs", {}),
+              "primary_request_id": r.get("primary_request_id", ""),
+              "candidate_roles": r.get("candidate_roles", {})} for r in out_records],
+            cases,
+        )
+        report += "\n" + render_paired_section(analysis) + "\n"
+        verdict_text, reasons = verdict(analysis)
+        status["status"] = "VALIDATED" if verdict_text == "VALIDATED" else "INVALID"
+        status["gates"] = {"verdict": verdict_text, "reasons": reasons,
+                           "dd": analysis["dd"], "recall": analysis["recall"],
+                           "clean_fp": analysis["clean_fp"]}
+        report += f"\nCORPUS VERDICT: {verdict_text}\n"
+        for reason in reasons:
+            report += f"  - {reason}\n"
     print()
     print(report)
     (out_dir / "report.txt").write_text(report, encoding="utf-8")
+    (out_dir / "status.json").write_text(json.dumps(status, indent=1), encoding="utf-8")
     return 0
 
 

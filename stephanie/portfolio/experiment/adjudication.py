@@ -26,6 +26,11 @@ class Adjudication:
     provenance: Mapping[str, str] = field(default_factory=dict)
 
 
+# Frozen adjudication contract version. 3.8B eligibility requires this
+# exact version (plus corpus version) to match the validated experiment.
+ADJUDICATION_VERSION = "v2-content-evidence+labels+twin-fp"
+
+
 def _normalize(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", (text or "").lower()).strip()
 
@@ -41,6 +46,8 @@ class DeterministicAdjudicator:
         from dataclasses import replace
 
         known_fp = set((case.metadata or {}).get("known_fp", []))
+        acceptable = set((case.metadata or {}).get("acceptable_labels", []))
+        defect_present = (case.metadata or {}).get("defect_present", True)
         results: list[tuple[Finding, Adjudication]] = []
         seen_codes: set[str] = set()
         for finding in findings:
@@ -55,10 +62,12 @@ class DeterministicAdjudicator:
             for expected in case.expected:
                 code_hit = _compact(expected.code) in haystack_flat
                 keyword_hits = sum(1 for kw in expected.keywords if _normalize(kw) in haystack)
+                label_ok = (not acceptable) or (finding.category in acceptable)
                 # A bare category label is not a detection (models spray allowed
                 # categories as generic buckets). Require content evidence:
-                # code + at least one defect keyword, or two keywords alone.
-                if (code_hit and (not expected.keywords or keyword_hits >= 1)) or (
+                # code + defect keyword (+ acceptable label), or two keywords
+                # alone (semantic identity over exact taxonomy).
+                if (code_hit and label_ok and (not expected.keywords or keyword_hits >= 1)) or (
                     expected.keywords and keyword_hits >= min(2, len(expected.keywords))
                 ):
                     matched = expected.code
@@ -83,6 +92,10 @@ class DeterministicAdjudicator:
                 continue
             if matched is None:
                 classification, method = FindingClass.UNVERIFIABLE, "no_deterministic_match"
+            elif not defect_present:
+                # Clean twin: the defect is absent by construction, so a match
+                # is a false alarm, never a detection.
+                classification, method = FindingClass.FALSE_POSITIVE, "clean_twin_false_alarm"
             elif matched in seen_codes:
                 classification, method = FindingClass.DUPLICATE, "code_already_counted"
             else:
