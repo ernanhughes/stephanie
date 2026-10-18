@@ -443,12 +443,16 @@ class PaperBlogGeneratorAgent(BaseAgent):
             "root_id_normalised": root_id,
         }
 
-        save_to_timestamped_file(
+        blog_path = save_to_timestamped_file(
             data=full_blog,
             file_prefix=f"{arxiv_id}_blog",
             file_extension="md",
             output_dir=f"{self.out_root}/{self.run_id}",
         )
+        # Publish the artifact path so downstream stages (e.g. the Writer
+        # handoff) can reference the draft instead of copying its content.
+        if blog_path:
+            context["paper_blog_artifact_path"] = str(blog_path)
 
         return context
 

@@ -12,6 +12,11 @@ outputs/
 /runs/
 /faithfulness_cache/
 
+# Local state written by the Writer CLI when it is invoked from this repo
+# (the writer_handoff stage / scripts/writer_handoff.py). Writer creates its own
+# SQLite database here; it is not Stephanie's data.
+/.writer/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

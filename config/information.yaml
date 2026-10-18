@@ -166,3 +166,20 @@ pipeline:
       cls: stephanie.components.information.agents.paper_blog_judge.PaperBlogJudgeAgent
       enabled: true
       iterations: 1
+
+    # Hand the draft to Writer (SWF01 phase 4). Read-only with respect to the
+    # draft: it submits the artifact to `writer validation validate-file` and
+    # records Writer's report identity, verdict and review requirement. It never
+    # auto-accepts Writer's decision and never fails the pipeline -- a missing or
+    # failing Writer produces an explicit `unavailable`/`error` record.
+    - name: writer_handoff
+      description: >
+        Submit the generated blog draft to Writer's supported validation
+        operation and record the outcome for review.
+      cls: stephanie.components.information.agents.writer_handoff.WriterHandoffAgent
+      enabled: true
+      iterations: 1
+      profile: fiction
+      timeout_seconds: 120
+      record_dir: null          # null => next to the draft artifact
+      project_root: null        # null => WRITER_PROJECT_ROOT env, then PATH
