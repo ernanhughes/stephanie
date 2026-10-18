@@ -37,8 +37,10 @@ def make_page_sections(
     for page in range(1, num_pages + 1):
         sections.append(
             PaperSection(
-                paper_id=arxiv_id,
+                section_id=f"{arxiv_id}::page-{page}",
+                paper_arxiv_id=arxiv_id,
                 role=paper_role,
+                section_index=page - 1,
                 title=f"Page {page}",
                 start_page=page,
                 end_page=page,
