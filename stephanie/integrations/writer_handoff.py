@@ -139,15 +139,15 @@ class WriterDraftHandoff:
     # ------------------------------------------------------------------ #
     def submit(self, request: WriterHandoffRequest) -> WriterHandoffRecord:
         correlation_id = request.correlation_id or f"swh-{uuid.uuid4().hex[:12]}"
+        artifact = self._resolve_artifact(request.artifact_path)
         record = WriterHandoffRecord(
             correlation_id=correlation_id,
-            artifact_path=str(request.artifact_path),
+            artifact_path=str(artifact),
             paper_arxiv_id=request.paper_arxiv_id,
             research_run_id=request.research_run_id,
             provenance=dict(request.provenance or {}),
         )
 
-        artifact = Path(request.artifact_path)
         if not artifact.is_file():
             record.status = "error"
             record.error = "artifact not found"
@@ -204,6 +204,21 @@ class WriterDraftHandoff:
         return self._finish(record)
 
     # ------------------------------------------------------------------ #
+    @staticmethod
+    def _resolve_artifact(path: str) -> Path:
+        """Resolve the draft to an ABSOLUTE path.
+
+        Writer runs as a separate process with its own working directory, so a
+        relative path produced by the pipeline is meaningless to it. Observed
+        live: the in-pipeline stage passed ``runs\\paper_blogs\\10039\\...md`` and
+        Writer replied ``File not found: runs\\paper_blogs\\10039\\...md``.
+        """
+        p = Path(path).expanduser()
+        try:
+            return p.resolve()
+        except OSError:  # pragma: no cover - defensive
+            return p if p.is_absolute() else (Path.cwd() / p)
+
     def _invoke(self, exe: str, artifact: Path, *, profile: str) -> Dict[str, Any]:
         command, subcommand = WRITER_OPERATION.split(".")
         if (command, subcommand) not in ALLOWED_OPERATIONS:
@@ -285,9 +300,11 @@ class WriterDraftHandoff:
     def _finish(self, record: WriterHandoffRecord) -> WriterHandoffRecord:
         try:
             path = self.record_path_for(record)
+            # Set record_path BEFORE serialising so the persisted record is
+            # self-describing.
+            record.record_path = str(path)
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(json.dumps(record.to_dict(), indent=2), encoding="utf-8")
-            record.record_path = str(path)
         except Exception as exc:  # noqa: BLE001
             self.log.warning("WriterDraftHandoff: could not persist record: %s", exc)
         if record.status in {"unavailable", "error"}:

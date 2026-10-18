@@ -175,6 +175,7 @@ visibility). Full suite: **39 passed**.
    of the 712 `paper:<root>:<id>` casebooks become orphans.
 3. Fix #1 is already applied (prevents orphaned higher-index rows).
 4. Flag: `STEPHANIE_FORCE_REBUILD_SECTIONS=1` or
-   `+pipeline.stages.0.force_rebuild_sections=true`.
+   `+agents.paper_pipeline.force_rebuild_sections=true` (NOT
+   `+paper_pipeline.force_rebuild_sections=true`, which nothing reads).
 5. Authorise the spend and wall-clock time; run once against `swf01_scratch`
    before `co`.

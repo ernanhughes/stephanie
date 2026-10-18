@@ -9,6 +9,7 @@ silent fallback.
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -108,7 +109,7 @@ def test_invokes_the_exact_supported_arguments(monkeypatch, draft):
         "C:/fake/writer.exe",
         "validation",
         "validate-file",
-        str(draft),
+        str(draft.resolve()),
         "--profile",
         "nonfiction",
         "--json",
@@ -159,7 +160,28 @@ def test_record_is_persisted_next_to_the_artifact(monkeypatch, draft):
     payload = json.loads(expected.read_text(encoding="utf-8"))
     assert payload["status"] == "PASS"
     assert payload["writer_report_id"] == "val_report_abc123"
-    assert payload["artifact_path"] == str(draft)
+    assert payload["artifact_path"] == str(draft.resolve())
+    # the persisted record must be self-describing
+    assert payload["record_path"] == str(expected)
+
+
+def test_relative_artifact_path_is_resolved_to_absolute(monkeypatch, tmp_path):
+    """Writer is a separate process with its own CWD: a relative draft path from
+    the pipeline must never be handed to it verbatim (observed live: Writer
+    replied "File not found: runs\\paper_blogs\\10039\\...")."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "drafts").mkdir()
+    draft = tmp_path / "drafts" / "d.md"
+    draft.write_text("# D\n", encoding="utf-8")
+
+    handoff, calls = _handoff(monkeypatch, draft)
+    record = handoff.submit(wh.WriterHandoffRequest(artifact_path="drafts/d.md"))
+
+    args, _ = calls[0]
+    assert Path(args[3]).is_absolute(), args[3]
+    assert Path(args[3]) == draft.resolve()
+    assert Path(record.artifact_path).is_absolute()
+    assert record.artifact_sha256 and len(record.artifact_sha256) == 64
 
 
 def test_record_dir_override(monkeypatch, draft, tmp_path):

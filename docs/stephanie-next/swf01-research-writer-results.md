@@ -16,15 +16,16 @@ evidence) or **UNVERIFIED** / **BLOCKED**.
 The review's three findings are confirmed, plus one it did not mention, which
 turns out to be the true "why did run 10038 look like two generations" answer.
 
-### 1.1 `force_rebuild_sections` was never read — VERIFIED
+### 1.1 `force_rebuild_sections` was read by nobody — VERIFIED (corrected)
 
-`grep -r force_rebuild` over `stephanie/` **and** `config/` at `c57a70e4`
-returns **zero hits**. The flag:
+**Correction (SWF01-DB / phase 4).** I originally wrote that `grep -r force_rebuild`
+over `stephanie/` **and** `config/` at `c57a70e4` returned **zero hits**. That was
+wrong: the flag *was* declared — `config/agents/paper_pipeline.yaml:20` carries
+`force_rebuild_sections: false` and it predates `c57a70e4`. My grep only covered
+`stephanie/` and `config/information.yaml`.
 
-* was not declared in `config/information.yaml`;
-* was not read in `PaperPipelineRunner.run()`.
-
-`run()` at `c57a70e4:95-108` was:
+The defect itself stands, and is narrower than I stated: **the flag was declared
+but read by nobody.** `PaperPipelineRunner.run()` at `c57a70e4:95-108` was:
 
 ```python
 sections = self.sections_cache.maybe_load(arxiv_id, role="reference")
@@ -33,9 +34,18 @@ if sections is None:                      # <-- only condition that rebuilds
 ```
 
 Consequence: **the override I ran (`+paper_pipeline.force_rebuild_sections=true`)
-was a no-op.** It created a top-level Hydra key that nothing consumed, and
-`maybe_load` hit the cache. My earlier claim that run 10038 "rebuilt but kept
-both generations" was wrong — run 10038 never rebuilt at all.
+was a no-op** — for two independent reasons. The key path was wrong (Supervisor
+resolves each stage through `cfg.agents.<name>`, so the value belongs in
+`config/agents/paper_pipeline.yaml`), and nothing read the value even where it was
+declared. `maybe_load` hit the cache. My earlier claim that run 10038 "rebuilt but
+kept both generations" was wrong — run 10038 never rebuilt at all.
+
+Correct ways to force a rebuild:
+
+```
+STEPHANIE_FORCE_REBUILD_SECTIONS=1
+python -m stephanie.main --config-name information +agents.paper_pipeline.force_rebuild_sections=true
+```
 
 ### 1.2 `PaperSectionsCache.persist()` destroyed identity — VERIFIED in the database
 
@@ -107,7 +117,7 @@ the build path was never reached (see 1.1).
 | `memory/paper_store.py` | `PaperSectionStore.replace_for_paper` rewritten: delete + insert in **one** session (no nested `_run`), populates all required columns, and scopes the delete to `paper_id = :pid OR id LIKE :pid::%` (LIKE wildcards escaped) — repairing mis-attribution, removing shrinking-rebuild orphans, and never touching another paper's own rows. |
 | `paper/pipeline/pipeline_runner.py` | `run()` loads the cache **per source paper in the graph** (root first), honours a new `_force_rebuild_requested()` (context → stage cfg → `STEPHANIE_FORCE_REBUILD_SECTIONS`), and persists with `replace=True` whenever a rebuild happened, so old and new generations can never both be active. |
 | `tasks/section_build_task.py` | Fixed the dataclass kwargs (`section_id=`/`role=`) at both construction sites. |
-| `config/information.yaml` | Declared `sections_cache_enabled: true` and `force_rebuild_sections: false` on the `paper_pipeline` stage. |
+| `config/agents/paper_pipeline.yaml` + `config/information.yaml` | Declared `sections_cache_enabled: true` next to the pre-existing `force_rebuild_sections: false` on the **agent** config, which is where the runner reads them (`cfg.agents.<name>`); registered the stage/agent pair. |
 
 Ownership decision: persisted rows now carry the **true source paper** in
 `paper_id`, so `maybe_load` is per paper and the loader must iterate the graph

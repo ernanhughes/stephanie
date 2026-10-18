@@ -114,6 +114,29 @@ Stage wiring smoke-check (no model calls): `config/information.yaml` composes to
 `[…, paper_blog_generator, paper_blog_judge, writer_handoff]` and the `cls`
 resolves to `WriterHandoffAgent`.
 
+## 5b. Pipeline wiring contract (and the first failed run)
+
+The first in-pipeline attempt failed **before any model call**:
+
+```
+omegaconf.errors.ConfigKeyError: Key 'writer_handoff' is not in struct
+full_key: agents.writer_handoff
+```
+
+`Supervisor._parse_pipeline_stages` resolves every stage through
+`cfg.agents[name]` (`supervisor.py:188`), which only exists when the stage has a
+`config/agents/<name>.yaml` file listed under `defaults:` in
+`config/information.yaml`. Declaring the stage in `pipeline.stages` is not enough,
+and keys placed on the stage entry are **never read by the agent** — the agent
+receives `cfg.agents.<name>`.
+
+Fixed in `de86f8dd`: added `config/agents/writer_handoff.yaml`, listed it in the
+defaults, and moved the handoff settings there. The same mistake was present on
+the `paper_pipeline` stage entry (the section-cache flags); that is fixed too.
+`tests/test_information_pipeline_config.py` now composes the real Hydra config and
+asserts every enabled stage has a `cfg.agents` entry — the check that would have
+caught this before the model stack loaded.
+
 ## 6. Not yet verified
 
 * **The stage has not run inside a full pipeline execution.** Doing so needs a
