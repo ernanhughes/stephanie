@@ -30,6 +30,12 @@ model_defaults:
   allow_paid: false
   paid_provider: "opencode-go"
   max_price_usd_per_million: 0.40
+  # Pin one route (free or paid). Honoured first and exempt from the price cap,
+  # gated only by allow_paid for a paid route.
+  # NOTE: "opencode-go/deepseek-v4.1-flash-free" does not exist; the only free
+  # DeepSeek V4.1 Flash is "opencode/deepseek-v4.1-flash-free" and every free
+  # route currently probes BLOCKED. The working twin is the paid route below.
+  preferred_model: "opencode-go/deepseek-v4.1-flash"
 
 
 # ---------------------------------------------------------------------

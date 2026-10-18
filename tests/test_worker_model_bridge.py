@@ -216,6 +216,30 @@ def test_select_route_flags_control_free_and_paid_tiers():
     assert _bridge().select_route(allow_free=False, allow_paid=True, max_price_usd_per_million=0.1) is None
 
 
+def test_select_route_honours_a_preferred_model_outside_the_cap():
+    rows = [
+        {"id": "opencode-go/muse-spark-1.3-contributor", "provider": "opencode-go", "free": False, "price_usd_per_million": 0.2},
+        {"id": "opencode-go/deepseek-v4.1-flash", "provider": "opencode-go", "free": False, "price_usd_per_million": 0.6},
+    ]
+    # Preferred paid route is used even though it exceeds the 0.40 cap...
+    chosen = WorkerModelBridge(session=_StubSession(discovered=rows)).select_route(
+        allow_paid=True, max_price_usd_per_million=0.40,
+        preferred_model="opencode-go/deepseek-v4.1-flash",
+    )
+    assert chosen is not None and chosen.id == "opencode-go/deepseek-v4.1-flash"
+
+    # ...but is skipped when paid routes are not allowed.
+    assert WorkerModelBridge(session=_StubSession(discovered=rows)).select_route(
+        allow_paid=False, preferred_model="opencode-go/deepseek-v4.1-flash"
+    ) is None
+
+    # An unknown preference falls back to automatic selection.
+    auto = WorkerModelBridge(session=_StubSession(discovered=rows)).select_route(
+        allow_paid=True, preferred_model="opencode-go/does-not-exist"
+    )
+    assert auto is not None and auto.id == "opencode-go/muse-spark-1.3-contributor"
+
+
 def test_select_route_returns_none_when_nothing_is_within_the_cap():
     rows = [
         {"id": "opencode-go/gpt-6-luna", "provider": "opencode-go", "free": False, "price_usd_per_million": 0.75},

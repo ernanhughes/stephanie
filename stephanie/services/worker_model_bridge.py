@@ -212,6 +212,23 @@ class WorkerModelBridge:
         )
         return routes
 
+    def find_route(self, model_id: str) -> Optional[FreeRoute]:
+        """Look up a single route (free or paid) in Worker's CLI model list."""
+        if not model_id:
+            return None
+        try:
+            response = self._http().get(
+                f"{self.base_url}/v1/models/cli", timeout=self.discovery_timeout
+            )
+            response.raise_for_status()
+            for row in (response.json() or {}).get("models") or []:
+                if isinstance(row, dict) and str(row.get("id")) == model_id:
+                    return FreeRoute.from_cli_row(row)
+        except Exception as exc:
+            self._last_error = str(exc)
+            self._log.warning("Route lookup failed for %s: %s", model_id, exc)
+        return None
+
     def select_route(
         self,
         *,
@@ -219,13 +236,37 @@ class WorkerModelBridge:
         allow_paid: bool = False,
         provider: str = DEFAULT_PAID_PROVIDER,
         max_price_usd_per_million: float = DEFAULT_MAX_PRICE_USD_PER_MILLION,
+        preferred_model: str = "",
     ) -> Optional[FreeRoute]:
         """Select a route under the free/paid policy flags.
 
-        ``allow_free`` standard ordering; ``allow_paid`` opts in to the cheapest
-        capped paid route. Returns ``None`` when nothing qualifies, so callers
-        fall back to Ollama.
+        An explicit ``preferred_model`` is honoured first (it is the operator's
+        named choice, so it is not subject to the price cap), gated only by
+        ``allow_paid`` when it is a paid route. Otherwise: probe-verified free
+        route, then the cheapest capped paid route when ``allow_paid`` is set.
+        Returns ``None`` when nothing qualifies, so callers fall back to Ollama.
         """
+        if preferred_model:
+            chosen = self.find_route(preferred_model)
+            if chosen is None:
+                self._log.warning("Preferred model %s not found; using automatic selection", preferred_model)
+            elif chosen.is_free and allow_free:
+                self._log.info("Selected preferred free route %s", chosen.id)
+                return chosen
+            elif chosen.is_free:
+                self._log.info("Preferred route %s is free but allow_free is false; skipping", chosen.id)
+            elif allow_paid:
+                self._log.info(
+                    "Selected preferred paid route %s ($%.2f/M)",
+                    chosen.id,
+                    chosen.price_usd_per_million,
+                )
+                return chosen
+            else:
+                self._log.info(
+                    "Preferred route %s is paid but allow_paid is false; skipping", chosen.id
+                )
+
         if allow_free:
             free = self.select_free_route()
             if free is not None:

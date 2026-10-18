@@ -103,6 +103,8 @@ model_defaults:
   allow_paid: false
   paid_provider: "opencode-go"
   max_price_usd_per_million: 0.40
+  # Pin one route (free or paid); honoured first and exempt from the price cap.
+  preferred_model: ""
 
 pipeline:
   name: default_pipeline
