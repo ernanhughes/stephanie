@@ -68,7 +68,10 @@ class WriterHandoffAgent(BaseAgent):
                 paper_arxiv_id=meta.get("arxiv_id") or context.get("arxiv_id"),
                 research_run_id=str(context.get("pipeline_run_id") or ""),
                 profile=str(self.cfg.get("profile", "fiction")),
-                correlation_id=context.get("writer_handoff_correlation_id"),
+                correlation_id=(
+                    context.get("writer_handoff_correlation_id")
+                    or self.cfg.get("correlation_id")
+                ),
                 provenance={
                     "stage": "writer_handoff",
                     "blog_config_id": context.get("blog_config_id"),
