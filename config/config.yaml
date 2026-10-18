@@ -89,6 +89,21 @@ embeddings:
   dimension: 1024
   endpoint: '${oc.env:STEPHANIE_OLLAMA_URL,http://localhost:11434}/api/embeddings'
 
+model_defaults:
+  # Optional Worker-backed model routing. Disabled keeps Stephanie on its normal
+  # provider (Ollama). `allow_free` uses a free OpenCode route only when it
+  # probes as admissible; `allow_paid` additionally permits the cheapest
+  # `paid_provider` route within `max_price_usd_per_million` (hard cap).
+  # Override any value from the command line, e.g.
+  #   python -m stephanie.main --config-name information \
+  #     model_defaults.enabled=true model_defaults.allow_paid=true
+  enabled: false
+  worker_base_url: "http://127.0.0.1:7317"
+  allow_free: true
+  allow_paid: false
+  paid_provider: "opencode-go"
+  max_price_usd_per_million: 0.40
+
 pipeline:
   name: default_pipeline
   description: "Default hypothesis generation and refinement pipeline"

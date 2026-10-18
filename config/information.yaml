@@ -19,6 +19,18 @@ defaults:
 embeddings:
   backend: hnet
 
+# Optional Worker-backed model routing (see docs/worker-free-models.md).
+# Disabled by default: Stephanie uses its normal provider (Ollama). Enable per
+# run, e.g.  python -m stephanie.main --config-name information \
+#             model_defaults.enabled=true model_defaults.allow_paid=true
+model_defaults:
+  enabled: false
+  worker_base_url: "http://127.0.0.1:7317"
+  allow_free: true
+  allow_paid: false
+  paid_provider: "opencode-go"
+  max_price_usd_per_million: 0.40
+
 
 # ---------------------------------------------------------------------
 # High-level goal conditioning: why we are running this pipeline

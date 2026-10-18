@@ -33,6 +33,11 @@ class LLMService(Service):
         self.container = container
         self.logger = logger
         self._initialized = False
+        # Optional Worker-backed model routing (free OpenCode first, then a
+        # capped paid opencode-go route). Disabled by default; see
+        # config/config.yaml `model_defaults` and docs/worker-free-models.md.
+        self._model_defaults: Dict[str, Any] = dict(self.cfg.get("model_defaults") or {})
+        self._worker_bridge = None
 
         # Optional rules service
         try:
@@ -62,6 +67,47 @@ class LLMService(Service):
 
     def shutdown(self) -> None:
         self._initialized = False
+
+    # --------------------- Optional Worker-backed routing ---------------------
+
+    def _bridge(self):
+        if self._worker_bridge is None:
+            from stephanie.services.worker_model_bridge import WorkerModelBridge
+
+            self._worker_bridge = WorkerModelBridge(
+                base_url=str(self._model_defaults.get("worker_base_url") or "http://127.0.0.1:7317")
+            )
+        return self._worker_bridge
+
+    def _try_worker_model_defaults(self, prompt: str) -> Optional[str]:
+        """Return generated text from a free/paid Worker route, or ``None`` to fall back.
+
+        Never raises: any problem (Worker down, no eligible route, invocation
+        error) returns ``None`` so the caller uses its normal provider.
+        """
+        from stephanie.services.worker_model_bridge import (
+            DEFAULT_MAX_PRICE_USD_PER_MILLION,
+            DEFAULT_PAID_PROVIDER,
+        )
+
+        try:
+            bridge = self._bridge()
+            route = bridge.select_route(
+                allow_free=bool(self._model_defaults.get("allow_free", True)),
+                allow_paid=bool(self._model_defaults.get("allow_paid", False)),
+                provider=str(self._model_defaults.get("paid_provider") or DEFAULT_PAID_PROVIDER),
+                max_price_usd_per_million=float(
+                    self._model_defaults.get("max_price_usd_per_million", DEFAULT_MAX_PRICE_USD_PER_MILLION)
+                ),
+            )
+            if route is None:
+                return None
+            self._model_defaults["_last_route"] = route.id
+            self.logger.log("LLMWorkerRoute", {"route": route.id, "tier": route.tier})
+            return bridge.submit_prompt(prompt, route=route)
+        except Exception as exc:
+            self.logger.log("LLMWorkerRouteFailed", {"error_type": type(exc).__name__})
+            return None
 
     # --------------------- Public API ---------------------
 
@@ -99,6 +145,20 @@ class LLMService(Service):
             if add_to_history:
                 self._append_prompt_history(context, agent_name, prompt, {"response": out}, preferences)
             return {"text": out, "model_name": props.get(NAME), "cached": True}
+
+        # Optional Worker-backed routing: free OpenCode route if one is admissible,
+        # else the cheapest paid opencode-go route within the cap when allowed.
+        # Any failure falls through to the normal provider below.
+        if self._model_defaults.get("enabled", False):
+            worker_text = self._try_worker_model_defaults(prompt)
+            if worker_text is not None:
+                if add_to_history:
+                    self._append_prompt_history(context, agent_name, prompt, {"response": worker_text}, preferences)
+                return {
+                    "text": worker_text,
+                    "model_name": self._model_defaults.get("_last_route") or "worker",
+                    "cached": False,
+                }
 
         # Call LLM
         try:

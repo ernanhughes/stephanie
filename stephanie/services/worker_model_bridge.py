@@ -215,18 +215,23 @@ class WorkerModelBridge:
     def select_route(
         self,
         *,
-        prefer_free: bool = True,
+        allow_free: bool = True,
+        allow_paid: bool = False,
         provider: str = DEFAULT_PAID_PROVIDER,
         max_price_usd_per_million: float = DEFAULT_MAX_PRICE_USD_PER_MILLION,
     ) -> Optional[FreeRoute]:
-        """Free (probe-verified) first, else the cheapest capped paid route.
+        """Select a route under the free/paid policy flags.
 
-        Returns ``None`` when nothing qualifies, so callers fall back to Ollama.
+        ``allow_free`` standard ordering; ``allow_paid`` opts in to the cheapest
+        capped paid route. Returns ``None`` when nothing qualifies, so callers
+        fall back to Ollama.
         """
-        if prefer_free:
+        if allow_free:
             free = self.select_free_route()
             if free is not None:
                 return free
+        if not allow_paid:
+            return None
         try:
             paid = self.discover_paid_routes(
                 provider=provider, max_price_usd_per_million=max_price_usd_per_million
@@ -374,7 +379,7 @@ class WorkerModelProvider(ModelProvider):
 
     async def invoke(self, request: ModelRequest) -> ModelResponse:
         model = request.model if isinstance(request.model, Model) else Model.from_ref(str(request.model))
-        route = self.bridge.select_route()
+        route = self.bridge.select_route(allow_paid=True)
         if route is None:
             raise ProviderInvocationError(
                 self._provider_name, model.id, "no eligible free or capped paid route"

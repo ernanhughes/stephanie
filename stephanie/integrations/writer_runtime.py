@@ -47,6 +47,31 @@ class WriterRuntimeConfig:
     timeout_seconds: int = 30
     enable_execution: bool = False
 
+    def __post_init__(self) -> None:
+        """Allow the bridge to be overridden from the environment.
+
+        Config values are the default, but an operator can point Stephanie at a
+        different Writer checkout/executable (or enable execution) without
+        editing YAML by setting ``WRITER_PROJECT_ROOT``, ``WRITER_EXECUTABLE``,
+        ``WRITER_PYTHON``, ``WRITER_TIMEOUT_SECONDS`` or ``WRITER_ENABLE_EXECUTION``.
+        """
+        env = os.environ.get
+        value = env("WRITER_PROJECT_ROOT")
+        if value:
+            self.project_root = value
+        value = env("WRITER_EXECUTABLE")
+        if value:
+            self.writer_executable = value
+        value = env("WRITER_PYTHON")
+        if value:
+            self.python_executable = value
+        value = env("WRITER_TIMEOUT_SECONDS")
+        if value and str(value).strip().isdigit():
+            self.timeout_seconds = int(str(value).strip())
+        value = env("WRITER_ENABLE_EXECUTION")
+        if value:
+            self.enable_execution = str(value).strip().lower() in {"1", "true", "yes", "on"}
+
 
 class WriterRuntimeDiscovery:
     """Subprocess transport over the Writer CLI (discovery only)."""

@@ -182,10 +182,38 @@ def test_select_route_prefers_free_then_falls_back_to_cheapest_paid():
         probe_results={"opencode/space-bunny-free": _probe_blocked("opencode/space-bunny-free")},
     )
     session2._discovered = rows  # paid rows also visible to discovery
-    route2 = WorkerModelBridge(session=session2).select_route()
+    route2 = WorkerModelBridge(session=session2).select_route(allow_paid=True)
     assert route2 is not None and not route2.is_free
     assert route2.id == "opencode-go/muse-spark-1.3-contributor"
     assert route2.price_usd_per_million == 0.2
+
+
+def test_select_route_flags_control_free_and_paid_tiers():
+    free_blocked = _probe_blocked("opencode/space-bunny-free")
+    rows = [
+        {"id": "opencode/space-bunny-free", "provider": "opencode", "free": True, "price_usd_per_million": 0},
+        {"id": "opencode-go/muse-spark-1.3-contributor", "provider": "opencode-go", "free": False, "price_usd_per_million": 0.2},
+        {"id": "opencode-go/gpt-6-luna", "provider": "opencode-go", "free": False, "price_usd_per_million": 0.75},
+    ]
+
+    def _bridge():
+        return WorkerModelBridge(
+            session=_StubSession(
+                discovered=rows,
+                probe_results={"opencode/space-bunny-free": free_blocked},
+            )
+        )
+
+    # Paid disabled -> free only -> None (must fall back to Ollama).
+    assert _bridge().select_route(allow_free=True, allow_paid=False) is None
+
+    # Paid enabled -> cheapest opencode-go within the cap.
+    chosen = _bridge().select_route(allow_free=True, allow_paid=True, max_price_usd_per_million=0.40)
+    assert chosen is not None and chosen.id == "opencode-go/muse-spark-1.3-contributor"
+    assert chosen.price_usd_per_million == 0.2
+
+    # Cap excludes everything -> None.
+    assert _bridge().select_route(allow_free=False, allow_paid=True, max_price_usd_per_million=0.1) is None
 
 
 def test_select_route_returns_none_when_nothing_is_within_the_cap():
