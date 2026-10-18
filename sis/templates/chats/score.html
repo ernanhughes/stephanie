@@ -65,7 +65,7 @@
             <span class="badge bg-warning text-dark">Domains</span>
             <div class="mt-1 d-flex flex-wrap" style="gap:.35rem;">
               {# show up to 12 #}
-              {% for d in t.domains[:12] %}
+              {% for d in (t.domains or [])[:12] %}
                 {# chip color by source #}
                 {% set src = (d.source or 'seed')|lower %}
                 {% set chip_class =
@@ -93,7 +93,7 @@
           <div class="mt-2 small">
             <span class="badge bg-secondary">NER</span>
             <div class="mt-1">
-              {% for e in t.ner[:12] %}
+              {% for e in (t.ner or [])[:12] %}
                 <span class="badge bg-light text-dark border me-1 mb-1">
                   {{ e.text }} <span class="text-muted">({{ e.type }}{% if e.role %}, {{ e.role }}{% endif %})</span>
                 </span>

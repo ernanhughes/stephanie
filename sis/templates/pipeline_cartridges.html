@@ -22,7 +22,7 @@
       <p>{{ c.summary or "No summary available." }}</p>
       <details>
         <summary>Markdown Content</summary>
-        <pre class="bg-light p-2 rounded">{{ c.markdown_content[:2000] }}</pre>
+        <pre class="bg-light p-2 rounded">{{ (c.markdown_content or '')[:2000] }}</pre>
       </details>
       {% if c.domain_tags %}
       <p><b>Domains:</b> {{ c.domain_tags | join(", ") }}</p>

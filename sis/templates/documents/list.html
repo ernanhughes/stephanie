@@ -21,10 +21,10 @@
             {{ doc.id }}
           </a>
         </td>
-        <td>{{ doc.title }}</td>
+        <td>{{ doc.title or '—' }}</td>
         <td>
-          <span title="{{ doc.summary }}">
-            {{ doc.summary[:100] }}{% if doc.summary|length > 100 %}…{% endif %}
+          <span title="{{ doc.summary or '' }}">
+            {{ (doc.summary or '')[:100] }}{% if (doc.summary or '')|length > 100 %}…{% endif %}
           </span>
         </td>
         <td>

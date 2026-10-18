@@ -8,14 +8,20 @@
 
 
 <p><strong>ID:</strong> {{ document.id }}</p>
-<p><strong>Title:</strong> {{ document.title }}</p>
-<p><strong>Summary:</strong> {{ document.summary }}</p>
-<p><strong>URL:</strong> <a href="{{ document.url }}" target="_blank">{{ document.url }}</a></p>
+<p><strong>Title:</strong> {{ document.title or '—' }}</p>
+<p><strong>Summary:</strong> {{ document.summary or '—' }}</p>
+<p><strong>URL:</strong>
+  {% if document.url %}
+    <a href="{{ document.url }}" target="_blank">{{ document.url }}</a>
+  {% else %}
+    <span class="text-muted">N/A</span>
+  {% endif %}
+</p>
 
 <h2>Domains</h2>
 <ul>
-  {% for d in domains %}
-    <li>{{ d.domain }} (score: {{ "%.2f"|format(d.score) }})</li>
+  {% for d in (domains or []) %}
+    <li>{{ d.domain }} (score: {{ "%.2f"|format(d.score or 0) }})</li>
   {% endfor %}
 </ul>
 
@@ -28,6 +34,10 @@
 {% endif %}
 
 <h2>Text</h2>
-<pre style="white-space: pre-wrap;">{{ document.text[:2000] }}...</pre>
+{% if document.text %}
+  <pre style="white-space: pre-wrap;">{{ document.text[:2000] }}{% if document.text|length > 2000 %}…{% endif %}</pre>
+{% else %}
+  <p class="text-muted">No text stored for this document.</p>
+{% endif %}
 
 {% endblock %}

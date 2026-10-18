@@ -35,7 +35,7 @@
           {% endif %}
           {% if c.sources and c.sources|length %}
             <div class="small"><b>Sources</b>:
-              {% for s in c.sources[:3] %}
+              {% for s in (c.sources or [])[:3] %}
                 {% if s.url %}<a href="{{ s.url }}" target="_blank">link</a>{% elif s.id %}arXiv: {{ s.id }}{% else %}source{% endif %}{% if not loop.last %},{% endif %}
               {% endfor %}
             </div>

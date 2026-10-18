@@ -212,7 +212,7 @@ flowchart LR
           <thead><tr><th>ID</th><th>Statement</th></tr></thead>
           <tbody>
           {% for t in theorems[:5] %}
-            <tr><td>{{ t.id }}</td><td>{{ t.statement[:100] }}…</td></tr>
+            <tr><td>{{ t.id }}</td><td>{{ (t.statement or '')[:100] }}…</td></tr>
           {% endfor %}
           </tbody>
         </table>
