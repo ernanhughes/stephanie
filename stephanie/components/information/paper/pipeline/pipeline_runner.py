@@ -142,7 +142,19 @@ class PaperPipelineRunner:
                 summarizer=self._get_summarizer(),
                 embedder=self._get_embedder(),
             )
-            sections = await section_task.run(graph=graph, texts=texts)
+            if force_rebuild:
+                sections = await section_task.run(graph=graph, texts=texts)
+            else:
+                # Build ONLY the papers that have no cached sections. Building
+                # the whole graph because one node is missing re-parses every
+                # paper (~700 sections, hours) for nothing.
+                fresh = await section_task.run(
+                    graph=graph, texts=texts, only_node_ids=set(missing)
+                )
+                cached_sections = [
+                    sec for nid in node_ids for sec in cached_by_paper.get(nid, [])
+                ]
+                sections = cached_sections + fresh
             context["_sections_built"] = True
         else:
             sections = [sec for nid in node_ids for sec in cached_by_paper.get(nid, [])]

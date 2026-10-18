@@ -3,7 +3,8 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
+from typing import (Any, Awaitable, Callable, Dict, List, Optional, Set,
+                    Tuple)
 
 from stephanie.components.information.data import (PaperReferenceGraph,
                                                    PaperSection)
@@ -56,10 +57,19 @@ class SectionBuildTask:
         self,
         graph: PaperReferenceGraph,
         texts: Dict[str, str],  # arxiv_id -> full text
+        only_node_ids: Optional[Set[str]] = None,
     ) -> List[PaperSection]:
+        """Build sections for the graph's papers.
+
+        ``only_node_ids`` restricts the build to a subset (used to rebuild only
+        the papers whose sections are missing, instead of re-parsing every paper
+        in the graph when one of them has no cached sections).
+        """
         sections: List[PaperSection] = []
 
         for arxiv_id, node in graph.nodes.items():
+            if only_node_ids is not None and arxiv_id not in only_node_ids:
+                continue
             text = texts.get(arxiv_id, "") or ""
             if not text.strip():
                 continue

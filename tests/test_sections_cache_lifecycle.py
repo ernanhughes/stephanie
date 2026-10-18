@@ -368,6 +368,34 @@ def test_force_rebuild_flag_from_cfg_and_env(monkeypatch):
 # -------------------------------------------------- section build regression
 
 
+def test_section_build_task_can_build_only_missing_papers():
+    """One graph node without cached sections must not force a re-parse of the
+    whole graph (19 papers, ~700 sections, hours). `only_node_ids` restricts the
+    build to the missing papers."""
+    graph = SimpleNamespace(
+        nodes={
+            "AAAA": SimpleNamespace(role="root"),
+            "BBBB": SimpleNamespace(role="reference"),
+        }
+    )
+    texts = {"AAAA": "a" * 200, "BBBB": "b" * 200}
+
+    async def summarizer(text: str):
+        return ("T", "S")
+
+    task = SectionBuildTask(
+        cfg=SectionBuildConfig(chars_per_section=50, min_chars=1, overlap=5),
+        summarizer=summarizer,
+        embedder=lambda t: [0.0],
+    )
+
+    only_b = asyncio.run(task.run(graph=graph, texts=texts, only_node_ids={"BBBB"}))
+    assert only_b and all(s.paper_arxiv_id == "BBBB" for s in only_b)
+
+    both = asyncio.run(task.run(graph=graph, texts=texts))
+    assert {s.paper_arxiv_id for s in both} == {"AAAA", "BBBB"}
+
+
 def test_section_build_task_produces_valid_paper_sections():
     """Regression: the builder used ``PaperSection(id=..., paper_role=...)``,
     which are not this dataclass's fields, so a real rebuild would raise
