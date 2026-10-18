@@ -9,7 +9,16 @@ from typing import Any, Dict, List, Optional
 
 import torch
 from PIL import Image
-from transformers import AutoModelForVision2Seq, AutoProcessor
+
+# Optional heavy vision dependency: newer/older `transformers` releases do not
+# all export AutoModelForVision2Seq. Importing this module must not fail just
+# because the vision stack is absent — the error is raised when the tool is
+# actually constructed (see __init__).
+try:  # pragma: no cover - depends on the installed transformers version
+    from transformers import AutoModelForVision2Seq, AutoProcessor
+except ImportError:  # pragma: no cover
+    AutoModelForVision2Seq = None  # type: ignore[assignment]
+    AutoProcessor = None  # type: ignore[assignment]
 
 from stephanie.components.information.data import PaperSection
 from stephanie.tools.base_tool import BaseTool
@@ -31,6 +40,14 @@ class SmolDoclingTool(BaseTool):
 
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         log.info("[SmolDoclingTool] device=%s model=%s", self.device, self.model_name)
+
+        if AutoProcessor is None or AutoModelForVision2Seq is None:
+            raise RuntimeError(
+                "SmolDoclingTool requires a transformers build that exports "
+                "AutoProcessor and AutoModelForVision2Seq. Install a compatible "
+                "transformers version, or disable the smol_docling processor "
+                "(config: spine.processors.router / docling escalation)."
+            )
 
         self.processor = AutoProcessor.from_pretrained(self.model_name)
 
