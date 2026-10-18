@@ -76,3 +76,9 @@ prompts/
 
 ```
 
+
+---
+
+## Stephanie Next
+
+Current direction, architecture, migration, and milestone documentation lives in [Stephanie Next](stephanie-next/index.md).

@@ -6,7 +6,7 @@ This guide walks you through setting up and running the `stephanie` framework lo
 
 ## 📦 Requirements
 
-- Python **3.8+**
+- Python **3.9+** (the version declared in `pyproject.toml`)
 - PostgreSQL with **pgvector** extension
 - [Ollama](https://ollama.com) (for local LLM inference)
 - [Poetry](https://python-poetry.org/) **OR** standard `pip` + `venv`
@@ -18,18 +18,18 @@ This guide walks you through setting up and running the `stephanie` framework lo
 
 ```bash
 git clone https://github.com/ernanhughes/stephanie.git
-cd co-ai
+cd stephanie
 ````
 
 ---
 
 ## 🐍 2. Create a Virtual Environment
 
-**Using `venv`:**
+**Using `venv` (PowerShell):**
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate   # On Windows: .venv\Scripts\activate
+py -3.13 -m venv venv
+venv\Scripts\Activate.ps1
 ```
 
 **Or with `poetry`:**
@@ -47,6 +47,9 @@ poetry shell
 pip install -r requirements.txt
 ```
 
+For development tests, install the optional test extra after installing the
+project: `pip install -e ".[test]"`.
+
 OR using `pyproject.toml`:
 
 ```bash
@@ -55,7 +58,7 @@ pip install .
 
 ---
 
-## 🧠 4. Set Up PostgreSQL + pgvector
+## 🧠 4. Configure PostgreSQL + pgvector
 
 **Option A: Using Docker**
 
@@ -77,17 +80,16 @@ docker run --name coai-db -p 5432:5432 \
    CREATE EXTENSION vector;
    ```
 
-3. Create the database:
+3. Configure the database in `config/db/postgres.yaml` (or supply an explicit
+   Hydra override). SQLAlchemy stores and MemoryTool use this same composed
+   database configuration. Supply credentials through environment variables,
+   for example `$env:STEPHANIE_DB_PASSWORD = "<password>"` in PowerShell; do not
+   commit them to YAML or logs.
 
-   ```bash
-   createdb coai
-   ```
-
-4. Run the schema:
-
-   ```bash
-   psql -U postgres -d coai -f schema.sql
-   ```
+4. Ensure the configured database is already provisioned with the Stephanie
+   schema and pgvector extension. This repository does not currently have a
+   versioned migration chain; do not use `create_all()` as a substitute for a
+   reviewed schema migration.
 
 ---
 
@@ -107,17 +109,50 @@ Make sure `Ollama` is running on `http://localhost:11434`.
 
 ---
 
-## ⚙️ 6. Run the App
+## ⚙️ 6. Run a research pipeline
 
 ```bash
-python stephanie/main.py goal="The USA is on the verge of defaulting on its debt"
+python -m stephanie.main goal.goal_text="The USA is on the verge of defaulting on its debt"
 ```
 
 Or with CLI args:
 
 ```bash
-python stephanie/main.py --config-name=config goal="My research goal here"
+python -m stephanie.main --config-name=config goal.goal_text="My research goal here"
 ```
+
+Start SIS locally (loopback only by default):
+
+```powershell
+$env:STEPHANIE_DB_PASSWORD = "<database password>"
+$env:SIS_AUTH_USERNAME = "stephanie"
+$env:SIS_AUTH_PASSWORD_HASH = (& venv\Scripts\python.exe -m sis.security --hash-password)
+$env:SIS_SESSION_SECRET = (& venv\Scripts\python.exe -c "import secrets; print(secrets.token_urlsafe(48))")
+python -m sis
+```
+
+The password-hash command prompts without echoing the password. Keep the hash
+and session secret in the process environment or an approved secret manager;
+never commit them. If authentication is not configured, private SIS routes fail
+closed and the login page shows the setup requirement.
+
+SIS requires a valid configured account for all private application routes.
+The default host is `127.0.0.1`; remote hosts are rejected unless explicitly
+allowlisted, and remote HTTP is refused (use HTTPS). When serving HTTPS behind a
+trusted TLS terminator, configure proxy handling and set `SIS_COOKIE_SECURE=true`.
+Use a single SIS worker because its revocable session registry is process-local.
+
+Interactive chat remains disabled unless `chat_runtime.enabled=true` is
+explicitly configured **and** `chat_runtime.readiness.model_verified` and
+`chat_runtime.readiness.live_persistence_verified` are set after their real
+acceptance checks. Registration/health of the model service alone is not proof
+of inference. See `docs/stephanie-next/stn02-security-design.md` before enabling
+the feature.
+
+Check `/healthz` on the local SIS instance for separate authentication,
+database, model-configuration, model-verification, persistence-verification,
+and feature states. It contains no credentials. Do not enable chat if any gate
+is false.
 
 ---
 

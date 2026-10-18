@@ -10,5 +10,26 @@ nav:
   - Tools: tools.md
   - Configuration: config.md
   - Custom Pipeline: custom.md
+  - Stephanie Next:
+      - Overview: stephanie-next/index.md
+      - Target Architecture: stephanie-next/target-architecture.md
+      - Migration Plan: stephanie-next/migration-plan.md
+      - Milestones: stephanie-next/milestones.md
+      - Acceptance Matrix: stephanie-next/acceptance-matrix.md
+      - Architecture Inventory: stephanie-next/architecture-inventory.md
+      - Research Mapping: stephanie-next/research-mapping.md
+      - STN01 Stabilization Results: stephanie-next/stn01-stabilization-results.md
+      - STN02 Chat Design: stephanie-next/stn02-chat-design.md
+      - STN02 Implementation Results: stephanie-next/stn02-implementation-results.md
+      - STN02 Security Design: stephanie-next/stn02-security-design.md
+      - STN03 Live Acceptance: stephanie-next/stn03-live-acceptance.md
+      - STN03 Operational Activation: stephanie-next/stn03-operational-activation.md
+      - STN03 Worker Integration Design: stephanie-next/stn03-worker-integration-design.md
+      - STN03 Worker Integration Results: stephanie-next/stn03-worker-integration-results.md
+      - STN04 First Agent Execution: stephanie-next/stn04-first-agent-execution.md
+      - STN05 Experience Design: stephanie-next/stn05-experience-design.md
+      - STN05 Implementation Results: stephanie-next/stn05-implementation-results.md
+      - STN05 Learning Inventory: stephanie-next/stn05-learning-inventory.md
+      - STN06 Experiment Plan: stephanie-next/stn06-experiment-plan.md
 
 docs_dir: docs
