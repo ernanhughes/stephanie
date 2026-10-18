@@ -12,6 +12,7 @@ nav:
   - Configuration: config.md
   - Custom Pipeline: custom.md
   - Paper to Blog: paper-to-blog.md
+  - Worker Free Models: worker-free-models.md
   - Writer Integration: writer-integration.md
   - Stephanie Next:
       - Overview: stephanie-next/index.md

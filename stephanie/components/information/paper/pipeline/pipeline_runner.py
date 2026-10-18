@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -19,6 +20,22 @@ from .section_features import SectionFeatureDispatcher
 from .graph_indexer import PaperSectionGraphIndexer
 
 log = logging.getLogger(__name__)
+
+
+def _heading_from_text(text: str, *, max_chars: int = 72) -> str:
+    """Derive a short heading from section text without cutting mid-word.
+
+    The previous fallback used ``text[:80]``, which produced headings that
+    ended mid-sentence and occasionally mid-word (e.g. ``self-att``). Prefer the
+    first sentence, then trim to a word boundary.
+    """
+    s = re.sub(r"\s+", " ", (text or "").strip())
+    if not s:
+        return ""
+    first = re.split(r"(?<=[.!?])\s+", s, maxsplit=1)[0].strip()
+    if len(first) > max_chars:
+        first = first[:max_chars].rsplit(" ", 1)[0].strip()
+    return first.rstrip(" ,;:-")
 
 
 class PaperPipelineRunner:
@@ -133,7 +150,7 @@ class PaperPipelineRunner:
             sc = Scorable(text=text, target_type=ScorableType.DOCUMENT_SECTION)
             result = await tool.apply(sc, context={})
             summary_obj = result.meta.get("summaries", {}).get("summarizer", {})
-            title = summary_obj.get("title", "") or (text[:80] if text else "")
+            title = summary_obj.get("title", "") or _heading_from_text(text)
             summary = summary_obj.get("summary", "") or (text[:512] if text else "")
             return title, summary
 
