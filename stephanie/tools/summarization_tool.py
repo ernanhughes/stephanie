@@ -14,6 +14,21 @@ from stephanie.tools.base_tool import \
 log = logging.getLogger(__name__)
 
 
+def _clean_title(raw: str) -> str:
+    """Make a generated heading end on a whole word.
+
+    Seq2seq titles stop at a token budget and could end mid-word or trail a
+    dangling hyphen (e.g. "...self-att"). Trim those so a heading never ends on
+    a fragment.
+    """
+    import re
+
+    text = re.sub(r"\s+", " ", (raw or "").strip())
+    text = re.sub(r"[\s\-]+$", "", text)
+    text = text.rstrip(",;:")
+    return text
+
+
 class SummarizationTool(BaseTool):
     """
     Generate a short section heading + a technical summary for scorable.text
@@ -47,7 +62,7 @@ class SummarizationTool(BaseTool):
         self.max_summary_tokens: int = int(cfg.get("max_summary_tokens", 160))
         self.min_summary_tokens: int = int(cfg.get("min_summary_tokens", 40))
 
-        self.max_title_tokens: int = int(cfg.get("max_title_tokens", 16))
+        self.max_title_tokens: int = int(cfg.get("max_title_tokens", 50))
         self.min_title_tokens: int = int(cfg.get("min_title_tokens", 3))
 
         # Optional flag to skip if already summarized
@@ -176,17 +191,20 @@ class SummarizationTool(BaseTool):
 
     def _generate_title(self, text: str) -> str:
         """
-        Ultra-short "title". We keep it very short; for now we simply
-        ask the summarization model for a tiny summary, which tends to
-        be headline-like on technical text.
+        Short, headline-like title.
+
+        The title model stops at ``max_title_tokens``, which historically cut
+        headlines mid-sentence and mid-word (e.g. "...self-att"). We generate a
+        little longer and then clean the result so it ends on a whole word.
         """
-        return self._generate_seq2seq(
+        raw = self._generate_seq2seq(
             self._title_model,
             self._title_tok,
             text,
             max_len=self.max_title_tokens,
             min_len=self.min_title_tokens,
         )
+        return _clean_title(raw)
 
     # ------------------------------------------------------------------
     # Tool API
