@@ -18,6 +18,8 @@ import sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from stephanie.services.worker_model_bridge import (  # noqa: E402
+    DEFAULT_MAX_PRICE_USD_PER_MILLION,
+    DEFAULT_PAID_PROVIDER,
     DEFAULT_WORKER_BASE_URL,
     WorkerModelBridge,
 )
@@ -70,12 +72,25 @@ def main() -> int:
         except Exception as exc:
             print(f"  {route.id}: probe error ({exc})")
 
-    admissible = bridge.select_free_route(force=True)
     print()
-    if admissible is None:
-        print("RESULT: no admissible free route -> prefer_free falls back to Ollama.")
+    try:
+        paid = bridge.discover_paid_routes()
+        print(f"Paid {DEFAULT_PAID_PROVIDER} routes within ${DEFAULT_MAX_PRICE_USD_PER_MILLION:.2f}/M:")
+        for r in paid[:5]:
+            print(f"  {r.id} (${r.price_usd_per_million}/M)")
+        if not paid:
+            print("  (none)")
+    except Exception as exc:
+        print(f"  paid discovery failed: {exc}")
+
+    chosen = bridge.select_route()
+    print()
+    if chosen is None:
+        print("RESULT: no eligible free or capped paid route -> fall back to Ollama.")
+    elif chosen.is_free:
+        print(f"RESULT: would use free route {chosen.id}")
     else:
-        print(f"RESULT: would use free route {admissible.id}")
+        print(f"RESULT: would use paid route {chosen.id} (${chosen.price_usd_per_million}/M)")
     print(f"bridge status: {json.dumps(bridge.status(), default=str)}")
     return 0
 

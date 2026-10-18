@@ -40,6 +40,9 @@ log = logging.getLogger(__name__)
 
 DEFAULT_WORKER_BASE_URL = "http://127.0.0.1:7317"
 FREE_ROUTE_DATA_POLICY = "training_allowed"
+# Paid fallback is restricted to a single provider and a hard price cap.
+DEFAULT_PAID_PROVIDER = "opencode-go"
+DEFAULT_MAX_PRICE_USD_PER_MILLION = 0.40
 _ADMISSIBLE_STATUSES = {"OK", "PASSED", "SUCCESS", "SUCCEEDED"}
 
 
@@ -47,24 +50,36 @@ class FreeRouteUnavailable(RuntimeError):
     """Raised when no free route is currently admissible (caller should fall back)."""
 
 
+class NoEligibleRoute(RuntimeError):
+    """Raised when neither a free nor a capped paid route is available."""
+
+
 @dataclass(frozen=True)
 class FreeRoute:
-    """A free model route advertised by Worker's OpenCode model list."""
+    """A model route advertised by Worker's OpenCode model list."""
 
     id: str
     provider: str = ""
     model: str = ""
     price_usd_per_million: float = 0.0
     data_policy: str = FREE_ROUTE_DATA_POLICY
+    tier: str = "free"
 
     @classmethod
     def from_cli_row(cls, row: dict) -> "FreeRoute":
+        is_free = row.get("free") is True
         return cls(
             id=str(row.get("id") or ""),
             provider=str(row.get("provider") or ""),
             model=str(row.get("model") or ""),
             price_usd_per_million=float(row.get("price_usd_per_million") or 0.0),
+            data_policy=FREE_ROUTE_DATA_POLICY if is_free else "private",
+            tier="free" if is_free else "paid",
         )
+
+    @property
+    def is_free(self) -> bool:
+        return self.tier == "free"
 
     @property
     def is_training_allowed(self) -> bool:
@@ -155,6 +170,83 @@ class WorkerModelBridge:
         )
         response.raise_for_status()
         return response.json()
+
+    def discover_paid_routes(
+        self,
+        *,
+        provider: str = DEFAULT_PAID_PROVIDER,
+        max_price_usd_per_million: float = DEFAULT_MAX_PRICE_USD_PER_MILLION,
+    ) -> list[FreeRoute]:
+        """Cheapest non-free routes for ``provider`` within a hard price cap.
+
+        Uses Worker's own price model (``max_price`` + ``sort=price``) rather than
+        a nominated model name, so the cheapest eligible route is chosen from
+        whatever the provider currently offers. Worker's probe endpoint only
+        accepts zero-priced models, so paid routes cannot be probe-verified —
+        selection here is price-based, and failures fall back at call time.
+        """
+        params = {
+            "max_price": str(max_price_usd_per_million),
+            "sort": "price",
+        }
+        response = self._http().get(
+            f"{self.base_url}/v1/models/cli", params=params, timeout=self.discovery_timeout
+        )
+        response.raise_for_status()
+        rows = (response.json() or {}).get("models") or []
+        routes = [
+            FreeRoute.from_cli_row(row)
+            for row in rows
+            if isinstance(row, dict)
+            and row.get("id")
+            and row.get("free") is not True
+            and str(row.get("provider") or "") == provider
+            and float(row.get("price_usd_per_million") or 0.0) <= max_price_usd_per_million
+        ]
+        routes.sort(key=lambda r: (r.price_usd_per_million, r.id))
+        self._log.info(
+            "Worker offered %d paid %s route(s) within $%.2f/M",
+            len(routes),
+            provider,
+            max_price_usd_per_million,
+        )
+        return routes
+
+    def select_route(
+        self,
+        *,
+        prefer_free: bool = True,
+        provider: str = DEFAULT_PAID_PROVIDER,
+        max_price_usd_per_million: float = DEFAULT_MAX_PRICE_USD_PER_MILLION,
+    ) -> Optional[FreeRoute]:
+        """Free (probe-verified) first, else the cheapest capped paid route.
+
+        Returns ``None`` when nothing qualifies, so callers fall back to Ollama.
+        """
+        if prefer_free:
+            free = self.select_free_route()
+            if free is not None:
+                return free
+        try:
+            paid = self.discover_paid_routes(
+                provider=provider, max_price_usd_per_million=max_price_usd_per_million
+            )
+        except Exception as exc:
+            self._last_error = str(exc)
+            self._log.warning("Paid route discovery failed: %s", exc)
+            return None
+        if not paid:
+            self._log.warning(
+                "No %s route at or below $%.2f/M; falling back to the normal provider",
+                provider,
+                max_price_usd_per_million,
+            )
+            return None
+        chosen = paid[0]
+        self._log.info(
+            "Selected paid route %s ($%.2f/M)", chosen.id, chosen.price_usd_per_million
+        )
+        return chosen
 
     def select_free_route(
         self,
@@ -282,10 +374,10 @@ class WorkerModelProvider(ModelProvider):
 
     async def invoke(self, request: ModelRequest) -> ModelResponse:
         model = request.model if isinstance(request.model, Model) else Model.from_ref(str(request.model))
-        route = self.bridge.select_free_route()
+        route = self.bridge.select_route()
         if route is None:
             raise ProviderInvocationError(
-                self._provider_name, model.id, "no admissible free OpenCode route"
+                self._provider_name, model.id, "no eligible free or capped paid route"
             )
         prompt = request.prompt or next(
             (m.content for m in reversed(request.messages or []) if m.role == "user"), ""

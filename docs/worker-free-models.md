@@ -9,22 +9,37 @@ Implemented in `stephanie/services/worker_model_bridge.py`.
 
 ## Policy
 
-- **Prefer free, fall back to Ollama.** A free route is used only when it is
-  *provably admissible*; otherwise the caller continues on Ollama. Nothing is
-  routed to a free route on the strength of discovery alone.
-- **Probing is mandatory.** Free OpenCode routes are advertised by the OpenCode
-  CLI but have historically been denied through Worker's API path, so the bridge
-  probes before selecting (`POST /v1/models/probe`).
-- **Data policy.** Free routes report `data_policy: training_allowed`. Prompts
-  sent to them may be used for training. The operator has accepted this for free
-  routes; keep private/user data on Ollama or a private-tier route.
+Selection order (each tier is a hard stop before the next):
+
+1. **Free route** — only if it *probes* as admissible. Discovery alone is never
+   enough: free OpenCode routes are advertised but have historically been denied
+   through Worker's API path, so a probe (`POST /v1/models/probe`) is mandatory.
+2. **Cheapest paid `opencode-go` route under a hard price cap** — default cap
+   **$0.40 / million tokens**, provider fixed to `opencode-go`. Chosen by price
+   from Worker's own price data (`GET /v1/models/cli?max_price=0.40&sort=price`),
+   not by a nominated model name.
+3. **Ollama** — the normal provider, whenever neither of the above qualifies.
+
+Notes:
+
+- **Paid routes cannot be probe-verified.** Worker's probe endpoint rejects
+  non-zero-priced models (`MODEL_NOT_ELIGIBLE`), so tier 2 is price-selected and
+  falls back at call time if it fails.
+- **Data policy.** Free routes report `data_policy: training_allowed`; prompts
+  sent to them may be used for training. Paid `opencode-go` routes are
+  `private`. The operator has accepted the free-tier policy; keep private data on
+  Ollama or a paid/private route.
+- Current prices (illustrative): `muse-spark-1.2/1.3-contributor` $0.20,
+  `mimo-v2.5`/`mimo-v2.6-flash` $0.28, `deepseek-v4.1-flash` $0.60 (excluded by
+  the $0.40 cap), `gpt-6-luna` $0.75 (excluded).
 
 ## How it works
 
 | Step | Endpoint | Purpose |
 |---|---|---|
-| Discover | `GET /v1/models/cli?free=true` | list free routes (id, provider, price 0) |
-| Probe | `POST /v1/models/probe` | confirm the route is callable (`request_admissible` ≠ `BLOCKED`) |
+| Discover (free) | `GET /v1/models/cli?free=true` | list free routes (id, provider, price 0) |
+| Discover (paid) | `GET /v1/models/cli?max_price=0.40&sort=price` | cheapest `opencode-go` routes within the cap |
+| Probe | `POST /v1/models/probe` | confirm a **free** route is callable (`request_admissible` ≠ `BLOCKED`) |
 | Invoke | `POST /v1/work` | Worker has **no completion endpoint**; models run inside a Work task via its `CALL_MODEL` capability |
 
 Selection is negative-cached (`cache_ttl_seconds`, default 300s) so a failed

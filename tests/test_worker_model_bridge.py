@@ -143,6 +143,62 @@ def test_select_free_route_is_silent_when_worker_is_unreachable():
     assert "worker down" in bridge.status()["last_error"]
 
 
+def test_discover_paid_routes_filters_provider_and_price_and_sorts():
+    rows = [
+        {"id": "opencode-go/gpt-6-luna", "provider": "opencode-go", "free": False, "price_usd_per_million": 0.75},
+        {"id": "opencode-go/muse-spark-1.3-contributor", "provider": "opencode-go", "free": False, "price_usd_per_million": 0.2},
+        {"id": "opencode-go/muse-spark-1.2-contributor", "provider": "opencode-go", "free": False, "price_usd_per_million": 0.2},
+        {"id": "opencode/space-bunny-free", "provider": "opencode", "free": True, "price_usd_per_million": 0},
+        {"id": "opencode/deepseek-v4-flash", "provider": "opencode", "free": False, "price_usd_per_million": 0.28},
+    ]
+    session = _StubSession(discovered=rows)
+    bridge = WorkerModelBridge(session=session)
+
+    paid = bridge.discover_paid_routes()
+    # only opencode-go, non-free, <= 0.40/M, cheapest first
+    assert [r.id for r in paid] == [
+        "opencode-go/muse-spark-1.2-contributor",
+        "opencode-go/muse-spark-1.3-contributor",
+    ]
+    assert all(r.provider == "opencode-go" and not r.is_free for r in paid)
+
+
+def test_select_route_prefers_free_then_falls_back_to_cheapest_paid():
+    rows = [
+        {"id": "opencode-go/muse-spark-1.3-contributor", "provider": "opencode-go", "free": False, "price_usd_per_million": 0.2},
+        {"id": "opencode/space-bunny-free", "provider": "opencode", "free": True, "price_usd_per_million": 0},
+    ]
+    # Free is admissible -> use it.
+    session = _StubSession(
+        discovered=rows,
+        probe_results={"opencode/space-bunny-free": _probe_ok("opencode/space-bunny-free")},
+    )
+    route = WorkerModelBridge(session=session).select_route()
+    assert route is not None and route.is_free and route.id == "opencode/space-bunny-free"
+
+    # Free is blocked -> use the cheapest opencode-go route within the cap.
+    session2 = _StubSession(
+        discovered=[r for r in rows if r["free"] is True],
+        probe_results={"opencode/space-bunny-free": _probe_blocked("opencode/space-bunny-free")},
+    )
+    session2._discovered = rows  # paid rows also visible to discovery
+    route2 = WorkerModelBridge(session=session2).select_route()
+    assert route2 is not None and not route2.is_free
+    assert route2.id == "opencode-go/muse-spark-1.3-contributor"
+    assert route2.price_usd_per_million == 0.2
+
+
+def test_select_route_returns_none_when_nothing_is_within_the_cap():
+    rows = [
+        {"id": "opencode-go/gpt-6-luna", "provider": "opencode-go", "free": False, "price_usd_per_million": 0.75},
+    ]
+    from stephanie.services.worker_model_bridge import DEFAULT_MAX_PRICE_USD_PER_MILLION
+
+    assert DEFAULT_MAX_PRICE_USD_PER_MILLION == 0.40  # hard cap default
+    bridge = WorkerModelBridge(session=_StubSession(discovered=rows))
+    assert bridge.select_route() is None
+
+
 def test_prefer_free_route_never_raises_when_worker_is_absent():
     bridge = WorkerModelBridge(session=_StubSession(get_error=ConnectionError("no worker")))
     assert prefer_free_route(bridge=bridge) is None
