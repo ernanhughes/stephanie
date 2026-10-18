@@ -44,7 +44,7 @@ chat_runtime:
 # an operator explicitly enables it and the Writer checkout/database are ready.
 writer:
   enabled: true
-  project_root: "C:/Projects/Writer"
+  project_root: '${oc.env:STEPHANIE_WRITER_PROJECT_ROOT,C:/Projects/Writer}'
   writer_executable: null
   timeout_seconds: 30
   enable_execution: false

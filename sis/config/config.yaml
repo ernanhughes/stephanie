@@ -3,7 +3,7 @@
 # Where SIS should pull insights from
 source:
   type: "db"   # options: "db" | "logs"
-  db_url: "postgresql://postgres:postgres@localhost:5432/stephanie"
+  db_url: '${oc.env:SIS_DB_URL,postgresql://${oc.env:SIS_DB_USER,stephanie}:${oc.env:SIS_DB_PASSWORD}@${oc.env:SIS_DB_HOST,localhost}:${oc.env:SIS_DB_PORT,5432}/${oc.env:SIS_DB_NAME,stephanie}}'
   log_dir: "../logs"
 
 # Logs directory (global for SIS + UI browser)
@@ -14,11 +14,11 @@ logs:
 
 # Database connection (for MemoryTool and ORM)
 db:
-  name: "co"
-  user: "co"
-  password: "co"
-  host: "localhost"
-  port: 5432
+  name: '${oc.env:SIS_DB_NAME,stephanie}'
+  user: '${oc.env:SIS_DB_USER,stephanie}'
+  password: '${oc.env:SIS_DB_PASSWORD}'
+  host: '${oc.env:SIS_DB_HOST,localhost}'
+  port: '${oc.env:SIS_DB_PORT,5432}'
 
 # sis/config/config.yaml  (append / merge)
 components:

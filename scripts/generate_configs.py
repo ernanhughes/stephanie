@@ -19,11 +19,11 @@ defaults:
 """,
     "db/postgres.yaml": """
 db:
-  name: co
-  user: co
-  password: co
-  host: localhost
-  port: 5432
+  name: '${oc.env:STEPHANIE_DB_NAME,stephanie}'
+  user: '${oc.env:STEPHANIE_DB_USER,stephanie}'
+  password: '${oc.env:STEPHANIE_DB_PASSWORD}'
+  host: '${oc.env:STEPHANIE_DB_HOST,localhost}'
+  port: '${oc.env:STEPHANIE_DB_PORT,5432}'
 """,
     "prompt_refiner/default.yaml": """
 prompt_refiner:
