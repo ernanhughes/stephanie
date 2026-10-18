@@ -165,7 +165,8 @@ Want to understand how and why it was built this way?
 Start the whole system — app, database, bus, search and model runtime:
 
 ```bash
-cp .env.docker.example .env   # edit secrets first
+cp .env.docker.example .env       # ports, database, username
+cp .env.sis.example .env.sis      # SIS auth secrets (kept separate; see docs/docker.md)
 docker compose up -d --build
 docker compose logs -f app
 ```

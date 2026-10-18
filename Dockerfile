@@ -32,10 +32,14 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-ins
 WORKDIR /app
 
 # Install Python dependencies first so source edits don't invalidate this layer.
-COPY requirements.txt requirements_sis.txt pyproject.toml setup.py MANIFEST.in README.md ./
+COPY requirements.txt requirements_sis.txt requirements_docker.txt pyproject.toml setup.py MANIFEST.in README.md ./
 RUN python -m pip install --upgrade pip setuptools wheel \
  && python -m pip install -r requirements.txt \
  && python -m pip install -r requirements_sis.txt
+
+# Undeclared-but-required runtime deps, kept in a small separate layer so it can
+# be corrected without reinstalling the layer above.
+RUN python -m pip install -r requirements_docker.txt
 
 # Copy the source and install the project (console entry points + package data).
 COPY . .

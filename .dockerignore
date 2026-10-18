@@ -8,6 +8,7 @@ ENV
 .env
 .env.*
 !.env.docker.example
+!.env.sis.example
 *.sqlite
 *.sqlite3
 

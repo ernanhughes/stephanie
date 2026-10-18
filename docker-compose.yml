@@ -121,6 +121,12 @@ services:
         condition: service_healthy
       db-init:
         condition: service_completed_successfully
+    # Secrets are delivered verbatim from .env.sis so that PBKDF2 hashes (which
+    # contain "$") are not line-interpolated by Compose. The file is optional;
+    # without it SIS fails closed.
+    env_file:
+      - path: .env.sis
+        required: false
     environment:
       <<: *db-environment
       STEPHANIE_NATS_SERVERS: nats://nats:4222
@@ -129,8 +135,6 @@ services:
       SIS_HOST: 0.0.0.0
       SIS_PORT: "8000"
       SIS_AUTH_USERNAME: ${SIS_AUTH_USERNAME:-stephanie}
-      SIS_AUTH_PASSWORD_HASH: ${SIS_AUTH_PASSWORD_HASH:-}
-      SIS_SESSION_SECRET: ${SIS_SESSION_SECRET:-}
       SIS_COOKIE_SECURE: ${SIS_COOKIE_SECURE:-false}
     ports:
       - "${SIS_BIND:-127.0.0.1}:${SIS_PORT:-8000}:8000"

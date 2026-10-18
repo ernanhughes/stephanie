@@ -1,0 +1,13 @@
+# Runtime dependencies imported by the application but not declared in
+# requirements.txt, requirements_sis.txt or pyproject.toml. The local virtual
+# environment picked these up transitively; a clean container install does not.
+#
+# Kept in a separate file/layer so it can be corrected without rebuilding the
+# heavy dependency layer in Dockerfile.
+SQLAlchemy>=2.0        # stephanie.orm.*, stephanie.memory.* (all stores)
+greenlet>=3           # SQLAlchemy async/greenlet support
+hnswlib>=0.8           # stephanie.orm.hnsw_index (NER/vector index)
+nats-py>=2.6           # KnowledgeBus NATS backend (config/bus/nats.yaml)
+pyzmq>=25              # ZmqCacheService (services/default.yaml: cache)
+ZeroModel>=1.0.9       # stephanie.services.zeromodel_service
+colorama>=0.4          # transitive CLI colour support
