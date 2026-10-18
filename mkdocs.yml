@@ -11,6 +11,7 @@ nav:
   - Tools: tools.md
   - Configuration: config.md
   - Custom Pipeline: custom.md
+  - Paper to Blog: paper-to-blog.md
   - Writer Integration: writer-integration.md
   - Stephanie Next:
       - Overview: stephanie-next/index.md

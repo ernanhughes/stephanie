@@ -722,6 +722,27 @@ BLOG CANDIDATE:
                 rationale = (first or {}).get("rationale") or ""
         context["ai_blog_rationale"] = rationale
 
+        # Explicit, stable verdict so downstream stages/reporting can act on the
+        # judge instead of it being silently advisory. A disqualified blog is
+        # marked rejected rather than being indistinguishable from a good one.
+        passed = float(best_final) >= 0.0 and float(best_final) >= self.gate_min_score
+        context["blog_quality"] = {
+            "score": float(best_final),
+            "weighted_total": float(best_final),
+            "gate_min_score": float(self.gate_min_score),
+            "gate_mode": self.gate_mode,
+            "passed": bool(passed),
+            "reason": (
+                "passed"
+                if passed
+                else (
+                    "disqualified by gating dimension"
+                    if float(best_final) < 0.0
+                    else f"below gate_min_score ({self.gate_min_score})"
+                )
+            ),
+        }
+
         # Optional: preference pairs for DPO (winner vs everyone else)
         try:
             pairs = []

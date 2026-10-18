@@ -19,6 +19,130 @@ from stephanie.utils.file_utils import save_to_timestamped_file
 log = logging.getLogger(__name__)
 
 
+# ----------------------------------------------------------------------
+# arXiv id / heading / de-duplication helpers (pure, unit-testable)
+# ----------------------------------------------------------------------
+
+_ARXIV_PREFIX_RE = re.compile(r"^(arxiv:|arxiv/|https?://arxiv\.org/abs/)", re.IGNORECASE)
+_ARXIV_VERSION_RE = re.compile(r"v\d+$", re.IGNORECASE)
+_HEADING_STRIP_RE = re.compile(r"[#*_`]+")
+
+
+def normalize_arxiv_id(value: Any) -> str:
+    """Canonicalise an arXiv id so root/reference ids compare reliably.
+
+    Handles the variants seen in practice: ``2506.21734``, ``2506.21734v2``,
+    ``arXiv:2506.21734``, and full ``https://arxiv.org/abs/...`` URLs.
+    """
+    s = str(value or "").strip()
+    if not s:
+        return ""
+    s = _ARXIV_PREFIX_RE.sub("", s)
+    s = s.strip().strip("/")
+    s = _ARXIV_VERSION_RE.sub("", s)
+    return s.lower()
+
+
+def sanitize_heading(text: Any, *, max_chars: int = 90, fallback: str = "") -> str:
+    """Turn a possibly-messy section label into a clean, single-line heading.
+
+    Section ``title``/``summary`` values are frequently whole sentences (and
+    sometimes truncated mid-word). A blog heading must be short, on one line,
+    and must not end mid-sentence, so we cut at the first sentence boundary and
+    then trim to a word boundary.
+    """
+    s = str(text or "").strip()
+    if not s:
+        return fallback
+    s = s.splitlines()[0].strip()
+    s = _HEADING_STRIP_RE.sub("", s).strip()
+    s = re.sub(r"\s+", " ", s)
+    # If it is still sentence-like, keep only the first sentence.
+    sentence = re.split(r"(?<=[.!?])\s+", s, maxsplit=1)[0].strip()
+    if sentence:
+        s = sentence
+    if len(s) > max_chars:
+        s = s[:max_chars].rsplit(" ", 1)[0].strip()
+    s = s.strip(" \t-:;,.")
+    if not s:
+        return fallback
+    return s[0].upper() + s[1:]
+
+
+def _heading_tokens(text: str) -> set[str]:
+    return {t for t in re.findall(r"[a-z0-9]{4,}", (text or "").lower())}
+
+
+def partition_sections(sections: List[Any], root_id: str) -> tuple[List[Any], List[Any]]:
+    """Split sections into (root paper, other papers) using normalised ids.
+
+    Returns ``(root_sections, related_sections)``. Sections with no usable id
+    are treated as related so they can still be labelled, never silently
+    presented as the root paper.
+    """
+    canonical_root = normalize_arxiv_id(root_id)
+    root: List[Any] = []
+    related: List[Any] = []
+    for sec in sections or []:
+        sec_pid = normalize_arxiv_id(
+            getattr(sec, "paper_arxiv_id", None) or getattr(sec, "paper_id", None)
+        )
+        if canonical_root and sec_pid and sec_pid == canonical_root:
+            root.append(sec)
+        else:
+            related.append(sec)
+    return root, related
+
+
+def dedupe_sections(sections: List[Any]) -> List[Any]:
+    """Drop sections that repeat an earlier one.
+
+    Two sections collide when their normalised heading matches exactly, when
+    their headings overlap heavily (Jaccard >= 0.8), or when one heading's
+    keywords are a subset of the other's (the same topic, reworded or expanded).
+    This removes the repeated "chain of thought" blocks seen in the same blog.
+    """
+    kept: List[Any] = []
+    kept_keys: set[str] = set()
+    kept_token_sets: List[set[str]] = []
+    seen_text: set[str] = set()
+
+    def _is_duplicate(tokens: set[str]) -> bool:
+        if not tokens:
+            return False
+        for other in kept_token_sets:
+            if not other:
+                continue
+            union = tokens | other
+            if len(tokens & other) / max(1, len(union)) >= 0.8:
+                return True
+            smaller, larger = (tokens, other) if len(tokens) <= len(other) else (other, tokens)
+            if len(smaller) >= 2 and smaller.issubset(larger):
+                return True
+        return False
+
+    for sec in sections or []:
+        heading = str(getattr(sec, "title", None) or getattr(sec, "section_name", None) or "")
+        text = str(getattr(sec, "text", None) or getattr(sec, "summary", None) or "")
+        key = sanitize_heading(heading, fallback="").lower()
+        text_key = text.strip()[:400].lower()
+        if key and key in kept_keys:
+            continue
+        if text_key and text_key in seen_text:
+            continue
+        tokens = _heading_tokens(heading)
+        if _is_duplicate(tokens):
+            continue
+        kept.append(sec)
+        if key:
+            kept_keys.add(key)
+        if text_key:
+            seen_text.add(text_key)
+        kept_token_sets.append(tokens)
+    return kept
+
+
+
 @dataclass
 class PaperBlogGeneratorConfig:
     """
@@ -40,6 +164,10 @@ class PaperBlogGeneratorConfig:
     # Where to drop debug markdown
     out_root: str = "runs/paper_blogs"
     save_sections: bool = False
+
+    # Cross-paper synthesis: keep related-paper sections, but label them.
+    include_related: bool = True
+    max_related_sections: int = 4
 
     model: Dict[str, Any] = field(
         default_factory=lambda: {
@@ -74,6 +202,12 @@ class PaperBlogGeneratorConfig:
                 cfg.get("conclusion_model", cls.conclusion_model)
             ),
             out_root=str(cfg.get("out_root", cls.out_root)),
+            include_related=bool(
+                cfg.get("include_related", cls.include_related)
+            ),
+            max_related_sections=int(
+                cfg.get("max_related_sections", cls.max_related_sections)
+            ),
             model=cfg.get("model", default_model),
         )
 
@@ -165,48 +299,56 @@ class PaperBlogGeneratorAgent(BaseAgent):
             context=context,
         )
 
-        # 2) Section blocks (root paper only, limited to max_sections)
-        root_sections = [
-            s
-            for s in sections
-            if getattr(s, "paper_arxiv_id", None) == arxiv_id
-        ]
+        # 2) Partition sections: root paper vs related papers.
+        #    This is explicit: we never silently relabel another paper's sections
+        #    as the root paper. Related-paper material is kept (cross-paper
+        #    synthesis) but is labelled as coming from another paper.
+        root_id = normalize_arxiv_id(arxiv_id)
+        root_sections, related_sections = partition_sections(sections, root_id)
+
         if not root_sections:
-            root_sections = sections
+            log.warning(
+                "PaperBlogGeneratorAgent: no sections matched root id %r "
+                "(got ids like %r); treating all sections as related material",
+                arxiv_id,
+                [getattr(s, "paper_arxiv_id", None) for s in sections[:3]],
+            )
+            related_sections = list(sections)
+
+        root_sections = dedupe_sections(root_sections)
+        related_sections = dedupe_sections(related_sections)
 
         selected_sections = root_sections[: self.blog_cfg.max_sections]
         selected_spine = spine[: len(selected_sections)] if spine else []
 
-        section_tasks = []
-        for idx, sec in enumerate(selected_sections):
-            neighbor_block = self._get_neighbor_sections(
-                section=sec,
-                sections=selected_sections,
-                window=1,
-            )
-            section_spine = (
-                selected_spine[idx] if idx < len(selected_spine) else None
-            )
-            matches = context.get("section_matches") or []
+        section_blocks = await self._generate_section_blocks(
+            sections=selected_sections,
+            spine=selected_spine,
+            arxiv_id=arxiv_id,
+            paper_title=paper_title,
+            paper_summary=paper_summary,
+            clusters=clusters,
+            context=context,
+        )
 
-            log.info("found %d matches for section %s", len(matches), getattr(sec, "section_id", "unknown"))
-
-            section_tasks.append(
-                self._generate_section_block(
-                    arxiv_id=arxiv_id,
-                    paper_title=paper_title,
-                    paper_summary=paper_summary,
-                    section=sec,
-                    neighbor_block=neighbor_block,
-                    clusters=clusters,
-                    section_spine=section_spine,
-                    context=context,
-                    all_sections=sections,          # NEW
-                    section_matches=matches,        # NEW
-                )
+        related_blocks: List[str] = []
+        if self.cfg_obj.include_related and related_sections:
+            picked_related = related_sections[: self.cfg_obj.max_related_sections]
+            log.info(
+                "PaperBlogGeneratorAgent: adding %d labelled related-paper sections",
+                len(picked_related),
             )
-
-        section_blocks = await asyncio.gather(*section_tasks)
+            related_blocks = await self._generate_section_blocks(
+                sections=picked_related,
+                spine=[],
+                arxiv_id=arxiv_id,
+                paper_title=paper_title,
+                paper_summary=paper_summary,
+                clusters=clusters,
+                context=context,
+                heading_level=3,
+                attribute=True,
+            )
 
         # 3) Conclusion
         conclusion_md = await self._generate_conclusion(
@@ -218,13 +360,28 @@ class PaperBlogGeneratorAgent(BaseAgent):
         )
 
         # 4) Assemble + save
-        full_blog = "\n\n".join(
-            [
-                self._clean_text(intro_md),
-                *map(self._clean_text, section_blocks),
-                self._clean_text(conclusion_md),
-            ]
+        parts: List[str] = [self._clean_text(intro_md)]
+        parts.extend(self._clean_text(block) for block in section_blocks)
+        if related_blocks:
+            parts.append(
+                "## Related work from other papers\n\n"
+                "The sections below summarise *other* papers. They are labelled with "
+                "their source and are supporting context, not part of the paper under discussion."
+            )
+            parts.extend(self._clean_text(block) for block in related_blocks)
+        parts.append(self._clean_text(conclusion_md))
+        body = "\n\n".join(part for part in parts if part)
+
+        # References are built once, at the end, instead of being appended to
+        # every section and then collapsed.
+        references_md = self._build_references_markdown(
+            arxiv_id=arxiv_id,
+            graph=graph,
+            sections=sections,
         )
+        full_blog = body
+        if references_md:
+            full_blog = body.rstrip() + "\n\n" + references_md + "\n"
 
         context["paper_blog_markdown_with_refs"] = full_blog
 
@@ -232,17 +389,19 @@ class PaperBlogGeneratorAgent(BaseAgent):
             data=full_blog,
             file_prefix=f"{arxiv_id}_blog_with_refs",
             file_extension="md",
-            output_dir=f"{self.out_root}/{self.run_id}",
+            output_dir=self._output_dir(),
         )
 
-        full_blog = self._consolidate_references_at_end(full_blog)
         context["paper_blog_markdown"] = full_blog
 
         context["paper_blog_meta"] = {
             "arxiv_id": arxiv_id,
             "title": paper_title,
             "n_sections": len(selected_sections),
+            "n_related_sections": len(related_blocks),
+            "related_sections_labelled": bool(related_blocks),
             "used_spine": bool(spine),
+            "root_id_normalised": root_id,
         }
 
         save_to_timestamped_file(
@@ -253,6 +412,112 @@ class PaperBlogGeneratorAgent(BaseAgent):
         )
 
         return context
+
+    # ------------------------------------------------------------------
+    # Selection / assembly helpers
+    # ------------------------------------------------------------------
+
+    def _output_dir(self) -> str:
+        """Output directory for this run.
+
+        ``run_id`` can itself be a path in some configs, which previously
+        produced nested ``runs/paper_blogs/<id>/runs/paper_blogs/...`` folders;
+        only the final path segment is used.
+        """
+        run_key = Path(str(self.run_id or "")).name or "run"
+        return str(Path(self.out_root) / run_key)
+
+    def _section_heading(self, section: Any) -> str:
+        """Best available human heading for a section (never a truncated sentence)."""
+        meta = getattr(section, "meta", None) or {}
+        candidates: List[Any] = []
+        if isinstance(meta, dict):
+            candidates.extend(
+                [meta.get("heading"), meta.get("section_heading"), meta.get("section_name")]
+            )
+        candidates.append(getattr(section, "section_name", None))
+        candidates.append(getattr(section, "title", None))
+        for candidate in candidates:
+            heading = sanitize_heading(candidate)
+            if heading:
+                return heading
+        idx = getattr(section, "section_index", None)
+        return f"Section {idx + 1}" if isinstance(idx, int) else "Section"
+
+    def _paper_label(self, section: Any, context: Dict[str, Any]) -> str:
+        """Human label for the paper a section came from."""
+        pid = normalize_arxiv_id(
+            getattr(section, "paper_arxiv_id", None) or getattr(section, "paper_id", None)
+        ) or "unknown"
+        title = ""
+        for doc in context.get("paper_documents") or []:
+            did = normalize_arxiv_id(doc.get("paper_id") or doc.get("id") or doc.get("arxiv_id"))
+            if did and did == pid:
+                title = str(doc.get("title") or "")
+                break
+        if not title:
+            meta = getattr(section, "meta", None) or {}
+            if isinstance(meta, dict):
+                title = str(meta.get("paper_title") or "")
+        return f"{title} ({pid})" if title else f"paper {pid}"
+
+    @staticmethod
+    def _force_heading(markdown: str, *, title: str, level: int, source_note: str = "") -> str:
+        """Deterministically set the section heading and optional source line.
+
+        The model is free to write the body, but the heading must be the
+        sanitised title we computed — so a stray summary sentence (or a
+        truncated fragment) can never end up in the heading.
+        """
+        prefix = "#" * max(2, min(6, level))
+        lines = (markdown or "").strip().splitlines()
+        while lines and lines[0].lstrip().startswith("#"):
+            lines.pop(0)
+        body = "\n".join(lines).strip()
+        header = f"{prefix} {title}"
+        if source_note:
+            header = f"{header}\n\n*Source: {source_note}.*"
+        return f"{header}\n\n{body}".strip() if body else header
+
+    async def _generate_section_blocks(
+        self,
+        *,
+        sections: List[PaperSection],
+        spine: List[Any],
+        arxiv_id: str,
+        paper_title: str,
+        paper_summary: str,
+        clusters: List[ConceptCluster],
+        context: Dict[str, Any],
+        heading_level: int = 2,
+        attribute: bool = False,
+    ) -> List[str]:
+        """Generate one blog block per section, concurrently."""
+        if not sections:
+            return []
+        matches = context.get("section_matches") or []
+        all_sections = context.get("paper_sections") or sections
+        tasks = []
+        for idx, sec in enumerate(sections):
+            tasks.append(
+                self._generate_section_block(
+                    arxiv_id=arxiv_id,
+                    paper_title=paper_title,
+                    paper_summary=paper_summary,
+                    section=sec,
+                    neighbor_block=self._get_neighbor_sections(
+                        section=sec, sections=sections, window=1
+                    ),
+                    clusters=clusters,
+                    section_spine=spine[idx] if idx < len(spine) else None,
+                    context=context,
+                    all_sections=all_sections,
+                    section_matches=matches,
+                    heading_level=heading_level,
+                    attribute=attribute,
+                )
+            )
+        return list(await asyncio.gather(*tasks))
 
     # ------------------------------------------------------------------
     # Intro / Outro
@@ -275,10 +540,10 @@ class PaperBlogGeneratorAgent(BaseAgent):
         # Build a tiny "table of contents" of the sections we plan to cover.
         toc_lines: List[str] = []
         for s in sections[: self.blog_cfg.max_sections]:
-            name = getattr(s, "section_name", None) or getattr(s, "title", "")
+            name = self._section_heading(s)
             if not name:
                 continue
-            toc_lines.append(f"- {name.strip()}")
+            toc_lines.append(f"- {name}")
 
         toc_block = (
             "\n".join(toc_lines) if toc_lines else "(sections will follow)"
@@ -334,9 +599,9 @@ Do NOT include a table of contents or section list; you've already used that jus
         """
         section_titles = []
         for s in sections[: self.blog_cfg.max_sections]:
-            name = getattr(s, "section_name", None) or getattr(s, "title", "")
+            name = self._section_heading(s)
             if name:
-                section_titles.append(name.strip())
+                section_titles.append(name)
 
         sections_block = (
             "\n".join(f"- {t}" for t in section_titles) or "(see post above)"
@@ -390,6 +655,8 @@ Write a Markdown section that:
         context: Dict[str, Any],
         all_sections: List[PaperSection],
         section_matches: List[Any],
+        heading_level: int = 2,
+        attribute: bool = False,
     ) -> str:
         """
         Generate a single blog section for a given DocumentSection.
@@ -402,10 +669,12 @@ Write a Markdown section that:
           - Stop (when it would score ≥ 8/10)
 
         We only see the final, best section.
+
+        ``heading_level``/``attribute`` support the labelled related-paper
+        block: related sections are rendered as sub-headings carrying a source
+        line naming the paper they came from.
         """
-        section_title = getattr(section, "section_name", None) or getattr(
-            section, "title", ""
-        )
+        section_title = self._section_heading(section)
         section_summary = getattr(section, "summary", None) or getattr(
             section, "text", ""
         )
@@ -504,7 +773,11 @@ Your task:
 
 Write the final section in Markdown.
 
-Start with a level-2 heading: "## {section_title}" (or a slightly improved variant).
+Start with a level-{heading_level} heading; the exact heading text is applied
+automatically after you write, so focus on writing a strong body.
+
+{("This section summarises a *related* paper. Frame it clearly as supporting "
+  "context from another paper, not as the paper under discussion.") if attribute else ""}
 
 Aim for roughly {self.blog_cfg.section_words} words (±30%).
 
@@ -526,6 +799,12 @@ Do NOT include any commentary about scores, the GROWS loop, or your process.
         context["last_section_generated"] = section_md
 
         section_md = self._clean_text(section_md)
+        section_md = self._force_heading(
+            section_md,
+            title=section_title,
+            level=heading_level,
+            source_note=self._paper_label(section, context) if attribute else "",
+        )
 
         # Append a deterministic visuals block if we have attached elements
         visuals_block = visuals_hint
@@ -610,16 +889,7 @@ Do NOT include any commentary about scores, the GROWS loop, or your process.
         )
 
         arxiv_id = context.get("arxiv_id") or context.get("paper_arxiv_id")
-        graph: Optional[PaperReferenceGraph] = context.get("paper_graph")
-        sections: List[PaperSection] = context.get("paper_sections") or []
-        ref_block = self._build_references_markdown(
-            arxiv_id=arxiv_id,
-            graph=graph,
-            sections=sections,
-        )
-        if ref_block:
-            blog_markdown = (blog_markdown or "").rstrip() + "\n\n" + ref_block + "\n"
-        
+
         if self.save_sections:
             save_to_timestamped_file(blog_markdown, file_prefix=f"{arxiv_id}_section_", file_extension="md", output_dir=f"{self.out_root}/{self.run_id}")
 
@@ -650,7 +920,7 @@ Do NOT include any commentary about scores, the GROWS loop, or your process.
     def _extract_pair(m: dict) -> tuple[str, str, float]:
         # try common patterns
         a = m.get("a") or m.get("a_id") or m.get("left") or m.get("source") or m.get("source_id") or m.get("section_id")
-        b = m.get("b") or m.get(" I b_id") or m.get("right") or m.get("target") or m.get("target_id") or m.get("match_section_id")
+        b = m.get("b") or m.get("b_id") or m.get("right") or m.get("target") or m.get("target_id") or m.get("match_section_id")
         s = m.get("score") or m.get("sim") or m.get("similarity") or m.get("cosine") or 0.0
         return (str(a or ""), str(b or ""), float(s or 0.0))
 
@@ -924,16 +1194,22 @@ Do NOT include any commentary about scores, the GROWS loop, or your process.
         return "\n".join(lines)
 
 
+    _REF_ENTRY_START_RE = re.compile(r"^(\[\d+\]|\d+[.)]\s*)")
+    _REF_AUTHOR_START_RE = re.compile(r"^[A-Z][A-Za-z'’\-]+,\s")
+    _REF_YEAR_RE = re.compile(r"\b(19|20)\d{2}\b")
+
     def _extract_reference_lines_from_sections(
         self,
         sections: List[PaperSection],
     ) -> List[str]:
         """
-        Look for sections whose title looks like 'References', 'Bibliography', etc.
-        Then heuristically split their text into per-reference lines.
+        Extract reference entries from any 'References' / 'Bibliography' section.
 
-        This is intentionally simple v1: good enough to get a useful block,
-        and we can swap in GROBID / a dedicated parser later.
+        Reference blocks are usually hard-wrapped, so a single citation can span
+        several physical lines. We first group continuation lines into one entry
+        (starting a new entry at ``[n]`` / ``n.`` markers or an ``Author,`` line),
+        then keep entries that look like real citations. The previous version kept
+        individual physical lines, which merged and mangled citations.
         """
         ref_texts: List[str] = []
 
@@ -960,25 +1236,35 @@ Do NOT include any commentary about scores, the GROWS loop, or your process.
         if not ref_texts:
             return []
 
-        # Merge all reference-text fragments and split into lines
-        raw_lines = []
+        raw_lines: List[str] = []
         for block in ref_texts:
             raw_lines.extend(str(block).splitlines())
 
-        cleaned: List[str] = []
-        for ln in raw_lines:
-            ln = ln.strip()
-            if not ln:
+        entries: List[str] = []
+        current: List[str] = []
+        for line in raw_lines:
+            line = line.strip()
+            if not line:
                 continue
+            is_start = bool(
+                self._REF_ENTRY_START_RE.match(line)
+                or self._REF_AUTHOR_START_RE.match(line)
+            )
+            if is_start and current:
+                entries.append(" ".join(current))
+                current = [line]
+            else:
+                current.append(line)
+        if current:
+            entries.append(" ".join(current))
 
-            # Heuristics: keep lines that look like real references:
-            #   - contain a year, or
-            #   - start with [n], or "n." / "n)"
-            if re.search(r"\b(19|20)\d{2}\b", ln) or re.match(
-                r"^(\[\d+\]|\d+\.\s+|\d+\)\s+)", ln
-            ):
-                cleaned.append(ln)
-
+        cleaned: List[str] = []
+        for entry in entries:
+            entry = re.sub(r"\s+", " ", entry).strip()
+            if not entry:
+                continue
+            if self._REF_ENTRY_START_RE.match(entry) or self._REF_YEAR_RE.search(entry):
+                cleaned.append(entry)
         return cleaned
 
     def _consolidate_references_at_end(self, markdown: str) -> str:
