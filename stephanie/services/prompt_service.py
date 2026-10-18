@@ -232,6 +232,52 @@ class PromptService(Service):
             return f"{base}\n\n{sys_preamble}"
         return base
 
+    async def _try_worker_route(self, messages: List[Dict[str, Any]]) -> Optional[str]:
+        """Try a Worker-backed route when ``cfg.model_defaults.enabled`` is set.
+
+        Never raises: returns ``None`` on any problem so the caller uses litellm
+        as before. Disabled by default, so behaviour is unchanged unless the
+        operator opts in (see docs/worker-free-models.md).
+        """
+        settings = dict((self.cfg or {}).get("model_defaults") or {})
+        if not settings.get("enabled", False):
+            return None
+        try:
+            from stephanie.services.worker_model_bridge import (
+                DEFAULT_MAX_PRICE_USD_PER_MILLION,
+                DEFAULT_PAID_PROVIDER,
+                WorkerModelBridge,
+            )
+
+            if getattr(self, "_worker_bridge", None) is None:
+                self._worker_bridge = WorkerModelBridge(
+                    base_url=str(settings.get("worker_base_url") or "http://127.0.0.1:7317")
+                )
+            bridge = self._worker_bridge
+            route = bridge.select_route(
+                allow_free=bool(settings.get("allow_free", True)),
+                allow_paid=bool(settings.get("allow_paid", False)),
+                provider=str(settings.get("paid_provider") or DEFAULT_PAID_PROVIDER),
+                max_price_usd_per_million=float(
+                    settings.get("max_price_usd_per_million", DEFAULT_MAX_PRICE_USD_PER_MILLION)
+                ),
+                preferred_model=str(settings.get("preferred_model") or ""),
+            )
+            if route is None:
+                return None
+            prompt = next(
+                (m.get("content", "") for m in reversed(messages) if m.get("role") == "user"),
+                "",
+            )
+            if not prompt:
+                prompt = "\n\n".join(str(m.get("content", "")) for m in messages)
+            text = await asyncio.to_thread(bridge.submit_prompt, prompt, route=route)
+            log.info("PS worker-route: model=%s tier=%s", route.id, route.tier)
+            return text
+        except Exception as exc:
+            log.warning("PS worker-route failed (%s); using the normal provider", type(exc).__name__)
+            return None
+
     async def _acomplete_messages(
         self,
         *,
@@ -239,6 +285,10 @@ class PromptService(Service):
         messages: List[Dict[str, Any]],
         params: Optional[Dict[str, Any]] = None,
     ) -> str:
+        worker_text = await self._try_worker_route(messages)
+        if worker_text is not None:
+            return remove_think_blocks(worker_text)
+
         call_params = dict(model.params or {})
         if params:
             call_params.update(params)

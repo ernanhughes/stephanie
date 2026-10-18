@@ -24,10 +24,13 @@ embeddings:
 # run, e.g.  python -m stephanie.main --config-name information \
 #             model_defaults.enabled=true model_defaults.allow_paid=true
 model_defaults:
-  enabled: false
+  # Default: route the paper pipeline to the cheapest eligible opencode-go route.
+  # Free routes are currently all BLOCKED, so this uses the paid fallback.
+  # Turn off with: model_defaults.enabled=false
+  enabled: true
   worker_base_url: "http://127.0.0.1:7317"
   allow_free: true
-  allow_paid: false
+  allow_paid: true
   paid_provider: "opencode-go"
   max_price_usd_per_million: 0.40
   # Pin one route (free or paid). Honoured first and exempt from the price cap,
@@ -35,7 +38,7 @@ model_defaults:
   # NOTE: "opencode-go/deepseek-v4.1-flash-free" does not exist; the only free
   # DeepSeek V4.1 Flash is "opencode/deepseek-v4.1-flash-free" and every free
   # route currently probes BLOCKED. The working twin is the paid route below.
-  preferred_model: "opencode-go/deepseek-v4.1-flash"
+  preferred_model: "opencode-go/muse-spark-1.3-contributor"
 
 
 # ---------------------------------------------------------------------
