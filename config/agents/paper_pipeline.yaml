@@ -18,6 +18,7 @@ paper_pipeline:
   output_clusters_key: concept_clusters
 
   force_rebuild_sections: false    # ignore cached sections, always re-build
+  sections_cache_enabled: true     # consult the section cache when not rebuilding
   
   features:
     enabled: true

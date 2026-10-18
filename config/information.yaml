@@ -15,6 +15,7 @@ defaults:
   - agents/paper_spine_builder
   - agents/paper_graph_linker
   - agents/paper_blog_judge
+  - agents/writer_handoff
 
 embeddings:
   backend: hnet
@@ -121,11 +122,10 @@ pipeline:
       cls: stephanie.components.information.agents.paper_pipeline.PaperPipelineAgent
       enabled: true
       iterations: 1
-      # Section cache lifecycle (see docs/swf01-...). When true, the cached
-      # section generation is discarded and rebuilt, and the new set REPLACES the
-      # stored rows instead of being merged with them.
-      sections_cache_enabled: true
-      force_rebuild_sections: false
+      # NOTE: the agent's own settings (including `force_rebuild_sections` and
+      # `sections_cache_enabled`) live in config/agents/paper_pipeline.yaml --
+      # Supervisor resolves each stage through cfg.agents[name]. Keys placed here
+      # are not read by the agent.
 
     - name: paper_spine_builder
       description: >
@@ -179,7 +179,5 @@ pipeline:
       cls: stephanie.components.information.agents.writer_handoff.WriterHandoffAgent
       enabled: true
       iterations: 1
-      profile: fiction
-      timeout_seconds: 120
-      record_dir: null          # null => next to the draft artifact
-      project_root: null        # null => WRITER_PROJECT_ROOT env, then PATH
+      # Settings live in config/agents/writer_handoff.yaml (Supervisor resolves
+      # each stage through cfg.agents[name]).

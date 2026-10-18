@@ -1,0 +1,33 @@
+# config/agents/writer_handoff.yaml
+writer_handoff:
+  name: writer_handoff
+  enabled: true
+
+  # Hand the generated blog draft to Writer (SWF01 phase 4).
+  #
+  # Read-only with respect to the draft: submits the artifact to Writer's
+  # supported `writer validation validate-file` operation and records Writer's
+  # report identity, verdict and review requirement in
+  # context["writer_handoff"]. It never auto-accepts Writer's decision and never
+  # fails the pipeline -- a missing or failing Writer produces an explicit
+  # `unavailable`/`error` record.
+
+  # Validation profile passed to Writer (Writer's own default is `fiction`).
+  profile: fiction
+
+  # How long to wait for the Writer CLI.
+  timeout_seconds: 120
+
+  # Where to write <draft-stem>.writer-handoff.json. null => next to the draft.
+  record_dir: null
+
+  # Writer checkout. null => the WRITER_PROJECT_ROOT env var, then `writer` on PATH.
+  project_root: null
+  writer_executable: null
+
+  # Idempotency/correlation reference; a fresh one is generated when null.
+  correlation_id: null
+
+  save_prompt: false
+  save_context: false
+  skip_if_completed: false
