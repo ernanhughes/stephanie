@@ -69,6 +69,22 @@ def sanitize_heading(text: Any, *, max_chars: int = 90, fallback: str = "") -> s
     return s[0].upper() + s[1:]
 
 
+def _section_key(section: Any) -> str:
+    """Dedup key matching how the heading is chosen.
+
+    ``_section_heading`` prefers ``meta['heading']`` over ``title``; de-duplication
+    must use the same precedence or near-identical sections slip through with
+    different raw titles.
+    """
+    meta = getattr(section, "meta", None) or {}
+    heading = ""
+    if isinstance(meta, dict):
+        heading = str(meta.get("heading") or meta.get("section_heading") or "")
+    if not heading:
+        heading = str(getattr(section, "title", None) or getattr(section, "section_name", None) or "")
+    return sanitize_heading(heading, fallback="").lower()
+
+
 def _heading_tokens(text: str) -> set[str]:
     return {t for t in re.findall(r"[a-z0-9]{4,}", (text or "").lower())}
 
@@ -140,9 +156,14 @@ def dedupe_sections(sections: List[Any]) -> List[Any]:
         return False
 
     for sec in sections or []:
-        heading = str(getattr(sec, "title", None) or getattr(sec, "section_name", None) or "")
+        meta = getattr(sec, "meta", None) or {}
+        heading = ""
+        if isinstance(meta, dict):
+            heading = str(meta.get("heading") or meta.get("section_heading") or "")
+        if not heading:
+            heading = str(getattr(sec, "title", None) or getattr(sec, "section_name", None) or "")
         text = str(getattr(sec, "text", None) or getattr(sec, "summary", None) or "")
-        key = sanitize_heading(heading, fallback="").lower()
+        key = _section_key(sec)
         text_key = text.strip()[:400].lower()
         if key and key in kept_keys:
             continue
