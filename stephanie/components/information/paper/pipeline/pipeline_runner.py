@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
 import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -36,6 +37,14 @@ def _heading_from_text(text: str, *, max_chars: int = 72) -> str:
     if len(first) > max_chars:
         first = first[:max_chars].rsplit(" ", 1)[0].strip()
     return first.rstrip(" ,;:-")
+
+
+def _truthy(value: Any) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
 
 
 class PaperPipelineRunner:
@@ -91,28 +100,65 @@ class PaperPipelineRunner:
         # 2) Load texts
         texts = await self.texts_loader.load_texts(graph=graph)
 
-        # 3) Sections (cache → build)
-        sections: Optional[List[PaperSection]] = self.sections_cache.maybe_load(arxiv_id, role="reference")
-        if sections is None:
-            section_cfg = SectionBuildConfig(
-                chars_per_section=int(self.cfg.get("section_chars", 2000)),
-                min_chars=int(self.cfg.get("section_min_chars", 400)),
-                overlap=int(self.cfg.get("section_overlap", 200)),
-            )
+        # 3) Sections (cache -> build)
+        #
+        # Lifecycle fix: sections are stored per SOURCE paper, so we must load
+        # each paper in the graph (root + related). A forced rebuild bypasses the
+        # cache entirely, and when anything had to be built we REPLACE the stored
+        # generation instead of adding to it -- otherwise old and new sections
+        # both reach the blog generator.
+        force_rebuild = self._force_rebuild_requested(context)
 
+        section_cfg = SectionBuildConfig(
+            chars_per_section=int(self.cfg.get("section_chars", 2000)),
+            min_chars=int(self.cfg.get("section_min_chars", 400)),
+            overlap=int(self.cfg.get("section_overlap", 200)),
+        )
+
+        node_ids: List[str] = [str(nid) for nid in graph.nodes.keys()]
+        if str(arxiv_id) in node_ids:
+            node_ids.remove(str(arxiv_id))
+            node_ids.insert(0, str(arxiv_id))
+
+        cached_by_paper: Dict[str, List[PaperSection]] = {}
+        if not force_rebuild:
+            for nid in node_ids:
+                got = self.sections_cache.maybe_load(nid, role="reference")
+                if got:
+                    cached_by_paper[nid] = got
+
+        missing = [nid for nid in node_ids if nid not in cached_by_paper]
+        built = force_rebuild or bool(missing)
+
+        if built:
+            log.info(
+                "PaperPipelineSectionsBuild arxiv_id=%s force_rebuild=%s missing=%s",
+                arxiv_id,
+                force_rebuild,
+                missing,
+            )
             section_task = SectionBuildTask(
                 cfg=section_cfg,
                 summarizer=self._get_summarizer(),
                 embedder=self._get_embedder(),
             )
             sections = await section_task.run(graph=graph, texts=texts)
+            context["_sections_built"] = True
+        else:
+            sections = [sec for nid in node_ids for sec in cached_by_paper.get(nid, [])]
 
         # attach casebooks/cases for every section (cached skip makes this cheap on reruns)
         changed = self._ensure_section_casebooks(arxiv_id=arxiv_id, sections=sections, context=context)
 
-        # persist if we built OR if we attached case metadata
-        if sections is not None and (changed or context.get("_sections_built", False)):
-            self.sections_cache.persist(arxiv_id=arxiv_id, sections=sections)
+        # persist if we built OR if we attached case metadata.
+        # A rebuild always replaces; a metadata-only update upserts.
+        if sections and (built or changed):
+            self.sections_cache.persist(
+                arxiv_id=arxiv_id,
+                sections=sections,
+                replace=bool(context.get("_sections_built", False)),
+            )
+        context.pop("_sections_built", None)
 
 
         # 4) Link + clusters
@@ -138,6 +184,23 @@ class PaperPipelineRunner:
         context["section_matches"] = matches
         context["concept_clusters"] = clusters
         return context
+
+    def _force_rebuild_requested(self, context: Dict[str, Any]) -> bool:
+        """Should the cached section generation be discarded and rebuilt?
+
+        Accepted sources, in priority order:
+          * ``context["force_rebuild_sections"]`` (per-run input)
+          * ``cfg["force_rebuild_sections"]`` (the paper_pipeline stage config)
+          * ``STEPHANIE_FORCE_REBUILD_SECTIONS`` env var
+
+        Added because the flag was previously read by nobody: the cache was
+        always consulted first, so a "forced" rebuild silently did nothing.
+        """
+        if "force_rebuild_sections" in context and context.get("force_rebuild_sections") is not None:
+            return bool(context.get("force_rebuild_sections"))
+        if self.cfg.get("force_rebuild_sections") is not None:
+            return bool(self.cfg.get("force_rebuild_sections"))
+        return _truthy(os.environ.get("STEPHANIE_FORCE_REBUILD_SECTIONS"))
 
     def _get_summarizer(self):
         tool = self.memory.tools.summarizer if hasattr(self.memory, "tools") else None

@@ -200,9 +200,9 @@ class SectionBuildTask:
             running_char = end_char
 
             sec = PaperSection(
-                id=section_id,
+                section_id=section_id,
                 paper_arxiv_id=arxiv_id,
-                paper_role=role,
+                role=role,
                 section_index=idx,
                 text=block_text,
                 title=title or heading,
@@ -270,9 +270,9 @@ class SectionBuildTask:
             section_id = f"{arxiv_id}::sec-{idx}"
 
             sec = PaperSection(
-                id=section_id,
+                section_id=section_id,
                 paper_arxiv_id=arxiv_id,
-                paper_role=role,
+                role=role,
                 section_index=idx,
                 text=chunk_text,
                 title=title,

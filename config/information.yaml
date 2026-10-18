@@ -121,6 +121,11 @@ pipeline:
       cls: stephanie.components.information.agents.paper_pipeline.PaperPipelineAgent
       enabled: true
       iterations: 1
+      # Section cache lifecycle (see docs/swf01-...). When true, the cached
+      # section generation is discarded and rebuilt, and the new set REPLACES the
+      # stored rows instead of being merged with them.
+      sections_cache_enabled: true
+      force_rebuild_sections: false
 
     - name: paper_spine_builder
       description: >

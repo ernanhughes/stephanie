@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import uuid
 from typing import Any, Dict, List, Optional
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -18,6 +19,8 @@ from stephanie.orm.paper import (PaperDoclingPageORM, PaperORM, PaperReferenceGr
                                  PaperReferenceORM, PaperRunComparisonORM,
                                  PaperRunEventORM, PaperRunFeatureORM,
                                  PaperRunORM, PaperSectionORM, PaperSimilarORM)
+
+log = logging.getLogger(__name__)
 
 
 class PaperStore(BaseSQLAlchemyStore):
@@ -536,34 +539,67 @@ class PaperSectionStore(BaseSQLAlchemyStore):
     
     def replace_for_paper(self, paper_id: str, sections: List[Dict[str, Any]]) -> List[PaperSectionORM]:
         """
-        Replace all sections for a paper with new ones.
-        First deletes existing sections, then inserts new ones.
+        Atomically replace all sections for a paper with a new generation.
+
+        Runs the delete and the inserts inside ONE session/transaction (the old
+        version called ``delete_by_paper_id`` from inside this transaction, which
+        opened a *second* session and made the operation non-atomic).
+
+        Also deletes any rows that already own the incoming section ids, so a
+        previously mis-attributed generation cannot collide on the primary key.
         """
         def op(s):
-            # Delete existing sections for this paper
-            self.delete_by_paper_id(paper_id)
-            
-            # Insert new sections
+            incoming_ids = [str(sec["id"]) for sec in sections if sec.get("id")]
+
+            # Delete the previous generation for this paper ...
+            deleted = (
+                s.query(PaperSectionORM)
+                .filter(PaperSectionORM.paper_id == paper_id)
+                .delete(synchronize_session=False)
+            )
+
+            # ... and anything else squatting on the ids we are about to insert.
+            if incoming_ids:
+                deleted += (
+                    s.query(PaperSectionORM)
+                    .filter(PaperSectionORM.id.in_(incoming_ids))
+                    .delete(synchronize_session=False)
+                )
+
             rows: List[PaperSectionORM] = []
             for idx, section in enumerate(sections):
-                # Create a new PaperSectionORM instance
-                row = PaperSectionORM(
-                    id=section.get("id", f"{paper_id}::sec-{idx}"),
-                    paper_id=paper_id,
-                    section_index=section.get("section_index", idx),
-                    start_char=section.get("start_char"),
-                    end_char=section.get("end_char"),
-                    start_page=section.get("start_page"),
-                    end_page=section.get("end_page"),
-                    text=section.get("text"),
-                    title=section.get("title"),
-                    summary=section.get("summary"),
-                    meta=section.get("meta", {}),
+                rows.append(
+                    PaperSectionORM(
+                        id=section.get("id") or f"{paper_id}::sec-{idx}",
+                        paper_id=paper_id,
+                        run_id=section.get("run_id"),
+                        parent_id=section.get("parent_id"),
+                        level=int(section.get("level", 0) or 0),
+                        # path is NOT NULL in PaperSectionORM
+                        path=str(section.get("path", idx)),
+                        role=section.get("role") or "reference",
+                        section_index=int(section.get("section_index", idx) or 0),
+                        start_char=section.get("start_char"),
+                        end_char=section.get("end_char"),
+                        start_page=section.get("start_page"),
+                        end_page=section.get("end_page"),
+                        text=section.get("text"),
+                        title=section.get("title"),
+                        summary=section.get("summary"),
+                        content_hash=section.get("content_hash"),
+                        token_count=section.get("token_count"),
+                        meta=section.get("meta", {}),
+                    )
                 )
-                rows.append(row)
-            
+
             s.add_all(rows)
             s.flush()
+            log.debug(
+                "replace_for_paper paper_id=%s deleted=%s inserted=%s",
+                paper_id,
+                deleted,
+                len(rows),
+            )
             return rows
         return self._run(op)
     
