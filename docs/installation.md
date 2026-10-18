@@ -11,6 +11,8 @@ This guide walks you through setting up and running the `stephanie` framework lo
 - [Ollama](https://ollama.com) (for local LLM inference)
 - [Poetry](https://python-poetry.org/) **OR** standard `pip` + `venv`
 - Optional: Docker (for running PostgreSQL locally)
+- Optional: Docker Compose — to run the **entire system** in containers, see
+  [`docker.md`](docker.md)
 
 ---
 
@@ -107,6 +109,25 @@ docker run --name coai-db -p 5432:5432 \
    schema and pgvector extension. This repository does not currently have a
    versioned migration chain; do not use `create_all()` as a substitute for a
    reviewed schema migration.
+
+**Option C: Run the entire stack with Docker Compose (recommended)**
+
+`docker-compose.yml` starts the full system — the Stephanie + SIS app,
+PostgreSQL with pgvector, NATS, SearXNG and Ollama — and applies the reviewed
+`schema_raw.sql` once via a `db-init` job. This replaces the older
+search-only compose file.
+
+```bash
+cp .env.docker.example .env    # edit secrets
+docker compose up -d --build
+docker compose exec ollama ollama pull qwen3
+docker compose exec ollama ollama pull mxbai-embed-large
+```
+
+See [`docker.md`](docker.md) for the service list, environment variables,
+schema handling, GPU notes and troubleshooting. When running under Compose you
+can skip sections 4–6 below: the database, schema, models and network wiring are
+handled by the stack.
 
 ---
 

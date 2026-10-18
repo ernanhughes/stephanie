@@ -81,13 +81,13 @@ report:
 
 web_search:
   engine: "searxng"
-  instance_url: "http://localhost:8080"
+  instance_url: '${oc.env:STEPHANIE_SEARXNG_URL,http://localhost:8080}'
 
 
 embeddings:
   model: "mxbai-embed-large"
   dimension: 1024
-  endpoint: "http://localhost:11434/api/embeddings"
+  endpoint: '${oc.env:STEPHANIE_OLLAMA_URL,http://localhost:11434}/api/embeddings'
 
 pipeline:
   name: default_pipeline

@@ -2,6 +2,14 @@
 .venv
 venv
 env
+ENV
+
+# Secrets and local state (never bake into the image)
+.env
+.env.*
+!.env.docker.example
+*.sqlite
+*.sqlite3
 
 # Ignore Python junk
 __pycache__/
@@ -17,5 +25,14 @@ build/
 .git
 .vscode
 .idea
+
+# Ignore local runtime state
+logs/
+outputs/
+reports/
+models/
+data/
+worldviews/
+.stephanie_cache/
 
 setup.cfg

@@ -35,7 +35,7 @@ chat_runtime:
     instructions.
   model:
     name: ollama/qwen3
-    api_base: http://localhost:11434
+    api_base: '${oc.env:STEPHANIE_OLLAMA_URL,http://localhost:11434}'
     api_key: '${oc.env:STEPHANIE_CHAT_API_KEY,""}'
     timeout: 90
     max_tokens: 768

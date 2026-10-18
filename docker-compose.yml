@@ -1,8 +1,147 @@
+# -----------------------------------------------------------------------------
+# Stephanie — full system stack
+#
+# Brings up the whole system, not just web search:
+#   db        PostgreSQL + pgvector (MemoryTool / SQLAlchemy)
+#   db-init   one-shot loader for schema_raw.sql
+#   nats      JetStream message bus (config/bus/nats.yaml)
+#   searxng   web-search backend (config web_search.engine)
+#   ollama    local model + embedding runtime
+#   app       Stephanie engine + SIS web app (this repository, Dockerfile)
+#
+# Host ports bind to 127.0.0.1 by default to match Stephanie's local-first
+# security posture. Override the *_BIND variables to expose elsewhere, ideally
+# behind TLS. See docs/docker.md.
+#
+# Usage:
+#   docker compose up -d --build
+#   docker compose logs -f app
+# -----------------------------------------------------------------------------
+name: stephanie
+
+x-db-environment: &db-environment
+  STEPHANIE_DB_HOST: db
+  STEPHANIE_DB_PORT: "5432"
+  STEPHANIE_DB_NAME: ${STEPHANIE_DB_NAME:-stephanie}
+  STEPHANIE_DB_USER: ${STEPHANIE_DB_USER:-stephanie}
+  STEPHANIE_DB_PASSWORD: ${STEPHANIE_DB_PASSWORD:-stephanie}
+
 services:
-  searxng:
-    image: searxng/searxng
-    ports:
-      - "8080:8080"
+  db:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
     environment:
-      - SEARXNG_PORT=8080
-      - SEARXNG_BASE_URL=http://localhost:8080
+      POSTGRES_USER: ${STEPHANIE_DB_USER:-stephanie}
+      POSTGRES_PASSWORD: ${STEPHANIE_DB_PASSWORD:-stephanie}
+      POSTGRES_DB: ${STEPHANIE_DB_NAME:-stephanie}
+    ports:
+      - "${STEPHANIE_DB_BIND:-127.0.0.1}:${STEPHANIE_DB_FORWARD_PORT:-5432}:5432"
+    volumes:
+      - stephanie-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${STEPHANIE_DB_USER:-stephanie} -d ${STEPHANIE_DB_NAME:-stephanie}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # Applies the reviewed schema dump exactly once, after the database is ready.
+  # The repository has no versioned migration chain, so this uses the checked-in
+  # schema_raw.sql rather than create_all(). Set STEPHANIE_SKIP_DB_INIT=1 only if
+  # you provision the schema another way.
+  db-init:
+    image: pgvector/pgvector:pg16
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGPASSWORD: ${STEPHANIE_DB_PASSWORD:-stephanie}
+      DB_USER: ${STEPHANIE_DB_USER:-stephanie}
+      DB_NAME: ${STEPHANIE_DB_NAME:-stephanie}
+    volumes:
+      - ./schema_raw.sql:/schema/schema_raw.sql:ro
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        psql -h db -U "$$DB_USER" -d "$$DB_NAME" -v ON_ERROR_STOP=1 -c "CREATE EXTENSION IF NOT EXISTS vector;"
+        if psql -h db -U "$$DB_USER" -d "$$DB_NAME" -tAc "SELECT to_regclass('public.chat_conversations')" | grep -q chat_conversations; then
+          echo "Stephanie schema already present; skipping schema_raw.sql"
+        else
+          echo "Applying schema_raw.sql"
+          psql -h db -U "$$DB_USER" -d "$$DB_NAME" -v ON_ERROR_STOP=1 -f /schema/schema_raw.sql
+        fi
+    restart: "no"
+
+  nats:
+    image: nats:2.10-alpine
+    restart: unless-stopped
+    command: ["-js", "-m", "8222", "-sd", "/data"]
+    ports:
+      - "${STEPHANIE_NATS_BIND:-127.0.0.1}:${STEPHANIE_NATS_PORT:-4222}:4222"
+      - "${STEPHANIE_NATS_MONITOR_BIND:-127.0.0.1}:${STEPHANIE_NATS_MONITOR_PORT:-8222}:8222"
+    volumes:
+      - stephanie-nats:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8222/healthz >/dev/null 2>&1 || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  searxng:
+    image: searxng/searxng:latest
+    restart: unless-stopped
+    environment:
+      SEARXNG_BASE_URL: http://localhost:${STEPHANIE_SEARXNG_PORT:-8080}/
+      SEARXNG_SECRET: ${STEPHANIE_SEARXNG_SECRET:-change-me-stephanie}
+    ports:
+      - "${STEPHANIE_SEARXNG_BIND:-127.0.0.1}:${STEPHANIE_SEARXNG_PORT:-8080}:8080"
+    volumes:
+      - stephanie-searxng:/etc/searxng
+
+  ollama:
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    ports:
+      - "${STEPHANIE_OLLAMA_BIND:-127.0.0.1}:${STEPHANIE_OLLAMA_PORT:-11434}:11434"
+    volumes:
+      - stephanie-ollama:/root/.ollama
+    # For NVIDIA GPUs, add an override file with:
+    #   deploy: { resources: { reservations: { devices: [{ capabilities: [gpu] }] } } }
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: stephanie-app
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      db-init:
+        condition: service_completed_successfully
+    environment:
+      <<: *db-environment
+      STEPHANIE_NATS_SERVERS: nats://nats:4222
+      STEPHANIE_OLLAMA_URL: http://ollama:11434
+      STEPHANIE_SEARXNG_URL: http://searxng:8080
+      SIS_HOST: 0.0.0.0
+      SIS_PORT: "8000"
+      SIS_AUTH_USERNAME: ${SIS_AUTH_USERNAME:-stephanie}
+      SIS_AUTH_PASSWORD_HASH: ${SIS_AUTH_PASSWORD_HASH:-}
+      SIS_SESSION_SECRET: ${SIS_SESSION_SECRET:-}
+      SIS_COOKIE_SECURE: ${SIS_COOKIE_SECURE:-false}
+    ports:
+      - "${SIS_BIND:-127.0.0.1}:${SIS_PORT:-8000}:8000"
+    volumes:
+      - ./logs:/app/logs
+      - ./outputs:/app/outputs
+      - ./reports:/app/reports
+    command: ["python", "-m", "sis"]
+
+volumes:
+  stephanie-pgdata:
+  stephanie-nats:
+  stephanie-searxng:
+  stephanie-ollama:

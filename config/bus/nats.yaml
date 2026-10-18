@@ -1,6 +1,6 @@
 enabled: true
 backend: nats            # "nats" | "inproc"
-servers: "nats://127.0.0.1:4222"
+servers: '${oc.env:STEPHANIE_NATS_SERVERS,nats://127.0.0.1:4222}'
 stream: stephanie
 required: true         # if true (or strict true), fail instead of fallback
 strict: true            # legacy alias for required

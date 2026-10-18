@@ -5,6 +5,7 @@ theme:
 nav:
   - Home: index.md
   - Installation: installation.md
+  - Docker (Full Stack): docker.md
   - Agents: agents.md
   - Memory: memory.md
   - Tools: tools.md

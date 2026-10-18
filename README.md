@@ -56,18 +56,33 @@ Each stage is powered by a specialized DSPy agent. Agents pass hypotheses, criti
 pip install -r requirements.txt
 ```
 
-### 2. Set up PostgreSQL + pgvector
+### 2. Start the full stack with Docker (recommended)
 
 ```bash
-psql -f schema.sql
+cp .env.docker.example .env
+docker compose up -d --build
 ```
 
-### 3. Start Ollama (required models)
+This brings up the whole system — the Stephanie + SIS app, PostgreSQL with
+pgvector, NATS, SearXNG and Ollama — not just web search. See
+[`docs/docker.md`](docs/docker.md) for configuration, secrets and troubleshooting.
+
+Prefer a local PostgreSQL with pgvector? Apply the reviewed schema directly:
 
 ```bash
-ollama run llama3
-ollama run nomic-embed-text
+psql -f schema_raw.sql
 ```
+
+### 3. Pull the models the default config expects (Ollama)
+
+```bash
+docker compose exec ollama ollama pull qwen3
+docker compose exec ollama ollama pull mxbai-embed-large
+```
+
+Running Ollama outside Docker? Use `ollama run qwen3` and
+`ollama pull mxbai-embed-large`, and make sure it listens on
+`http://localhost:11434`.
 
 ### 4. Run a full reasoning pipeline
 
@@ -145,19 +160,19 @@ Want to understand how and why it was built this way?
 
 ---
 
-## Web Search
+## Docker (full system)
 
-In the root directory
-
-```bash
-docker compose up -d
-```
-
-check the logs
+Start the whole system — app, database, bus, search and model runtime:
 
 ```bash
-docker compose logs -f searxng
+cp .env.docker.example .env   # edit secrets first
+docker compose up -d --build
+docker compose logs -f app
 ```
+
+Services: `app` (Stephanie + SIS), `db` (PostgreSQL + pgvector), `db-init`
+(schema loader), `nats` (bus), `searxng` (search), `ollama` (models). All host
+ports bind to `127.0.0.1` by default. See [`docs/docker.md`](docs/docker.md).
 
 ---
 
