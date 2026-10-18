@@ -34,9 +34,9 @@ and only behind TLS.
 ```bash
 # 1. Configure secrets and ports
 cp .env.docker.example .env              # PowerShell: Copy-Item .env.docker.example .env
-cp .env.sis.example .env.sis             # SIS auth secrets (kept separate, see below)
-# edit .env      — at minimum STEPHANIE_DB_PASSWORD
-# edit .env.sis  — SIS_AUTH_PASSWORD_HASH and SIS_SESSION_SECRET
+# edit .env — at minimum STEPHANIE_DB_PASSWORD
+# generate SIS auth secrets (handles the "$" escaping for you)
+python scripts/gen_sis_secrets.py --append .env.sis
 
 # 2. Build the app image and start the stack
 docker compose up -d --build
@@ -52,8 +52,14 @@ docker compose logs -f app
 Open `http://localhost:8000` and sign in with `SIS_AUTH_USERNAME` and the
 password whose hash you put in `SIS_AUTH_PASSWORD_HASH`.
 
-Generate the two SIS secrets (run either in the containerised app or in a local
-`venv`):
+Generate the two SIS secrets (recommended — writes `.env.sis` with the escaping
+handled):
+
+```bash
+python scripts/gen_sis_secrets.py --append .env.sis
+```
+
+Equivalent manual steps:
 
 ```bash
 docker compose run --rm app python -m sis.security --hash-password
@@ -63,14 +69,9 @@ docker compose run --rm app python -c "import secrets; print(secrets.token_urlsa
 > **Why `.env.sis` and not `.env`?** Docker Compose interpolates `$` inside
 > `.env` **and** inside `env_file` values; a PBKDF2 hash
 > (`pbkdf2_sha256$...$...$...`) would be silently truncated. `.env.sis` is
-> loaded as an `env_file`, so **double every `$` as `$$`**. Generate the escaped
-> value directly:
->
-> ```bash
-> python -c "from sis.security import hash_password; print(hash_password('YOUR-PASSWORD').replace('$','$$'))"
-> ```
->
-> The file is optional — without it SIS fails closed.
+> loaded as an `env_file`, so **double every `$` as `$$`** —
+> `scripts/gen_sis_secrets.py` does this for you. The file is optional; without
+> it SIS fails closed.
 
 > The first build installs the full Python dependency set (including PyTorch and
 > sentence-transformers) and can take several minutes and multiple GB. Later
