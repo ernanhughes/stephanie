@@ -21,6 +21,7 @@ from stephanie.services.service_container import ServiceContainer
 from stephanie.services.registry_loader import load_services_profile
 from sis.routes import codecheck as codecheck_routes
 from sis.routes import auth as auth_routes
+from sis.routes import health as health_routes
 from sis.routes import writer as writer_routes
 from sis.security import SISAuthMiddleware, SessionStore, load_auth_settings
 from sis.services.chat_execution import ConversationExecutionService
@@ -184,6 +185,7 @@ async def add_js_module_headers(request: Request, call_next):
 
 # Include routers
 app.include_router(auth_routes.router)
+app.include_router(health_routes.router)
 app.include_router(pipelines.router)
 app.include_router(models.router)
 app.include_router(db.router)

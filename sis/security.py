@@ -334,7 +334,7 @@ class SISAuthMiddleware:
         except ValueError:
             host = None
         path = request.url.path
-        public = path in {"/login", "/healthz"} or path.startswith("/static/")
+        public = path in {"/login", "/healthz", "/health"} or path.startswith("/static/")
 
         async def immediate(response):
             response.headers.setdefault("Cache-Control", "no-store")

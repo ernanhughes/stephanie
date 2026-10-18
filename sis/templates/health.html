@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container mt-4">
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="mb-0">❤️ Health</h1>
+    <div>
+      <a href="/healthz" class="btn btn-sm btn-outline-secondary" target="_blank">/healthz (JSON)</a>
+      <a href="/health" class="btn btn-sm btn-outline-secondary" target="_blank">/health (JSON)</a>
+    </div>
+  </div>
+
+  {% set tone = {'healthy': 'success', 'degraded': 'warning', 'unhealthy': 'danger'}.get(payload.status, 'secondary') %}
+  <div class="alert alert-{{ tone }} d-flex justify-content-between align-items-center">
+    <div>
+      <strong>Status:</strong> {{ payload.status | upper }}
+      {% if payload.critical_failures %}
+        — critical: {{ payload.critical_failures | join(', ') }}
+      {% endif %}
+    </div>
+    <div class="small text-muted">{{ payload.timestamp }}</div>
+  </div>
+
+  <table class="table table-striped table-hover align-middle">
+    <thead class="table-dark">
+      <tr>
+        <th style="width: 16rem;">Check</th>
+        <th style="width: 8rem;">Result</th>
+        <th>Detail</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for c in checks %}
+      <tr>
+        <td>
+          <code>{{ c.name }}</code>
+          {% if c.critical %}<span class="badge bg-dark ms-1">critical</span>{% endif %}
+        </td>
+        <td>
+          {% if c.status == 'ok' %}
+            <span class="badge bg-success">ok</span>
+          {% else %}
+            <span class="badge bg-warning text-dark">degraded</span>
+          {% endif %}
+        </td>
+        <td>
+          {{ c.detail }}
+          {% if c.data %}
+            <details class="mt-1">
+              <summary class="small text-muted">details</summary>
+              <pre class="bg-light p-2 rounded small mb-0">{{ c.data | tojson(indent=2) }}</pre>
+            </details>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}
