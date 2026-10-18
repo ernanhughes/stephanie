@@ -38,8 +38,21 @@ class PaperSpineBuilderAgent(BaseAgent):
         super().__init__(cfg=cfg, memory=memory, container=container, logger=logger)
         from stephanie.tools.smol_docling_tool import SmolDoclingTool
 
-        self._docling_tool = SmolDoclingTool(cfg=getattr(cfg, "docling", {}), memory=memory, container=container, logger=logger)
-        self._processors = [SmolDoclingProcessor(self._docling_tool)]
+        try:
+            self._docling_tool = SmolDoclingTool(cfg=getattr(cfg, "docling", {}), memory=memory, container=container, logger=logger)
+            self._processors = [SmolDoclingProcessor(self._docling_tool)]
+        except Exception as exc:
+            # Docling is an optional enrichment processor (it needs a vision
+            # transformers build). Without it the spine still builds from the
+            # semantic sections and the page fallback below, so degrade instead
+            # of failing the whole pipeline.
+            log.warning(
+                "PaperSpineBuilderAgent: docling processor unavailable (%s); "
+                "continuing without figure/table element extraction",
+                exc,
+            )
+            self._docling_tool = None
+            self._processors = []
         self._spine_dumper = SpineDumper(cfg=getattr(cfg, "dump", {}), memory=memory, container=container, logger=logger)
 
     async def run(self, context: Dict[str, Any]) -> Dict[str, Any]:
