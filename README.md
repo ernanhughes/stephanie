@@ -165,10 +165,10 @@ Want to understand how and why it was built this way?
 Start the whole system — app, database, bus, search and model runtime:
 
 ```bash
-cp .env.docker.example .env       # ports, database, username
-cp .env.sis.example .env.sis      # SIS auth secrets (kept separate; see docs/docker.md)
-docker compose up -d --build
-docker compose logs -f app
+cp .env.docker.example .env.docker   # ports, database, username (NOT .env — see docs/docker.md)
+cp .env.sis.example .env.sis         # SIS auth secrets, or: python scripts/gen_sis_secrets.py --append .env.sis
+docker compose --env-file .env.docker up -d --build
+docker compose --env-file .env.docker logs -f app
 ```
 
 Services: `app` (Stephanie + SIS), `db` (PostgreSQL + pgvector), `db-init`

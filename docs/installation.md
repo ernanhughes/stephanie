@@ -118,10 +118,11 @@ PostgreSQL with pgvector, NATS, SearXNG and Ollama — and applies the reviewed
 search-only compose file.
 
 ```bash
-cp .env.docker.example .env    # edit secrets
-docker compose up -d --build
-docker compose exec ollama ollama pull qwen3
-docker compose exec ollama ollama pull mxbai-embed-large
+cp .env.docker.example .env.docker    # edit secrets; NOT .env (see docs/docker.md)
+python scripts/gen_sis_secrets.py --append .env.sis
+docker compose --env-file .env.docker up -d --build
+docker compose --env-file .env.docker exec ollama ollama pull qwen3
+docker compose --env-file .env.docker exec ollama ollama pull mxbai-embed-large
 ```
 
 See [`docker.md`](docker.md) for the service list, environment variables,
@@ -191,6 +192,12 @@ Check `/healthz` on the local SIS instance for separate authentication,
 database, model-configuration, model-verification, persistence-verification,
 and feature states. It contains no credentials. Do not enable chat if any gate
 is false.
+
+To run SIS locally **without a password** (loopback-only convenience), set
+`$env:SIS_AUTH_DISABLED = "true"` before `python -m sis`. It is off by default,
+refuses to start on a non-loopback bind unless `SIS_ALLOW_INSECURE_AUTH=true`
+is also set, and keeps the Host allow-list and same-origin POST checks. See
+[`docker.md`](docker.md) for the full behaviour.
 
 ---
 

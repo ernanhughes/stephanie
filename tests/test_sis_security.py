@@ -247,3 +247,87 @@ def test_explicit_remote_host_is_rejected_without_https():
         response = client.get("/login")
     assert response.status_code == 400
     assert "requires HTTPS" in response.json()["detail"]
+
+
+def make_disabled_app():
+    """A SIS app with the explicit local no-password mode enabled."""
+    app = make_secure_app()
+    settings = AuthSettings(
+        username="local",
+        password_hash="",
+        session_secret=b"",
+        allowed_hosts=("127.0.0.1",),
+        allowed_origins=("http://127.0.0.1:8000",),
+        disabled=True,
+    )
+    app.state.auth_settings = settings
+    app.state.auth_sessions = SessionStore(settings)
+    return app
+
+
+def test_auth_disabled_serves_private_routes_without_a_password():
+    app = make_disabled_app()
+    with TestClient(app, base_url="http://127.0.0.1:8000") as client:
+        page = client.get("/private", headers={"Accept": "text/html"}, follow_redirects=False)
+        body = client.get("/private").json()
+        mutate = client.post(
+            "/private/mutate", json={}, headers={"Origin": "http://127.0.0.1:8000"}
+        )
+        cross_origin = client.post(
+            "/private/mutate", json={}, headers={"Origin": "http://evil.example"}
+        )
+        untrusted_host = client.get("/private", headers={"Host": "rebind.evil.example"})
+        login = client.get("/login", follow_redirects=False)
+        health = client.get("/healthz")
+
+    assert page.status_code == 200  # no redirect to /login
+    assert body["username"] == "local"
+    assert body["csrf_token"] == ""
+    assert mutate.status_code == 200  # no CSRF token required in this mode
+    assert cross_origin.status_code == 403  # same-origin POST check still applies
+    assert untrusted_host.status_code == 400  # host allow-list still applies
+    assert login.status_code == 303 and login.headers["location"] == "/"
+    assert health.json()["authentication_ready"] is True
+    assert health.json()["authentication_mode"] == "disabled"
+
+
+def test_load_auth_settings_requires_a_loopback_bind_to_disable_auth(monkeypatch):
+    for name in (
+        "SIS_AUTH_DISABLED",
+        "SIS_ALLOW_INSECURE_AUTH",
+        "SIS_HOST",
+        "SIS_AUTH_USERNAME",
+        "SIS_AUTH_PASSWORD_HASH",
+        "SIS_SESSION_SECRET",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+    from sis.security import load_auth_settings
+
+    # Default: password mode, not ready without credentials.
+    default = load_auth_settings()
+    assert default.disabled is False
+    assert default.ready is False
+    assert default.mode == "password"
+
+    # Disabled on a loopback bind is allowed and ready, with a fallback identity.
+    monkeypatch.setenv("SIS_AUTH_DISABLED", "true")
+    monkeypatch.setenv("SIS_HOST", "127.0.0.1")
+    loopback = load_auth_settings()
+    assert loopback.disabled is True
+    assert loopback.ready is True
+    assert loopback.mode == "disabled"
+    assert loopback.username == "local"
+
+    # A non-loopback bind refuses to start until the risk is acknowledged.
+    monkeypatch.setenv("SIS_HOST", "0.0.0.0")
+    try:
+        load_auth_settings()
+    except RuntimeError as exc:
+        assert "non-loopback bind" in str(exc)
+    else:
+        raise AssertionError("Non-loopback bind must refuse unauthenticated SIS")
+
+    monkeypatch.setenv("SIS_ALLOW_INSECURE_AUTH", "true")
+    acknowledged = load_auth_settings()
+    assert acknowledged.disabled is True and acknowledged.ready is True

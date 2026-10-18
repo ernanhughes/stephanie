@@ -135,6 +135,8 @@ services:
       SIS_HOST: 0.0.0.0
       SIS_PORT: "8000"
       SIS_AUTH_USERNAME: ${SIS_AUTH_USERNAME:-stephanie}
+      SIS_AUTH_DISABLED: ${SIS_AUTH_DISABLED:-false}
+      SIS_ALLOW_INSECURE_AUTH: ${SIS_ALLOW_INSECURE_AUTH:-false}
       SIS_COOKIE_SECURE: ${SIS_COOKIE_SECURE:-false}
     ports:
       - "${SIS_BIND:-127.0.0.1}:${SIS_PORT:-8000}:8000"

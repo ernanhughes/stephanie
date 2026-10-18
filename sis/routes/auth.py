@@ -41,6 +41,8 @@ def _login_template(request: Request, *, status_code: int = 200, error: str = ""
 
 @router.get("/login", response_class=HTMLResponse)
 def login_page(request: Request):
+    if request.app.state.auth_settings.disabled:
+        return RedirectResponse("/", status_code=303)
     return _login_template(request)
 
 
@@ -48,6 +50,8 @@ def login_page(request: Request):
 async def login(request: Request):
     settings = request.app.state.auth_settings
     sessions = request.app.state.auth_sessions
+    if settings.disabled:
+        return RedirectResponse("/", status_code=303)
     if not settings.ready:
         return _login_template(
             request,
@@ -114,6 +118,7 @@ def readiness(request: Request):
     return {
         "status": "ready" if auth_ready and db_ready else "setup_required",
         "authentication_ready": auth_ready,
+        "authentication_mode": request.app.state.auth_settings.mode,
         "database_ready": db_ready,
         "model_configured": model_configured,
         "model_verified": model_verified,

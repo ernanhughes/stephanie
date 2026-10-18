@@ -66,9 +66,20 @@ class AuthSettings:
     allowed_origins: tuple[str, ...]
     session_ttl_seconds: int = SESSION_TTL_SECONDS
     secure_cookies: bool = False
+    # Explicit, default-off local convenience mode. When disabled, SIS serves
+    # private routes without a password. It stays loopback-gated (see
+    # load_auth_settings) and is never enabled implicitly.
+    disabled: bool = False
+    allow_insecure_remote: bool = False
+
+    @property
+    def mode(self) -> str:
+        return "disabled" if self.disabled else "password"
 
     @property
     def ready(self) -> bool:
+        if self.disabled:
+            return True
         return bool(
             self.username
             and self.password_hash
@@ -77,6 +88,13 @@ class AuthSettings:
             and self.allowed_origins
             and _valid_password_hash(self.password_hash)
         )
+
+
+LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
+
+
+def _env_flag(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def load_auth_settings() -> AuthSettings:
@@ -94,14 +112,27 @@ def load_auth_settings() -> AuthSettings:
         if (origin := _normalize_origin(item)) is not None
     )
     secret = os.environ.get("SIS_SESSION_SECRET", "").encode("utf-8")
+    disabled = _env_flag("SIS_AUTH_DISABLED")
+    allow_insecure_remote = _env_flag("SIS_ALLOW_INSECURE_AUTH")
+    bind_host = _normalize_host(os.environ.get("SIS_HOST", "127.0.0.1"))
+    if disabled and bind_host not in LOOPBACK_HOSTS and not allow_insecure_remote:
+        raise RuntimeError(
+            "SIS_AUTH_DISABLED is set but SIS_HOST is not a loopback address "
+            f"({bind_host!r}). Refusing to serve an unauthenticated SIS on a "
+            "non-loopback bind. Bind SIS_HOST to 127.0.0.1, or set "
+            "SIS_ALLOW_INSECURE_AUTH=true to explicitly acknowledge the risk."
+        )
+    username = os.environ.get("SIS_AUTH_USERNAME", "") or ("local" if disabled else "")
     return AuthSettings(
-        username=os.environ.get("SIS_AUTH_USERNAME", ""),
+        username=username,
         password_hash=os.environ.get("SIS_AUTH_PASSWORD_HASH", ""),
         session_secret=secret,
         allowed_hosts=hosts,
         allowed_origins=origins,
         secure_cookies=os.environ.get("SIS_COOKIE_SECURE", "").lower()
         in {"1", "true", "yes"},
+        disabled=disabled,
+        allow_insecure_remote=allow_insecure_remote,
     )
 
 
@@ -324,17 +355,23 @@ class SISAuthMiddleware:
             return
 
         if not public:
-            token = _cookie_header(scope).get(SESSION_COOKIE)
-            session = sessions.get(token)
-            if session is None:
-                if request.method in {"GET", "HEAD"} and "text/html" in request.headers.get("accept", ""):
-                    await immediate(RedirectResponse("/login", status_code=303))
-                else:
-                    await immediate(JSONResponse({"detail": "Authentication required"}, status_code=401))
-                return
-            scope.setdefault("state", {})["username"] = session.username
-            scope["state"]["csrf_token"] = session.csrf_token
-            scope["state"]["session"] = session
+            if settings.disabled:
+                # Explicit local no-password mode: serve without a session, but
+                # keep the Host allow-list and same-origin POST checks below.
+                scope.setdefault("state", {})["username"] = settings.username or "local"
+                scope["state"]["csrf_token"] = ""
+            else:
+                token = _cookie_header(scope).get(SESSION_COOKIE)
+                session = sessions.get(token)
+                if session is None:
+                    if request.method in {"GET", "HEAD"} and "text/html" in request.headers.get("accept", ""):
+                        await immediate(RedirectResponse("/login", status_code=303))
+                    else:
+                        await immediate(JSONResponse({"detail": "Authentication required"}, status_code=401))
+                    return
+                scope.setdefault("state", {})["username"] = session.username
+                scope["state"]["csrf_token"] = session.csrf_token
+                scope["state"]["session"] = session
 
         body = None
         replay_receive = receive
@@ -355,7 +392,11 @@ class SISAuthMiddleware:
             content_type = request.headers.get("content-type", "").lower()
             submitted = request.headers.get("x-csrf-token") or _submitted_csrf(body, content_type)
             cookies = _cookie_header(scope)
-            if path == "/login":
+            if settings.disabled:
+                # No session-backed token exists in this mode; the same-origin
+                # check above is the remaining CSRF defence.
+                csrf_ok = True
+            elif path == "/login":
                 csrf_ok = sessions.verify_login_csrf(cookies.get(LOGIN_CSRF_COOKIE), submitted)
             else:
                 session = scope.get("state", {}).get("session")
@@ -414,6 +455,19 @@ class SISAuthMiddleware:
         ws_scheme = "https" if scope.get("scheme") == "wss" else "http"
         expected_origin = _normalize_origin(f"{ws_scheme}://{host_header}")
         session = sessions.get(cookies.get(SESSION_COOKIE))
+        if settings.disabled:
+            if (
+                host not in settings.allowed_hosts
+                or (host not in {"localhost", "127.0.0.1", "::1"} and scope.get("scheme") != "wss")
+                or origin not in settings.allowed_origins
+                or not expected_origin
+                or not hmac.compare_digest(origin or "", expected_origin)
+            ):
+                await send({"type": "websocket.close", "code": 4401})
+                return
+            scope.setdefault("state", {})["username"] = settings.username or "local"
+            await self.app(scope, receive, send)
+            return
         if (
             not settings.ready
             or host not in settings.allowed_hosts

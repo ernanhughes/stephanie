@@ -27,26 +27,29 @@ Every host port binds to `127.0.0.1` by default to match Stephanie's local-first
 security posture. Set the matching `*_BIND` variable to expose a port elsewhere,
 and only behind TLS.
 
+> Compose commands in this document use `--env-file .env.docker`. It is shown in
+> full in the Quick start and shortened later for brevity — pass it every time.
+
 ---
 
 ## Quick start
 
 ```bash
 # 1. Configure secrets and ports
-cp .env.docker.example .env              # PowerShell: Copy-Item .env.docker.example .env
-# edit .env — at minimum STEPHANIE_DB_PASSWORD
+cp .env.docker.example .env.docker       # PowerShell: Copy-Item .env.docker.example .env.docker
+# edit .env.docker — at minimum STEPHANIE_DB_PASSWORD
 # generate SIS auth secrets (handles the "$" escaping for you)
 python scripts/gen_sis_secrets.py --append .env.sis
 
 # 2. Build the app image and start the stack
-docker compose up -d --build
+docker compose --env-file .env.docker up -d --build
 
 # 3. Pull the models the default config expects
-docker compose exec ollama ollama pull qwen3
-docker compose exec ollama ollama pull mxbai-embed-large
+docker compose --env-file .env.docker exec ollama ollama pull qwen3
+docker compose --env-file .env.docker exec ollama ollama pull mxbai-embed-large
 
 # 4. Watch the app come up
-docker compose logs -f app
+docker compose --env-file .env.docker logs -f app
 ```
 
 Open `http://localhost:8000` and sign in with `SIS_AUTH_USERNAME` and the
@@ -66,12 +69,11 @@ docker compose run --rm app python -m sis.security --hash-password
 docker compose run --rm app python -c "import secrets; print(secrets.token_urlsafe(48))"
 ```
 
-> **Why `.env.sis` and not `.env`?** Docker Compose interpolates `$` inside
-> `.env` **and** inside `env_file` values; a PBKDF2 hash
-> (`pbkdf2_sha256$...$...$...`) would be silently truncated. `.env.sis` is
-> loaded as an `env_file`, so **double every `$` as `$$`** —
-> `scripts/gen_sis_secrets.py` does this for you. The file is optional; without
-> it SIS fails closed.
+> **Why is the hash in a separate file?** Docker Compose interpolates `$` inside
+> substitution files (`.env.docker`) **and** inside `env_file` values; a PBKDF2
+> hash (`pbkdf2_sha256$...$...$...`) would be silently truncated, so **double
+> every `$` as `$$`** — `scripts/gen_sis_secrets.py` does this for you. The file
+> is optional; without it SIS fails closed.
 
 > The first build installs the full Python dependency set (including PyTorch and
 > sentence-transformers) and can take several minutes and multiple GB. Later
@@ -81,7 +83,18 @@ docker compose run --rm app python -c "import secrets; print(secrets.token_urlsa
 
 ## Configuration
 
-Docker Compose reads `.env` for `${VAR}` substitution in `docker-compose.yml`.
+Docker Compose reads `.env.docker` for `${VAR}` substitution in
+`docker-compose.yml`, so pass it explicitly:
+
+```bash
+docker compose --env-file .env.docker up -d
+```
+
+> The file is **not** named `.env` on purpose: `litellm` (a Stephanie dependency)
+> calls `load_dotenv()`, which reads a repo-root `.env` into the process
+> environment. A `.env` holding these values would silently repoint local runs
+> and tests at the container database.
+
 The container environment variables are then consumed by Stephanie through the
 Hydra config, so no values are hardcoded:
 
@@ -92,7 +105,7 @@ Hydra config, so no values are hardcoded:
 | `STEPHANIE_OLLAMA_URL` | app | `chat_runtime.model.api_base`, `embeddings.endpoint` |
 | `STEPHANIE_SEARXNG_URL` | app | `web_search.instance_url` |
 | `SIS_HOST` / `SIS_PORT` | app | SIS bind address |
-| `SIS_AUTH_USERNAME` / `SIS_COOKIE_SECURE` | app | SIS authentication (`.env`) |
+| `SIS_AUTH_USERNAME` / `SIS_COOKIE_SECURE` | app | SIS authentication (`.env.docker`) |
 | `SIS_AUTH_PASSWORD_HASH` / `SIS_SESSION_SECRET` | app | SIS credentials (`.env.sis`; double every `$` as `$$`) |
 
 Each base config keeps its original default, so the same files work for local
@@ -107,6 +120,41 @@ docker compose run --rm app python -c \
 ```
 
 ---
+
+## Disabling the SIS password (local convenience)
+
+SIS requires a password by default. For a local machine where you do not want to
+sign in each time, set an explicit opt-in in `.env.docker`:
+
+```bash
+SIS_AUTH_DISABLED=true
+SIS_ALLOW_INSECURE_AUTH=true   # required only because the container binds 0.0.0.0
+```
+
+Then `docker compose up -d app` (no rebuild needed). `/healthz` reports
+`"authentication_mode": "disabled"`, `/login` redirects to `/`, and private pages
+and chat open without a session.
+
+Safety properties of this mode:
+
+- It is **off by default** and must be enabled explicitly.
+- It **refuses to start** if `SIS_HOST` is not loopback unless
+  `SIS_ALLOW_INSECURE_AUTH=true` acknowledges the risk. Keep `SIS_BIND=127.0.0.1`
+  so the port is published only on loopback.
+- The Host allow-list and the same-origin check on POST requests **remain active**
+  (they reject DNS-rebinding hosts and cross-origin mutations).
+- `SIS_AUTH_PASSWORD_HASH` / `SIS_SESSION_SECRET` in `.env.sis` are ignored while
+  disabled; remove the two flags to return to password mode.
+For a local (non-Docker) run, the bind is loopback by default, so a single flag
+is enough:
+
+```powershell
+$env:SIS_AUTH_DISABLED = "true"
+python -m sis
+```
+
+> Only disable authentication on a machine you control, with the port bound to
+> loopback. If you ever publish SIS to a network, leave the password on.
 
 ## Database schema
 
@@ -182,7 +230,7 @@ and start with `docker compose -f docker-compose.yml -f docker-compose.gpu.yml u
 - All published ports bind to `127.0.0.1`. Changing a `*_BIND` to `0.0.0.0`
   exposes the service; do it only behind a trusted TLS terminator.
 - SIS fails closed without a configured account. Set `SIS_AUTH_PASSWORD_HASH`
-  and `SIS_SESSION_SECRET`, and keep them in `.env` (git-ignored) or a secret
+  and `SIS_SESSION_SECRET`, and keep them in `.env.sis` (git-ignored) or a secret
   manager — never in versioned YAML.
 - Change `STEPHANIE_DB_PASSWORD` and `STEPHANIE_SEARXNG_SECRET` from the example
   defaults before any non-local use.
@@ -197,8 +245,8 @@ and start with `docker compose -f docker-compose.yml -f docker-compose.gpu.yml u
 
 | Symptom | Check |
 |---|---|
-| `bind: Only one usage of each socket address` on `docker compose up` | A local service already owns that host port (common with a host PostgreSQL on 5432 or Ollama on 11434). Set the matching `*_FORWARD_PORT` / `*_PORT` in `.env` to a free port; container-internal ports are unchanged. |
-| SIS login always fails | The password hash may have been truncated by `$` interpolation — ensure **every `$` in `.env.sis` is doubled as `$$`**, and that the hash is in `.env.sis`, not `.env`. |
+| `bind: Only one usage of each socket address` on `docker compose up` | A local service already owns that host port (common with a host PostgreSQL on 5432 or Ollama on 11434). Set the matching `*_FORWARD_PORT` / `*_PORT` in `.env.docker` to a free port; container-internal ports are unchanged. |
+| SIS login always fails | The password hash may have been truncated by `$` interpolation - ensure **every `$` in `.env.sis` is doubled as `$$`**, and that the compose values live in `.env.docker`. |
 | `app` restarts with a database error | `docker compose ps` — is `db` healthy? Is `db-init` `Exited (0)`? |
 | `app` logs `KnowledgeBus` connect failures | `docker compose logs nats`; confirm `STEPHANIE_NATS_SERVERS=nats://nats:4222`. |
 | `/healthz` reports auth or model not ready | Set `SIS_AUTH_*`; pull the Ollama models. |
