@@ -47,10 +47,27 @@ poetry shell
 pip install -r requirements.txt
 ```
 
-For development tests, install the optional test extra after installing the
-project: `pip install -e ".[test]"`.
+For the local SIS web interface, also install its dependencies:
 
-OR using `pyproject.toml`:
+```bash
+pip install -r requirements_sis.txt
+```
+
+To install the `stephanie` package itself (including the `stephanie` and `sis`
+console entry points) in editable mode:
+
+```bash
+pip install -e .
+```
+
+For development tests, install the optional test extra after installing the
+project:
+
+```bash
+pip install -e ".[test]"
+```
+
+OR using `pyproject.toml` directly:
 
 ```bash
 pip install .
