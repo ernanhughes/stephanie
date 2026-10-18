@@ -293,6 +293,22 @@ def test_loading_prefers_the_id_prefix_for_attribution():
     assert loaded[0].paper_arxiv_id == RELATED  # not ROOT
 
 
+def test_long_titles_are_clamped_to_the_varchar_limit():
+    """The live `paper_sections.id`/`.title` columns are character varying(255)
+    while the ORM declares unbounded String, so a long parsed heading failed the
+    INSERT with StringDataRightTruncation."""
+    store = FakePaperStore()
+    cache = _cache(store)
+    sec = _section(ROOT, 0, "text")
+    sec.title = "H" * 400
+
+    cache.persist(arxiv_id=ROOT, sections=[sec], replace=True)
+
+    row = store.rows[f"{ROOT}::sec-0"]
+    assert len(row["title"]) == 255
+    assert len(row["id"]) <= 255
+
+
 def test_shrinking_rebuild_removes_stale_orphans():
     """A rebuild that yields fewer sections must not leave higher-index rows
     behind for maybe_load() to serve."""

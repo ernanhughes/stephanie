@@ -191,7 +191,7 @@ class CitationLinker(BaseSectionLinker):
         # 1) citations_by_section optional override
         citations_by_section = context.get("citations_by_section")
         if citations_by_section is None:
-            citations_by_section = {s.id: _extract_numeric_citations(getattr(s, "text", "") or "") for s in root_sections}
+            citations_by_section = {s.section_id: _extract_numeric_citations(getattr(s, "text", "") or "") for s in root_sections}
 
         # 2) bib_index optional override, else parse from PDF
         bib_index = context.get("bib_index")
@@ -204,7 +204,7 @@ class CitationLinker(BaseSectionLinker):
 
         # Emit edges
         for sec in root_sections:
-            sec_cites = citations_by_section.get(sec.id) or []
+            sec_cites = citations_by_section.get(sec.section_id) or []
             if not sec_cites:
                 continue
 
@@ -271,7 +271,7 @@ class CitationLinker(BaseSectionLinker):
 
                             edges.append(
                                 GraphEdge(
-                                    src=f"section:{sec.id}",
+                                    src=f"section:{sec.section_id}",
                                     dst=paper_node_id,
                                     type="CITES",
                                     weight=1.0,
@@ -311,7 +311,7 @@ class CitationLinker(BaseSectionLinker):
 
                     edges.append(
                         GraphEdge(
-                            src=f"section:{sec.id}",
+                            src=f"section:{sec.section_id}",
                             dst=ref_node_id,
                             type="CITES",
                             weight=1.0,
@@ -327,7 +327,7 @@ class CitationLinker(BaseSectionLinker):
 
         # Stats for report/debug
         context.setdefault("paper_graph_linker_stats", {})["citations"] = {
-            "sections_with_cites": sum(1 for s in root_sections if citations_by_section.get(s.id)),
+            "sections_with_cites": sum(1 for s in root_sections if citations_by_section.get(s.section_id)),
             "total_edges": len(edges),
             "bib_entries": len(bib_map),
             "validate_arxiv": self.validate_arxiv,

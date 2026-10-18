@@ -32,6 +32,19 @@ def _section_id(paper_id: str, index: int) -> str:
     return f"{paper_id}::sec-{index}"
 
 
+#: The live `paper_sections.id` / `.title` columns are character varying(255).
+#: The ORM declares them as unbounded String, so a long value fails at INSERT with
+#: StringDataRightTruncation. Freshly parsed headings routinely exceed this.
+_VARCHAR_LIMIT = 255
+
+
+def _clamp(value: Any, limit: int = _VARCHAR_LIMIT) -> Any:
+    if value is None:
+        return None
+    text = str(value)
+    return text if len(text) <= limit else text[:limit]
+
+
 class PaperSectionsCache:
     """
     Loads and persists PaperSection objects via PaperStore/ORM.
@@ -188,7 +201,7 @@ class PaperSectionsCache:
             text = getattr(sec, "text", "") or ""
             rows.append(
                 {
-                    "id": row_id,
+                    "id": _clamp(row_id),
                     "paper_id": paper_id,
                     "run_id": None,
                     "parent_id": None,
@@ -201,7 +214,7 @@ class PaperSectionsCache:
                     "start_page": getattr(sec, "start_page", None),
                     "end_page": getattr(sec, "end_page", None),
                     "text": text,
-                    "title": getattr(sec, "title", None),
+                    "title": _clamp(getattr(sec, "title", None)),
                     "summary": getattr(sec, "summary", None),
                     "content_hash": _sha256_text(text),
                     "token_count": len(text.split()),

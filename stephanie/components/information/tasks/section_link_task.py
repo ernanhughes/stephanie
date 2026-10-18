@@ -53,7 +53,7 @@ class SectionLinkTask:
             if vec.ndim != 1:
                 continue
             other_vecs.append(vec)
-            other_ids.append(sec.id)
+            other_ids.append(sec.section_id)
 
         if not other_vecs:
             log.warning("[SectionLinkTask] No embeddings for non-root sections")
@@ -89,7 +89,7 @@ class SectionLinkTask:
 
                 matches.append(
                     SectionMatch(
-                        source_section_id=root_sec.id,
+                        source_section_id=root_sec.section_id,
                         target_section_id=target_id,
                         score=score,
                         rank=rank,
