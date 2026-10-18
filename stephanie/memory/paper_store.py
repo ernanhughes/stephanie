@@ -8,7 +8,7 @@ import uuid
 from typing import Any, Dict, List, Optional
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-from sqlalchemy import insert, func
+from sqlalchemy import insert, func, or_
 import re
 from sqlalchemy import text
 
@@ -549,22 +549,25 @@ class PaperSectionStore(BaseSQLAlchemyStore):
         previously mis-attributed generation cannot collide on the primary key.
         """
         def op(s):
-            incoming_ids = [str(sec["id"]) for sec in sections if sec.get("id")]
-
-            # Delete the previous generation for this paper ...
+            # Delete everything this paper currently owns, PLUS any row whose ID
+            # claims to belong to this paper (historical mis-attribution), but
+            # NEVER a row that legitimately belongs to a different paper.
+            #
+            # Matching on the id prefix -- rather than only the incoming ids --
+            # also removes stale higher-index rows when a rebuild yields FEWER
+            # sections than the previous generation, which otherwise linger and
+            # get served by maybe_load().
+            escaped = paper_id.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
             deleted = (
                 s.query(PaperSectionORM)
-                .filter(PaperSectionORM.paper_id == paper_id)
+                .filter(
+                    or_(
+                        PaperSectionORM.paper_id == paper_id,
+                        PaperSectionORM.id.like(f"{escaped}::%", escape="\\"),
+                    )
+                )
                 .delete(synchronize_session=False)
             )
-
-            # ... and anything else squatting on the ids we are about to insert.
-            if incoming_ids:
-                deleted += (
-                    s.query(PaperSectionORM)
-                    .filter(PaperSectionORM.id.in_(incoming_ids))
-                    .delete(synchronize_session=False)
-                )
 
             rows: List[PaperSectionORM] = []
             for idx, section in enumerate(sections):

@@ -16,6 +16,7 @@ No database or LLM is needed.
 from __future__ import annotations
 
 import asyncio
+import logging
 from types import SimpleNamespace
 
 import pytest
@@ -61,17 +62,30 @@ class FakePaperStore:
         self.rows[data["id"]] = dict(data)
 
     def replace_sections_for_paper(self, paper_id: str, sections: list[dict]):
+        """Mirrors PaperSectionStore.replace_for_paper: delete everything this
+        paper owns, plus rows whose id *claims* this paper (historical
+        mis-attribution) -- but never another paper's own rows."""
         self.replaced.append(paper_id)
-        incoming_ids = {s["id"] for s in sections}
+        prefix = f"{paper_id}::"
         for rid in [
             rid
             for rid, row in self.rows.items()
-            if row["paper_id"] == paper_id or rid in incoming_ids
+            if row["paper_id"] == paper_id or rid.startswith(prefix)
         ]:
             del self.rows[rid]
         for section in sections:
             self.rows[section["id"]] = dict(section)
         return list(sections)
+
+
+class BoomStore(FakePaperStore):
+    """A store whose writes always fail, for failure-visibility tests."""
+
+    def upsert_section(self, data: dict):
+        raise RuntimeError("simulated write failure")
+
+    def replace_sections_for_paper(self, paper_id: str, sections: list[dict]):
+        raise RuntimeError("simulated write failure")
 
 
 def _cache(store: FakePaperStore) -> PaperSectionsCache:
@@ -210,6 +224,82 @@ def test_replace_is_idempotent():
     cache.persist(arxiv_id=ROOT, sections=sections, replace=True)
     assert store.rows == first
     assert len(store.rows) == 2
+
+
+def test_replace_does_not_touch_another_papers_rows():
+    store = FakePaperStore()
+    cache = _cache(store)
+
+    # RELATED legitimately owns its own row ...
+    cache.persist(arxiv_id=RELATED, sections=[_section(RELATED, 0, "related")])
+
+    # ... and a ROOT rebuild must leave it alone.
+    cache.persist(arxiv_id=ROOT, sections=[_section(ROOT, 0, "root")], replace=True)
+
+    assert f"{RELATED}::sec-0" in store.rows
+    assert store.rows[f"{RELATED}::sec-0"]["paper_id"] == RELATED
+    assert store.rows[f"{RELATED}::sec-0"]["text"] == "related"
+
+
+def test_replace_repairs_rows_misattributed_to_another_paper():
+    """Historical shape: the id says RELATED but paper_id says ROOT. A RELATED
+    rebuild must re-home (and therefore delete) that row."""
+    store = FakePaperStore()
+    store.rows[f"{RELATED}::sec-0"] = {
+        "id": f"{RELATED}::sec-0",
+        "paper_id": ROOT,
+        "section_index": 0,
+        "text": "stale",
+    }
+
+    _cache(store).persist(
+        arxiv_id=RELATED, sections=[_section(RELATED, 0, "fresh")], replace=True
+    )
+
+    assert store.rows[f"{RELATED}::sec-0"]["paper_id"] == RELATED
+    assert store.rows[f"{RELATED}::sec-0"]["text"] == "fresh"
+
+
+def test_shrinking_rebuild_removes_stale_orphans():
+    """A rebuild that yields fewer sections must not leave higher-index rows
+    behind for maybe_load() to serve."""
+    store = FakePaperStore()
+    cache = _cache(store)
+
+    cache.persist(
+        arxiv_id=ROOT,
+        sections=[_section(ROOT, i, f"t{i}") for i in range(3)],
+        replace=True,
+    )
+    assert len(store.rows) == 3
+
+    cache.persist(arxiv_id=ROOT, sections=[_section(ROOT, 0, "only")], replace=True)
+    assert list(store.rows) == [f"{ROOT}::sec-0"]
+    assert [s.section_id for s in cache.maybe_load(ROOT)] == [f"{ROOT}::sec-0"]
+
+
+# ------------------------------------------------- failure visibility (fix 2)
+
+
+def test_persist_returns_written_count():
+    store = FakePaperStore()
+    written = _cache(store).persist(
+        arxiv_id=ROOT, sections=[_section(ROOT, 0, "a"), _section(ROOT, 1, "b")]
+    )
+    assert written == 2
+
+
+def test_persist_failure_is_visible_to_the_caller(caplog):
+    cache = _cache(BoomStore())
+    with caplog.at_level(logging.ERROR):
+        written = cache.persist(
+            arxiv_id=ROOT, sections=[_section(ROOT, 0, "a")], replace=True
+        )
+
+    assert written == 0
+    messages = [r.getMessage() for r in caplog.records]
+    assert any("persist FAILED" in m for m in messages)
+    assert any("nothing persisted" in m for m in messages)
 
 
 # ------------------------------------------------------- force-rebuild flag

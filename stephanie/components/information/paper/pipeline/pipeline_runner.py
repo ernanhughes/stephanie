@@ -153,11 +153,23 @@ class PaperPipelineRunner:
         # persist if we built OR if we attached case metadata.
         # A rebuild always replaces; a metadata-only update upserts.
         if sections and (built or changed):
-            self.sections_cache.persist(
+            written = self.sections_cache.persist(
                 arxiv_id=arxiv_id,
                 sections=sections,
                 replace=bool(context.get("_sections_built", False)),
             )
+            if written:
+                context["paper_sections_persisted"] = written
+            else:
+                # Visible failure: a run must not look successful if its
+                # sections were not saved.
+                log.error(
+                    "PaperPipelinePersistFailed arxiv_id=%s sections=%d replace=%s",
+                    arxiv_id,
+                    len(sections),
+                    bool(context.get("_sections_built", False)),
+                )
+                context["paper_sections_persist_failed"] = True
         context.pop("_sections_built", None)
 
 

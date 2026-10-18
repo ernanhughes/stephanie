@@ -91,6 +91,7 @@ class PaperSectionsCache:
         grouped = self._group_by_source(arxiv_id=arxiv_id, sections=sections)
 
         written = 0
+        failures = 0
         for paper_id, secs in grouped.items():
             rows = self._rows_for_paper(paper_id=paper_id, sections=secs)
             if not rows:
@@ -105,13 +106,27 @@ class PaperSectionsCache:
             except Exception:
                 # Keep non-fatal, but do NOT hide it: a silent failure here was
                 # how the cache ended up with a stale/duplicated generation.
-                log.warning(
-                    "PaperSectionsCache: persist failed for paper_id=%s (replace=%s, rows=%d)",
+                failures += 1
+                log.error(
+                    "PaperSectionsCache: persist FAILED for paper_id=%s (replace=%s, rows=%d)",
                     paper_id,
                     replace,
                     len(rows),
                     exc_info=True,
                 )
+
+        if written == 0:
+            # The caller must be able to tell that nothing was saved; a run that
+            # "succeeded" while its sections were not persisted is the failure
+            # mode this guards against.
+            log.error(
+                "PaperSectionsCache: nothing persisted for arxiv_id=%s "
+                "(sections=%d, papers=%d, failures=%d)",
+                arxiv_id,
+                len(sections),
+                len(grouped),
+                failures,
+            )
         return written
 
     # ----------------------- internal helpers ------------------------

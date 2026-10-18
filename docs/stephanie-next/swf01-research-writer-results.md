@@ -1,7 +1,9 @@
 # SWF01 — Research Integrity and First Stephanie → Writer Workflow
 
-**Status: PHASE 1 IMPLEMENTED, UNIT-VERIFIED, NOT YET LIVE-VERIFIED.**
-Phases 2–7 not started. Nothing committed or pushed (awaiting authorization).
+**Status: PHASE 1 IMPLEMENTED, UNIT-VERIFIED, DB-VERIFIED.**
+Committed as `e794eaed`. Phases 2–7 not started. The database verification, the
+refutation of one mechanism claimed below, and two follow-up fixes are recorded in
+`docs/stephanie-next/swf01-db-findings.md`.
 
 Scope of this report: Phase 1 (paper-section lifecycle). Everything below is
 labelled **VERIFIED** (I read the code / ran the tests and can point at the
@@ -35,7 +37,7 @@ was a no-op.** It created a top-level Hydra key that nothing consumed, and
 `maybe_load` hit the cache. My earlier claim that run 10038 "rebuilt but kept
 both generations" was wrong — run 10038 never rebuilt at all.
 
-### 1.2 `PaperSectionsCache.persist()` destroyed identity and could not write — VERIFIED (code) / UNVERIFIED (DB effect)
+### 1.2 `PaperSectionsCache.persist()` destroyed identity — VERIFIED in the database
 
 At `c57a70e4`, `sections_cache.py:49-62`:
 
@@ -47,7 +49,7 @@ for sec in sections:
     self.paper_store.upsert_section(s)
 ```
 
-Three defects in four lines:
+Two defects in four lines:
 
 1. **Primary-key collision.** `PaperSectionORM.id` is the PK (`orm/paper.py:66`)
    and `PaperSectionStore.upsert` looks up by `id` (`paper_store.py:576-581`),
@@ -55,17 +57,26 @@ Three defects in four lines:
 2. **Wrong ownership.** `paper_id` is forced to the *root* arXiv id
    (`orm/paper.py:67` is the FK), which is precisely how related papers' content
    ended up attributed to the root paper.
-3. **The write cannot succeed.** `asdict(PaperSection)` yields the dataclass
-   field names (`section_id`, `paper_arxiv_id`, …), not ORM columns, and the
-   required `PaperSectionORM.path` (**`nullable=False`**, `orm/paper.py:73`) is
-   never supplied. The `flush()` raises `IntegrityError`, which is swallowed by
-   the blanket `except Exception` at `sections_cache.py:60-62`.
 
-So `persist()` has, with high probability, **never successfully written a
-section**. The rows currently being served by `maybe_load` are from an older
-code generation, which is the real reason a "regenerated" heading appeared
-alongside a stale one. **This is the claim I most want checked against the DB**
-(see §6 BLOCKED-1) because it changes the migration story.
+**Correction (SWF01-DB).** I originally also claimed that "the write cannot
+succeed" — that `asdict(PaperSection)` yields dataclass field names rather than
+ORM columns and that the missing NOT NULL `path` raised a swallowed
+`IntegrityError`. **That is refuted by the live database**: `co.paper_sections.path`
+is *nullable*, and `persist()` demonstrably writes — there is a single row whose
+`id` is the root arxiv_id, created `2026-01-03` and **updated during this
+session's runs**.
+
+The collision alone fully explains the observed data. The 713 rows break down as:
+
+* **712** rows with correct `<source>::sec-N` ids, bulk-inserted in one statement
+  on `2025-12-15`, all stamped `paper_id = 2506.21734` (680 of them belong to 17
+  *related* papers) — these were **not** written by `persist()`;
+* **1** row with `id = 2506.21734`, `section_index = 77` (the last section
+  iterated), updated today — the collapsed output of `persist()`.
+
+So the rows served by `maybe_load` are an older bulk load, and `persist()` has
+been overwriting one row ever since instead of storing the rebuilt sections.
+Full evidence: `docs/stephanie-next/swf01-db-findings.md`.
 
 ### 1.3 `replace_for_paper()` was not usable as the rebuild mechanism — VERIFIED
 
@@ -93,7 +104,7 @@ the build path was never reached (see 1.1).
 | File | Change |
 | --- | --- |
 | `paper/pipeline/sections_cache.py` | `maybe_load(..., force_rebuild=False)` bypasses the cache. `persist(..., replace=False)` now groups sections by their **own** `paper_arxiv_id`, emits stable ids `{source}::sec-{index}` (the convention the blog generator parses), and supplies every NOT-NULL ORM column (`path`, `role`, `level`, `section_index`, `content_hash`, `token_count`). Duplicate indices are dropped, never collided. `_sections_from_orm` now maps real ORM column names. Persist failures are logged with context instead of silently swallowed. |
-| `memory/paper_store.py` | `PaperSectionStore.replace_for_paper` rewritten: delete + insert in **one** session (no nested `_run`), deletes both the paper's rows and any row squatting on an incoming id, and populates all required columns. |
+| `memory/paper_store.py` | `PaperSectionStore.replace_for_paper` rewritten: delete + insert in **one** session (no nested `_run`), populates all required columns, and scopes the delete to `paper_id = :pid OR id LIKE :pid::%` (LIKE wildcards escaped) — repairing mis-attribution, removing shrinking-rebuild orphans, and never touching another paper's own rows. |
 | `paper/pipeline/pipeline_runner.py` | `run()` loads the cache **per source paper in the graph** (root first), honours a new `_force_rebuild_requested()` (context → stage cfg → `STEPHANIE_FORCE_REBUILD_SECTIONS`), and persists with `replace=True` whenever a rebuild happened, so old and new generations can never both be active. |
 | `tasks/section_build_task.py` | Fixed the dataclass kwargs (`section_id=`/`role=`) at both construction sites. |
 | `config/information.yaml` | Declared `sections_cache_enabled: true` and `force_rebuild_sections: false` on the `paper_pipeline` stage. |
@@ -105,7 +116,7 @@ by `replace_for_paper` on the next rebuild for that paper and re-attributed.
 
 ## 3. Deterministic tests
 
-`tests/test_sections_cache_lifecycle.py` (new, 11 tests) — no DB, no LLM:
+`tests/test_sections_cache_lifecycle.py` (new, 16 tests) — no DB, no LLM:
 
 1. persisted ids are unique and source-attributed; `paper_id` is the source paper;
 2. every persisted key is a real `PaperSectionORM` column and every NOT-NULL column is populated;
@@ -118,45 +129,51 @@ by `replace_for_paper` on the next rebuild for that paper and re-attributed.
 
 9. replace is idempotent;
 10. force-rebuild flag resolves from context, stage cfg and env var;
-11. `SectionBuildTask` produces valid `PaperSection`s (regression for 1.4).
+11. `SectionBuildTask` produces valid `PaperSection`s (regression for 1.4);
+12. `replace=True` never touches another paper's own rows;
+13. `replace=True` re-homes rows mis-attributed to the rebuilt paper;
+14. a shrinking rebuild removes stale higher-index orphans (fix 1);
+15. `persist` returns the number of rows written;
+16. a store failure is visible to the caller (ERROR log, returns 0) (fix 2).
 
 ```
 $ venv\Scripts\python.exe -m pytest tests\test_sections_cache_lifecycle.py \
     tests\test_paper_blog_generator.py tests\test_worker_model_bridge.py \
     tests\test_writer_runtime_override.py -q
-34 passed in 14.92s
+39 passed in 9.48s
 ```
 
 ## 4. Acceptance steps
 
 | # | Step | Result |
 | --- | --- | --- |
-| 1 | Build a paper with several distinct sections | PASS (unit) |
-| 2 | Persist them and verify unique IDs | PASS |
-| 3 | Reload them and compare content and provenance | PASS |
+| 1 | Build a paper with several distinct sections | PASS (unit + DB) |
+| 2 | Persist them and verify unique IDs | PASS (unit + DB) |
+| 3 | Reload them and compare content and provenance | PASS (unit + DB) |
 | 4 | Force a rebuild with revised headings | PASS (unit) — flag now exists and is honoured |
-| 5 | New active set replaces the previous generation | PASS (unit) |
-| 6 | No duplicate headings from mixed generations | PASS (unit); **live** check pending |
-| 7 | Related-paper sections retain their own source IDs | PASS |
-| 8 | A failed rebuild cannot leave a partially active result | PARTIAL — `replace_for_paper` is now one transaction; not yet proven against Postgres under induced failure |
-| 9 | Repeated runs are idempotent | PASS |
-| 10 | Existing CaseBook references remain valid | **BLOCKED** — needs the live DB; ids are unchanged in format, so existing `casebook` meta keys are unaffected, but unverified |
+| 5 | New active set replaces the previous generation | PASS (unit + DB) |
+| 6 | No duplicate headings from mixed generations | PASS — DB inspection found **no** mixed generations; the truncated/duplicate headings come from stored 16-token-era titles |
+| 7 | Related-paper sections retain their own source IDs | PASS (unit + DB) |
+| 8 | A failed rebuild cannot leave a partially active result | PASS (DB) — a duplicate-PK batch rolled back and the previous generation stayed intact (T8.2) |
+| 9 | Repeated runs are idempotent | PASS (unit + DB) |
+| 10 | Existing CaseBook references remain valid | PASS (DB) — 712 `paper:<root>:<id>` casebooks are *soft* references (no FK) and survive a replacement; a changed section count can orphan some |
 
 ## 5. Known limitations
 
-* `persist` still tolerates a failure (logs and returns the count written); it no
-  longer fails silently, but a caller that ignores the return value would not notice.
+* `persist` tolerates a failure (it logs at ERROR and returns the count written);
+  `run()` now also records `paper_sections_persisted` / `paper_sections_persist_failed`
+  on the context, so a run cannot look successful while its sections were not saved.
 * Section ordering within a paper is by `section_index`; across papers it is
   graph-node order with the root first (previously a single interleaved list).
 * No run-level accounting / cost visibility (SWF01 phase 3 territory).
 
 ## 6. BLOCKED items (need a decision or authorization)
 
-* **BLOCKED-1 — live DB inspection.** I did not query production rows in `co`.
-  I need authorization to read `paper_sections` for `2506.21734` (read-only) to
-  confirm §1.2's "persist never wrote" claim and to size the stale-data cleanup.
-  `replace_for_paper` performs **destructive** deletes, so per the brief it must
-  be exercised against an isolated database first.
+* ~~**BLOCKED-1 — live DB inspection.**~~ **RESOLVED** (SWF01-DB). Read-only
+  inspection of `co` was completed, the IntegrityError mechanism was **refuted**,
+  and replacement was proven against real PostgreSQL in the isolated
+  `swf01_scratch` database (22/22 checks). See
+  `docs/stephanie-next/swf01-db-findings.md`. `co` was never modified.
 * **BLOCKED-2 — live pipeline run.** A `force_rebuild_sections=true` run will now
   actually rebuild (spending money at ~$0.20/M under the current default policy)
   and will delete/rewrite section rows. Awaiting authorization.
@@ -175,3 +192,8 @@ $ venv\Scripts\python.exe -m pytest tests\test_sections_cache_lifecycle.py \
   per-run usage surfaced in SIS.
 * §A.2 is right that this is an identity/persistence defect, not a heading bug.
 * I withdraw my earlier claim that commit `c57a70e4` fixed duplicate headings.
+* **Self-correction (SWF01-DB):** the "`path` NOT NULL → swallowed
+  `IntegrityError`" mechanism I asserted in §1.2 was **wrong**. The live
+  `co.paper_sections.path` is nullable and `persist()` does write; the identity
+  collision alone explains the data. See
+  `docs/stephanie-next/swf01-db-findings.md`.
