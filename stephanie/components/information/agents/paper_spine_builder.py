@@ -62,7 +62,21 @@ class PaperSpineBuilderAgent(BaseAgent):
             pdf_path = Path(pdf_path)
 
         sections = context.get("paper_sections") or []
-        page_texts = extract_page_texts(str(pdf_path)) if pdf_path else {}
+        page_texts: Dict[int, str] = {}
+        if pdf_path:
+            try:
+                page_texts = extract_page_texts(str(pdf_path))
+            except Exception as exc:
+                # The PDF may not be cached locally (data/ is not versioned and
+                # the graph may not have re-imported it). Page ranges and figure
+                # attachment are enrichments; the spine/blog still build from
+                # the semantic sections.
+                log.warning(
+                    "PaperSpineBuilderAgent: page text extraction unavailable for %s (%s); "
+                    "continuing without page ranges",
+                    pdf_path,
+                    exc,
+                )
         assign_page_ranges_to_semantic_sections(sections, page_texts)
 
         elements: List[DocumentElement] = context.get("paper_elements") or []
