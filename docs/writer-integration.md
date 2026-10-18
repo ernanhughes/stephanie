@@ -46,6 +46,27 @@ print(bridge.discovery.search("repair a sentence"))
 print(bridge.discovery.describe("editorial"))
 ```
 
+## SIS UI
+
+When `writer.enabled` is true in `config/sis.yaml`, SIS exposes a **Writer** tab:
+
+* `GET /writer` — search runtimes by task description
+* `GET /writer/runtime/{name}` — describe a runtime and list its operations
+
+Discovery is read-only. The SIS routes never execute a runtime, even when
+`enable_execution` is true elsewhere.
+
+## Supervisor
+
+`Supervisor` exposes the same discovery surface:
+
+```python
+ok, results = supervisor.discover_writer_runtimes("repair a sentence")
+```
+
+It reads `writer` (or `writer_runtime`) from the composed Hydra config and is a
+no-op ("Writer integration is not enabled") unless explicitly enabled.
+
 ## Safety notes
 
 * Discovery is read-only and shells out with argument arrays (no shell mode).

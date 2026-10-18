@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+
+{% block title %}Writer · {{ runtime_name }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="mb-0">🧭 Writer runtime <code>{{ runtime_name }}</code></h1>
+    <a href="/writer" class="btn btn-secondary">← Back to search</a>
+  </div>
+
+  {% if error %}
+  <div class="alert alert-warning" role="alert">{{ error }}</div>
+  {% endif %}
+
+  {% if describe %}
+  <div class="row">
+    <div class="col-lg-6">
+      <div class="card mb-4">
+        <div class="card-body">
+          <h5 class="card-title">{{ describe.identity.title or runtime_name }}</h5>
+          <p class="card-text text-muted">{{ describe.identity.summary }}</p>
+          <dl class="row mb-0">
+            <dt class="col-sm-4">Roles</dt>
+            <dd class="col-sm-8">{{ (describe.roles or [])|join(", ") or "—" }}</dd>
+            <dt class="col-sm-4">Capabilities</dt>
+            <dd class="col-sm-8">
+              {% for cap in describe.capabilities or [] %}
+              <span class="badge bg-info text-dark">{{ cap }}</span>
+              {% else %}—{% endfor %}
+            </dd>
+            <dt class="col-sm-4">Scopes</dt>
+            <dd class="col-sm-8">{{ (describe.scopes or [])|join(", ") or "—" }}</dd>
+            <dt class="col-sm-4">Stateful</dt>
+            <dd class="col-sm-8">{{ describe.stateful }}</dd>
+            <dt class="col-sm-4">Mutates source</dt>
+            <dd class="col-sm-8">{{ describe.mutates_source }}</dd>
+          </dl>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-6">
+      <div class="card mb-4">
+        <div class="card-body">
+          <h5 class="card-title">Operations</h5>
+          {% if operations %}
+          <table class="table table-sm mb-0">
+            <thead>
+              <tr><th>Name</th><th>Signature</th></tr>
+            </thead>
+            <tbody>
+              {% for op in operations %}
+              <tr>
+                <td><code>{{ op.operation_name }}</code></td>
+                <td class="small text-muted">{{ op.signature }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          {% else %}
+          <p class="text-muted mb-0">No operation surface available.</p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

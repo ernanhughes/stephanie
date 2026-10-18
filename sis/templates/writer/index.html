@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+
+{% block title %}Writer Runtimes{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="mb-0">🧭 Writer Runtimes</h1>
+    <a href="/" class="btn btn-secondary">← Back to Pipelines</a>
+  </div>
+
+  {% if status %}
+  <div class="card mb-4">
+    <div class="card-body">
+      <h6 class="card-subtitle mb-2 text-muted">Bridge status</h6>
+      <dl class="row mb-0">
+        <dt class="col-sm-3">Project root</dt>
+        <dd class="col-sm-9"><code>{{ status.project_root or "not configured" }}</code></dd>
+        <dt class="col-sm-3">Writer executable</dt>
+        <dd class="col-sm-9"><code>{{ status.writer_executable or "not found" }}</code></dd>
+        <dt class="col-sm-3">Execution</dt>
+        <dd class="col-sm-9">
+          {% if status.execution_enabled %}
+          <span class="badge bg-warning text-dark">enabled</span>
+          {% else %}
+          <span class="badge bg-secondary">discovery only</span>
+          {% endif %}
+        </dd>
+      </dl>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if error %}
+  <div class="alert alert-warning" role="alert">{{ error }}</div>
+  {% endif %}
+
+  <form class="row g-2 mb-4" method="get" action="/writer">
+    <div class="col-auto flex-grow-1">
+      <input type="text" class="form-control" name="q" value="{{ query }}"
+             placeholder="Describe a task, e.g. 'repair a sentence'">
+    </div>
+    <div class="col-auto">
+      <button class="btn btn-primary" type="submit">Search runtimes</button>
+    </div>
+  </form>
+
+  {% if results %}
+  <table class="table table-sm table-hover align-middle">
+    <thead>
+      <tr>
+        <th scope="col">Rank</th>
+        <th scope="col">Runtime</th>
+        <th scope="col">Score</th>
+        <th scope="col">Reasons</th>
+        <th scope="col"></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in results %}
+      <tr>
+        <td>{{ item.rank }}</td>
+        <td><code>{{ item.runtime_name }}</code></td>
+        <td>{{ "%.4f"|format(item.score) if item.score is number else item.score }}</td>
+        <td>
+          {% for reason in item.semantic_reasons or [] %}<div class="small text-muted">{{ reason }}</div>{% endfor %}
+          {% for reason in item.matched_capabilities or [] %}<div class="small"><span class="badge bg-info text-dark">{{ reason }}</span></div>{% endfor %}
+        </td>
+        <td>
+          <a class="btn btn-sm btn-outline-primary"
+             href="/writer/runtime/{{ item.runtime_name }}">Describe</a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% elif query and not error %}
+  <p class="text-muted">No runtimes matched “{{ query }}”.</p>
+  {% endif %}
+</div>
+{% endblock %}

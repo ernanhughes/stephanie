@@ -79,6 +79,18 @@ def test_execution_disabled_returns_clear_error():
     assert "disabled" in result["error"]
 
 
+def test_supervisor_discovery_disabled_by_default():
+    from omegaconf import OmegaConf
+    from stephanie.supervisor import Supervisor
+
+    sup = object.__new__(Supervisor)
+    sup.cfg = OmegaConf.create({"writer": {"enabled": False}})
+    sup._writer_bridge = None
+    ok, message = sup.discover_writer_runtimes("x")
+    assert ok is False
+    assert "not enabled" in message
+
+
 def test_service_initializes_and_reports_health():
     service = WriterRuntimeService(cfg={"project_root": None})
     service.initialize(cfg={"project_root": None})

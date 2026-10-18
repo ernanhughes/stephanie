@@ -89,6 +89,45 @@ class Supervisor:
             return f"config/{prof}.yaml"
         return f"config/services/{prof}.yaml"
 
+    def writer_bridge(self):
+        """Lazily build the optional Writer discovery bridge from config."""
+        if getattr(self, "_writer_bridge", None) is not None:
+            return self._writer_bridge
+        raw = OmegaConf.select(self.cfg, "writer", default=None)
+        if raw is None:
+            raw = OmegaConf.select(self.cfg, "writer_runtime", default=None)
+        if raw is None:
+            self._writer_bridge = False
+            return False
+        cfg = OmegaConf.to_container(raw, resolve=True) if not isinstance(raw, dict) else raw
+        if not cfg.get("enabled", False):
+            self._writer_bridge = False
+            return False
+        from stephanie.integrations.writer_runtime import (
+            WriterRuntimeBridge,
+            WriterRuntimeConfig,
+        )
+
+        self._writer_bridge = WriterRuntimeBridge(
+            WriterRuntimeConfig(
+                project_root=cfg.get("project_root"),
+                writer_executable=cfg.get("writer_executable"),
+                timeout_seconds=int(cfg.get("timeout_seconds", 30)),
+                enable_execution=bool(cfg.get("enable_execution", False)),
+            )
+        )
+        return self._writer_bridge
+
+    def discover_writer_runtimes(self, query: str):
+        """Search Writer runtimes. Returns (ok, results_or_error)."""
+        bridge = self.writer_bridge()
+        if not bridge:
+            return False, "Writer integration is not enabled"
+        payload = bridge.discovery.search(query)
+        if payload.get("ok"):
+            return True, payload.get("results", [])
+        return False, payload.get("error", "Writer search failed")
+
     def _create_reward_model(self, cfg, memory, logger):
         scoring: ScoringService = self.container.get("scoring")
         return lambda context, doc_a, doc_b: scoring.reward_compare(

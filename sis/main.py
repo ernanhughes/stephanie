@@ -21,6 +21,7 @@ from stephanie.services.service_container import ServiceContainer
 from stephanie.services.registry_loader import load_services_profile
 from sis.routes import codecheck as codecheck_routes
 from sis.routes import auth as auth_routes
+from sis.routes import writer as writer_routes
 from sis.security import SISAuthMiddleware, SessionStore, load_auth_settings
 from sis.services.chat_execution import ConversationExecutionService
 from sis.services.worker_execution import WorkerExecutionService
@@ -71,6 +72,34 @@ app.state.chat_execution = ConversationExecutionService(
     cfg=app.state.cfg,
     logger=app.state.logger,
 )
+
+# Optional Writer runtime discovery. Read-only; execution stays gated.
+def _build_writer_bridge():
+    from omegaconf import OmegaConf
+    from stephanie.integrations.writer_runtime import (
+        WriterRuntimeBridge,
+        WriterRuntimeConfig,
+    )
+
+    raw = app.state.cfg.get("writer") if hasattr(app.state.cfg, "get") else None
+    if raw is None:
+        app.state.writer_cfg = {}
+        return None
+    cfg = OmegaConf.to_container(raw, resolve=True) if not isinstance(raw, dict) else raw
+    app.state.writer_cfg = cfg
+    if not cfg.get("enabled", False):
+        return None
+    return WriterRuntimeBridge(
+        WriterRuntimeConfig(
+            project_root=cfg.get("project_root"),
+            writer_executable=cfg.get("writer_executable"),
+            timeout_seconds=int(cfg.get("timeout_seconds", 30)),
+            enable_execution=bool(cfg.get("enable_execution", False)),
+        )
+    )
+
+
+app.state.writer_bridge = _build_writer_bridge()
 app.add_middleware(SISAuthMiddleware)
 
 # Put into app.state so routers can access without importing main
@@ -150,6 +179,7 @@ app.include_router(explore_ui.router)
 app.include_router(overnight_ui.router)
 app.include_router(nexus.router)
 app.include_router(codecheck_routes.router)
+app.include_router(writer_routes.router)
 
 # # After app = FastAPI(...)
 # class SISContainer:

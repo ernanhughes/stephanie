@@ -40,6 +40,15 @@ chat_runtime:
     timeout: 90
     max_tokens: 768
 
+# Writer runtime bridge. Discovery is read-only; execution stays disabled unless
+# an operator explicitly enables it and the Writer checkout/database are ready.
+writer:
+  enabled: true
+  project_root: "C:/Projects/Writer"
+  writer_executable: null
+  timeout_seconds: 30
+  enable_execution: false
+
 # STN03 Worker-backed coding execution. Keep disabled until an operator has
 # verified the local isolation boundary, explicitly chosen a model route, and
 # registered a disposable workspace. This does not launch Worker automatically.
