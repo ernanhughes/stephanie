@@ -1,10 +1,15 @@
 # config/db/postgres.yaml
 # Connection identity for MemoryTool/SQLAlchemy. Each field is overridable by an
 # environment variable so one config serves both local runs and Docker Compose
-# (see docker-compose.yml and docs/docker.md). Defaults are unchanged.
-database: '${oc.env:STEPHANIE_DB_NAME,co}'
-name: '${oc.env:STEPHANIE_DB_NAME,co}'  # it keeps coming back to this
-user: '${oc.env:STEPHANIE_DB_USER,co}'
+# (see docker-compose.yml and docs/docker.md).
+#
+# Defaults are `stephanie` to match .env.example, .env.docker.example and
+# scripts/generate_configs.py. They used to fall back to the legacy `co`
+# database, which meant a run with no STEPHANIE_DB_* in the environment silently
+# wrote to `co` instead of the live database.
+database: '${oc.env:STEPHANIE_DB_NAME,stephanie}'
+name: '${oc.env:STEPHANIE_DB_NAME,stephanie}'
+user: '${oc.env:STEPHANIE_DB_USER,stephanie}'
 # Supply this at process startup; keep database credentials out of versioned YAML.
 password: '${oc.env:STEPHANIE_DB_PASSWORD,""}'
 host: '${oc.env:STEPHANIE_DB_HOST,localhost}'
