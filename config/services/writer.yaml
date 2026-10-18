@@ -1,0 +1,13 @@
+# Optional Writer runtime bridge. Disabled by default.
+services:
+  writer_runtime:
+    enabled: false
+    cls: stephanie.integrations.writer_runtime.WriterRuntimeService
+    dependencies: []
+    args:
+      cfg:
+        project_root: "C:/Projects/Writer"
+        writer_executable: null
+        python_executable: null
+        timeout_seconds: 30
+        enable_execution: false

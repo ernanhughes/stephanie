@@ -82,3 +82,7 @@ prompts/
 ## Stephanie Next
 
 Current direction, architecture, migration, and milestone documentation lives in [Stephanie Next](stephanie-next/index.md).
+
+## Writer Integration
+
+Stephanie can discover and optionally execute Writer runtimes. See [Writer Runtime Integration](writer-integration.md).

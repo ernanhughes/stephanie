@@ -10,6 +10,7 @@ nav:
   - Tools: tools.md
   - Configuration: config.md
   - Custom Pipeline: custom.md
+  - Writer Integration: writer-integration.md
   - Stephanie Next:
       - Overview: stephanie-next/index.md
       - Target Architecture: stephanie-next/target-architecture.md
