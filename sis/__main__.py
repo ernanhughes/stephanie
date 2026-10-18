@@ -1,8 +1,13 @@
 import uvicorn
 import os
 
+from dotenv import load_dotenv
+
 
 def main():
+    # Load a repo-root .env before reading SIS_HOST/SIS_PORT so values written
+    # there take effect. Real environment variables are not overwritten.
+    load_dotenv()
     uvicorn.run(
         "sis.main:app",
         # Keep local development private by default. Remote exposure requires

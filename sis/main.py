@@ -27,8 +27,10 @@ from sis.services.chat_execution import ConversationExecutionService
 from sis.services.worker_execution import WorkerExecutionService
 from stephanie.services.execution_experience import ExecutionExperienceService
 from stephanie.services.stn06_experiment import Stn06ExperimentService
+from psycopg2 import OperationalError as PostgresOperationalError
 
 from hydra import initialize, compose
+from dotenv import load_dotenv
 
 def load_sis_cfg(overrides: list[str] | None = None):
     config_name = os.environ.get("SIS_CONFIG_NAME", "sis")
@@ -57,11 +59,30 @@ app = FastAPI(
     openapi_url=None,
 )
 
+# Load a repo-root .env before composing config so STEPHANIE_DB_* (and other)
+# overrides written there take effect. Real environment variables win: values
+# already exported are not overwritten. Docker images exclude .env, so this is a
+# no-op in the container.
+load_dotenv()
+
 app.state.cfg = load_sis_cfg()
 app.state.logger = JSONLogger("logs/sis.jsonl")
 app.state.auth_settings = load_auth_settings()
 app.state.auth_sessions = SessionStore(app.state.auth_settings)
-app.state.memory = MemoryTool(cfg=app.state.cfg, logger=app.state.logger)
+try:
+    app.state.memory = MemoryTool(cfg=app.state.cfg, logger=app.state.logger)
+except PostgresOperationalError as exc:
+    db = app.state.cfg.get("db", {}) or {}
+    raise RuntimeError(
+        "Could not connect to PostgreSQL for user "
+        f"{db.get('user')!r} at {db.get('host')}:{db.get('port')} "
+        f"(database {db.get('name')!r}).\n"
+        "Set the password via the environment or a repo-root .env file:\n"
+        '  $env:STEPHANIE_DB_PASSWORD = "<password>"   # PowerShell this session\n'
+        "  STEPHANIE_DB_PASSWORD=<password>            # repo-root .env file\n"
+        "Other overrides: STEPHANIE_DB_HOST, STEPHANIE_DB_PORT, "
+        "STEPHANIE_DB_USER, STEPHANIE_DB_NAME."
+    ) from exc
 app.state.database_ready = bool(app.state.memory.database_identity()["matches"])
 app.state.container = ServiceContainer(
     cfg=app.state.cfg, memory=app.state.memory, logger=app.state.logger
