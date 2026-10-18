@@ -116,6 +116,18 @@ def test_partition_sections_scopes_root_and_labels_related():
     assert [s.title for s in related] == ["Other", "No id"]
 
 
+def test_partition_sections_repairs_sections_mislabeled_with_the_root_id():
+    # Real pipeline artefact: every section is stamped with the ROOT id, but the
+    # namespaced section_id proves which paper it came from.
+    root = SimpleNamespace(paper_arxiv_id="2506.21734", section_id="2506.21734::sec-0", title="Root", text="a")
+    bacteria = SimpleNamespace(paper_arxiv_id="2506.21734", section_id="2412.07423::sec-12", title="Bacteria", text="b")
+    sudoku = SimpleNamespace(paper_arxiv_id="2506.21734", section_id="2505.16135::sec-3", title="Sudoku", text="c")
+
+    root_sections, related = partition_sections([root, bacteria, sudoku], "2506.21734")
+    assert [s.title for s in root_sections] == ["Root"]
+    assert [s.title for s in related] == ["Bacteria", "Sudoku"]
+
+
 def test_reference_extraction_groups_wrapped_lines():
     agent = _agent()
     ref_text = (

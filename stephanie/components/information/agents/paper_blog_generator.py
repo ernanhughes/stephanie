@@ -73,6 +73,26 @@ def _heading_tokens(text: str) -> set[str]:
     return {t for t in re.findall(r"[a-z0-9]{4,}", (text or "").lower())}
 
 
+def section_paper_id(section: Any) -> str:
+    """Effective arXiv id for a section.
+
+    Sections are namespaced by their own id (``<arxiv_id>::sec-N``). The declared
+    ``paper_arxiv_id`` is sometimes stamped with the *root* paper for every
+    section (a sections-cache artefact), which made the whole reference graph
+    look like one paper. The namespaced id is authoritative when the two
+    disagree.
+    """
+    declared = normalize_arxiv_id(
+        getattr(section, "paper_arxiv_id", None) or getattr(section, "paper_id", None)
+    )
+    raw_id = str(getattr(section, "section_id", None) or getattr(section, "id", None) or "")
+    if "::" in raw_id:
+        prefix = normalize_arxiv_id(raw_id.split("::", 1)[0])
+        if prefix:
+            return prefix
+    return declared
+
+
 def partition_sections(sections: List[Any], root_id: str) -> tuple[List[Any], List[Any]]:
     """Split sections into (root paper, other papers) using normalised ids.
 
@@ -84,9 +104,7 @@ def partition_sections(sections: List[Any], root_id: str) -> tuple[List[Any], Li
     root: List[Any] = []
     related: List[Any] = []
     for sec in sections or []:
-        sec_pid = normalize_arxiv_id(
-            getattr(sec, "paper_arxiv_id", None) or getattr(sec, "paper_id", None)
-        )
+        sec_pid = section_paper_id(sec)
         if canonical_root and sec_pid and sec_pid == canonical_root:
             root.append(sec)
         else:
@@ -446,9 +464,7 @@ class PaperBlogGeneratorAgent(BaseAgent):
 
     def _paper_label(self, section: Any, context: Dict[str, Any]) -> str:
         """Human label for the paper a section came from."""
-        pid = normalize_arxiv_id(
-            getattr(section, "paper_arxiv_id", None) or getattr(section, "paper_id", None)
-        ) or "unknown"
+        pid = section_paper_id(section) or "unknown"
         title = ""
         for doc in context.get("paper_documents") or []:
             did = normalize_arxiv_id(doc.get("paper_id") or doc.get("id") or doc.get("arxiv_id"))
@@ -713,7 +729,7 @@ Write a Markdown section that:
         support_blocks = []
         for s in supports:
             title = getattr(s, "title", None) or getattr(s, "section_name", None) or "Section"
-            pid = getattr(s, "paper_arxiv_id", None) or getattr(s, "paper_id", None) or "unknown"
+            pid = section_paper_id(s) or "unknown"
             txt = (getattr(s, "summary", None) or getattr(s, "text", "") or "").strip()
             if not txt:
                 continue
@@ -907,7 +923,7 @@ Do NOT include any commentary about scores, the GROWS loop, or your process.
 
     @staticmethod
     def _paper_id(sec: Any) -> str:
-        return str(getattr(sec, "paper_arxiv_id", None) or getattr(sec, "paper_id", None) or "")
+        return section_paper_id(sec)
 
     @staticmethod
     def _match_fields(m: Any) -> dict:

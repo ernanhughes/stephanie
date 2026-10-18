@@ -56,7 +56,11 @@ dependencies = [
     # Analysis
     "matplotlib>=3.8",
     "scikit-learn>=1.4",
-    "pdfminer.six>=20240706"
+    "pdfminer.six>=20240706",
+
+    # Paper pipeline (information.yaml)
+    "pymupdf>=1.24",
+    "pyvis>=0.3"
 ]
 
 classifiers = [

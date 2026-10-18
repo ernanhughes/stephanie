@@ -34,3 +34,8 @@ python-Levenshtein
 matplotlib
 scikit-learn
 pdfminer.six
+
+# paper pipeline (information.yaml): page text extraction for the spine
+pymupdf
+# optional: graph HTML export (guarded; pipeline runs without it)
+pyvis
