@@ -1,12 +1,13 @@
+import argparse
 import json
 from sqlalchemy.orm import Session
 from stephanie.orm.evaluation import EvaluationORM
 from stephanie.orm.score import ScoreORM
-from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from stephanie.orm.base import create_database_engine_from_hydra
 
 
-def migrate_scores_from_json(session: Session):
+def migrate_scores_from_json(session: Session, *, apply: bool = False):
     evaluations = session.query(EvaluationORM).all()
     count_inserted = 0
 
@@ -39,12 +40,28 @@ def migrate_scores_from_json(session: Session):
             session.add(score_row)
             count_inserted += 1
 
-    session.commit()
-    print(f"✅ Migration complete. Inserted {count_inserted} dimension scores.")
+    if apply:
+        session.commit()
+        print(f"Applied migration; inserted {count_inserted} dimension scores.")
+    else:
+        session.rollback()
+        print(f"Dry run: {count_inserted} dimension scores would be inserted; pass --apply to write.")
+    return count_inserted
 
 
-engine = create_engine("postgresql://co:co@localhost/co")
-Session = sessionmaker(bind=engine)
-session = Session()
+def main():
+    parser = argparse.ArgumentParser(description="Migrate legacy JSON scores into score rows")
+    parser.add_argument("--apply", action="store_true", help="Commit inserts (default: dry run)")
+    args = parser.parse_args()
 
-migrate_scores_from_json(session)
+    engine = create_database_engine_from_hydra("config")
+    session = sessionmaker(bind=engine, expire_on_commit=False)()
+    try:
+        migrate_scores_from_json(session, apply=args.apply)
+    finally:
+        session.close()
+        engine.dispose()
+
+
+if __name__ == "__main__":
+    main()

@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="csrf-token" content="{{ request.state.csrf_token|default('') }}">
   <title>{% block title %}SIS{% endblock %}</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
   <!-- Bootstrap JS (required for offcanvas) -->
@@ -26,6 +27,36 @@ globalThis.configureInjection = function(config) {
 if (!globalThis) {
     window.configureInjection = globalThis.configureInjection;
 }
+</script>
+<script>
+(() => {
+  const unsafe = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+  const meta = document.querySelector('meta[name="csrf-token"]');
+  const csrf = meta ? meta.content : "";
+  const originalFetch = window.fetch.bind(window);
+  window.fetch = (input, init = {}) => {
+    const requestUrl = input instanceof Request ? input.url : input;
+    const url = new URL(requestUrl, window.location.href);
+    const method = String(init.method || (input instanceof Request ? input.method : "GET")).toUpperCase();
+    if (url.origin === window.location.origin && unsafe.has(method) && csrf) {
+      const headers = new Headers(init.headers || (input instanceof Request ? input.headers : undefined));
+      headers.set("X-CSRF-Token", csrf);
+      init = {...init, headers};
+    }
+    return originalFetch(input, init);
+  };
+  document.addEventListener("submit", (event) => {
+    const form = event.target;
+    if (!(form instanceof HTMLFormElement) || !unsafe.has(form.method.toUpperCase())) return;
+    const action = new URL(form.action || window.location.href, window.location.href);
+    if (action.origin !== window.location.origin || !csrf || form.querySelector('input[name="_csrf"]')) return;
+    const input = document.createElement("input");
+    input.type = "hidden";
+    input.name = "_csrf";
+    input.value = csrf;
+    form.appendChild(input);
+  }, true);
+})();
 </script>
 
 </head>
@@ -71,6 +102,14 @@ if (!globalThis) {
             <a class="nav-link {% if active_page == 'logs' %}active{% endif %}" href="/logs">📂 Logs</a>
           </li>
         </ul>
+        {% if request.state.username|default('') %}
+        <div class="d-flex align-items-center gap-2 text-light">
+          <span class="small">{{ request.state.username }}</span>
+          <form method="post" action="/logout" class="m-0">
+            <button class="btn btn-sm btn-outline-light" type="submit">Sign out</button>
+          </form>
+        </div>
+        {% endif %}
       </div>
     </div>
   </nav>

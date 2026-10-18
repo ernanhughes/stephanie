@@ -18,6 +18,7 @@ from stephanie.orm.plan_trace import PlanTraceORM, StepRunORM
 from stephanie.scoring.scorable import ScorableFactory
 from stephanie.services.service_protocol import Service
 from stephanie.utils.file_utils import default_serializer
+from stephanie.utils.secret_utils import redact_secrets
 
 
 class PlanTraceService(Service):
@@ -39,6 +40,8 @@ class PlanTraceService(Service):
 
         monitor_cfg = cfg.get("plan_monitor", {})
         self.enabled = monitor_cfg.get("enabled", False)
+        self.score_enabled = monitor_cfg.get("score_enabled", True)
+        self.index_embeddings = monitor_cfg.get("index_embeddings", True)
         self.save_output = monitor_cfg.get("save_output", False)
         self.output_dir = monitor_cfg.get("output_dir", "plan_traces")
         self.retention_policy = monitor_cfg.get("retention_policy", "keep_all")
@@ -50,7 +53,7 @@ class PlanTraceService(Service):
         self.reuse_links = []  # (parent_trace_id, child_trace_id)
         self.stage_start_times: Dict[int, float] = {}
 
-        if self.enabled:
+        if self.enabled and self.score_enabled:
             self.plan_trace_scorer = PlanTraceScorerAgent(
                 cfg, memory, container, logger
             )
@@ -82,9 +85,13 @@ class PlanTraceService(Service):
                 "stages_tracked": len(self.stage_start_times),
             },
             "dependencies": {
-                "scoring_service": "attached"
-                if hasattr(self, "plan_trace_scorer")
-                else "missing"
+                "scoring_service": (
+                    "disabled"
+                    if not self.score_enabled
+                    else "attached"
+                    if hasattr(self, "plan_trace_scorer")
+                    else "missing"
+                )
             },
         }
 
@@ -163,7 +170,9 @@ class PlanTraceService(Service):
                 "agent_name": "PlanTraceMonitor",
                 "started_at": time.time(),
                 "pipeline_run_id": pipeline_run_id,
+                "status": "in_progress",
             },
+            status="in_progress",
         )
 
         # After creating self.current_plan_trace
@@ -271,7 +280,7 @@ class PlanTraceService(Service):
         step.duration = duration
 
         scorable_details = context.get(SCORABLE_DETAILS, {})
-        if scorable_details.get("output_text"):
+        if scorable_details.get("output_text") and self.score_enabled:
             step.input_text = scorable_details.get("input_text", "")
             step.output_text = scorable_details.get("output_text", "")
             step.description = scorable_details.get(
@@ -320,8 +329,8 @@ class PlanTraceService(Service):
         step.duration = duration
         step.error = {
             "type": type(error).__name__,
-            "message": str(error),
-            "traceback": traceback.format_exc(),
+            "message": redact_secrets(str(error)),
+            "traceback": redact_secrets(traceback.format_exc()),
         }
 
         # Log error
@@ -341,6 +350,9 @@ class PlanTraceService(Service):
         """Complete the PlanTrace when pipeline ends"""
         if not self.current_plan_trace:
             return
+
+        self.current_plan_trace.status = "completed"
+        self.current_plan_trace.meta["status"] = "completed"
 
         # Set final output text
         final_output = context.get("final_output", "")
@@ -371,26 +383,43 @@ class PlanTraceService(Service):
         if self.enabled and self.save_output:
             self.save_plan_trace_to_json(self.current_plan_trace)
 
-        # Store in memory
+        # Persist the trace as a required part of an enabled monitor. A failed
+        # trace write must not be reported as a successful pipeline execution.
         try:
             self.memory.plan_traces.upsert(self.current_plan_trace)
-            scorable = ScorableFactory.from_orm(self.current_plan_trace)
-            self.memory.scorable_embeddings.get_or_create(scorable)
-            self.logger.log(
-                "PlanTraceStored",
-                {
-                    "trace_id": self.current_plan_trace.trace_id,
-                    "step_count": len(self.current_plan_trace.execution_steps),
-                },
-            )
         except Exception as e:
             self.logger.log(
                 "PlanTraceStorageError",
                 {
                     "trace_id": self.current_plan_trace.trace_id,
-                    "error": str(e),
+                    "error": redact_secrets(str(e)),
                 },
             )
+            raise RuntimeError(
+                f"Could not persist PlanTrace {self.current_plan_trace.trace_id}"
+            ) from e
+
+        # Embedding indexing is optional and must not invalidate persisted trace evidence.
+        if self.index_embeddings:
+            try:
+                scorable = ScorableFactory.from_orm(self.current_plan_trace)
+                self.memory.scorable_embeddings.get_or_create(scorable)
+            except Exception as e:
+                self.logger.log(
+                    "PlanTraceEmbeddingIndexError",
+                    {
+                        "trace_id": self.current_plan_trace.trace_id,
+                        "error": redact_secrets(str(e)),
+                    },
+                )
+
+        self.logger.log(
+            "PlanTraceStored",
+            {
+                "trace_id": self.current_plan_trace.trace_id,
+                "step_count": len(self.current_plan_trace.execution_steps),
+            },
+        )
 
         self.logger.log(
             "PlanTraceCompleted",
@@ -403,7 +432,7 @@ class PlanTraceService(Service):
 
     async def score_pipeline(self, context: Dict) -> None:
         """Score the completed PlanTrace"""
-        if not self.current_plan_trace:
+        if not self.current_plan_trace or not self.score_enabled:
             return
 
         try:
@@ -453,8 +482,8 @@ class PlanTraceService(Service):
                 "PlanTraceScoringError",
                 {
                     "trace_id": self.current_plan_trace.trace_id,
-                    "error": str(e),
-                    "traceback": traceback.format_exc(),
+                    "error": redact_secrets(str(e)),
+                    "traceback": redact_secrets(traceback.format_exc()),
                 },
             )
 
@@ -465,13 +494,15 @@ class PlanTraceService(Service):
 
         # Update PlanTrace with error information
         self.current_plan_trace.final_output_text = (
-            f"Pipeline failed: {str(error)}"
+            f"Pipeline failed: {redact_secrets(str(error))}"
         )
+        self.current_plan_trace.status = "failed"
         self.current_plan_trace.meta["error"] = {
             "type": type(error).__name__,
-            "message": str(error),
-            "traceback": traceback.format_exc(),
+            "message": redact_secrets(str(error)),
+            "traceback": redact_secrets(traceback.format_exc()),
         }
+        self.current_plan_trace.meta["status"] = "failed"
         self.current_plan_trace.meta["completed_at"] = time.time()
 
         # Store in memory
@@ -482,7 +513,7 @@ class PlanTraceService(Service):
                 "PlanTraceSaveError",
                 {
                     "trace_id": self.current_plan_trace.trace_id,
-                    "error": str(e),
+                    "error": redact_secrets(str(e)),
                 },
             )
 
@@ -491,7 +522,7 @@ class PlanTraceService(Service):
             {
                 "trace_id": self.current_plan_trace.trace_id,
                 "error_type": type(error).__name__,
-                "error_message": str(error),
+                "error_message": redact_secrets(str(error)),
             },
         )
 
@@ -537,8 +568,8 @@ class PlanTraceService(Service):
                 "PlanTraceSaveToFileError",
                 {
                     "trace_id": plan_trace.trace_id,
-                    "error": str(e),
-                    "traceback": traceback.format_exc(),
+                    "error": redact_secrets(str(e)),
+                    "traceback": redact_secrets(traceback.format_exc()),
                 },
             )
 

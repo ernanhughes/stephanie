@@ -18,7 +18,7 @@ dependency-injector
 requests
 wikipedia
 duckduckgo-search
-git+https://github.com/buriy/python-readability
+readability-lxml>=0.8
 beautifulsoup4
 arxiv
 gradio_client

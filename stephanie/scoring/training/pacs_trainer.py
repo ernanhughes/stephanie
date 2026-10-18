@@ -14,6 +14,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from stephanie.utils.secret_utils import redact_secrets
 from stephanie.orm.belief_cartridge import BeliefCartridgeORM
 from stephanie.orm.model_version import ModelVersionORM
 from stephanie.orm.training_stats import TrainingStatsORM
@@ -941,7 +942,9 @@ class PACSTrainer(BaseTrainer):
             "device": str(self.device),
             "model_path": output_dir,
             "timestamp": datetime.now().isoformat(),
-            "config": self.cfg if isinstance(self.cfg, dict) else self.cfg.__dict__
+            "config": redact_secrets(
+                self.cfg if isinstance(self.cfg, dict) else self.cfg.__dict__
+            )
         }
 
         # Split into direct columns vs. extra_data

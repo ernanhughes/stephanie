@@ -331,7 +331,7 @@ def _make_gif(frame_paths: List[Path], out_path: Path, fps: int = 2):
 
 # ------------------------- CLI -------------------------
 
-# python .\stephanie\reporting\nexus_growth_from_db.py --dsn "postgresql://co:co@localhost:5432/co" --pipeline-run-id 8246
+# Example: python .\stephanie\reporting\nexus_growth_from_db.py --dsn "$env:STEPHANIE_DATABASE_URL" --pipeline-run-id 8246
 
 def main():
     ap = argparse.ArgumentParser()

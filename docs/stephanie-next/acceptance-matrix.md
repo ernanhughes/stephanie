@@ -167,3 +167,28 @@ See `stn04-first-agent-execution.md` for full identities, environment limits, re
 | SCI-01–03 | STN06 protocol is specified; no A/B inference, paid experiment, or improvement claim was made. | **PASS for design; experiment NOT RUN** |
 
 See `stn05-learning-inventory.md`, `stn05-experience-design.md`, `stn05-implementation-results.md`, and `stn06-experiment-plan.md`.
+
+## STN06-PREP — Frozen, reproducible experience-transfer experiment
+
+| Gate | Evidence | Status |
+|---|---|---|
+| REC-01/02 | Fresh read-only `MemoryTool` readback (`scripts/stn06_reconcile.py`) resolved the conflicting STN05 reports: review `ACCEPT`, Worker acceptance null, candidate `APPROVED`, MemCube `WITHDRAWN`/`reuse_eligible=false`, retrieval `false`, transfer `untested`. No record was edited. | **PASS** |
+| REC-03 | Residual inconsistency documented, not rewritten: source execution `experience_status` still reads `ACTIVE`; the service now keeps the label consistent for future withdrawals only. | **PASS (documented; history preserved)** |
+| FREEZE-01 | Frozen the exact approved candidate `exp_33fd63f133b44b21275681e5af0aabb7:v1`, hash `d4d720…`, lesson, applicability, limitations and provenance; refuses if the MemCube is globally active; no MemCube mutation. | **PASS (live)** |
+| FREEZE-02 | Experiment-scoped selection returns the frozen experience for Arm B only; Arm A receives no context. Ordinary `retrieve_for_task` returned zero for both pilot tasks. | **PASS (live)** |
+| AUTH-01 | `authorize_scope` records an experiment-only authorization (`global_reactivation=false`); live persistence requires the operator's reviewer identity and was deliberately not fabricated. | **PASS for mechanism; live record pending operator** |
+| FIX-01 | Eight held-out tasks (4 near-transfer, 2 complex, 2 unrelated) with disjoint workspace/sealed-reference/sealed-oracle file sets; manifest hash `1c0d167f…`. | **PASS** |
+| FIX-02 | Every sealed oracle actually ran: defective workspace fails, reference solution passes — **8/8 verified**. | **PASS (live, no model)** |
+| FIX-03 | Workspace and sealed oracle/reference path sets never intersect (leakage control asserted in tests). | **PASS** |
+| SCHED-01 | Stable SHA-256 arm schedule verified identical across `PYTHONHASHSEED` values; frozen run order recorded per task. | **PASS** |
+| SCHED-02 | Preregistration hash reproducible across runs (volatile timestamps excluded): pilot and full produced `08deb572…`. | **PASS (live)** |
+| DISP-01 | Dry-run built both-arm dispatch bodies (`worker.work-request.v1`, `opencode-docker`, `opencode-go/gpt-6-luna`, `workspace_write`) within the prompt bound, with experiment/task/arm identity in `metadata`. | **PASS (no model call)** |
+| SCORE-01 | Scoring enforces oracle exit code, expected scope and prohibited paths; distinguished simulated failure from success. | **PASS** |
+| STORE-01 | Preregistration + authorization persist into the existing `ExperimentStore` (experiment, variants A/B) on isolated SQLite; no new database. | **PASS** |
+| BUDGET-01 | Pilot 4 / full 16 bounded executions, 600 s cap, one model request each, no retries/substitution/escalation; `$2` target explicitly non-enforceable. | **PASS (limits); monetary metering NOT AVAILABLE** |
+| TST-01 | `tests/test_stn06_preregistration.py` + SIS/STN05 regressions: **74 passed**; `py_compile` and `git diff --check` clean. | **PASS** |
+| RUN-01 | No paid model call, no trial/metric row, no MemCube reactivation, no commit. | **NOT RUN (by design)** |
+
+See `stn06-preflight-results.md` and `stn06-preflight.json`. The experiment is
+ready for operator-authorized execution; it remains **NOT RUN** until the
+experiment-scoped authorization record and metered-run approval exist.

@@ -86,6 +86,347 @@ class CaseBookStore(BaseSQLAlchemyStore):
 
         return self._run(op)
 
+    def upsert_execution_experience_candidate(self, candidate: dict, *, goal_id: int) -> dict:
+        """Persist one provenance-backed candidate and its case atomically."""
+        if not isinstance(goal_id, int) or goal_id <= 0:
+            raise ValueError("Execution experience candidates require an existing Stephanie Goal")
+        experience_id = str(candidate["experience_id"])
+        candidate_hash = str(candidate["candidate_hash"])
+        name = f"stn05-experience:{experience_id}"
+
+        def op(s):
+            casebook = (
+                s.query(CaseBookORM)
+                .filter_by(name=name)
+                .with_for_update()
+                .one_or_none()
+            )
+            if casebook is not None:
+                existing = (casebook.meta or {}).get("stn05_experience") or {}
+                if existing.get("candidate_hash") != candidate_hash:
+                    raise ValueError("Experience identity already exists with different source content")
+                case = (
+                    s.query(CaseORM)
+                    .filter_by(casebook_id=casebook.id, name=experience_id)
+                    .one_or_none()
+                )
+                if case is None:
+                    raise RuntimeError("Existing experience casebook is missing its candidate case")
+                return {
+                    "casebook_id": casebook.id,
+                    "case_id": case.id,
+                    "casebook_name": casebook.name,
+                    "experience_id": experience_id,
+                    "candidate": existing,
+                    "created": False,
+                }
+
+            stored_candidate = dict(candidate)
+            stored_candidate.setdefault("execution_review_status", "ACCEPT")
+            stored_candidate.setdefault("candidate_review_status", "PENDING_REVIEW")
+            stored_candidate.setdefault("reuse_eligible", False)
+            stored_candidate.setdefault("promotion_status", "NOT_PROMOTED")
+            casebook = CaseBookORM(
+                name=name,
+                description="Evidence-grounded coding execution experience candidate; not yet approved for reuse.",
+                pipeline_run_id=None,
+                agent_name="stn05-experience-capture",
+                tags=["stn05", "experience", "pending_review"],
+                meta={
+                    "source": "sis_worker_execution",
+                    "source_execution_id": stored_candidate["source"]["execution_id"],
+                    "stn05_experience": stored_candidate,
+                },
+            )
+            s.add(casebook)
+            s.flush()
+            case = CaseORM(
+                casebook_id=casebook.id,
+                goal_id=goal_id,
+                name=experience_id,
+                description=stored_candidate["lesson_hypothesis"]["text"],
+                prompt_text=stored_candidate["task"]["objective"],
+                agent_name="stn05-experience-capture",
+                meta={
+                    "experience_id": experience_id,
+                    "candidate_hash": candidate_hash,
+                    "candidate_review_status": "PENDING_REVIEW",
+                    "reuse_eligible": False,
+                    "source_execution_id": stored_candidate["source"]["execution_id"],
+                },
+            )
+            s.add(case)
+            s.flush()
+            scorable_text = json.dumps(stored_candidate, ensure_ascii=False, sort_keys=True)
+            s.add(CaseScorableORM(
+                case_id=case.id,
+                scorable_id=experience_id,
+                scorable_type="execution_experience",
+                role="experience_candidate",
+                meta={
+                    "text": scorable_text,
+                    "experience_id": experience_id,
+                    "candidate_hash": candidate_hash,
+                    "candidate_review_status": "PENDING_REVIEW",
+                    "reuse_eligible": False,
+                },
+            ))
+            s.flush()
+            return {
+                "casebook_id": casebook.id,
+                "case_id": case.id,
+                "casebook_name": casebook.name,
+                "experience_id": experience_id,
+                "candidate": stored_candidate,
+                "created": True,
+            }
+
+        return self._run(op)
+
+    def get_execution_experience_candidate(self, experience_id: str) -> dict | None:
+        name = f"stn05-experience:{experience_id}"
+
+        def op(s):
+            row = s.query(CaseBookORM).filter_by(name=name).one_or_none()
+            if row is None:
+                return None
+            candidate = (row.meta or {}).get("stn05_experience")
+            if not isinstance(candidate, dict) or candidate.get("experience_id") != experience_id:
+                return None
+            return {
+                "casebook_id": row.id,
+                "casebook_name": row.name,
+                "candidate": candidate,
+            }
+
+        return self._run(op)
+
+    def review_execution_experience_candidate(
+        self, experience_id: str, review: dict, *, max_history: int = 20
+    ) -> dict | None:
+        name = f"stn05-experience:{experience_id}"
+
+        def op(s):
+            row = (
+                s.query(CaseBookORM)
+                .filter_by(name=name)
+                .with_for_update()
+                .one_or_none()
+            )
+            if row is None:
+                return None
+            meta = dict(row.meta or {})
+            candidate = dict(meta.get("stn05_experience") or {})
+            if candidate.get("experience_id") != experience_id:
+                return None
+            history = list(candidate.get("candidate_review_history") or [])
+            prior = next((item for item in history if item.get("review_id") == review["review_id"]), None)
+            if prior is not None:
+                comparable_prior = {key: value for key, value in prior.items() if key != "reviewed_at"}
+                comparable_incoming = {key: value for key, value in review.items() if key != "reviewed_at"}
+                if comparable_prior != comparable_incoming:
+                    raise ValueError("Experience review idempotency key was already used for a different decision")
+                return {"casebook_id": row.id, "casebook_name": row.name, "candidate": candidate}
+            current = candidate.get("candidate_review") or {}
+            if current.get("decision") in {"APPROVE", "REJECT"}:
+                raise ValueError("A final experience review is already recorded")
+            if len(history) >= max_history:
+                raise ValueError("Experience review history is full")
+            history.append(dict(review))
+            candidate["candidate_review_history"] = history
+            candidate["candidate_review"] = dict(review)
+            decision = review["decision"]
+            candidate["candidate_review_status"] = {
+                "APPROVE": "APPROVED",
+                "REJECT": "REJECTED",
+                "NEEDS_REVISION": "NEEDS_REVISION",
+            }[decision]
+            candidate["reuse_eligible"] = False
+            if decision == "APPROVE" and candidate.get("execution_review_status") == "ACCEPT":
+                candidate["promotion_status"] = "APPROVED_PENDING_PROMOTION"
+            meta["stn05_experience"] = candidate
+            row.meta = meta
+            row.tags = ["stn05", "experience", candidate["candidate_review_status"].lower()]
+            case = (
+                s.query(CaseORM)
+                .filter_by(casebook_id=row.id, name=experience_id)
+                .one_or_none()
+            )
+            if case is not None:
+                case_meta = dict(case.meta or {})
+                case_meta.update({
+                    "candidate_review_status": candidate["candidate_review_status"],
+                    "reuse_eligible": candidate["reuse_eligible"],
+                })
+                case.meta = case_meta
+                for scorable in s.query(CaseScorableORM).filter_by(case_id=case.id, role="experience_candidate").all():
+                    scorable_meta = dict(scorable.meta or {})
+                    scorable_meta.update({
+                        "candidate_review_status": candidate["candidate_review_status"],
+                        "reuse_eligible": candidate["reuse_eligible"],
+                    })
+                    scorable.meta = scorable_meta
+            s.flush()
+            return {"casebook_id": row.id, "casebook_name": row.name, "candidate": candidate}
+
+        return self._run(op)
+
+    def revise_execution_experience_candidate(
+        self, experience_id: str, candidate: dict, *, revision_id: str
+    ) -> dict | None:
+        name = f"stn05-experience:{experience_id}"
+
+        def op(s):
+            row = s.query(CaseBookORM).filter_by(name=name).with_for_update().one_or_none()
+            if row is None:
+                return None
+            meta = dict(row.meta or {})
+            current = dict(meta.get("stn05_experience") or {})
+            if current.get("experience_id") != experience_id:
+                return None
+            if current.get("candidate_review_status") != "NEEDS_REVISION" or current.get("reuse_eligible"):
+                raise ValueError("Only an inactive candidate explicitly marked NEEDS_REVISION can be revised")
+            history = list(current.get("revision_history") or [])
+            prior = next((item for item in history if item.get("revision_id") == revision_id), None)
+            revision = next((item for item in candidate.get("revision_history", []) if item.get("revision_id") == revision_id), None)
+            if prior is not None:
+                if prior != revision:
+                    raise ValueError("Revision idempotency key was already used for different candidate content")
+                return {"casebook_id": row.id, "casebook_name": row.name, "candidate": current, "created": False}
+            if len(history) >= 10:
+                raise ValueError("Experience candidate revision history is full")
+            if not revision or candidate.get("experience_id") != experience_id or candidate.get("source") != current.get("source"):
+                raise ValueError("Experience revision must preserve the source execution and record a revision event")
+            if candidate.get("candidate_hash") == current.get("candidate_hash"):
+                raise ValueError("Experience revision must change the candidate content hash")
+            meta["stn05_experience"] = candidate
+            row.meta = meta
+            row.tags = ["stn05", "experience", "pending_review"]
+            case = s.query(CaseORM).filter_by(casebook_id=row.id, name=experience_id).one_or_none()
+            if case is None:
+                raise RuntimeError("Experience CaseBook is missing its candidate case")
+            case.description = candidate["lesson_hypothesis"]["text"]
+            case_meta = dict(case.meta or {})
+            case_meta.update({
+                "candidate_hash": candidate["candidate_hash"],
+                "candidate_review_status": "PENDING_REVIEW",
+                "reuse_eligible": False,
+                "promotion_status": "NOT_PROMOTED",
+            })
+            case.meta = case_meta
+            text = json.dumps(candidate, ensure_ascii=False, sort_keys=True)
+            for scorable in s.query(CaseScorableORM).filter_by(case_id=case.id, role="experience_candidate").all():
+                scorable.meta = {
+                    **dict(scorable.meta or {}),
+                    "text": text,
+                    "candidate_hash": candidate["candidate_hash"],
+                    "candidate_review_status": "PENDING_REVIEW",
+                    "reuse_eligible": False,
+                    "promotion_status": "NOT_PROMOTED",
+                }
+            s.flush()
+            return {"casebook_id": row.id, "casebook_name": row.name, "candidate": candidate, "created": True}
+
+        return self._run(op)
+
+    def mark_execution_experience_promoted(
+        self, experience_id: str, memcube_id: str, promoted_at: str
+    ) -> dict | None:
+        name = f"stn05-experience:{experience_id}"
+
+        def op(s):
+            row = s.query(CaseBookORM).filter_by(name=name).with_for_update().one_or_none()
+            if row is None:
+                return None
+            meta = dict(row.meta or {})
+            candidate = dict(meta.get("stn05_experience") or {})
+            if (
+                candidate.get("experience_id") != experience_id
+                or candidate.get("candidate_review_status") != "APPROVED"
+                or candidate.get("execution_review_status") != "ACCEPT"
+            ):
+                raise ValueError("Only an approved experience candidate can be promoted")
+            candidate["promotion_status"] = "ACTIVE"
+            candidate["reuse_eligible"] = True
+            candidate["promoted_at"] = promoted_at
+            candidate["memcube_id"] = memcube_id
+            meta["stn05_experience"] = candidate
+            row.meta = meta
+            row.tags = ["stn05", "experience", "approved", "active"]
+            case = s.query(CaseORM).filter_by(casebook_id=row.id, name=experience_id).one_or_none()
+            if case is not None:
+                case_meta = dict(case.meta or {})
+                case_meta.update({"reuse_eligible": True, "promotion_status": "ACTIVE", "memcube_id": memcube_id})
+                case.meta = case_meta
+                for scorable in s.query(CaseScorableORM).filter_by(case_id=case.id, role="experience_candidate").all():
+                    scorable_meta = dict(scorable.meta or {})
+                    scorable_meta.update({"reuse_eligible": True, "promotion_status": "ACTIVE", "memcube_id": memcube_id})
+                    scorable.meta = scorable_meta
+            s.flush()
+            return {"casebook_id": row.id, "casebook_name": row.name, "candidate": candidate}
+
+        return self._run(op)
+
+    def deactivate_execution_experience_candidate(
+        self,
+        experience_id: str,
+        *,
+        reviewer: str,
+        reason: str,
+        review_id: str,
+        disposition: str,
+        superseded_by: str | None = None,
+    ) -> dict | None:
+        name = f"stn05-experience:{experience_id}"
+
+        def op(s):
+            row = s.query(CaseBookORM).filter_by(name=name).with_for_update().one_or_none()
+            if row is None:
+                return None
+            meta = dict(row.meta or {})
+            candidate = dict(meta.get("stn05_experience") or {})
+            if candidate.get("experience_id") != experience_id:
+                return None
+            history = list(candidate.get("deactivation_history") or [])
+            prior = next((item for item in history if item.get("review_id") == review_id), None)
+            event = {
+                "review_id": review_id,
+                "reviewer": reviewer,
+                "reason": reason,
+                "disposition": disposition,
+                "superseded_by": superseded_by,
+            }
+            if prior is not None:
+                if prior != event:
+                    raise ValueError("Experience deactivation idempotency key was used for a different action")
+                return {"casebook_id": row.id, "casebook_name": row.name, "candidate": candidate}
+            if not candidate.get("reuse_eligible"):
+                raise ValueError("Experience candidate is not active for reuse")
+            history.append(event)
+            candidate["deactivation_history"] = history
+            candidate["reuse_eligible"] = False
+            candidate["promotion_status"] = disposition
+            candidate["superseded_by"] = superseded_by
+            candidate["deactivated_by"] = reviewer
+            candidate["deactivation_reason"] = reason
+            meta["stn05_experience"] = candidate
+            row.meta = meta
+            row.tags = ["stn05", "experience", disposition.lower()]
+            case = s.query(CaseORM).filter_by(casebook_id=row.id, name=experience_id).one_or_none()
+            if case is not None:
+                case_meta = dict(case.meta or {})
+                case_meta.update({"reuse_eligible": False, "promotion_status": disposition})
+                case.meta = case_meta
+                scorables = s.query(CaseScorableORM).filter_by(case_id=case.id, role="experience_candidate").all()
+                for scorable in scorables:
+                    scorable_meta = dict(scorable.meta or {})
+                    scorable_meta.update({"reuse_eligible": False, "promotion_status": disposition})
+                    scorable.meta = scorable_meta
+            s.flush()
+            return {"casebook_id": row.id, "casebook_name": row.name, "candidate": candidate}
+
+        return self._run(op)
+
     def get_all_casebooks(self, limit: int = 100) -> List[CaseBookORM]:
         def op(s):
             return s.query(CaseBookORM).limit(limit).all()

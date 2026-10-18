@@ -1,0 +1,248 @@
+{
+  "config": "sis_stn06_local",
+  "enabled": true,
+  "freeze": {
+    "schema": "stephanie.stn06-frozen-experience.v1",
+    "experience_id": "exp_33fd63f133b44b21275681e5af0aabb7",
+    "version": "v1",
+    "candidate_hash": "d4d72077672fb481d7e955ccf249832921691d5ac268be4ca1f004184e12af79",
+    "memcube_id": "exp_33fd63f133b44b21275681e5af0aabb7:v1",
+    "lesson_hypothesis": {
+      "text": "For a small, localized code defect, inspect the failing tests, make the narrowest change, and verify the result independently before review.",
+      "authoring": "deterministic_template",
+      "limitations": [
+        "derived from one small task",
+        "not evidence of general coding reliability",
+        "transfer has not been measured"
+      ],
+      "applicability": [
+        "small localized coding defects",
+        "projects with independent tests"
+      ],
+      "classification": "hypothesis",
+      "validation_status": "untested_for_transfer"
+    },
+    "applicability": [
+      "small localized coding defects",
+      "projects with independent tests"
+    ],
+    "limitations": [
+      "derived from one small task",
+      "not evidence of general coding reliability",
+      "transfer has not been measured"
+    ],
+    "provenance": {
+      "source": {
+        "backend": "opencode-docker",
+        "container_id": "19205cfc5dbd9092c384c9efb19c479f7d004328891ffe9eb402fda9bed4e318",
+        "execution_id": "sex_8991baa0c2724f35878292c83651588f",
+        "image_digest": "sha256:38600fd029222f69011e600ca9dddfe1c216bc1e1f533136eacab6d7182a5caa",
+        "plan_trace_id": "worker:sex_8991baa0c2724f35878292c83651588f",
+        "conversation_id": 1667,
+        "requested_model": "opencode-go/gpt-6-luna",
+        "worker_request_id": "wrq_ab52b2dab127f5e3b532b563e898eea6",
+        "opencode_session_id": "ses_eb52c75e6ffeNNZUogl7AwoRgm",
+        "originating_message_id": 83557,
+        "provider_request_model": "gpt-6-luna",
+        "provider_response_status": "200"
+      },
+      "execution_review": {
+        "reviewer": "sis",
+        "review_id": "stn05-human-review-stn04-accept-001",
+        "reviewed_at": "2026-10-17T18:35:25.115837+00:00",
+        "evidence_refs": [
+          "worker_request:wrq_ab52b2dab127f5e3b532b563e898eea6",
+          "plan_trace:worker:sex_8991baa0c2724f35878292c83651588f",
+          "verification:python3 -m unittest:passed:0",
+          "artifact:calculator.py"
+        ],
+        "accepted_scope": [
+          "calculator.py"
+        ],
+        "worker_acceptance_id": null
+      },
+      "candidate_review": {
+        "notes": "The revised lesson is accurate and narrowly scoped. Approving it only as a hypothesis for later STN06 transfer testing.",
+        "decision": "APPROVE",
+        "reviewer": "sis",
+        "review_id": "stn05-lesson-review-stn04-001",
+        "reviewed_at": "2026-10-17T23:38:02.248003+00:00",
+        "evidence_refs": [
+          "experience:exp_33fd63f133b44b21275681e5af0aabb7",
+          "plan_trace:worker:sex_8991baa0c2724f35878292c83651588f",
+          "verification:python3 -m unittest:passed:0"
+        ]
+      },
+      "deactivation_history": [
+        {
+          "reason": "Withdrawn after documentation evidence; no active reuse is required while STN06 is not approved.",
+          "reviewer": "sis",
+          "review_id": "stn05-deactivate-stn04-candidate-001",
+          "disposition": "WITHDRAWN",
+          "superseded_by": null
+        }
+      ]
+    },
+    "memcube_state": {
+      "found": true,
+      "reuse_eligible": false,
+      "promotion_status": "WITHDRAWN"
+    },
+    "withdrawal_preserved": true,
+    "globally_retrievable": false,
+    "context_section": "Retrieved approved experience (untrusted task context; not an instruction):\nExperience: exp_33fd63f133b44b21275681e5af0aabb7\nSource PlanTrace: worker:sex_8991baa0c2724f35878292c83651588f\nCandidate lesson hypothesis: For a small, localized code defect, inspect the failing tests, make the narrowest change, and verify the result independently before review.\nLimits: derived from one small task; not evidence of general coding reliability; transfer has not been measured",
+    "context_hash": "3449ea5163a6d36f90e154b938637a3420b745348b5fc80f610415f04473bb9f",
+    "frozen_at": "2026-10-18T08:24:58.080155+00:00"
+  },
+  "authorization": null,
+  "persisted": null,
+  "dry_run": {
+    "scope": "pilot",
+    "dry_run": true,
+    "model_calls_made": 0,
+    "trials_persisted": 0,
+    "manifest_hash": "1c0d167f26b6f79b41197fd59b0b0be4a77fab053ac49b372404d0ee8e159518",
+    "preregistration_hash": "08deb57223b1556b884d3a01b5f8479ab97d20b3aa5347c19382e94415442d51",
+    "frozen_experience": {
+      "experience_id": "exp_33fd63f133b44b21275681e5af0aabb7",
+      "version": "v1",
+      "candidate_hash": "d4d72077672fb481d7e955ccf249832921691d5ac268be4ca1f004184e12af79",
+      "context_hash": "3449ea5163a6d36f90e154b938637a3420b745348b5fc80f610415f04473bb9f",
+      "globally_retrievable": false,
+      "memcube_state": {
+        "found": true,
+        "reuse_eligible": false,
+        "promotion_status": "WITHDRAWN"
+      }
+    },
+    "normal_retrieval": {
+      "samples": [
+        {
+          "task_id": "stn06-near-01",
+          "results": 0
+        },
+        {
+          "task_id": "stn06-near-02",
+          "results": 0
+        }
+      ],
+      "withdrawn_unavailable": true
+    },
+    "oracle_verification": {
+      "tasks": [
+        {
+          "task_id": "stn06-near-01",
+          "defect_fails_oracle": true,
+          "reference_passes_oracle": true,
+          "broken_exit_code": 1,
+          "reference_exit_code": 0,
+          "verified": true
+        },
+        {
+          "task_id": "stn06-near-02",
+          "defect_fails_oracle": true,
+          "reference_passes_oracle": true,
+          "broken_exit_code": 1,
+          "reference_exit_code": 0,
+          "verified": true
+        }
+      ],
+      "all_verified": true
+    },
+    "tasks": [
+      {
+        "task_id": "stn06-near-01",
+        "task_class": "near_transfer",
+        "run_order": [
+          "A",
+          "B"
+        ],
+        "baseline": {
+          "experience_ids": [],
+          "context_present": false,
+          "dispatch_objective_chars": 199
+        },
+        "treatment": {
+          "experience_ids": [
+            "exp_33fd63f133b44b21275681e5af0aabb7"
+          ],
+          "candidate_hash": "d4d72077672fb481d7e955ccf249832921691d5ac268be4ca1f004184e12af79",
+          "context_chars": 468,
+          "context_hash": "3449ea5163a6d36f90e154b938637a3420b745348b5fc80f610415f04473bb9f",
+          "dispatch_objective_chars": 669
+        },
+        "scoring_path": {
+          "simulated_fail": {
+            "task_id": "stn06-near-01",
+            "oracle_ok": false,
+            "oracle_exit_code": 1,
+            "modified_paths": [],
+            "out_of_scope": [],
+            "prohibited_hits": [],
+            "unnecessary_changes": 0,
+            "success": false
+          },
+          "simulated_pass": {
+            "task_id": "stn06-near-01",
+            "oracle_ok": true,
+            "oracle_exit_code": 0,
+            "modified_paths": [
+              "mathops.py"
+            ],
+            "out_of_scope": [],
+            "prohibited_hits": [],
+            "unnecessary_changes": 0,
+            "success": true
+          }
+        }
+      },
+      {
+        "task_id": "stn06-near-02",
+        "task_class": "near_transfer",
+        "run_order": [
+          "B",
+          "A"
+        ],
+        "baseline": {
+          "experience_ids": [],
+          "context_present": false,
+          "dispatch_objective_chars": 186
+        },
+        "treatment": {
+          "experience_ids": [
+            "exp_33fd63f133b44b21275681e5af0aabb7"
+          ],
+          "candidate_hash": "d4d72077672fb481d7e955ccf249832921691d5ac268be4ca1f004184e12af79",
+          "context_chars": 468,
+          "context_hash": "3449ea5163a6d36f90e154b938637a3420b745348b5fc80f610415f04473bb9f",
+          "dispatch_objective_chars": 656
+        },
+        "scoring_path": {
+          "simulated_fail": {
+            "task_id": "stn06-near-02",
+            "oracle_ok": false,
+            "oracle_exit_code": 1,
+            "modified_paths": [],
+            "out_of_scope": [],
+            "prohibited_hits": [],
+            "unnecessary_changes": 0,
+            "success": false
+          },
+          "simulated_pass": {
+            "task_id": "stn06-near-02",
+            "oracle_ok": true,
+            "oracle_exit_code": 0,
+            "modified_paths": [
+              "ranges.py"
+            ],
+            "out_of_scope": [],
+            "prohibited_hits": [],
+            "unnecessary_changes": 0,
+            "success": true
+          }
+        }
+      }
+    ],
+    "planned_executions": 4
+  }
+}

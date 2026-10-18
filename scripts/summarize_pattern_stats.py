@@ -1,18 +1,6 @@
-import os
-import psycopg2
 import pandas as pd
-from dotenv import load_dotenv
-
-# Load environment variables from .envs
-load_dotenv()
-
-DB_CONFIG = {
-    "dbname": os.getenv("DB_NAME"),
-    "user": os.getenv("DB_USER"),
-    "password": os.getenv("DB_PASSWORD"),
-    "host": os.getenv("DB_HOST"),
-    "port": os.getenv("DB_PORT"),
-}
+from sqlalchemy import text
+from stephanie.orm.base import create_database_engine_from_hydra
 
 AGGREGATE_QUERY = """
 SELECT 
@@ -27,8 +15,12 @@ ORDER BY model_name, dimension, count DESC;
 
 def summarize_pattern_stats():
     try:
-        with psycopg2.connect(**DB_CONFIG) as conn:
-            df = pd.read_sql_query(AGGREGATE_QUERY, conn)
+        engine = create_database_engine_from_hydra("config")
+        try:
+            with engine.connect() as conn:
+                df = pd.read_sql_query(text(AGGREGATE_QUERY), conn)
+        finally:
+            engine.dispose()
 
         print("\n🧠 Reasoning Pattern Summary:")
         print(df)

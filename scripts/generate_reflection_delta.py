@@ -1,19 +1,6 @@
-import psycopg2
 import pandas as pd
-import os
-
-from dotenv import load_dotenv
-
-# Load environment variables from .envs
-load_dotenv()
-
-DB_CONFIG = {
-    "dbname": os.getenv("DB_NAME"),
-    "user": os.getenv("DB_USER"),
-    "password": os.getenv("DB_PASSWORD"),
-    "host": os.getenv("DB_HOST"),
-    "port": os.getenv("DB_PORT"),
-}
+from sqlalchemy import text
+from stephanie.orm.base import create_database_engine_from_hydra
 
 query = """
 SELECT 
@@ -35,8 +22,16 @@ WHERE score_a IS NOT NULL AND score_b IS NOT NULL
 ORDER BY created_at DESC;
 """
 
-with psycopg2.connect(**DB_CONFIG) as conn:
-    df = pd.read_sql_query(query, conn)
+def main():
+    engine = create_database_engine_from_hydra("config")
+    try:
+        with engine.connect() as conn:
+            df = pd.read_sql_query(text(query), conn)
+    finally:
+        engine.dispose()
 
-df.to_json("reflection_deltas.jsonl", orient="records", lines=True)
-conn.close()
+    df.to_json("reflection_deltas.jsonl", orient="records", lines=True)
+
+
+if __name__ == "__main__":
+    main()

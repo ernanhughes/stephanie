@@ -13,21 +13,17 @@ import json
 import random
 import time
 import uuid
+import argparse
 from io import StringIO
 from typing import List, Tuple
 
 import psycopg2
 from psycopg2.extensions import connection as PGConnection
+from sqlalchemy.engine import make_url
 
 # --------------------------------------------------------------------------- #
 # CONFIG – tune these for your box                                            #
 # --------------------------------------------------------------------------- #
-
-DB_NAME = "co"
-DB_USER = "co"
-DB_PASSWORD = "co"  # <<< CHANGE THIS
-DB_HOST = "localhost"
-DB_PORT = 5432
 
 # Scale knobs (start smaller: e.g. 50_000 / 100_000 / 1_000)
 RUN_ID = "bench_run_1"
@@ -39,18 +35,12 @@ NUM_PULSES = 5_000       # random traversals to measure QPS
 # Connection + setup                                                          #
 # --------------------------------------------------------------------------- #
 
-def get_db_connection() -> PGConnection:
+def get_db_connection(dsn: str) -> PGConnection:
     """
     Connect to Postgres using basic credentials.
     Uses explicit transactions (autocommit = False) for bulk loading.
     """
-    conn = psycopg2.connect(
-        dbname=DB_NAME,
-        user=DB_USER,
-        password=DB_PASSWORD,
-        host=DB_HOST,
-        port=DB_PORT,
-    )
+    conn = psycopg2.connect(dsn, connect_timeout=10)
     conn.autocommit = False
     return conn
 
@@ -340,14 +330,32 @@ def teardown_nexus_tables(conn: PGConnection) -> None:
 # Main                                                                        #
 # --------------------------------------------------------------------------- #
 
-def main() -> None:
+def main(dsn: str, *, confirmed_destructive: bool = False) -> None:
+    parsed_dsn = make_url(dsn)
+    if (parsed_dsn.database or "").lower() in {
+        "co",
+        "verity",
+        "postgres",
+        "template0",
+        "template1",
+    }:
+        raise SystemExit(
+            "Refusing to run destructive benchmark against a canonical/system database; "
+            "use a dedicated scratch database"
+        )
+    if not confirmed_destructive:
+        raise SystemExit(
+            "This benchmark drops and recreates tables. Pass "
+            "--confirm-destructive-benchmark for a dedicated scratch database."
+        )
+
     print("--- PostgreSQL Nexus Graph Benchmark ---")
     print(
-        f"DB={DB_NAME} host={DB_HOST}:{DB_PORT} | "
+        f"DB={parsed_dsn.database} host={parsed_dsn.host}:{parsed_dsn.port or 5432} | "
         f"nodes={NUM_NODES:,} edges={NUM_EDGES:,} pulses={NUM_PULSES:,}"
     )
 
-    conn = get_db_connection()
+    conn = get_db_connection(dsn)
     try:
         setup_nexus_tables(conn)
         load_dur, load_rps = run_bulk_graph_construction(conn)
@@ -367,6 +375,12 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    # Ensure: pip install psycopg2-binary
-    # And that DB_NAME exists and is reachable.
-    main()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--dsn", required=True, help="Dedicated scratch PostgreSQL DSN")
+    parser.add_argument(
+        "--confirm-destructive-benchmark",
+        action="store_true",
+        help="Confirm dropping/recreating benchmark tables in that scratch DB",
+    )
+    args = parser.parse_args()
+    main(args.dsn, confirmed_destructive=args.confirm_destructive_benchmark)

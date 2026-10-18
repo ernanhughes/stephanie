@@ -1,54 +1,54 @@
+import argparse
 import json
+
 from sqlalchemy.orm import sessionmaker
+
 from stephanie.orm import PipelineRunORM
-import os
-from dotenv import load_dotenv
-from sqlalchemy import create_engine
-
-# Load environment variables from .envs
-load_dotenv()
-
-DB_CONFIG = {
-    "dbname": os.getenv("DB_NAME"),
-    "user": os.getenv("DB_USER"),
-    "password": os.getenv("DB_PASSWORD"),
-    "host": os.getenv("DB_HOST"),
-    "port": os.getenv("DB_PORT"),
-}
-
-engine = create_engine("postgresql://co:co@localhost/co")
-Session = sessionmaker(bind=engine)
-session = Session()
+from stephanie.orm.base import create_database_engine_from_hydra
 
 
+def update_run_configs(session, *, apply: bool = False) -> int:
+    fix_count = 0
+    for run in session.query(PipelineRunORM).all():
+        updated = False
+        if isinstance(run.run_config, str):
+            try:
+                run.run_config = json.loads(run.run_config)
+                updated = True
+            except json.JSONDecodeError:
+                print(f"Invalid JSON in run_config for run_id {run.run_id}")
 
-Session = sessionmaker(bind=engine)
+        if isinstance(run.pipeline, str):
+            try:
+                run.pipeline = json.loads(run.pipeline)
+                updated = True
+            except json.JSONDecodeError:
+                print(f"Invalid JSON in pipeline for run_id {run.run_id}")
 
-fix_count = 0
+        fix_count += int(updated)
 
-for run in session.query(PipelineRunORM).all():
-    updated = False
+    if apply:
+        session.commit()
+        print(f"Applied pipeline_run updates to {fix_count} rows.")
+    else:
+        session.rollback()
+        print(f"Dry run: {fix_count} pipeline_run rows would be updated; pass --apply to write.")
+    return fix_count
 
-    # Fix run_config
-    if isinstance(run.run_config, str):
-        try:
-            run.run_config = json.loads(run.run_config)
-            updated = True
-        except json.JSONDecodeError:
-            print(f"Invalid JSON in run_config for run_id {run.run_id}")
 
-    # Fix pipeline
-    if isinstance(run.pipeline, str):
-        try:
-            run.pipeline = json.loads(run.pipeline)
-            updated = True
-        except json.JSONDecodeError:
-            print(f"Invalid JSON in pipeline for run_id {run.run_id}\n{run.pipeline}")
+def main():
+    parser = argparse.ArgumentParser(description="Normalize legacy pipeline run JSON fields")
+    parser.add_argument("--apply", action="store_true", help="Commit updates (default: dry run)")
+    args = parser.parse_args()
 
-    if updated:
-        fix_count += 1
+    engine = create_database_engine_from_hydra("config")
+    session = sessionmaker(bind=engine, expire_on_commit=False)()
+    try:
+        update_run_configs(session, apply=args.apply)
+    finally:
+        session.close()
+        engine.dispose()
 
-print(f"✅ Fixed {fix_count} pipeline_run entries.")
 
-session.commit()
-session.close()
+if __name__ == "__main__":
+    main()

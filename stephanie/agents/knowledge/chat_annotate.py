@@ -71,7 +71,7 @@ class ChatAnnotateAgent(BaseAgent):
         # Retrieve conversations to process
         chats = self.memory.chats.get_all(limit=self.limit)
 
-        kg = self.container.get("knowledge_graph") 
+        kg = await self.container.get_async("knowledge_graph")
 
         # Pre-count turns that need processing (respects only_missing/force settings)
         def count_turns_for(chat_id: int, missing: str | None) -> int:

@@ -2,7 +2,8 @@
 database: co
 name: co  # it keeps coming back to this
 user: co
-password: co
+# Supply this at process startup; keep database credentials out of versioned YAML.
+password: '${oc.env:STEPHANIE_DB_PASSWORD,""}'
 host: localhost
 port: 5432
 

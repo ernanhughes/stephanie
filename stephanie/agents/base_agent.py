@@ -23,6 +23,7 @@ from stephanie.orm.prompt import PromptORM
 from stephanie.prompts.prompt_loader import PromptLoader
 from stephanie.services.scoring_service import ScoringService
 from stephanie.utils.llm_utils import remove_think_blocks
+from stephanie.utils.secret_utils import redact_secrets
 from stephanie.utils.time_utils import now_ms
 
 log = logging.getLogger(__name__)
@@ -69,7 +70,7 @@ class BaseAgent(ABC):
             {
                 "agent_key": agent_key,
                 "class": self.__class__.__name__,
-                "config": self.cfg,
+                "config": redact_secrets(self.cfg),
             },
         )
 

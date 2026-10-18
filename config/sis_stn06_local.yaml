@@ -1,0 +1,23 @@
+# Local STN06 preflight profile only. Worker execution stays disabled: this
+# profile enables deterministic preregistration, freezing and the dry-run. It
+# never makes a paid model call and never reactivates the withdrawn MemCube.
+defaults:
+  - sis
+  - _self_
+
+worker:
+  enabled: false
+  dry_run_only: true
+
+experience_learning:
+  enabled: true
+  model_assisted_extraction: false
+  max_candidates_per_execution: 1
+  retrieval:
+    enabled: true
+    max_results: 3
+    candidate_pool: 100
+    max_context_chars: 2500
+
+stn06_experiment:
+  enabled: true

@@ -1,6 +1,7 @@
 # stephanie/stores/experiments_store.py
 from __future__ import annotations
 
+import hashlib
 import time
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
@@ -15,6 +16,13 @@ from stephanie.orm.experiment import (ExperimentModelSnapshotORM,
 from stephanie.utils.statistics_utils import (bootstrap_ci, cohens_d,
                                               mann_whitney_u, mean_stdev,
                                               welch_ttest, winsorize)
+
+
+def _stable_variant_index(experiment_name: str, domain: str | None, case_id: int, variant_count: int) -> int:
+    if variant_count <= 0:
+        raise ValueError("variant_count must be positive")
+    assignment_key = f"{experiment_name}\0{domain or ''}\0{case_id}".encode("utf-8")
+    return int.from_bytes(hashlib.sha256(assignment_key).digest()[:8], "big") % variant_count
 
 
 class ExperimentStore(BaseSQLAlchemyStore):
@@ -61,6 +69,33 @@ class ExperimentStore(BaseSQLAlchemyStore):
             s.add(exp)
             s.flush()
             return exp
+
+        return self._run(op)
+
+    def set_config(
+        self,
+        experiment_id: int,
+        config: Dict[str, Any],
+        *,
+        merge: bool = True,
+    ) -> Dict[str, Any]:
+        """Create or merge the experiment ``config`` JSON document.
+
+        STN06 persists its frozen preregistration here so the experiment and its
+        identity live in the existing experiments store rather than a new store.
+        """
+        def op(s):
+            exp = s.get(ExperimentORM, experiment_id)
+            if not exp:
+                raise ValueError("Experiment not found")
+            if merge:
+                current = dict(exp.config or {})
+                current.update(config or {})
+                exp.config = current
+            else:
+                exp.config = dict(config or {})
+            s.flush()
+            return dict(exp.config or {})
 
         return self._run(op)
 
@@ -151,7 +186,11 @@ class ExperimentStore(BaseSQLAlchemyStore):
                 raise ValueError("No variants registered for experiment")
 
             if deterministic and case_id is not None:
-                idx = (hash((case_id, exp.name)) & 0x7FFFFFFF) % max(1, len(variants))
+                # Python's built-in hash is process-randomized by default and
+                # can assign the same case to different arms after restart.
+                # Use a stable digest so preregistered A/B assignments survive
+                # fresh SIS/Worker processes.
+                idx = _stable_variant_index(exp.name, exp.domain, case_id, len(variants))
                 pick = variants[idx]
             else:
                 named = {v.name.upper(): v for v in variants}

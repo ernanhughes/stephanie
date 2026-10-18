@@ -40,7 +40,10 @@ class BaseSQLAlchemyStore:
         def op():
             with session_scope(self.session) as s:
                 return fn(s)
-        return retry(op, tries=tries)
+        bind = getattr(self.session, "kw", {}).get("bind")
+        if bind is None and hasattr(self.session, "get_bind"):
+            bind = self.session.get_bind()
+        return retry(op, tries=tries, engine=bind)
 
     # -------- Standard APIs --------
 

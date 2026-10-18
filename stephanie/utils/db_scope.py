@@ -5,8 +5,6 @@ from contextlib import contextmanager
 
 from sqlalchemy.exc import OperationalError
 
-from stephanie.orm.base import engine
-
 
 @contextmanager
 def session_scope(session_maker):
@@ -20,12 +18,13 @@ def session_scope(session_maker):
     finally:
         s.close()
 
-def retry(op, tries=2):
+def retry(op, tries=2, engine=None):
     last = None
     for _ in range(tries):
         try:
             return op()
         except OperationalError as e:
             last = e
-            engine.dispose()  # drop dead pooled conns
+            if engine is not None:
+                engine.dispose()  # drop dead connections from this store's pool
     raise last

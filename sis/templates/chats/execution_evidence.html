@@ -1,0 +1,221 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container my-4">
+  <div class="card shadow-sm">
+    <div class="card-body">
+      <h3>Worker execution evidence</h3>
+      <p><a href="/chats/{{ conversation_id }}">Return to conversation #{{ conversation_id }}</a></p>
+      <dl class="row">
+        <dt class="col-sm-3">Stephanie execution</dt><dd class="col-sm-9">{{ execution.execution_id }}</dd>
+        <dt class="col-sm-3">Status</dt><dd class="col-sm-9">{{ execution.status_label or execution.status }}</dd>
+        <dt class="col-sm-3">Worker request</dt><dd class="col-sm-9">{{ execution.worker_request_id or "not yet observed" }}</dd>
+        <dt class="col-sm-3">Backend</dt><dd class="col-sm-9">{{ execution.backend }}</dd>
+        <dt class="col-sm-3">Requested model route</dt><dd class="col-sm-9">{{ execution.requested_model or "unknown" }}</dd>
+        <dt class="col-sm-3">Observed model</dt><dd class="col-sm-9">{{ execution.model or "not reported" }}</dd>
+        <dt class="col-sm-3">OpenCode session</dt><dd class="col-sm-9">{{ execution.opencode_session_id or "not reported" }}</dd>
+        {% if execution.container_id %}<dt class="col-sm-3">Docker container</dt><dd class="col-sm-9">{{ execution.container_id }}</dd>{% endif %}
+        {% if execution.model_relay_container_id %}<dt class="col-sm-3">Model relay container</dt><dd class="col-sm-9">{{ execution.model_relay_container_id }}</dd>{% endif %}
+        {% if execution.image_digest %}<dt class="col-sm-3">OpenCode image</dt><dd class="col-sm-9">{{ execution.image_digest }}</dd>{% endif %}
+        {% if execution.provider_request_model %}<dt class="col-sm-3">Provider request / response</dt><dd class="col-sm-9">{{ execution.provider_request_model }} / HTTP {{ execution.provider_response_status or "unknown" }}</dd>{% endif %}
+        {% if execution.verification_command %}<dt class="col-sm-3">Independent verification</dt><dd class="col-sm-9"><code>{{ execution.verification_command }}</code> · {{ execution.verification_status or "unknown" }} (exit {{ execution.verification_exit_code or "unknown" }})</dd>{% endif %}
+        {% if execution.experience_ids %}<dt class="col-sm-3">Approved experiences supplied</dt><dd class="col-sm-9">{{ execution.experience_ids|join(", ") }}</dd>{% endif %}
+        <dt class="col-sm-3">PlanTrace reference</dt><dd class="col-sm-9"><code>{{ execution.trace_id }}</code></dd>
+        <dt class="col-sm-3">Workspace</dt><dd class="col-sm-9">{{ execution.workspace_id }} / {{ execution.project_id }}</dd>
+        <dt class="col-sm-3">Started</dt><dd class="col-sm-9">{{ execution.started_at or "not started" }}</dd>
+        <dt class="col-sm-3">Completed/observed</dt><dd class="col-sm-9">{{ execution.completed_at or "pending" }}</dd>
+        <dt class="col-sm-3">Duration (ms)</dt><dd class="col-sm-9">{{ execution.duration_ms if execution.duration_ms is not none else "not observed" }}</dd>
+        <dt class="col-sm-3">Error category</dt><dd class="col-sm-9">{{ execution.error_category or "none reported" }}</dd>
+      </dl>
+      <h5>Original task</h5>
+      <pre style="white-space: pre-wrap;">{{ execution.objective }}</pre>
+      <h5>Bounded Worker result</h5>
+      <pre style="white-space: pre-wrap;">{{ execution.result_summary or execution.worker_message or execution.error_message or "No result available." }}</pre>
+      {% if execution.unresolved %}
+        <h5>Unresolved issues</h5>
+        <pre style="white-space: pre-wrap;">{{ execution.unresolved|tojson(indent=2) }}</pre>
+      {% endif %}
+      {% if execution.artifacts %}
+        <h5>Artifact references supplied by Worker</h5>
+        <pre style="white-space: pre-wrap;">{{ execution.artifacts|tojson(indent=2) }}</pre>
+      {% endif %}
+      <section class="border rounded p-3 mt-3" aria-labelledby="execution-review-title">
+        <h4 id="execution-review-title">Human execution review</h4>
+        {% if execution.human_review %}
+          <p>Decision: <strong>{{ execution.human_review.decision }}</strong> by {{ execution.human_review.reviewer }} at {{ execution.human_review.reviewed_at }}.</p>
+          {% if execution.human_review.notes %}<p>{{ execution.human_review.notes }}</p>{% endif %}
+          <p class="small">This is a SIS human review, not a Worker acceptance ID. Worker status remains {{ execution.status }}.</p>
+        {% else %}
+          <p>Review status: <strong>pending human decision</strong>. Independent tests passing is evidence for review, not an acceptance decision.</p>
+          {% if not execution.diff_artifact_available %}<p class="alert alert-warning small">No before/after patch artifact was persisted. Review the current registered workspace file and the recorded task/test output; do not treat this page as a reconstructed diff.</p>{% endif %}
+          <form id="stn05-execution-review" class="mt-2">
+            <label class="form-label" for="stn05-review-notes">Review notes</label>
+            <textarea id="stn05-review-notes" class="form-control" maxlength="2000" rows="3"></textarea>
+            <fieldset class="mt-2">
+              <legend class="fs-6">Evidence reviewed</legend>
+              {% if execution.worker_request_id %}<label class="form-check"><input class="form-check-input stn05-evidence" type="checkbox" value="worker_request:{{ execution.worker_request_id }}"> Worker result {{ execution.worker_request_id }}</label>{% endif %}
+              {% if execution.trace_id %}<label class="form-check"><input class="form-check-input stn05-evidence" type="checkbox" value="plan_trace:{{ execution.trace_id }}"> PlanTrace {{ execution.trace_id }}</label>{% endif %}
+              {% if execution.verification_command %}<label class="form-check"><input class="form-check-input stn05-evidence" type="checkbox" value="verification:{{ execution.verification_command }}:{{ execution.verification_status }}:{{ execution.verification_exit_code }}"> Independent verification: {{ execution.verification_command }} · {{ execution.verification_status }} · exit {{ execution.verification_exit_code }}</label>{% endif %}
+              {% for artifact in execution.artifacts or [] %}
+                {% if artifact.id %}<label class="form-check"><input class="form-check-input stn05-evidence" type="checkbox" value="artifact:{{ artifact.id }}"> Inspect artifact {{ artifact.id }}</label>{% endif %}
+              {% endfor %}
+            </fieldset>
+            <fieldset class="mt-2">
+              <legend class="fs-6">Accepted work scope (required only for ACCEPT)</legend>
+              {% for artifact in execution.artifacts or [] %}
+                {% if artifact.id %}<label class="form-check"><input class="form-check-input stn05-scope" type="checkbox" value="{{ artifact.id }}"> {{ artifact.id }}</label>{% endif %}
+              {% endfor %}
+            </fieldset>
+            <div id="stn05-review-error" class="small text-danger" role="status"></div>
+            <div class="d-flex gap-2 mt-2">
+              <button class="btn btn-success" type="button" data-execution-decision="ACCEPT">Accept execution</button>
+              <button class="btn btn-outline-danger" type="button" data-execution-decision="REJECT">Reject</button>
+              <button class="btn btn-outline-secondary" type="button" data-execution-decision="NEEDS_REVISION">Needs revision</button>
+            </div>
+          </form>
+          <script>
+            (() => {
+              const form = document.getElementById("stn05-execution-review");
+              const error = document.getElementById("stn05-review-error");
+              const csrf = document.querySelector('meta[name="csrf-token"]')?.content || "";
+              form.querySelectorAll("[data-execution-decision]").forEach((button) => button.addEventListener("click", async () => {
+                const decision = button.dataset.executionDecision;
+                const evidence_refs = Array.from(form.querySelectorAll(".stn05-evidence:checked"), item => item.value);
+                const accepted_scope = Array.from(form.querySelectorAll(".stn05-scope:checked"), item => item.value);
+                if (decision === "ACCEPT" && (!accepted_scope.length || !evidence_refs.length)) {
+                  error.textContent = "Inspect and select the evidence and artifact scope before accepting.";
+                  return;
+                }
+                button.disabled = true;
+                error.textContent = "Saving human review…";
+                try {
+                  const response = await fetch("/chats/{{ conversation_id }}/executions/{{ execution.execution_id }}/review", {
+                    method: "POST",
+                    headers: {"Content-Type":"application/json", "X-CSRF-Token":csrf, "Idempotency-Key":`stn05-review-${crypto.randomUUID()}`},
+                    body: JSON.stringify({decision, notes:document.getElementById("stn05-review-notes").value, evidence_refs, accepted_scope})
+                  });
+                  const data = await response.json();
+                  if (!response.ok) throw new Error(data.detail?.message || "Could not save the human review");
+                  window.location.reload();
+                } catch (err) {
+                  error.textContent = err.message;
+                  button.disabled = false;
+                }
+              }));
+            })();
+          </script>
+        {% endif %}
+      </section>
+
+      {% if experience %}
+      <section class="border rounded p-3 mt-3" aria-labelledby="experience-candidate-title">
+        {% set candidate = experience.candidate %}
+        <h4 id="experience-candidate-title">Experience candidate · {{ candidate.experience_id }}</h4>
+        <p>Candidate review: <strong>{{ candidate.candidate_review_status }}</strong> · reuse eligible: {{ candidate.reuse_eligible }}</p>
+        <p class="small">Source execution {{ candidate.source.execution_id }} · PlanTrace {{ candidate.source.plan_trace_id }}. Extraction used no model.</p>
+        <h5>Observed evidence</h5>
+        <pre style="white-space: pre-wrap;">{{ candidate.observations|tojson(indent=2) }}</pre>
+        <h5>Lesson hypothesis (not validated for transfer)</h5>
+        <p>{{ candidate.lesson_hypothesis.text }}</p>
+        <p class="small">Limitations: {{ candidate.lesson_hypothesis.limitations|join('; ') }}</p>
+        {% if candidate.candidate_review_status == 'PENDING_REVIEW' %}
+          <label class="form-label" for="stn05-experience-notes">Experience review notes</label>
+          <textarea id="stn05-experience-notes" class="form-control" maxlength="2000" rows="2"></textarea>
+          <div id="stn05-experience-error" class="small text-danger" role="status"></div>
+          <div class="d-flex gap-2 mt-2">
+            <button class="btn btn-success" type="button" data-experience-decision="APPROVE">Approve lesson for reuse</button>
+            <button class="btn btn-outline-danger" type="button" data-experience-decision="REJECT">Reject lesson</button>
+            <button class="btn btn-outline-secondary" type="button" data-experience-decision="NEEDS_REVISION">Needs revision</button>
+          </div>
+          <script>
+            (() => {
+              const root = document.getElementById("experience-candidate-title").parentElement;
+              const csrf = document.querySelector('meta[name="csrf-token"]')?.content || "";
+              root.querySelectorAll("[data-experience-decision]").forEach((button) => button.addEventListener("click", async () => {
+                const decision = button.dataset.experienceDecision;
+                const refs = ["experience:{{ candidate.experience_id }}", "plan_trace:{{ candidate.source.plan_trace_id }}", "verification:{{ candidate.verification.command }}:{{ candidate.verification.status }}:{{ candidate.verification.exit_code }}"];
+                button.disabled = true;
+                const error = document.getElementById("stn05-experience-error");
+                error.textContent = "Saving human experience review…";
+                try {
+                  const response = await fetch("/chats/{{ conversation_id }}/executions/{{ execution.execution_id }}/experience-candidate/review", {
+                    method: "POST",
+                    headers: {"Content-Type":"application/json", "X-CSRF-Token":csrf, "Idempotency-Key":`stn05-experience-review-${crypto.randomUUID()}`},
+                    body: JSON.stringify({decision, notes:document.getElementById("stn05-experience-notes").value, evidence_refs:refs})
+                  });
+                  const data = await response.json();
+                  if (!response.ok) throw new Error(data.detail?.message || "Could not save the experience review");
+                  window.location.reload();
+                } catch (err) {
+                  error.textContent = err.message;
+                  button.disabled = false;
+                }
+              }));
+            })();
+          </script>
+        {% elif candidate.candidate_review_status == 'NEEDS_REVISION' %}
+          <p class="alert alert-warning small">Revision was requested. This draft is inactive. Submit a human-authored revised hypothesis before another approve/reject decision.</p>
+          <label class="form-label" for="stn05-revised-lesson">Revised lesson hypothesis</label>
+          <textarea id="stn05-revised-lesson" class="form-control" minlength="20" maxlength="1200" rows="4" required>{{ candidate.lesson_hypothesis.text }}</textarea>
+          <div id="stn05-revision-error" class="small text-danger" role="status"></div>
+          <button id="stn05-revision-submit" class="btn btn-outline-primary mt-2" type="button">Submit revised lesson for review</button>
+          <script>
+            document.getElementById("stn05-revision-submit").addEventListener("click", async () => {
+              const button = document.getElementById("stn05-revision-submit");
+              const error = document.getElementById("stn05-revision-error");
+              const lesson = document.getElementById("stn05-revised-lesson").value;
+              if (lesson.trim().length < 20) { error.textContent = "Provide at least 20 characters of revised lesson text."; return; }
+              button.disabled = true;
+              try {
+                const csrf = document.querySelector('meta[name="csrf-token"]')?.content || "";
+                const response = await fetch("/chats/{{ conversation_id }}/executions/{{ execution.execution_id }}/experience-candidate/revise", {
+                  method: "POST",
+                  headers: {"Content-Type":"application/json", "X-CSRF-Token":csrf, "Idempotency-Key":`stn05-experience-revision-${crypto.randomUUID()}`},
+                  body: JSON.stringify({lesson_hypothesis:lesson})
+                });
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.detail?.message || "Could not submit the revised lesson");
+                window.location.reload();
+              } catch (err) {
+                error.textContent = err.message;
+                button.disabled = false;
+              }
+            });
+          </script>
+        {% elif candidate.candidate_review %}
+          <p>Reviewed by {{ candidate.candidate_review.reviewer }}: {{ candidate.candidate_review.decision }} at {{ candidate.candidate_review.reviewed_at }}.</p>
+        {% endif %}
+      </section>
+      {% elif execution.human_review and execution.human_review.decision == 'ACCEPT' %}
+        <form id="stn05-experience-extract" class="border rounded p-3 mt-3">
+          <h4>Capture a reviewed experience</h4>
+          <p class="small">This deterministic extraction creates a CaseBook candidate only. A separate human decision is required before it can enter MemCube or be retrieved for reuse.</p>
+          <div id="stn05-extraction-error" class="small text-danger" role="status"></div>
+          <button id="stn05-extract-button" type="submit" class="btn btn-outline-primary">Create experience candidate</button>
+        </form>
+        <script>
+          document.getElementById("stn05-experience-extract").addEventListener("submit", async (event) => {
+            event.preventDefault();
+            const button = document.getElementById("stn05-extract-button");
+            const error = document.getElementById("stn05-extraction-error");
+            button.disabled = true;
+            try {
+              const csrf = document.querySelector('meta[name="csrf-token"]')?.content || "";
+              const response = await fetch("/chats/{{ conversation_id }}/executions/{{ execution.execution_id }}/experience-candidate", {
+                method: "POST", headers: {"X-CSRF-Token":csrf, "Idempotency-Key":`stn05-extract-${crypto.randomUUID()}`}
+              });
+              const data = await response.json();
+              if (!response.ok) throw new Error(data.detail?.message || "Could not create experience candidate");
+              window.location.reload();
+            } catch (err) {
+              error.textContent = err.message;
+              button.disabled = false;
+            }
+          });
+        </script>
+      {% endif %}
+
+      <p class="small text-muted mt-3 mb-0">Observed verification is not a human acceptance decision. A reusable experience remains inactive until the source execution and the separate lesson candidate receive the required human reviews.</p>
+    </div>
+  </div>
+</div>
+{% endblock %}

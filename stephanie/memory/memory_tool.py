@@ -7,6 +7,7 @@ from typing import Any, Optional
 
 import psycopg2
 from pgvector.psycopg2 import register_vector
+from sqlalchemy import text
 from sqlalchemy.orm import sessionmaker
 
 from stephanie.constants import (BUS_STREAM, HEALTH_SUBJ, PROMPT_DLQ,
@@ -82,7 +83,9 @@ from stephanie.memory.training_event_store import TrainingEventStore
 from stephanie.memory.training_stats_store import TrainingStatsStore
 from stephanie.memory.trajectory_store import AgentTrajectoryStore
 from stephanie.memory.vpm_store import VPMStore
-from stephanie.orm.base import engine  # From your SQLAlchemy setup
+from stephanie.orm.base import (create_database_engine,
+                                database_connection_parameters,
+                                database_url_from_config)
 from stephanie.services.bus.hybrid_bus import HybridKnowledgeBus
 from stephanie.services.bus.knowledge_bus import KnowledgeBus
 from stephanie.utils.async_utils import retry
@@ -98,21 +101,39 @@ class MemoryTool:
         self.logger = logger
         self._stores = {}
 
-        self.session_maker = sessionmaker(bind=engine, expire_on_commit=False,
-                                          autocommit=False, autoflush=False)
+        db_cfg = self.cfg.get("db", {})
+        # Both SQLAlchemy stores and direct pgvector users derive their target
+        # from the same Hydra node; never import a module-global database URL.
+        self.engine = create_database_engine(db_cfg)
+        self.session_maker = sessionmaker(
+            bind=self.engine,
+            expire_on_commit=False,
+            autocommit=False,
+            autoflush=False,
+        )
         self.session = self.session_maker
 
-        db_cfg = self.cfg.get("db", {})
-        self.conn = psycopg2.connect(
-            dbname=db_cfg.get("name"),
-            user=db_cfg.get("user"),
-            password=db_cfg.get("password"),
-            host=db_cfg.get("host"),
-            port=db_cfg.get("port"),
-        )
-        self.conn.autocommit = True
-        register_vector(self.conn)
+        try:
+            self.conn = psycopg2.connect(**database_connection_parameters(db_cfg))
+            self.conn.autocommit = True
+            register_vector(self.conn)
+        except Exception:
+            if getattr(self, "conn", None) is not None:
+                self.conn.close()
+            self.engine.dispose()
+            raise
+        self._closed = False
 
+        try:
+            self._initialize_memory()
+        except BaseException:
+            self.close()
+            raise
+
+    def _initialize_memory(self) -> None:
+        cfg = self.cfg
+        logger = self.logger
+        db_cfg = cfg.get("db", {})
         # --- Knowledge bus (do NOT auto-connect here) ---
         self.bus = self._setup_knowledge_bus()
         # Idempotent connection guards
@@ -234,8 +255,8 @@ class MemoryTool:
                 self.register_store(store_class(self.session_maker, logger))
 
     def _setup_knowledge_bus(self) -> KnowledgeBus:
-        # Always pass nested {"bus": {...}} to make Hybrid bus happier
-        bus_cfg = {"bus": self.cfg.get("bus", {"backend": "nats"})}
+        # HybridKnowledgeBus accepts the flat Hydra bus node directly.
+        bus_cfg = self.cfg.get("bus", {"backend": "nats"})
         bus = HybridKnowledgeBus(bus_cfg, self.logger)
         return bus
 
@@ -317,6 +338,73 @@ class MemoryTool:
 
         if self.logger:
             self.logger.log("StoreRegistered", {"store": store_name})
+
+    def database_identity(self) -> dict[str, Any]:
+        """Return redacted identities for ORM and direct PostgreSQL connections."""
+        query = text(
+            "SELECT current_database(), current_schema(), current_user, "
+            "current_setting('search_path'), inet_server_addr()::text, "
+            "inet_server_port()"
+        )
+        with self.engine.connect() as orm_connection:
+            orm_row = orm_connection.execute(query).one()
+
+        with self.conn.cursor() as cursor:
+            cursor.execute(
+                "SELECT current_database(), current_schema(), current_user, "
+                "current_setting('search_path'), inet_server_addr()::text, "
+                "inet_server_port()"
+            )
+            direct_row = cursor.fetchone()
+
+        def identity(row):
+            return {
+                "database": row[0],
+                "schema": row[1],
+                "user": row[2],
+                "search_path": row[3],
+                "server_address": row[4],
+                "server_port": row[5],
+            }
+
+        orm_identity = identity(orm_row)
+        direct_identity = identity(direct_row)
+        configured_url = database_url_from_config(self.cfg.get("db", {}))
+        configured_db = configured_url.database
+        configured_port = configured_url.port or (
+            5432 if configured_url.get_backend_name() == "postgresql" else None
+        )
+        return {
+            "configured": {
+                "database": configured_db,
+                "host": configured_url.host,
+                "port": configured_port,
+            },
+            "orm": orm_identity,
+            "direct": direct_identity,
+            "matches": orm_identity == direct_identity
+            and orm_identity["database"] == configured_db
+            and (
+                not configured_url.username
+                or orm_identity["user"] == configured_url.username
+            )
+            and (
+                configured_port is None
+                or orm_identity["server_port"] == configured_port
+            ),
+        }
+
+    def close(self) -> None:
+        """Release MemoryTool's direct connection and configured ORM pool."""
+        if getattr(self, "_closed", False):
+            return
+        self._closed = True
+        try:
+            if getattr(self, "conn", None) is not None:
+                self.conn.close()
+        finally:
+            if getattr(self, "engine", None) is not None:
+                self.engine.dispose()
 
     def get(self, name: str) -> Optional[Any]:
         return self._stores.get(name)

@@ -27,7 +27,7 @@ from datetime import datetime
 import pandas as pd
 from sqlalchemy import text
 
-from stephanie.orm.base import engine
+from stephanie.orm.base import create_database_engine_from_hydra
 from stephanie.utils.file_utils import atomic_write
 
 log = logging.getLogger(__name__)
@@ -38,7 +38,8 @@ def export_goal_relevance_dataset(
     min_score: float = 0.0,
     limit: Optional[int] = None,
     include_attributes: bool = True,
-    format: str = "csv"  # "csv" or "jsonl"
+    format: str = "csv",  # "csv" or "jsonl"
+    engine=None,
 ) -> Dict[str, Any]:
     """
     Export goal-relevance dataset from document_evaluation_export_view.
@@ -79,10 +80,16 @@ def export_goal_relevance_dataset(
     if limit:
         query = text(f"{str(query)} LIMIT {limit}")
     
-    # Execute query
-    with engine.connect() as conn:
-        result = conn.execute(query)
-        rows = result.fetchall()
+    # Use the composed Hydra database unless a caller injects a test engine.
+    owns_engine = engine is None
+    engine = engine or create_database_engine_from_hydra("config")
+    try:
+        with engine.connect() as conn:
+            result = conn.execute(query)
+            rows = result.fetchall()
+    finally:
+        if owns_engine:
+            engine.dispose()
     
     log.debug(f"Fetched {len(rows)} raw evaluation records")
     

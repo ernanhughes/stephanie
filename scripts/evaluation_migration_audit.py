@@ -22,12 +22,23 @@ except ImportError:
     print("psycopg2 is required for the audit", file=sys.stderr)
     sys.exit(2)
 
-DEFAULT_DSN = os.environ.get("STEPHANIE_AUDIT_DSN", "postgresql://co:co@localhost:5432/co")
+from stephanie.orm.base import (
+    database_config_from_hydra,
+    database_connection_parameters,
+)
+
+DEFAULT_DSN = os.environ.get("STEPHANIE_AUDIT_DSN")
 
 
 def main() -> int:
     args = parse_args()
-    conn = psycopg2.connect(args.dsn, connect_timeout=10)
+    if args.dsn:
+        conn = psycopg2.connect(args.dsn, connect_timeout=10)
+    else:
+        db_config = database_config_from_hydra("config")
+        conn = psycopg2.connect(
+            **database_connection_parameters(db_config), connect_timeout=10
+        )
     conn.set_session(readonly=True, autocommit=True)
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 

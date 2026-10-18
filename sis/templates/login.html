@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="same-origin">
+  <title>Sign in · Stephanie SIS</title>
+  <style>
+    :root { color-scheme: light; font: 16px system-ui, sans-serif; }
+    body { background:#f3f5f8; color:#17212b; margin:0; min-height:100vh; display:grid; place-items:center; }
+    main { background:white; border:1px solid #dce2e8; border-radius:12px; box-shadow:0 12px 36px #14283b18; max-width:26rem; padding:2rem; width:calc(100% - 2rem); }
+    label { display:block; font-weight:600; margin:.9rem 0 .35rem; }
+    input { box-sizing:border-box; border:1px solid #aab5c0; border-radius:6px; font:inherit; padding:.65rem; width:100%; }
+    button { background:#155eef; border:0; border-radius:6px; color:white; cursor:pointer; font:inherit; margin-top:1.2rem; padding:.7rem; width:100%; }
+    .error { background:#fff0f0; border:1px solid #e2a5a5; border-radius:6px; color:#7e1d1d; padding:.7rem; }
+    .setup { background:#fff8e6; border:1px solid #e8cc83; border-radius:6px; padding:.7rem; }
+    .muted { color:#52606d; font-size:.9rem; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Sign in to SIS</h1>
+    <p class="muted">Stephanie Insight System · local account</p>
+    {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+    {% if not auth_ready %}
+      <div class="setup" role="status">
+        Authentication is not configured. Private SIS pages and chat are unavailable until the local account and session secret are set.
+      </div>
+    {% else %}
+      <form method="post" action="/login" autocomplete="on">
+        <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+        <input type="hidden" name="next" value="{{ next_path }}">
+        <label for="username">Username</label>
+        <input id="username" name="username" autocomplete="username" required autofocus>
+        <label for="password">Password</label>
+        <input id="password" name="password" type="password" autocomplete="current-password" required>
+        <button type="submit">Sign in</button>
+      </form>
+    {% endif %}
+  </main>
+</body>
+</html>

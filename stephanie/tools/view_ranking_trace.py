@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from contextlib import contextmanager
 
 import matplotlib
 
@@ -10,12 +11,23 @@ if matplotlib.get_backend().lower() != "agg":
 import matplotlib.pyplot as plt
 import psycopg2
 from tabulate import tabulate
+from stephanie.orm.base import create_database_engine_from_hydra
 
-DB_CONFIG = dict(dbname="co", user="co", password="co", host="localhost")
+
+@contextmanager
+def configured_connection():
+    """Open the viewer against the composed Hydra database."""
+    engine = create_database_engine_from_hydra("config")
+    connection = engine.raw_connection()
+    try:
+        yield connection
+    finally:
+        connection.close()
+        engine.dispose()
 
 
 def fetch_ranking_trace(run_id=None):
-    with psycopg2.connect(**DB_CONFIG) as conn:
+    with configured_connection() as conn:
         with conn.cursor() as cur:
             if run_id:
                 cur.execute(
@@ -37,7 +49,7 @@ def fetch_ranking_trace(run_id=None):
 
 
 def fetch_elo_scores(run_id=None):
-    with psycopg2.connect(**DB_CONFIG) as conn:
+    with configured_connection() as conn:
         with conn.cursor() as cur:
             if run_id:
                 cur.execute(

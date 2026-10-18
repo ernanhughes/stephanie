@@ -127,16 +127,29 @@ async def _append_async(observation) -> None:
 def _repository():
     global _repo
     if _repo is None:
-        from sqlalchemy import create_engine
+        from sqlalchemy import create_engine, inspect
         from sqlalchemy.orm import sessionmaker
 
         from stephanie.evaluation.persistence.orm import CanonicalBase
         from stephanie.evaluation.persistence.repository import SqlAlchemyEvaluationRepository
 
-        dsn = os.environ.get(
-            SHADOW_DSN_ENV, os.environ.get("DATABASE_URL", "postgresql://co:co@localhost:5432/co")
-        )
+        dsn = os.environ.get(SHADOW_DSN_ENV) or os.environ.get("DATABASE_URL")
+        if not dsn:
+            raise RuntimeError(
+                f"Set {SHADOW_DSN_ENV} (or DATABASE_URL) before enabling canonical shadow writes"
+            )
         engine = create_engine(dsn, connect_args={"connect_timeout": 3})
-        CanonicalBase.metadata.create_all(engine, checkfirst=True)
+        inspector = inspect(engine)
+        missing = [
+            table.name
+            for table in CanonicalBase.metadata.sorted_tables
+            if not inspector.has_table(table.name)
+        ]
+        if missing:
+            engine.dispose()
+            raise RuntimeError(
+                "Canonical shadow schema is not provisioned; apply its reviewed "
+                f"migration before enabling writes (missing: {', '.join(missing)})"
+            )
         _repo = SqlAlchemyEvaluationRepository(sessionmaker(bind=engine, expire_on_commit=False))
     return _repo

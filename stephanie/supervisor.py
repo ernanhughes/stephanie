@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 import hydra
+from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig, OmegaConf
 
 from stephanie.constants import (GOAL, NAME, PIPELINE, PIPELINE_RUN_ID,
@@ -20,6 +21,7 @@ from stephanie.services.scoring_service import ScoringService
 from stephanie.services.service_container import ServiceContainer
 from stephanie.utils.pipeline_utils import print_pipeline_summary
 from stephanie.utils.report_utils import get_stage_details
+from stephanie.utils.secret_utils import redact_secrets
 
 import logging
 log = logging.getLogger(__name__)
@@ -40,7 +42,7 @@ class Supervisor:
         self.cfg = cfg
         self.memory = memory
         self.logger = logger
-        self.logger.log("SupervisorInit", {"cfg": cfg})
+        self.logger.log("SupervisorInit", {"cfg": redact_secrets(cfg)})
 
         # DI container
         self.container = ServiceContainer(cfg=cfg, memory=self.memory, logger=self.logger)
@@ -72,11 +74,20 @@ class Supervisor:
     def _resolve_services_profile_path(self, cfg) -> str:
         prof = OmegaConf.select(cfg, "services.profile", default=None)
         if not prof:
+            prof = OmegaConf.select(cfg, "services_profile", default=None)
+        if not prof and HydraConfig.initialized():
+            prof = HydraConfig.get().runtime.choices.get("services")
+        if not prof:
             prof = "services/default"
 
+        prof = str(prof)
         if prof.endswith(".yaml"):
-            return prof
-        return f"config/{prof}.yaml"
+            return prof if prof.startswith("config/") else f"config/{prof}"
+        if prof.startswith("config/"):
+            return f"{prof}.yaml"
+        if prof.startswith("services/"):
+            return f"config/{prof}.yaml"
+        return f"config/services/{prof}.yaml"
 
     def _create_reward_model(self, cfg, memory, logger):
         scoring: ScoringService = self.container.get("scoring")
@@ -136,7 +147,7 @@ class Supervisor:
                 print(f"Skipping disabled stage: {name}")
                 continue
             stage_dict = self.cfg.agents[name]
-            self.logger.log("StageContext", {"stage_dict": stage_dict})
+            self.logger.log("StageContext", {"stage_dict": redact_secrets(stage_dict)})
             stages.append(PipelineStage(name, stage_config, stage_dict))
         return stages
 
@@ -163,7 +174,9 @@ class Supervisor:
             RUN_ID: run_id,
             "pipeline": pipeline_list,  # Should be list of strings like ["generation", "judge"]
             "model_name": self.cfg.get("model.name", "unknown"),
-            "run_config": OmegaConf.to_container(self.cfg),
+            "run_config": redact_secrets(
+                OmegaConf.to_container(self.cfg, resolve=False)
+            ),
             "created_at": datetime.now(timezone.utc).isoformat(),
         }
         run_id = self.memory.pipeline_runs.insert(pipeline_run_data)
@@ -193,7 +206,9 @@ class Supervisor:
 
             return result_context
         except Exception as e:
-            self.logger.log("PipelineRunFailed", {"error": str(e)})
+            self.logger.log(
+                "PipelineRunFailed", {"error": redact_secrets(str(e))}
+            )
             plan_trace_service.handle_pipeline_error(e, self.context())
             raise e
         finally:
@@ -205,7 +220,6 @@ class Supervisor:
                     "run_id": run_id,
                     "context_keys": list(self.context().keys())
                 })
-            await self.memory.bus.close()   
 
     def _parse_pipeline_stages_from_list(
         self, stage_names: list[str]
@@ -281,7 +295,7 @@ class Supervisor:
                 except Exception as rep_e:
                     self.logger.log("StageReportFail Right well that should work but it didn't ed", {
                         "stage": stage.name,
-                        "error": str(rep_e)
+                        "error": redact_secrets(str(rep_e))
                     })
 
                 # self.context.save_to_file(prefix=f"context_{stage.name}")
@@ -301,9 +315,12 @@ class Supervisor:
             except Exception as e:
                 plan_trace_service.handle_stage_error(stage.name, e, stage_idx)
                 
-                self.logger.log("PipelineStageFailed", {"stage": stage.name, "error": str(e)})
+                self.logger.log(
+                    "PipelineStageFailed",
+                    {"stage": stage.name, "error": redact_secrets(str(e))},
+                )
                 stage_details["status"] = "💀 failed"
-                stage_details["error"] = str(e)
+                stage_details["error"] = redact_secrets(str(e))
                 stage_details["end_time"] = datetime.now().strftime("%H:%M:%S")
                 raise  # Re-raise the exception to be caught by the outer handler
         
@@ -397,9 +414,12 @@ class Supervisor:
             return context
 
         except Exception as e:
-            self.logger.log("PipelineStageFailed", {"stage": stage.name, "error": str(e)})
+            self.logger.log(
+                "PipelineStageFailed",
+                {"stage": stage.name, "error": redact_secrets(str(e))},
+            )
             stage_details["status"] = "💀 failed"
-            stage_details["error"] = str(e)
+            stage_details["error"] = redact_secrets(str(e))
             stage_details["end_time"] = datetime.now().strftime("%H%M%S")
             return context
         
@@ -440,7 +460,7 @@ class Supervisor:
             "symbols_applied": context.get("symbols_applied"),
             "extra_data": {
                 "model": self.cfg.get("model", {}).get("name"),
-                "agent_config": stage_dict,
+                "agent_config": redact_secrets(stage_dict),
             },
             "exportable": True,
             "reusable": True,
@@ -515,7 +535,9 @@ class Supervisor:
                         suggested
                     )
             except Exception as e:
-                self.logger.log("DOTSPlannerFailed", {"error": str(e)})
+                self.logger.log(
+                    "DOTSPlannerFailed", {"error": redact_secrets(str(e))}
+                )
 
         # === RUN LOOKAHEAD SECOND (OPTIONAL REFLECTIVE OVERRIDE) ===
         if not self.cfg.get("dynamic", {}).get("lookahead_enabled", False):
@@ -551,7 +573,7 @@ class Supervisor:
             return updated_context
 
         except Exception as e:
-            self.logger.log("LookaheadFailed", {"error": str(e)})
+            self.logger.log("LookaheadFailed", {"error": redact_secrets(str(e))})
             return context
 
     async def rerun_pipeline(self, run_id: str) -> dict:

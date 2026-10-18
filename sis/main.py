@@ -1,10 +1,13 @@
 # sis/main.py
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from datetime import datetime
+import os
+import re
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
+from sis.template_utils import SISTemplates
 from stephanie.core.logging.json_logger import JSONLogger
 from stephanie.memory.memory_tool import MemoryTool
 from sis.routes import arena, db, nexus, pipelines, models, logs, plan_traces, documents, mars, learning
@@ -17,35 +20,103 @@ from sis.utils.date_utls import short_dt, datetimeformat
 from stephanie.services.service_container import ServiceContainer
 from stephanie.services.registry_loader import load_services_profile
 from sis.routes import codecheck as codecheck_routes
+from sis.routes import auth as auth_routes
+from sis.security import SISAuthMiddleware, SessionStore, load_auth_settings
+from sis.services.chat_execution import ConversationExecutionService
+from sis.services.worker_execution import WorkerExecutionService
+from stephanie.services.execution_experience import ExecutionExperienceService
+from stephanie.services.stn06_experiment import Stn06ExperimentService
 
 from hydra import initialize, compose
 
 def load_sis_cfg(overrides: list[str] | None = None):
+    config_name = os.environ.get("SIS_CONFIG_NAME", "sis")
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,80}", config_name):
+        raise ValueError("SIS_CONFIG_NAME must be a simple Hydra config name")
     with initialize(version_base=None, config_path="../config"):  # path containing sis.yaml
-        cfg = compose(config_name="sis", overrides=overrides or [])
+        cfg = compose(config_name=config_name, overrides=overrides or [])
     return cfg
 
-app = FastAPI(title="Stephanie Insight System (SIS)")
+@asynccontextmanager
+async def lifespan(application: FastAPI):
+    try:
+        yield
+    finally:
+        try:
+            await application.state.container.shutdown()
+        finally:
+            application.state.memory.close()
+
+
+app = FastAPI(
+    title="Stephanie Insight System (SIS)",
+    lifespan=lifespan,
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None,
+)
 
 app.state.cfg = load_sis_cfg()
 app.state.logger = JSONLogger("logs/sis.jsonl")
+app.state.auth_settings = load_auth_settings()
+app.state.auth_sessions = SessionStore(app.state.auth_settings)
 app.state.memory = MemoryTool(cfg=app.state.cfg, logger=app.state.logger)
-app.state.container = ServiceContainer(cfg=app.state.cfg, memory=app.state.memory)
+app.state.database_ready = bool(app.state.memory.database_identity()["matches"])
+app.state.container = ServiceContainer(
+    cfg=app.state.cfg, memory=app.state.memory, logger=app.state.logger
+)
+app.state.chat_execution = ConversationExecutionService(
+    memory=app.state.memory,
+    container=app.state.container,
+    cfg=app.state.cfg,
+    logger=app.state.logger,
+)
+app.add_middleware(SISAuthMiddleware)
 
 # Put into app.state so routers can access without importing main
-app.state.templates = Jinja2Templates(directory="sis/templates")
+app.state.templates = SISTemplates(directory="sis/templates")
 app.state.templates.env.globals["now"] = datetime.now
 app.state.templates.env.filters["short_dt"] = short_dt
 # after you set up templates
 app.state.templates.env.filters["datetimeformat"] = datetimeformat
 
-try:
-    load_services_profile(
-        cfg=app.state.cfg, memory=app.state.memory, container=app.state.container, logger=app.state.logger,
-        profile_path="config/services/default.yaml", supervisor=None
-    )
-except Exception as e:
-    app.state.logger.info({"msg":"Service profile not loaded in SIS", "error": str(e)})
+load_services_profile(
+    cfg=app.state.cfg,
+    memory=app.state.memory,
+    container=app.state.container,
+    logger=app.state.logger,
+    profile_path="config/services/default.yaml",
+    supervisor=None,
+)
+
+app.state.container.register(
+    "sis_worker_execution",
+    lambda: WorkerExecutionService(
+        memory=app.state.memory,
+        cfg=app.state.cfg,
+        logger=app.state.logger,
+    ),
+)
+app.state.worker_execution = app.state.container.get("sis_worker_execution")
+app.state.container.register(
+    "sis_execution_experience",
+    lambda: ExecutionExperienceService(
+        memory=app.state.memory,
+        cfg=app.state.cfg,
+        logger=app.state.logger,
+    ),
+)
+app.state.execution_experience = app.state.container.get("sis_execution_experience")
+app.state.container.register(
+    "sis_stn06_experiment",
+    lambda: Stn06ExperimentService(
+        memory=app.state.memory,
+        cfg=app.state.cfg,
+        logger=app.state.logger,
+        experience_service=app.state.execution_experience,
+    ),
+)
+app.state.stn06_experiment = app.state.container.get("sis_stn06_experiment")
 
 
 app.mount("/static", StaticFiles(directory="sis/static"), name="static")
@@ -62,6 +133,7 @@ async def add_js_module_headers(request: Request, call_next):
     return response
 
 # Include routers
+app.include_router(auth_routes.router)
 app.include_router(pipelines.router)
 app.include_router(models.router)
 app.include_router(db.router)

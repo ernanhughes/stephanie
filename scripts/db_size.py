@@ -1,6 +1,7 @@
 import psycopg2
-import os
 import shutil
+
+from stephanie.orm.base import create_database_engine_from_hydra
 
 def get_terminal_width():
     """Get terminal width for dynamic bar sizing"""
@@ -43,18 +44,10 @@ def draw_bar_graph(current_size, max_size, max_width=50):
     return "█" * bar_length
 
 def main():
-    # Database connection parameters (use environment variables for security)
-    conn_params = {
-        'host': os.getenv('DB_HOST', 'localhost'),
-        'port': os.getenv('DB_PORT', '5432'),
-        'database': os.getenv('DB_NAME', 'co'),
-        'user': os.getenv('DB_USER', 'co'),
-        'password': 'co'
-    }
-
+    engine = create_database_engine_from_hydra("config")
+    conn = None
     try:
-        # Connect to database
-        conn = psycopg2.connect(**conn_params)
+        conn = engine.raw_connection()
         cursor = conn.cursor()
         
         # Get total database size
@@ -86,14 +79,15 @@ def main():
             
             print(f"{display_name:<{max_name_length}} {bar} {formatted_size} ({percentage:.1f}%)")
         
-        # Close connections
         cursor.close()
-        conn.close()
-        
     except psycopg2.Error as e:
         print(f"Database error: {e}")
     except Exception as e:
         print(f"Error: {e}")
+    finally:
+        if conn is not None:
+            conn.close()
+        engine.dispose()
 
 if __name__ == "__main__":
     main()

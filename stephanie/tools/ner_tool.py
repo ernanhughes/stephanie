@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 
-from stephanie.orm.gliner2_entity_detector import Gliner2EntityDetector
+from stephanie.orm.ner_retriever import EntityDetector
 from stephanie.scoring.scorable import Scorable
 from stephanie.tools.base_tool import BaseTool
 
@@ -31,7 +31,7 @@ class NerTool(BaseTool):
         labels = cfg.get("labels")        # could be list or dict
         threshold = float(cfg.get("threshold", 0.35))
 
-        self.detector = Gliner2EntityDetector(
+        self.detector = EntityDetector(
             model_name=model_name,
             labels=labels,
             threshold=threshold,
@@ -113,7 +113,7 @@ class NerTool(BaseTool):
         Execute NER model and return standardized entity records.
         """
         try:
-            raw = self.detector.detect_entities(text) or []
+            raw = self.detector.detect_entities(Scorable(text=text)) or []
         except Exception as e:
             log.warning(f"[NER] detector failed: {e}")
             return []

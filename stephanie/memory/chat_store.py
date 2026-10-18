@@ -19,6 +19,8 @@ through the BaseSQLAlchemyStore parent class.
 from __future__ import annotations
 
 import logging
+from copy import deepcopy
+from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 from stephanie.orm.scorable_embedding import ScorableEmbeddingORM
 from stephanie.orm.embedding import EmbeddingORM
@@ -144,7 +146,7 @@ class ChatStore(BaseSQLAlchemyStore):
         self, conv_id: int, messages: List[dict]
     ) -> List[ChatMessageORM]:
         """
-        Add multiple messages to a conversation.
+        Append multiple messages to a conversation without reusing message order.
         
         Args:
             conv_id: ID of the conversation to add messages to
@@ -153,20 +155,42 @@ class ChatStore(BaseSQLAlchemyStore):
         Returns:
             List of created message objects
         """
+        if not messages:
+            return []
+
         def op(s):
+            # Lock the parent row so concurrent writers to the same conversation
+            # serialize their order-index allocation on PostgreSQL.
+            conversation = (
+                s.query(ChatConversationORM)
+                .filter(ChatConversationORM.id == conv_id)
+                .with_for_update()
+                .one_or_none()
+            )
+            if conversation is None:
+                raise ValueError(f"Conversation {conv_id} not found")
+
+            current_max = (
+                s.query(func.max(ChatMessageORM.order_index))
+                .filter(ChatMessageORM.conversation_id == conv_id)
+                .scalar()
+            )
+            next_index = int(current_max) + 1 if current_max is not None else 0
+
             objs: List[ChatMessageORM] = []
-            for i, msg in enumerate(messages):
+            for offset, msg in enumerate(messages):
                 objs.append(
                     ChatMessageORM(
                         conversation_id=conv_id,
                         role=msg["role"],
                         text=msg.get("text", ""),
-                        order_index=i,
+                        order_index=next_index + offset,
                         parent_id=msg.get("parent_id"),
                         meta=msg.get("meta", {}),
                     )
                 )
             s.add_all(objs)
+            conversation.updated_at = datetime.now()
             s.flush()
             return objs
 
@@ -1668,4 +1692,469 @@ class ChatStore(BaseSQLAlchemyStore):
                 'similarity': float(row.similarity)
             } for row in results]
         
+        return self._run(op)
+
+    def add_conversation_once(
+        self, data: dict, request_id: str
+    ) -> ChatConversationORM:
+        """Idempotently create an SIS conversation using existing JSON metadata."""
+        def op(s):
+            existing = (
+                s.query(ChatConversationORM)
+                .filter(
+                    ChatConversationORM.meta["sis_create_request_id"].as_string()
+                    == request_id
+                )
+                .one_or_none()
+            )
+            if existing is not None:
+                if existing.title != data.get("title"):
+                    raise ValueError("Idempotency key was already used for another conversation")
+                return existing
+            conversation_data = dict(data)
+            conversation_data["meta"] = {
+                **(conversation_data.get("meta") or {}),
+                "sis_create_request_id": request_id,
+            }
+            conversation = ChatConversationORM(**conversation_data)
+            s.add(conversation)
+            s.flush()
+            return conversation
+
+        return self._run(op)
+
+    def get_message_by_request_id(
+        self, conv_id: int, request_id: str, *, role: Optional[str] = None
+    ) -> Optional[ChatMessageORM]:
+        """Find an SIS message carrying a client idempotency key."""
+        def op(s):
+            query = s.query(ChatMessageORM).filter(
+                ChatMessageORM.conversation_id == conv_id,
+                ChatMessageORM.meta["sis_request_id"].as_string() == request_id,
+            )
+            if role:
+                query = query.filter(ChatMessageORM.role == role)
+            return query.order_by(ChatMessageORM.order_index.desc()).first()
+
+        return self._run(op)
+
+    def get_messages_before(
+        self, conv_id: int, before_order_index: int, *, limit: int
+    ) -> List[ChatMessageORM]:
+        """Read only the newest bounded history preceding a message index."""
+        if limit <= 0:
+            return []
+
+        def op(s):
+            rows = (
+                s.query(ChatMessageORM)
+                .filter(
+                    ChatMessageORM.conversation_id == conv_id,
+                    ChatMessageORM.order_index < before_order_index,
+                )
+                .order_by(ChatMessageORM.order_index.desc())
+                .limit(limit)
+                .all()
+            )
+            return list(reversed(rows))
+
+        return self._run(op)
+
+    # ---------- SIS external executions (stored in existing conversation JSON) ----------
+
+    def start_external_execution(
+        self,
+        conv_id: int,
+        submission_key: str,
+        request_fingerprint: str,
+        task: str,
+        record: dict,
+        *,
+        max_records: int = 100,
+    ) -> tuple[ChatMessageORM, dict, bool]:
+        """Atomically persist the task message and execution link without a new table."""
+        def op(s):
+            conversation = (
+                s.query(ChatConversationORM)
+                .filter(ChatConversationORM.id == conv_id)
+                .with_for_update()
+                .one_or_none()
+            )
+            if conversation is None:
+                raise ValueError(f"Conversation {conv_id} not found")
+            meta = dict(conversation.meta or {})
+            executions = dict(meta.get("sis_executions") or {})
+            requests = dict(meta.get("sis_execution_requests") or {})
+            prior_id = requests.get(submission_key)
+            if prior_id:
+                prior = executions.get(prior_id)
+                if not prior:
+                    raise RuntimeError("Execution idempotency index is inconsistent")
+                if prior.get("request_fingerprint") != request_fingerprint:
+                    raise ValueError("Idempotency-Key was already used for another execution")
+                message = next(
+                    (
+                        item
+                        for item in s.query(ChatMessageORM)
+                        .filter_by(conversation_id=conv_id, role="user")
+                        .all()
+                        if (item.meta or {}).get("sis_execution_id") == prior_id
+                    ),
+                    None,
+                )
+                if message is None:
+                    raise RuntimeError("Execution task message is missing")
+                return message, deepcopy(prior), False
+            if len(executions) >= max_records:
+                raise ValueError("Conversation execution history is full")
+
+            current_max = (
+                s.query(func.max(ChatMessageORM.order_index))
+                .filter(ChatMessageORM.conversation_id == conv_id)
+                .scalar()
+            )
+            message = ChatMessageORM(
+                conversation_id=conv_id,
+                role="user",
+                text=task,
+                order_index=int(current_max) + 1 if current_max is not None else 0,
+                meta={
+                    "source": "sis_worker",
+                    "sis_owner": record.get("username"),
+                    "sis_request_id": f"stn03-{record['execution_id']}",
+                    "sis_execution_id": record["execution_id"],
+                    "sis_execution_dry_run": bool(record.get("dry_run")),
+                    "execution_status": "QUEUED",
+                },
+            )
+            s.add(message)
+            s.flush()
+            stored = {**record, "user_message_id": message.id}
+            executions[stored["execution_id"]] = stored
+            requests[submission_key] = stored["execution_id"]
+            meta["sis_executions"] = executions
+            meta["sis_execution_requests"] = requests
+            conversation.meta = meta
+            conversation.updated_at = datetime.now()
+            s.flush()
+            return message, deepcopy(stored), True
+
+        return self._run(op)
+
+    def update_external_execution(
+        self, conv_id: int, execution_id: str, changes: dict
+    ) -> Optional[dict]:
+        """Update one bounded execution record in canonical conversation metadata."""
+        def op(s):
+            conversation = (
+                s.query(ChatConversationORM)
+                .filter(ChatConversationORM.id == conv_id)
+                .with_for_update()
+                .one_or_none()
+            )
+            if conversation is None:
+                return None
+            # Deep-copy nested JSON before mutation so SQLAlchemy sees a new
+            # value rather than an in-place change to the loaded JSON object.
+            meta = deepcopy(conversation.meta or {})
+            executions = dict(meta.get("sis_executions") or {})
+            existing_record = executions.get(execution_id)
+            if existing_record is None:
+                return None
+            record = deepcopy(existing_record)
+            record = {**record, **changes}
+            executions[execution_id] = record
+            meta["sis_executions"] = executions
+            conversation.meta = meta
+            conversation.updated_at = datetime.now()
+            if "status" in changes:
+                message = next(
+                    (
+                        item
+                        for item in s.query(ChatMessageORM)
+                        .filter_by(conversation_id=conv_id, role="user")
+                        .all()
+                        if (item.meta or {}).get("sis_execution_id") == execution_id
+                    ),
+                    None,
+                )
+                if message is not None:
+                    message.meta = {
+                        **(message.meta or {}),
+                        "execution_status": str(changes["status"]).lower(),
+                    }
+            s.flush()
+            return deepcopy(record)
+
+        return self._run(op)
+
+    def get_external_execution(self, conv_id: int, execution_id: str) -> Optional[dict]:
+        def op(s):
+            conversation = s.get(ChatConversationORM, conv_id)
+            if conversation is None:
+                return None
+            record = (conversation.meta or {}).get("sis_executions", {}).get(execution_id)
+            return deepcopy(record) if record is not None else None
+
+        return self._run(op)
+
+    def record_external_execution_review(
+        self,
+        conv_id: int,
+        execution_id: str,
+        *,
+        review_id: str,
+        reviewer: str,
+        decision: str,
+        notes: str,
+        evidence_refs: list[str],
+        accepted_scope: list[str],
+        reviewed_at: str,
+        max_history: int = 20,
+    ) -> Optional[dict]:
+        """Append one idempotent human review without changing Worker status."""
+        def op(s):
+            conversation = (
+                s.query(ChatConversationORM)
+                .filter(ChatConversationORM.id == conv_id)
+                .with_for_update()
+                .one_or_none()
+            )
+            if conversation is None:
+                return None
+            # JSON columns need a fresh nested object to be marked dirty by
+            # SQLAlchemy after appending audit history.
+            meta = deepcopy(conversation.meta or {})
+            executions = dict(meta.get("sis_executions") or {})
+            existing_record = executions.get(execution_id)
+            if existing_record is None:
+                return None
+            record = deepcopy(existing_record)
+
+            review = {
+                "review_id": review_id,
+                "reviewer": reviewer,
+                "decision": decision,
+                "notes": notes,
+                "evidence_refs": list(evidence_refs),
+                "accepted_scope": list(accepted_scope),
+                "reviewed_at": reviewed_at,
+            }
+            history = list(record.get("human_review_history") or [])
+            prior = next((item for item in history if item.get("review_id") == review_id), None)
+            if prior is not None:
+                comparable_prior = {key: value for key, value in prior.items() if key != "reviewed_at"}
+                comparable_incoming = {key: value for key, value in review.items() if key != "reviewed_at"}
+                if comparable_prior != comparable_incoming:
+                    raise ValueError("Review idempotency key was already used for another decision")
+                return deepcopy(record)
+
+            current = record.get("human_review") or {}
+            if current.get("decision") in {"ACCEPT", "REJECT"}:
+                raise ValueError("A final human execution review is already recorded")
+            if len(history) >= max_history:
+                raise ValueError("Execution review history is full")
+
+            history.append(review)
+            record["human_review"] = review
+            record["human_review_history"] = history
+            record["human_review_status"] = decision
+            record["updated_at"] = reviewed_at
+            executions[execution_id] = record
+            meta["sis_executions"] = executions
+            conversation.meta = meta
+            conversation.updated_at = datetime.now()
+            s.flush()
+            return deepcopy(record)
+
+        return self._run(op)
+
+    def get_external_execution_by_submission_key(
+        self, conv_id: int, submission_key: str
+    ) -> Optional[dict]:
+        def op(s):
+            conversation = s.get(ChatConversationORM, conv_id)
+            if conversation is None:
+                return None
+            meta = conversation.meta or {}
+            execution_id = (meta.get("sis_execution_requests") or {}).get(submission_key)
+            record = (meta.get("sis_executions") or {}).get(execution_id)
+            return deepcopy(record) if record is not None else None
+
+        return self._run(op)
+
+    def list_external_executions(self, conv_id: int) -> list[dict]:
+        def op(s):
+            conversation = s.get(ChatConversationORM, conv_id)
+            if conversation is None:
+                return []
+            return deepcopy(list(((conversation.meta or {}).get("sis_executions") or {}).values()))
+
+        return self._run(op)
+
+    def add_user_message_once(
+        self,
+        conv_id: int,
+        request_id: str,
+        text: str,
+        *,
+        meta: Optional[dict] = None,
+    ) -> ChatMessageORM:
+        """Append one user prompt per request key under the conversation lock."""
+        def op(s):
+            conversation = (
+                s.query(ChatConversationORM)
+                .filter(ChatConversationORM.id == conv_id)
+                .with_for_update()
+                .one_or_none()
+            )
+            if conversation is None:
+                raise ValueError(f"Conversation {conv_id} not found")
+
+            existing = (
+                s.query(ChatMessageORM)
+                .filter(
+                    ChatMessageORM.conversation_id == conv_id,
+                    ChatMessageORM.role == "user",
+                    ChatMessageORM.meta["sis_request_id"].as_string() == request_id,
+                )
+                .first()
+            )
+            if existing is not None:
+                if existing.text != text:
+                    raise ValueError("Idempotency key was already used for another message")
+                return existing
+
+            current_max = (
+                s.query(func.max(ChatMessageORM.order_index))
+                .filter(ChatMessageORM.conversation_id == conv_id)
+                .scalar()
+            )
+            message = ChatMessageORM(
+                conversation_id=conv_id,
+                role="user",
+                text=text,
+                order_index=int(current_max) + 1 if current_max is not None else 0,
+                meta={**(meta or {}), "sis_request_id": request_id, "execution_status": "in_progress"},
+            )
+            conversation.updated_at = datetime.now()
+            s.add(message)
+            s.flush()
+            return message
+
+        return self._run(op)
+
+    def mark_user_message_status(
+        self,
+        conv_id: int,
+        message_id: int,
+        status: str,
+        *,
+        error_type: Optional[str] = None,
+    ) -> Optional[ChatMessageORM]:
+        """Record a request outcome without inventing an assistant response."""
+        def op(s):
+            message = (
+                s.query(ChatMessageORM)
+                .filter_by(id=message_id, conversation_id=conv_id, role="user")
+                .with_for_update()
+                .one_or_none()
+            )
+            if message is None:
+                return None
+            message.meta = {
+                **(message.meta or {}),
+                "execution_status": status,
+                **({"error_type": error_type} if error_type else {}),
+            }
+            if status == "in_progress":
+                message.meta.pop("error_type", None)
+            return message
+
+        return self._run(op)
+
+    def complete_assistant_turn(
+        self,
+        conv_id: int,
+        user_message_id: int,
+        request_id: str,
+        text: str,
+        *,
+        meta: Optional[dict] = None,
+    ) -> tuple[ChatMessageORM, ChatTurnORM]:
+        """Persist the genuine assistant message and its ChatTurn atomically."""
+        def op(s):
+            conversation = (
+                s.query(ChatConversationORM)
+                .filter(ChatConversationORM.id == conv_id)
+                .with_for_update()
+                .one_or_none()
+            )
+            if conversation is None:
+                raise ValueError(f"Conversation {conv_id} not found")
+
+            existing = (
+                s.query(ChatMessageORM)
+                .filter(
+                    ChatMessageORM.conversation_id == conv_id,
+                    ChatMessageORM.role == "assistant",
+                    ChatMessageORM.meta["sis_request_id"].as_string() == request_id,
+                )
+                .first()
+            )
+            if existing is not None:
+                turn = (
+                    s.query(ChatTurnORM)
+                    .filter(ChatTurnORM.assistant_message_id == existing.id)
+                    .one_or_none()
+                )
+                if turn is None:
+                    raise RuntimeError("Existing assistant response has no persisted turn")
+                return existing, turn
+
+            user_message = s.get(ChatMessageORM, user_message_id)
+            if (
+                user_message is None
+                or user_message.conversation_id != conv_id
+                or user_message.role != "user"
+                or (user_message.meta or {}).get("sis_request_id") != request_id
+            ):
+                raise ValueError("Request does not match a persisted user message")
+
+            current_max = (
+                s.query(func.max(ChatMessageORM.order_index))
+                .filter(ChatMessageORM.conversation_id == conv_id)
+                .scalar()
+            )
+            assistant = ChatMessageORM(
+                conversation_id=conv_id,
+                role="assistant",
+                text=text,
+                order_index=int(current_max) + 1 if current_max is not None else 0,
+                meta={**(meta or {}), "sis_request_id": request_id, "execution_status": "completed"},
+            )
+            conversation.updated_at = datetime.now()
+            s.add(assistant)
+            s.flush()
+
+            max_turn_order = (
+                s.query(func.coalesce(func.max(ChatTurnORM.order_index), -1))
+                .filter(ChatTurnORM.conversation_id == conv_id)
+                .scalar()
+            )
+            turn = ChatTurnORM(
+                conversation_id=conv_id,
+                user_message_id=user_message.id,
+                assistant_message_id=assistant.id,
+                order_index=max(int(max_turn_order) + 1, assistant.order_index),
+            )
+            user_message.meta = {
+                **(user_message.meta or {}),
+                "execution_status": "completed",
+            }
+            user_message.meta.pop("error_type", None)
+            s.add(turn)
+            s.flush()
+            return assistant, turn
+
         return self._run(op)

@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import re
-import traceback
+import time
 from typing import Any, Dict, Optional
 
 import litellm
@@ -11,6 +11,7 @@ from stephanie.constants import (API_BASE, API_KEY, NAME, PROMPT_PATH,
                                  SAVE_PROMPT, STRATEGY)
 from stephanie.services.service_protocol import Service
 from stephanie.utils.llm_utils import remove_think_blocks
+from stephanie.utils.secret_utils import redact_secrets
 
 
 class LLMService(Service):
@@ -102,12 +103,14 @@ class LLMService(Service):
         # Call LLM
         try:
             messages = [{"role": "user", "content": prompt}]
-            resp = litellm.completion(
-                model=props[NAME],
-                messages=messages,
-                api_base=props[API_BASE],
-                api_key=props.get(API_KEY, ""),
-            )
+            call_params = {
+                "model": props[NAME],
+                "messages": messages,
+                "api_base": props[API_BASE],
+            }
+            if props.get(API_KEY):
+                call_params["api_key"] = props[API_KEY]
+            resp = litellm.completion(**call_params)
             output = resp["choices"][0]["message"]["content"]
             text = remove_think_blocks(output) if remove_think else output
 
@@ -126,7 +129,7 @@ class LLMService(Service):
             return {"text": text, "model_name": props.get(NAME), "cached": False}
 
         except Exception as e:
-            self.logger.log("LLMCallError", {"error": str(e), "traceback": traceback.format_exc()})
+            self.logger.log("LLMCallError", {"error_type": type(e).__name__})
             raise
 
     def chat(
@@ -148,27 +151,116 @@ class LLMService(Service):
         resolved_cfg = self._resolve_cfg(agent_cfg, context)
         props = llm_cfg_override or self._llm_props(resolved_cfg)
 
+        started = time.perf_counter()
         try:
-            resp = litellm.completion(
-                model=props[NAME],
-                messages=messages,
-                api_base=props[API_BASE],
-                api_key=props.get(API_KEY, ""),
-            )
-            output = resp["choices"][0]["message"]["content"]
-            text = remove_think_blocks(output) if remove_think else output
-
+            resp = litellm.completion(**self._chat_call_params(props, messages))
+            result = self._chat_result(resp, props, remove_think, started)
             if add_to_history:
                 # Store only the last user prompt + output pair
                 last_user = next((m["content"] for m in reversed(messages) if m.get("role") == "user"), "")
-                self._append_prompt_history(context, agent_name, last_user, {"response": text}, preferences)
+                self._append_prompt_history(context, agent_name, last_user, {"response": result["text"]}, preferences)
 
             # No automatic DB persistence for chat; callers can do it if needed
-            return {"text": text, "model_name": props.get(NAME), "cached": False}
+            return result
 
         except Exception as e:
-            self.logger.log("LLMChatError", {"error": str(e), "traceback": traceback.format_exc()})
+            self.logger.log("LLMChatError", {"error_type": type(e).__name__})
             raise
+
+    async def achat(
+        self,
+        messages: list[dict],
+        *,
+        context: Dict[str, Any],
+        agent_cfg: Dict[str, Any],
+        agent_name: str,
+        remove_think: bool = True,
+        llm_cfg_override: Optional[Dict[str, Any]] = None,
+        add_to_history: bool = False,
+        preferences: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """Async counterpart to ``chat`` so request cancellation reaches LiteLLM."""
+        resolved_cfg = self._resolve_cfg(agent_cfg, context)
+        props = llm_cfg_override or self._llm_props(resolved_cfg)
+        started = time.perf_counter()
+        try:
+            response = await litellm.acompletion(
+                **self._chat_call_params(props, messages)
+            )
+            result = self._chat_result(response, props, remove_think, started)
+            if add_to_history:
+                last_user = next(
+                    (m["content"] for m in reversed(messages) if m.get("role") == "user"),
+                    "",
+                )
+                self._append_prompt_history(
+                    context,
+                    agent_name,
+                    last_user,
+                    {"response": result["text"]},
+                    preferences,
+                )
+            return result
+        except Exception as e:
+            self.logger.log("LLMChatError", {"error_type": type(e).__name__})
+            raise
+
+    @staticmethod
+    def _chat_call_params(props: Dict[str, Any], messages: list[dict]) -> dict:
+        call_params = {
+            key: props[key]
+            for key in ("timeout", "max_tokens", "temperature", "top_p")
+            if props.get(key) is not None
+        }
+        call_params.update(
+            {"model": props[NAME], "messages": messages, "api_base": props[API_BASE]}
+        )
+        if props.get(API_KEY):
+            call_params["api_key"] = props[API_KEY]
+        return call_params
+
+    @classmethod
+    def _chat_result(cls, response, props, remove_think: bool, started: float) -> dict:
+        output = response["choices"][0]["message"]["content"]
+        text = remove_think_blocks(output) if remove_think else output
+        response_model = cls._response_value(response, "model") or props.get(NAME)
+        usage = cls._response_value(response, "usage")
+        if hasattr(usage, "model_dump"):
+            usage = usage.model_dump()
+        elif hasattr(usage, "dict"):
+            usage = usage.dict()
+        if not isinstance(usage, dict):
+            usage = None
+        response_id = cls._response_value(response, "id")
+        choice = response["choices"][0]
+        finish_reason = (
+            choice.get("finish_reason")
+            if isinstance(choice, dict)
+            else getattr(choice, "finish_reason", None)
+        )
+        configured_model = str(props.get(NAME) or "")
+        provider = cls._response_value(response, "provider") or (
+            configured_model.split("/", 1)[0] if "/" in configured_model else None
+        )
+        return {
+            "text": text,
+            "model_name": response_model,
+            "provider": provider,
+            "response_id": response_id,
+            "usage": usage,
+            "latency_ms": round((time.perf_counter() - started) * 1000, 2),
+            "finish_reason": finish_reason,
+            "cached": False,
+        }
+
+    @staticmethod
+    def _response_value(response, key: str):
+        try:
+            if isinstance(response, dict):
+                return response.get(key)
+            return getattr(response, key, None)
+        except Exception:
+            return None
 
     # --------------------- Internals ---------------------
 
@@ -183,7 +275,7 @@ class LLMService(Service):
                 # We let prompt rules be applied by the prompt loader normally; keeping this here for symmetry:
                 cfg = self.rules.apply_to_prompt(cfg, context)
         except Exception as e:
-            self.logger.log("LLMResolveCfgWarn", {"error": str(e)})
+            self.logger.log("LLMResolveCfgWarn", {"error": redact_secrets(str(e))})
         return cfg
 
     def _llm_props(self, cfg: Dict[str, Any]) -> Dict[str, Any]:
@@ -194,11 +286,16 @@ class LLMService(Service):
                 NAME: "ollama/qwen3",
                 API_BASE: "http://localhost:11434",
                 API_KEY: None,
+                "timeout": 60,
             }
         return {
             NAME: model_cfg.get(NAME, "ollama/qwen3"),
             API_BASE: model_cfg.get(API_BASE, "http://localhost:11434"),
             API_KEY: model_cfg.get(API_KEY),
+            "timeout": model_cfg.get("timeout", 60),
+            "max_tokens": model_cfg.get("max_tokens"),
+            "temperature": model_cfg.get("temperature"),
+            "top_p": model_cfg.get("top_p"),
         }
 
     def _maybe_fetch_cached_response(self, *, agent_name: str, prompt: str, agent_cfg: Dict[str, Any]) -> Optional[str]:

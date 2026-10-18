@@ -2,6 +2,11 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="container my-4">
+  <div class="alert alert-light border d-flex flex-wrap gap-2 align-items-center" role="status">
+    <strong>Configured model:</strong>
+    <code>{{ chat_status.model_name or 'not configured' }}</code>
+    <span class="text-muted">{{ chat_status.message }}</span>
+  </div>
   <div class="d-flex justify-content-between align-items-baseline mb-3">
     <h2 class="mb-0">Chat Conversations</h2>
     <form class="d-flex gap-2" method="get" action="/chats">
@@ -10,6 +15,48 @@
       <button class="btn btn-sm btn-outline-primary">Filter</button>
     </form>
   </div>
+
+  {% if chat_status.enabled or worker_status.enabled %}
+  <form id="new-chat-form" class="card card-body mb-3">
+    <label class="form-label" for="new-chat-title">{{ 'Start a conversation' if chat_status.enabled else 'Start a coding-task conversation' }}</label>
+    <div class="input-group">
+      <input id="new-chat-title" class="form-control" maxlength="200" placeholder="Conversation title">
+      <button id="new-chat-submit" class="btn btn-success" type="submit">{{ 'New chat' if chat_status.enabled else 'New task conversation' }}</button>
+    </div>
+    <div id="new-chat-error" class="text-danger small mt-2" role="status"></div>
+  </form>
+  <script>
+    const titleInput = document.getElementById("new-chat-title");
+    let createRequestId = crypto.randomUUID();
+    let creating = false;
+    titleInput.addEventListener("input", () => {
+      if (!creating) createRequestId = crypto.randomUUID();
+    });
+    document.getElementById("new-chat-form").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      if (creating) return;
+      creating = true;
+      const button = document.getElementById("new-chat-submit");
+      const error = document.getElementById("new-chat-error");
+      button.disabled = true;
+      error.textContent = "";
+      try {
+        const response = await fetch("/chats", {
+          method: "POST",
+          headers: {"Content-Type": "application/json", "Idempotency-Key": createRequestId},
+          body: JSON.stringify({title: titleInput.value})
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Could not create conversation");
+        window.location.href = `/chats/${data.conversation.id}`;
+      } catch (err) {
+        error.textContent = err.message;
+        creating = false;
+        button.disabled = false;
+      }
+    });
+  </script>
+  {% endif %}
 
   <div class="table-responsive">
     <table class="table table-hover align-middle">
