@@ -131,13 +131,35 @@ class PaperSectionsCache:
 
     # ----------------------- internal helpers ------------------------
 
+    @staticmethod
+    def _source_paper_of(sec: Any, default: str) -> str:
+        """The section's TRUE source paper.
+
+        The id prefix (``<source>::sec-<n>``) is authoritative. The ``paper_id``
+        column has historically been stamped with the ROOT paper for every row
+        (680 of 712 rows in the live DB), so trusting it re-attributes every
+        section to the root paper AND rewrites its id -- destroying the
+        attribution the blog generator depends on. Observed live: it rewrote
+        ``2505.05522::sec-3`` as ``2506.21734::sec-3``.
+        """
+        sid = str(getattr(sec, "section_id", None) or getattr(sec, "id", None) or "")
+        if "::" in sid:
+            prefix = sid.split("::", 1)[0].strip()
+            if prefix:
+                return prefix
+        return str(
+            getattr(sec, "paper_arxiv_id", None)
+            or getattr(sec, "paper_id", None)
+            or default
+        )
+
     def _group_by_source(
         self, *, arxiv_id: str, sections: List[PaperSection]
     ) -> Dict[str, List[PaperSection]]:
         grouped: Dict[str, List[PaperSection]] = {}
         for sec in sections:
-            pid = getattr(sec, "paper_arxiv_id", None) or getattr(sec, "paper_id", None) or arxiv_id
-            grouped.setdefault(str(pid), []).append(sec)
+            pid = self._source_paper_of(sec, arxiv_id)
+            grouped.setdefault(pid, []).append(sec)
         return grouped
 
     def _rows_for_paper(
@@ -192,10 +214,15 @@ class PaperSectionsCache:
         sections: List[PaperSection] = []
         for idx, r in enumerate(rows):
             raw_index = getattr(r, "section_index", None)
+            section_id = str(getattr(r, "id", None) or getattr(r, "section_id", "") or "")
+            # The id prefix is the authoritative source paper; the paper_id column
+            # is stamped with the root paper for the historical rows.
+            prefix = section_id.split("::", 1)[0].strip() if "::" in section_id else ""
             sections.append(
                 PaperSection(
-                    section_id=str(getattr(r, "id", None) or getattr(r, "section_id", "") or ""),
-                    paper_arxiv_id=str(getattr(r, "paper_id", None) or getattr(r, "paper_arxiv_id", "") or ""),
+                    section_id=section_id,
+                    paper_arxiv_id=prefix
+                    or str(getattr(r, "paper_id", None) or getattr(r, "paper_arxiv_id", "") or ""),
                     role=str(getattr(r, "role", None) or "reference"),
                     section_index=int(raw_index) if raw_index is not None else idx,
                     text=getattr(r, "text", None) or "",

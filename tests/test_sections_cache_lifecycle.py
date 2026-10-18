@@ -260,6 +260,39 @@ def test_replace_repairs_rows_misattributed_to_another_paper():
     assert store.rows[f"{RELATED}::sec-0"]["text"] == "fresh"
 
 
+def test_source_paper_comes_from_the_id_prefix_not_paper_id():
+    """Live DB shape: `paper_id` is stamped with the ROOT paper for every row
+    while the id prefix holds the true source. Trusting `paper_id` re-attributes
+    and re-numbers every section (observed live: it rewrote `2505.05522::sec-3`
+    as `2506.21734::sec-3`, which made the blog about the wrong paper)."""
+    store = FakePaperStore()
+    cache = _cache(store)
+    sec = _section(RELATED, 0, "related text")
+    sec.paper_arxiv_id = ROOT  # exactly what the paper_id column says
+
+    cache.persist(arxiv_id=ROOT, sections=[sec], replace=True)
+
+    assert list(store.rows) == [f"{RELATED}::sec-0"]
+    assert store.rows[f"{RELATED}::sec-0"]["paper_id"] == RELATED
+
+
+def test_loading_prefers_the_id_prefix_for_attribution():
+    store = FakePaperStore()
+    store.rows[f"{RELATED}::sec-0"] = {
+        "id": f"{RELATED}::sec-0",
+        "paper_id": ROOT,          # mis-attributed, as in the live DB
+        "section_index": 0,
+        "role": "reference",
+        "text": "t",
+        "title": "T",
+    }
+    loaded = _cache(store).maybe_load(ROOT)
+
+    assert loaded is not None and len(loaded) == 1
+    assert loaded[0].section_id == f"{RELATED}::sec-0"
+    assert loaded[0].paper_arxiv_id == RELATED  # not ROOT
+
+
 def test_shrinking_rebuild_removes_stale_orphans():
     """A rebuild that yields fewer sections must not leave higher-index rows
     behind for maybe_load() to serve."""
