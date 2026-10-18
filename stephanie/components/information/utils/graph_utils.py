@@ -12,9 +12,28 @@ from stephanie.components.information.graph.paper_graph_abi import (
 from stephanie.components.information.data import (
     PaperReferenceGraph,
 )
-from stephanie.components.nexus.graph.exporters.pyvis import export_pyvis_html
 
 log = logging.getLogger(__name__)
+
+
+def _load_pyvis_exporter():
+    """Return the PyVis HTML exporter, or ``None`` when pyvis is absent.
+
+    ``pyvis`` is an optional visualisation dependency (it is not declared in
+    requirements.txt), so the information pipeline must still run without it —
+    the graph HTML export is simply skipped.
+    """
+    try:
+        from stephanie.components.nexus.graph.exporters.pyvis import (
+            export_pyvis_html,
+        )
+        return export_pyvis_html
+    except Exception:  # pragma: no cover - depends on the environment
+        log.warning(
+            "PyVis exporter unavailable (install 'pyvis' for graph HTML export); "
+            "continuing without it"
+        )
+        return None
 
 def paper_graph_to_jsonable(graph: PaperReferenceGraph) -> Dict[str, Any]:
     """
@@ -113,10 +132,14 @@ def export_graph_pyvis(
         if not nodes:
             return None
 
+        exporter = _load_pyvis_exporter()
+        if exporter is None:
+            return None
+
         out_path = Path(report_dir) / f"{arxiv_id}_graph.html"
         out_path.parent.mkdir(parents=True, exist_ok=True)
 
-        export_pyvis_html(
+        exporter(
             nodes=nodes,
             edges=edges,
             output_path=str(out_path),
