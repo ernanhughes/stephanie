@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import Dict, Tuple
 
 import numpy as np
-from zeromodel.vpm.explain import OcclusionVPMInterpreter
 
 
 def occlusion_importance_from_vpm(
@@ -64,12 +63,27 @@ def occlusion_importance_from_zeromodel(
     patch_h: int = 12, patch_w: int = 12, stride: int = 8, prior: str = "top_left", channel_agg: str = "mean"
 ) -> Tuple[np.ndarray, Dict]:
     """
-    If your ZeroModelService exposes a prepared ZeroModel with sorted_matrix,
-    use the provided interpreter; else fall back to the VPM-based path.
+    Fall back to the native VPM-based occlusion importance (OcclusionVPMInterpreter
+    was removed from zeromodel v1.3.0). Accepts a ZeroModel-like object or a
+    prepared RGB VPM array.
     """
-    interpreter = OcclusionVPMInterpreter(
-        patch_h=patch_h, patch_w=patch_w, stride=stride,
-        prior=prior, channel_agg=channel_agg
-    )
-    imp, meta = interpreter.explain(zeromodel)
-    return imp.astype(np.float32), meta
+    import numpy as np
+
+    v = zeromodel
+    if isinstance(v, np.ndarray):
+        return occlusion_importance_from_vpm(
+            v, patch_h=patch_h, patch_w=patch_w, stride=stride,
+            prior=prior, channel_agg=channel_agg,
+        )
+    # If it's a service/object, try to extract a prepared matrix
+    try:
+        arr = getattr(v, "sorted_matrix", None) or getattr(v, "matrix", None)
+        if arr is not None:
+            return occlusion_importance_from_vpm(
+                arr, patch_h=patch_h, patch_w=patch_w, stride=stride,
+                prior=prior, channel_agg=channel_agg,
+            )
+    except Exception:
+        pass
+    # Last resort: zeros
+    return np.zeros((1, 1), dtype=np.float32), {"base_score": 0.0}

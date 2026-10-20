@@ -9,5 +9,6 @@ greenlet>=3           # SQLAlchemy async/greenlet support
 hnswlib>=0.8           # stephanie.orm.hnsw_index (NER/vector index)
 nats-py>=2.6           # KnowledgeBus NATS backend (config/bus/nats.yaml)
 pyzmq>=25              # ZmqCacheService (services/default.yaml: cache)
-ZeroModel>=1.0.9       # stephanie.services.zeromodel_service
+zeromodel-core>=1.3.0       # stephanie.services.zeromodel_service (ScoreTable, VPMArtifact, render)
+zeromodel-analysis>=1.3.0   # SpatialOptimizer, compose logic ops, PHOS, TopLeftGate
 colorama>=0.4          # transitive CLI colour support

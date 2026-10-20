@@ -18,9 +18,9 @@ import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import scipy.stats as spstats  # optional, but nice if available
-# from zeromodel.pipeline.executor import PipelineExecutor
-# from zeromodel.tools.gif_logger import GifLogger
-# from zeromodel.tools.spatial_optimizer import SpatialOptimizer
+# from zeromodel.pipeline.executor import PipelineExecutor          # removed in zeromodel v1.3.0
+# from zeromodel.tools.gif_logger import GifLogger                  # removed in zeromodel v1.3.0
+# from zeromodel.tools.spatial_optimizer import SpatialOptimizer    # moved to zeromodel.analysis.spatial
 
 from stephanie.scoring.scorable import Scorable
 from stephanie.services.event_service import EventService
@@ -33,9 +33,90 @@ if matplotlib.get_backend().lower() != "agg":
 
 from PIL import Image
 
+
 log = logging.getLogger(__name__)
 
+# ---------------------------------------------------------------------------
+# ZeroModel v1.3.0 compatibility shims
+# ---------------------------------------------------------------------------
+# zeromodel v1.3.0 removed GifLogger and PipelineExecutor. These minimal
+# replacements keep stephanie's GIF/pipeline code paths functional using
+# PIL + NumPy only.
+
+
+class _Frame:
+    __slots__ = ("image", "metrics")
+
+    def __init__(self, image, metrics=None):
+        self.image = image
+        self.metrics = metrics or {}
+
+
+class GifLogger:
+    """Minimal animated-GIF logger (replaces removed zeromodel.tools.gif_logger.GifLogger)."""
+
+    def __init__(self, max_frames=100):
+        self.max_frames = int(max_frames)
+        self.frames = []
+
+    def add_frame(self, vpm_out, metrics=None):
+        if len(self.frames) >= self.max_frames:
+            return
+        arr = np.asarray(vpm_out)
+        if arr.ndim == 3:
+            if arr.shape[0] in (1, 3, 4):
+                arr = arr[0] if arr.shape[0] == 1 else arr.mean(axis=0)
+            else:
+                arr = arr[..., 0] if arr.shape[-1] in (1, 3, 4) else arr.mean(axis=-1)
+        arr = np.nan_to_num(arr)
+        mn, mx = float(arr.min()), float(arr.max())
+        if mx - mn <= 1e-9:
+            arr = np.zeros_like(arr, dtype=np.uint8)
+        else:
+            arr = np.clip((arr - mn) / (mx - mn + 1e-9) * 255.0, 0, 255).astype(np.uint8)
+        self.frames.append(_Frame(Image.fromarray(arr, mode="L"), metrics))
+
+    def save_gif(self, path, fps=10):
+        if not self.frames:
+            return
+        duration = max(1, int(1000 / max(1, fps)))
+        first = self.frames[0].image
+        rest = [f.image for f in self.frames[1:]]
+        first.save(
+            path,
+            save_all=True,
+            append_images=rest,
+            duration=duration,
+            loop=0,
+            optimize=True,
+        )
+
+
+class PipelineExecutor:
+    """Minimal pipeline executor (replaces removed zeromodel.pipeline.executor.PipelineExecutor)."""
+
+    def __init__(self, stages=None):
+        self.stages = stages or []
+
+    def run(self, row, config=None):
+        arr = np.asarray(row, dtype=np.float32)
+        if arr.ndim == 1:
+            arr = arr[None, :]
+        for stage in self.stages:
+            sname = stage.get("stage", "")
+            if sname == "normalize":
+                arr = np.nan_to_num(arr)
+                mn, mx = float(arr.min()), float(arr.max())
+                rng = mx - mn
+                if rng > 1e-9:
+                    arr = (arr - mn) / rng
+                else:
+                    arr = np.zeros_like(arr)
+        return arr, {"stages": [s.get("stage") for s in self.stages]}
+
+
 _DEFAULT_PIPELINE = [
+
     {"stage": "normalize", "params": {}},
     {"stage": "feature_engineering", "params": {}},
     {"stage": "organization", "params": {"strategy": "spatial"}},
@@ -1000,19 +1081,36 @@ class ZeroModelService(Service):
             }
 
         # -------------------------------
-        # 2️⃣ Learn canonical layout
+        # 2️⃣ Learn canonical layout (zeromodel v1.3.0 SpatialOptimizer)
         # -------------------------------
         if progress_cb:
             progress_cb("optimize_layout_start", 2, 5)
+        from zeromodel.analysis.spatial import SpatialOptimizer
+        from zeromodel.core.artifact import ScoreTable
+
         opt = SpatialOptimizer(Kc=Kc, Kr=Kr, alpha=alpha)
-        opt.apply_optimization([X_pos])
-        w = opt.metric_weights
-        layout = opt.canonical_layout
+        n_rows, n_cols = X_pos.shape
+        # Ensure finite values (ScoreTable requires finite matrices)
+        X_pos = np.nan_to_num(X_pos, nan=0.0, posinf=0.0, neginf=0.0)
+        X_neg = np.nan_to_num(X_neg, nan=0.0, posinf=0.0, neginf=0.0)
+        score_table = ScoreTable(
+            values=X_pos,
+            row_ids=[f"r{i}" for i in range(n_rows)],
+            metric_ids=[f"m{j}" for j in range(n_cols)],
+        )
+        result = opt.fit(score_table)
+        w = np.array(
+            [float(result.metric_weights.get(f"m{j}", 0.0)) for j in range(n_cols)],
+            dtype=np.float64,
+        )
+        # column_order from the fit gives the canonical layout ordering
+        _, _, col_order = opt.ordered_values(X_pos, w)
+        layout = np.array(col_order, dtype=int)
         if progress_cb:
             progress_cb("optimize_layout_done", 3, 5)
 
         # Build index mapping: old_index -> new_position (based on canonical layout)
-        if layout is not None:
+        if layout is not None and len(layout) > 0:
             flat_layout = np.ravel(layout)
             order = np.argsort(flat_layout)
             if metric_names and len(order) > len(metric_names):
@@ -1025,12 +1123,12 @@ class ZeroModelService(Service):
             index_mapping = {i: i for i in range(len(metric_names or []))}
 
         # -------------------------------
-        # 3️⃣ Apply canonical transform
+        # 3️⃣ Apply canonical transform (ordered_values replaces phi_transform)
         # -------------------------------
         if progress_cb:
             progress_cb("project", 4, 5)
-        Y_pos, _, _ = opt.phi_transform(X_pos, w, w)
-        Y_neg, _, _ = opt.phi_transform(X_neg, w, w)
+        Y_pos, _, _ = opt.ordered_values(X_pos, w)
+        Y_neg, _, _ = opt.ordered_values(X_neg, w)
 
         # Normalize & align
         Y_pos = _normalize_field(Y_pos)
@@ -2173,15 +2271,29 @@ class ZeroModelService(Service):
             A2, B2 = A[:, :d], B[:, :d]
             common_names = [f"metric_{i}" for i in range(d)]
 
-        # 2) optimize on A, reuse for B
-        from zeromodel.tools.spatial_optimizer import SpatialOptimizer
+        # Ensure finite values (ScoreTable requires finite matrices)
+        A2 = np.nan_to_num(A2, nan=0.0, posinf=0.0, neginf=0.0)
+        B2 = np.nan_to_num(B2, nan=0.0, posinf=0.0, neginf=0.0)
+
+        # 2) optimize on A, reuse for B (zeromodel v1.3.0 SpatialOptimizer)
+        from zeromodel.analysis.spatial import SpatialOptimizer
+        from zeromodel.core.artifact import ScoreTable
 
         opt = SpatialOptimizer(Kc=Kc, Kr=Kr, alpha=alpha)
-        opt.apply_optimization([A2])
-        w = opt.metric_weights
+        n_rows, n_cols = A2.shape
+        score_table = ScoreTable(
+            values=A2,
+            row_ids=[f"r{i}" for i in range(n_rows)],
+            metric_ids=[f"m{j}" for j in range(n_cols)],
+        )
+        result = opt.fit(score_table)
+        w = np.array(
+            [float(result.metric_weights.get(f"m{j}", 0.0)) for j in range(n_cols)],
+            dtype=np.float64,
+        )
 
-        YA, _, _ = opt.phi_transform(A2, w, w)
-        YB, _, _ = opt.phi_transform(B2, w, w)
+        YA, _, _ = opt.ordered_values(A2, w)
+        YB, _, _ = opt.ordered_values(B2, w)
 
         # normalize (defensive)
         def _norm(m):

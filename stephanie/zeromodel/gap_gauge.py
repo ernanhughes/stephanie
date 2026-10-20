@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
-from zeromodel.pipeline.organizer.top_left import TopLeft
+from zeromodel.analysis.phos import top_left_concentration
 
 from stephanie.scoring.metrics.frontier_lens import (FrontierLensEpisode,
                                                      episode_features)
@@ -78,33 +78,17 @@ def _compare_vpms_topleft(
     vpm_base: np.ndarray,
     vpm_tgt: np.ndarray,
     *,
-    metric_mode: str = "luminance",
-    iterations: int = 5,
-    push_corner: str = "tl",
-    monotone_push: bool = True,
-    stretch: bool = True,
+    fraction: float = 0.25,
 ) -> Dict[str, Any]:
     """
-    Canonicalize baseline & target VPMs with TopLeft, then compute a simple
-    'is target visually better than baseline?' metric.
+    Compare baseline & target VPMs using zeromodel's top_left_concentration
+    (v1.3.0 API), then compute a simple 'is target visually better than baseline?'
+    metric from the raw difference.
     """
-    stage = TopLeft(
-        metric_mode=metric_mode,
-        iterations=iterations,
-        push_corner=push_corner,
-        monotone_push=monotone_push,
-        stretch=stretch,
-    )
+    tl_base = float(top_left_concentration(vpm_base, fraction=fraction))
+    tl_tgt = float(top_left_concentration(vpm_tgt, fraction=fraction))
 
-    tl_base, meta_base = stage.process(vpm_base)
-    tl_tgt, meta_tgt = stage.process(vpm_tgt)
-
-    tl_base = tl_base.astype(np.float32)
-    tl_tgt = tl_tgt.astype(np.float32)
-    assert tl_base.shape == tl_tgt.shape, "Base/Target shapes must match after TopLeft"
-
-    diff = tl_tgt - tl_base
-
+    diff = vpm_tgt - vpm_base
     gain = float(np.sum(np.clip(diff, 0.0, None)))
     loss = float(np.sum(np.clip(-diff, 0.0, None)))
     total = gain + loss + 1e-8
@@ -112,14 +96,17 @@ def _compare_vpms_topleft(
     improvement_ratio = gain / total
 
     return {
-        "topleft_base": tl_base,
-        "topleft_tgt": tl_tgt,
+        "topleft_base": vpm_base,
+        "topleft_tgt": vpm_tgt,
         "topleft_diff": diff,
+        "topleft_concentration_base": tl_base,
+        "topleft_concentration_tgt": tl_tgt,
+        "topleft_concentration_delta": tl_tgt - tl_base,
         "gain": gain,
         "loss": loss,
         "improvement_ratio": improvement_ratio,
-        "meta_base": meta_base,
-        "meta_tgt": meta_tgt,
+        "meta_base": {"concentration": tl_base, "fraction": fraction},
+        "meta_tgt": {"concentration": tl_tgt, "fraction": fraction},
     }
 
 
@@ -167,11 +154,7 @@ def compute_gap_gauge(
 
     if vpm_baseline is not None and vpm_target is not None:
         cfg = dict(
-            metric_mode="luminance",
-            iterations=5,
-            push_corner="tl",
-            monotone_push=True,
-            stretch=True,
+            fraction=0.25,
         )
         if topleft_cfg:
             cfg.update(topleft_cfg)

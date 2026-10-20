@@ -31,12 +31,32 @@ from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter
-from zeromodel.vpm.logic import (normalize_vpm, vpm_and, vpm_nand, vpm_nor,
-                                 vpm_not, vpm_or, vpm_subtract, vpm_xor)
+from zeromodel.analysis.compose import vpm_and, vpm_not, vpm_or, vpm_subtract, vpm_xor
 
 from stephanie.components.nexus.utils.visual_thought import (VisualThoughtOp,
                                                              VisualThoughtType)
 from stephanie.utils.vpm_utils import resize_bilinear_np
+
+
+def normalize_vpm(arr: np.ndarray) -> np.ndarray:
+    """Min-max normalize a 2D array to [0, 1] (replaces removed zeromodel.vpm.logic.normalize_vpm)."""
+    a = np.asarray(arr, dtype=np.float32)
+    if a.size == 0:
+        return a
+    mn, mx = float(a.min()), float(a.max())
+    if mx - mn <= 1e-9:
+        return np.zeros_like(a, dtype=np.float32)
+    return np.clip((a - mn) / (mx - mn + 1e-9), 0.0, 1.0).astype(np.float32)
+
+
+def vpm_nand(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+    """NAND: NOT(AND(a, b)) — composed from zeromodel.analysis.compose ops."""
+    return vpm_not(vpm_and(a, b))
+
+
+def vpm_nor(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+    """NOR: NOT(OR(a, b)) — composed from zeromodel.analysis.compose ops."""
+    return vpm_not(vpm_or(a, b))
 
 
 def _clamp_int(v, lo, hi):

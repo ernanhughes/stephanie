@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, Optional
 
 import numpy as np
-from zeromodel.vpm.logic import normalize_vpm
+from stephanie.utils.vpm_utils import normalize01 as normalize_vpm
 
 from stephanie.components.nexus.vpm.explain_adapter import \
     occlusion_importance_from_vpm

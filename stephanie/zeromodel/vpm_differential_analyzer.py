@@ -6,7 +6,7 @@ from pathlib import Path
 
 import matplotlib
 import numpy as np
-from zeromodel.vpm.logic import vpm_add, vpm_and, vpm_subtract, vpm_xor
+from zeromodel.analysis.compose import vpm_add, vpm_and, vpm_subtract, vpm_xor
 
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
