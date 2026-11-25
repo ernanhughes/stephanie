@@ -7,7 +7,14 @@ import re
 from pathlib import Path
 
 import yaml
-from fuzzywuzzy import process
+
+try:
+    from fuzzywuzzy import process as _fuzzy_process
+except ImportError:  # pragma: no cover - prefer rapidfuzz, fall back to stdlib
+    try:
+        from rapidfuzz import process as _fuzzy_process
+    except ImportError:
+        _fuzzy_process = None
 
 from stephanie.utils.string_utils import clean_heading as util_clean_heading
 from stephanie.utils.string_utils import normalize_key, trunc
@@ -186,13 +193,23 @@ class DocumentSectionParser:
                 mapped[category] = content
                 continue
 
-            # Fuzzy
+            # Fuzzy (rapidfuzz/fuzzywuzzy when available, else stdlib fallback)
             if not self.SECTION_TO_CATEGORY:
                 continue
 
-            best_match, score = process.extractOne(
-                normalized, self.SECTION_TO_CATEGORY.keys()
-            )
+            if _fuzzy_process is not None:
+                best_match, score = _fuzzy_process.extractOne(
+                    normalized, self.SECTION_TO_CATEGORY.keys()
+                )
+            else:
+                import difflib
+
+                candidates = list(self.SECTION_TO_CATEGORY.keys())
+                matches = difflib.get_close_matches(normalized, candidates, n=1, cutoff=0.8)
+                if not matches:
+                    continue
+                best_match = matches[0]
+                score = 80
             if score > 75:
                 category = self.SECTION_TO_CATEGORY[best_match]
                 mapped[category] = content

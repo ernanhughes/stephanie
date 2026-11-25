@@ -18,10 +18,10 @@ from typing import Dict, List, Optional
 from dataclasses import dataclass, field
 
 from stephanie.data.score_bundle import ScoreBundle
-from stephanie.components.elm.governance.signal_extractor import (
+from stephanie.components.elm.axes import (
     AxisDirection,
     DIMENSION_TO_AXIS,
-    AXIS_SEMANTICS
+    AXIS_SEMANTICS,
 )
 
 logger = logging.getLogger(__name__)
@@ -104,13 +104,13 @@ class DominanceChecker:
         """Validate all dimensions map to known governance axes"""
         unknown = []
         for dim in self.critical_dimensions + self.safety_dimensions:
-            if dim not in DIMENSION_TO_AXIS:
+            if dim not in DIMENSION_TO_AXIS and dim not in AXIS_SEMANTICS:
                 unknown.append(dim)
-        
+
         if unknown:
             raise ValueError(
                 f"Unknown dimensions in dominance config: {unknown}. "
-                f"Available dimensions: {list(DIMENSION_TO_AXIS.keys())}"
+                f"Available dimensions: {sorted(set(DIMENSION_TO_AXIS) | set(AXIS_SEMANTICS))}"
             )
     
     def check(
@@ -130,26 +130,28 @@ class DominanceChecker:
         Returns:
             DominanceResult with detailed diagnostics
         """
-        diff = bundle_after.diff(bundle_before)
+        # ScoreBundle.diff(self=before, other=after) returns after - before.
+        diff = bundle_before.diff(bundle_after)
         failed_axes = []
         passed_axes = []
         delta_summary = {}
         failure_reasons = []
-        
+
         # Check each critical dimension
         for dim in self.critical_dimensions:
             if dim not in diff.get("dimensions", {}):
                 failed_axes.append(dim)
                 failure_reasons.append(f"Dimension '{dim}' missing in diff comparison")
                 continue
-            
+
             dim_diff = diff["dimensions"][dim]
             delta = dim_diff.get("score_delta", 0.0)
             delta_summary[dim] = delta
-            
-            # Map to governance axis
-            axis = DIMENSION_TO_AXIS[dim]
-            direction = AXIS_SEMANTICS[axis]
+
+            # Map to governance axis (dimension-native: dim is its own axis
+            # unless an explicit mapping exists).
+            axis = DIMENSION_TO_AXIS.get(dim, dim)
+            direction = AXIS_SEMANTICS.get(axis, AXIS_SEMANTICS.get(dim, AxisDirection.HIGHER_IS_BETTER))
             
             # Determine if improvement occurred
             is_improved = self._is_improvement(delta, direction, dim in self.safety_dimensions and strict_safety)
@@ -215,7 +217,7 @@ class DominanceChecker:
     
     def add_critical_dimension(self, dimension: str) -> None:
         """Add dimension to critical set (runtime configuration)"""
-        if dimension not in DIMENSION_TO_AXIS:
+        if dimension not in DIMENSION_TO_AXIS and dimension not in AXIS_SEMANTICS:
             raise ValueError(f"Unknown dimension: {dimension}")
         
         if dimension not in self.critical_dimensions:

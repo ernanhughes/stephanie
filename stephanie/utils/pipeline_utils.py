@@ -6,7 +6,12 @@ from statistics import mean
 
 from stephanie.constants import PIPELINE_RUN_ID
 
-from tabulate import tabulate
+try:
+    from tabulate import tabulate
+except ImportError:  # pragma: no cover - pretty printing is optional
+    def tabulate(rows, headers=None, tablefmt=None):  # type: ignore[misc]
+        return str(rows)
+
 import logging
 log = logging.getLogger(__name__)
 

@@ -9,12 +9,24 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-import hnswlib
 import numpy as np
+
+try:  # Optional dependency: only needed when HNSWIndex is instantiated.
+    import hnswlib
+except ImportError:  # pragma: no cover - allows collection without hnswlib
+    hnswlib = None  # type: ignore[no-redef]
 
 from stephanie.utils.hash_utils import hash_text
 
 log = logging.getLogger(__name__)
+
+
+def _require_hnswlib() -> None:
+    if hnswlib is None:
+        raise ImportError(
+            "hnswlib is not installed. Install it to use HNSWIndex "
+            "(see requirements_docker.txt: hnswlib>=0.8)."
+        )
 
 class HNSWIndex:
     """Robust wrapper for hnswlib index with metadata management and deduplication."""
@@ -33,6 +45,7 @@ class HNSWIndex:
         ef_search: int = 50,
         deduplication_threshold: float = 0.98,
     ):
+        _require_hnswlib()
         self.dim = int(dim)
         self.space = str(space)
         self.persistent = bool(persistent)
@@ -51,7 +64,7 @@ class HNSWIndex:
         log.debug(f"HNSWIndex prefix resolved to: {self.index_prefix}")
 
         # Core state
-        self.index: Optional[hnswlib.Index] = None
+        self.index: Optional[Any] = None
         self.metadata: List[Dict[str, Any]] = []
         self.entity_key_to_idx: Dict[str, int] = {}
         self.initiated = False
@@ -90,7 +103,8 @@ class HNSWIndex:
         return str(p.resolve())
 
     # ---------- Index lifecycle ----------
-    def _new_index(self) -> hnswlib.Index:
+    def _new_index(self) -> Any:
+        _require_hnswlib()
         idx = hnswlib.Index(space=self.space, dim=self.dim)
         idx.init_index(max_elements=self.max_elements, ef_construction=self.ef_construction, M=self.M)
         idx.set_ef(self.ef_search)
@@ -98,6 +112,7 @@ class HNSWIndex:
 
     def _load_index_or_init(self) -> None:
         """Load if files exist; otherwise initialize empty index."""
+        _require_hnswlib()
         if os.path.exists(self.index_bin) and os.path.exists(self.meta_file):
             try:
                 self.index = hnswlib.Index(space=self.space, dim=self.dim)

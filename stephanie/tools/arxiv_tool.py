@@ -8,13 +8,20 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional
 from urllib.parse import urlparse
 
-import arxiv
 import requests
 
 log = logging.getLogger(__name__)
 
 
 def search_arxiv(queries: list[str], max_results: int = 5) -> list[dict]:
+    try:
+        import arxiv
+    except ImportError as exc:  # pragma: no cover - optional at import time
+        raise ImportError(
+            "The 'arxiv' package is not installed. Install it to use search_arxiv "
+            "(see requirements: arxiv>=2.1)."
+        ) from exc
+
     results = []
     for query in queries:
         search = arxiv.Search(query=query, max_results=max_results)

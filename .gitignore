@@ -1,6 +1,7 @@
 .idea/
 .stephanie_cache/
 .paper_cache/
+.aitest/
 outputs/
 /models/
 /artifacts/

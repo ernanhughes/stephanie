@@ -4,7 +4,10 @@ ELM: Experimental Learning Module for governed self-improvement.
 """
 
 # Core primitives
-from stephanie.components.elm.orchestration.system_interface import SystemInterface
+from stephanie.components.elm.orchestration.system_interface import (
+    SystemInterface,
+    MockSystem,
+)
 from .core.context_pack import (
     ContextPack,
     ContextPackCollection,
@@ -38,7 +41,7 @@ from .experiment.perturbation_injector import (
     register_custom_severity
 )
 from .orchestration.orchestrator import ELMOrchestrator
-from .orchestration.system_interface import  SystemInterface
+from .orchestration.system_interface import SystemInterface, MockSystem
 
 __all__ = [
     # Core
@@ -46,7 +49,6 @@ __all__ = [
     "ContextPackCollection",
     "ContextType",
     "Modality",
-    "RewardAxis",
     "CalibratedThresholds",
     
     # Tracking
@@ -76,4 +78,5 @@ __all__ = [
     # Orchestration
     "ELMOrchestrator",
     "SystemInterface",
+    "MockSystem",
 ]

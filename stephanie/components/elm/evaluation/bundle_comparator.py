@@ -2,7 +2,7 @@
 
 from typing import List, Dict
 from stephanie.data.score_bundle import ScoreBundle
-from components.elm.axes import AXIS_SEMANTICS, AxisDirection
+from stephanie.components.elm.axes import AXIS_SEMANTICS, AxisDirection
 
 
 class BundleComparator:

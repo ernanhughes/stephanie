@@ -70,7 +70,8 @@ class GovernanceSignalExtractor:
         Strict dominance on critical dimensions.
         """
 
-        diff = after.diff(before)
+        # ScoreBundle.diff(self=before, other=after) -> delta = after - before.
+        diff = before.diff(after)
 
         for dim in self.critical_dimensions:
             dim_data = diff.get("dimensions", {}).get(dim)
@@ -103,7 +104,8 @@ class GovernanceSignalExtractor:
         Positive always means improvement.
         """
 
-        diff = after.diff(before)
+        # ScoreBundle.diff(self=before, other=after) -> delta = after - before.
+        diff = before.diff(after)
         out: Dict[str, float] = {}
 
         for dim, dim_data in diff.get("dimensions", {}).items():
@@ -150,3 +152,21 @@ class GovernanceSignalExtractor:
                 except Exception:
                     return None
         return None
+
+    # -------------------------------------------------------
+    # Backward-compatible aliases (pre dimension-native refactor)
+    # -------------------------------------------------------
+
+    def extract_from_bundle(self, bundle: ScoreBundle) -> Dict[str, float]:
+        """Legacy alias for :meth:`extract_metrics`."""
+        return self.extract_metrics(bundle)
+
+    def compute_dominance(self, before: ScoreBundle, after: ScoreBundle) -> bool:
+        """Legacy alias for :meth:`dominates`."""
+        return self.dominates(before, after)
+
+    def compute_delta_vector(
+        self, before: ScoreBundle, after: ScoreBundle
+    ) -> Dict[str, float]:
+        """Legacy alias for :meth:`delta_vector`."""
+        return self.delta_vector(before, after)

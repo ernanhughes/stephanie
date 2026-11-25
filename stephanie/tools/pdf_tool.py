@@ -10,10 +10,28 @@ from typing import Any, Dict, List, Optional, Union
 from urllib.parse import urlparse
 
 import requests
-from pdfminer.high_level import extract_text
-from pdfminer.pdfparser import PDFSyntaxError
 
 log = logging.getLogger(__name__)
+
+
+def _pdfminer_extract_text(*args, **kwargs):
+    try:
+        from pdfminer.high_level import extract_text
+    except ImportError as exc:
+        raise ImportError(
+            "pdfminer.six is not installed. Install it to use PDFConverter "
+            "(see requirements: pdfminer.six)."
+        ) from exc
+    return extract_text(*args, **kwargs)
+
+
+def _pdfminer_syntax_error():
+    try:
+        from pdfminer.pdfparser import PDFSyntaxError
+
+        return PDFSyntaxError
+    except ImportError:
+        return Exception
 
 
 # ---------------------------------------------------------------------------
@@ -72,9 +90,9 @@ class PDFConverter:
 
         try:
             # Just try reading the first page
-            _ = extract_text(str(path), maxpages=1)
+            _ = _pdfminer_extract_text(str(path), maxpages=1)
             return True
-        except PDFSyntaxError:
+        except _pdfminer_syntax_error():
             return False
         except Exception as e:
             log.exception("[validate_pdf] Exception while parsing %s: %s", file_path, e)
@@ -93,11 +111,11 @@ class PDFConverter:
             log.error("[pdf_to_text] File not found: %s", file_path)
             return ""
         try:
-            text = extract_text(str(file_path))
+            text = _pdfminer_extract_text(str(file_path))
             # Remove null characters and trim
             clean_text = text.replace("\x00", "")
             return clean_text.strip()
-        except PDFSyntaxError as e:
+        except _pdfminer_syntax_error() as e:
             log.error("[pdf_to_text] PDFSyntaxError for file %s: %s", file_path, e)
             return ""
         except Exception as e:
