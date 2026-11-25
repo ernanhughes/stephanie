@@ -88,7 +88,7 @@ class TrialORM(Base):
     experiment_group = Column(
         String, nullable=True, index=True
     )  # e.g. "experimental", "control", "null"
-    tags_used = Column(JSONB, default=list)  # e.g. ["paper:2106.09685"]
+    tags_used = Column(JSON().with_variant(JSONB(), "postgresql"), default=list)  # e.g. ["paper:2106.09685"]
 
     assigned_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.now

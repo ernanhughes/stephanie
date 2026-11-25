@@ -1,12 +1,13 @@
 # Stephanie Next — Target Architecture
 
-**Status:** STN00 proposal; STN01 database/runtime and STN02 secure chat foundations implemented. Pi/OpenCode adapters and generic execution/run contracts remain unimplemented.  
-**Design rule:** evolve existing Stephanie foundations; do not create a parallel chat store, memory system, configuration framework or event bus.
+**Status:** STN00 proposal as amended by the accepted Shared AI Foundation decision; STN01 database/runtime and STN02 secure chat foundations implemented. Pi/OpenCode adapters and generic execution/run contracts remain unimplemented.
+**Design rule:** evolve existing Stephanie foundations and consume reusable mechanisms from `C:\Projects\ai`; do not create a parallel chat store, memory system, configuration framework or event bus.
 
 ## Ownership
 
 | Owner | Authority |
 |---|---|
+| AI (`C:\Projects\ai`) | Shared, application-independent mechanisms and contracts: inference, structured output, embeddings, retrieval, memory and generic experiment primitives where their scope fits |
 | Stephanie | Conversation policy, goal interpretation, orchestration, memory/experience, evaluation and learning |
 | Hydra / OmegaConf | Configuration composition, reproducible pipelines, per-run overrides |
 | SIS | Authenticated local user interaction, visibility, approvals and controls |
@@ -17,6 +18,11 @@
 | MemCube / CaseBooks / existing stores | Long-lived structured knowledge and reusable experience |
 | Pi | Its own agent loop, sessions, tools and runtime state |
 | OpenCode | Its own server/session, model selection, tools and permission behavior |
+
+Stephanie-specific improvement policy remains in Stephanie; execution
+composition and enforcement remain in Worker; comparative effectiveness
+remains in Praxis; operational authority and acceptance remain in Mission
+Control. AI supplies mechanisms and contracts and does not own those workflows.
 
 ## Logical flow
 
@@ -47,7 +53,7 @@ Simple chat must not start a Supervisor pipeline. Existing pipelines must remain
 5. **Evidence:** stable references to chat messages, PlanTrace, tool/run artifacts, tests and evaluator outputs. Preserve provenance; do not label model assertions verified facts.
 6. **Improvement proposal/evaluation:** candidate artifact and parent version are separate from evaluator protocol/results. The proposer cannot set final scoring rules or held-out data.
 
-The first slice deliberately uses the existing LLM service and has not introduced generic runtime/event interfaces prematurely.
+The first chat slice deliberately uses the existing LLM service and has not introduced generic runtime/event interfaces prematurely. For future model-assisted Stephanie investigation, prefer the existing `ai.inference` provider boundary and structured-output service. Replacing or wrapping the current chat `LLMService` requires a separately tested migration and is not implied by this architecture amendment. See the AI dependency map and compatibility assessment for current consumer evidence.
 
 ## Persistence boundary
 

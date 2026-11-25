@@ -1,0 +1,5 @@
+# Backup and rollback evidence
+
+**Status: NOT QUALIFIED.** No operational backup was created, tested, or restored; no activation or rollback was attempted. Read-only observation on 2026-11-25 found Mission `:8790` health `ok`, version `0.1.0`, database `ok`, schema 54, AI/monitor enabled. The health response does not disclose the exact database identity, DSN, configuration fingerprint, or source revision. No credentials were read or retained. The UI-root response is not a health check.
+
+The prior SC4 implementation report's `ACTIVATION-AND-ROLLBACK.md` describes a future safe sequence; it is not evidence that a backup exists or rollback works. The real-CLI test used only its disposable pytest run root and Stephanie memory SQLite under that root; it did not back up or restore Mission's operational database. SC4C remains blocked until a controlled release source set, exact operational database/configuration identity, protected backup, isolated restore and service rollback rehearsal are recorded.

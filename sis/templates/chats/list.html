@@ -6,6 +6,9 @@
     <strong>Configured model:</strong>
     <code>{{ chat_status.model_name or 'not configured' }}</code>
     <span class="text-muted">{{ chat_status.message }}</span>
+    {% if chat_status.external_routes %}
+    <div class="w-100 small text-muted">Explicitly approved external route: {% for route in chat_status.external_routes %}<code>{{ route.name }}</code> ({{ route.economic_tier }}){% if not loop.last %}, {% endif %}{% endfor %}. Turn-level privacy approval is required.</div>
+    {% endif %}
   </div>
   <div class="d-flex justify-content-between align-items-baseline mb-3">
     <h2 class="mb-0">Chat Conversations</h2>

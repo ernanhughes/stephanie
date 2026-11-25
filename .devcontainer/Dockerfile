@@ -1,17 +1,14 @@
 # -----------------------------------------------------------------------------
 # Stephanie Dev Container
 # -----------------------------------------------------------------------------
-# Base: Microsoft Dev Containers (Ubuntu 24.04 with zsh, sudo, etc.)
-FROM mcr.microsoft.com/devcontainers/base:ubuntu-24.04
+# Base: Microsoft Dev Containers Python image with Python 3.13 on Debian Bookworm.
+FROM mcr.microsoft.com/devcontainers/python:3.13-bookworm
 
 # -----------------------------------------------------------------------------
 # Install system dependencies
 # -----------------------------------------------------------------------------
 RUN apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-        python3 \
-        python3-venv \
-        python3-pip \
         build-essential \
         libpq-dev \
         git \
@@ -21,7 +18,7 @@ RUN apt-get update && \
 # -----------------------------------------------------------------------------
 # Create dedicated virtual environment for Stephanie
 # -----------------------------------------------------------------------------
-RUN python3 -m venv /venv \
+RUN python -m venv /venv \
     && /venv/bin/pip install --upgrade pip setuptools wheel
 
 # Add venv to PATH

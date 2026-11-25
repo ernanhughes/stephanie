@@ -1,0 +1,5 @@
+# S7 — Standalone qualification
+
+P1 resolves the known false-verified label defect on the supplied fixtures. P2 returns `INCONCLUSIVE` when baseline and candidate have equal fixture accuracy. P3 rejects a candidate regression; P4 abstains on insufficient evidence; P5 rejects an unauthorized candidate; P6 identifies added compute and refuses causal attribution without a matched control; P7 rejects evaluator-digest tampering; P8 retrieves relevant retained experience; P9 does not retrieve irrelevant experience.
+
+The P1 result is four sanitized summaries, not independent task executions. One eligible local AI hypothesis completed in 11.791 seconds with schema, evidence-ID and evidence-record digest validation; a prior call was marked ineligible after detecting a fixture-oracle label in its input. The final separate local reviewer returned conditional and reiterated the known H3Q/H4/H5/H6 limits; no source blocker was identified. Focused tests and exact commands are in `FINAL-REPORT.md`. Docker builds and operational effectiveness remain unqualified.

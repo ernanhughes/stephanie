@@ -5,6 +5,8 @@ import subprocess
 import sys
 from types import SimpleNamespace
 
+import pytest
+
 from sqlalchemy import JSON, create_engine
 from sqlalchemy.orm import configure_mappers, sessionmaker
 from hydra import compose, initialize_config_dir
@@ -82,6 +84,7 @@ def test_experience_and_retrieval_stay_disabled_in_checked_in_sis_defaults():
     assert cfg.experience_learning.retrieval.enabled is False
 
 
+@pytest.mark.long
 def test_experiment_assignment_is_stable_across_python_hash_seeds():
     expected = _stable_variant_index("stn06-coding-transfer", "python", 7301, 2)
     code = (

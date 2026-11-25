@@ -1,0 +1,11 @@
+[
+  {
+    "reviewer_model": "mistral:latest",
+    "request_id": "stn-evolution-final-review-01",
+    "status": "MALFORMED_OUTPUT",
+    "error": "StructuredOutputError: response exceeded the requested output shape/cap and JSON was truncated; no verdict was used.",
+    "latency_ms": null,
+    "usage": null,
+    "follow_up": "One shorter structured review was run; its successful final artifact is INDEPENDENT-REVIEW-RESULT.json."
+  }
+]

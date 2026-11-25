@@ -1,0 +1,33 @@
+{
+  "candidate_id": "d80cd1cbb12e2f2e75107745",
+  "input_chars": 41818,
+  "latency_ms": 4741,
+  "prompt_fingerprint": "611a1d8cf2345174",
+  "response_fingerprint": "549e5261a2cdee3c",
+  "review": {
+    "findings": [
+      "P1: candidate improves fixture-label agreement with the frozen independent rule; this is deterministic fixture evidence, not operational effectiveness.",
+      "P2: Adaptive normalization passed one arithmetic fixture evaluation, but no paid calls or external effects were recorded",
+      "P3: Local Mistral run passed a pinned arithmetic fixture, but only two invocations were observed in the final bounded lane",
+      "P4: Isolated scripted provider returned normalized JSON in one invocation, but no independent Work Evaluation exists"
+    ],
+    "fixture_limit": "Four arithmetic fixtures were evaluated across four harness executions",
+    "verdict": "conditional"
+  },
+  "reviewer_model": "mistral:latest",
+  "route": "ollama/mistral:latest",
+  "source_files": {
+    "stephanie/improvement/cli.py": "4d694b87f5a3181cb069eff9d001b7f0131f7ba14c77cffdef5b25a17feb5d9c",
+    "stephanie/improvement/engine.py": "daa63d7c3c6be16e0ac29cf9165b11cda0524eeea1f34d18222dc74b295f093f",
+    "stephanie/improvement/models.py": "92fe160f8f43e1213aa9d7863bbb7f2c659946bfbb3b12ad2bb470d6df8f36e9",
+    "tests/test_improvement_engine.py": "28f7b2bf2aa868e3ebebbf26ca4621a7dedc563344d78a768a94b24daf838a84"
+  },
+  "status": "ok",
+  "usage": {
+    "accounting": "provider_reported",
+    "cost_usd": null,
+    "input_tokens": 2051,
+    "output_tokens": 153,
+    "total_tokens": 2204
+  }
+}

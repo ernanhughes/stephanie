@@ -1,0 +1,11 @@
+{
+  "type": "object",
+  "properties": {
+    "findings": {"type": "array", "items": {"type": "string"}, "maxItems": 2},
+    "unknowns": {"type": "array", "items": {"type": "string"}, "maxItems": 2},
+    "next_step": {"type": "string", "maxLength": 300},
+    "evidence_ids": {"type": "array", "items": {"type": "string"}, "maxItems": 4}
+  },
+  "required": ["findings", "unknowns", "next_step", "evidence_ids"],
+  "additionalProperties": false
+}

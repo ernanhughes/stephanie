@@ -1,0 +1,11 @@
+{
+  "type": "object",
+  "properties": {
+    "findings": {"type": "array", "minItems": 1, "maxItems": 2, "items": {"type": "string", "minLength": 1, "maxLength": 300}},
+    "unknowns": {"type": "array", "minItems": 1, "maxItems": 2, "items": {"type": "string", "minLength": 1, "maxLength": 300}},
+    "next_step": {"type": "string", "minLength": 10, "maxLength": 300},
+    "evidence_ids": {"type": "array", "minItems": 1, "maxItems": 4, "items": {"type": "string", "minLength": 1, "maxLength": 64}}
+  },
+  "required": ["findings", "unknowns", "next_step", "evidence_ids"],
+  "additionalProperties": false
+}

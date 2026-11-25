@@ -26,6 +26,7 @@ from fastapi import APIRouter, HTTPException, Request, Query, Header, Form
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from pydantic import BaseModel, Field
 from sis.services.chat_context import build_chat_messages as _build_chat_messages
+from sis.services.mission_project_context import MissionProjectContext
 from sis.services.chat_execution import (
     ChatInferenceFailed,
     ChatServiceUnavailable,
@@ -46,6 +47,8 @@ class ConversationCreateRequest(BaseModel):
 
 class ChatMessageRequest(BaseModel):
     text: str = Field(min_length=1, max_length=12000)
+    external_approved: bool = False
+    mission_project_id: Optional[str] = Field(default=None, max_length=120)
 
 
 class WorkerExecutionRequest(BaseModel):
@@ -125,6 +128,15 @@ def _chat_readiness(request: Request) -> dict:
     model_verified = bool(readiness.get("model_verified", False))
     persistence_verified = bool(readiness.get("live_persistence_verified", False))
     configured = bool(settings.get("enabled", False))
+    routing = settings.get("routing", {}) or {}
+    external_routes = [
+        {
+            "name": f"{item.get('provider', routing.get('provider', 'unknown'))}/{item.get('model', 'unknown')}",
+            "economic_tier": item.get("economic_tier", "unknown"),
+            "data_classes": list(item.get("allowed_data_classes", []) or []),
+        }
+        for item in (routing.get("routes", []) or [])
+    ]
     ready = all(
         (configured, auth_ready, database_ready, model_configured, model_verified, persistence_verified)
     )
@@ -151,6 +163,7 @@ def _chat_readiness(request: Request) -> dict:
         "persistence_verified": persistence_verified,
         "enabled": ready,
         "model_name": model.get("name"),
+        "external_routes": external_routes,
         "message": message,
     }
 
@@ -344,6 +357,8 @@ async def send_chat_message(
             conversation_id=chat_id,
             username=request.state.username,
             text=text,
+            external_approved=payload.external_approved,
+            mission_project_id=payload.mission_project_id,
             request_id=request_id,
         )
     )
@@ -374,11 +389,30 @@ async def send_chat_message(
             detail={
                 "message": "Assistant response failed; your user message remains saved and can be retried with the same Idempotency-Key.",
                 "request_id": request_id,
+                "failure_evidence": exc.evidence,
             },
         ) from exc
     except ValueError as exc:
         status_code = 422 if "Idempotency-Key" in str(exc) else 413
         raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+
+
+@router.get("/chats/mission/projects")
+async def mission_projects_for_chat(request: Request):
+    """Expose a minimal project picker backed only by Mission GET endpoints."""
+    _require_interactive_chat(request)
+    mission_cfg = request.app.state.cfg.get("mission_context", {}) or {}
+    if not mission_cfg.get("enabled", False):
+        return JSONResponse(status_code=503, content={"available": False, "error_type": "MissionContextDisabled", "projects": []})
+    context = MissionProjectContext(mission_cfg)
+    try:
+        result = await asyncio.to_thread(context.list_projects)
+    except Exception as exc:
+        return JSONResponse(
+            status_code=503,
+            content={"available": False, "error_type": type(exc).__name__, "projects": []},
+        )
+    return {"available": True, **result}
 
 
 @router.post("/chats/{chat_id}/requests/{request_id}/cancel")

@@ -1,0 +1,90 @@
+[
+  {
+    "task_id": "se2-investigation-01-cost",
+    "topic": "unknown resource cost",
+    "source_basis": ["STEPHANIE-EVOLUTION-01/S1-AI-IMPLEMENTATION-INTEGRATION.md"],
+    "retrieval_query": "local inference usage tokens cost accounting unknown cost",
+    "prompt": "An isolated local inference record reports 1,419 input tokens and 259 output tokens. Its `cost_usd` field is null and accounting is provider-reported. A proposal claims the investigation saved $0.01. What is supported, what remains unknown, and what should the next measurement be?",
+    "observations": [
+      {"evidence_id": "se2-01-o1", "source_visibility": "MODEL_VISIBLE", "integrity": "TRUSTED_SANITIZED", "text": "A local Ollama inference returned token counts, but no monetary cost value was reported."},
+      {"evidence_id": "se2-01-o2", "source_visibility": "MODEL_VISIBLE", "integrity": "TRUSTED_SANITIZED", "text": "The savings claim has no baseline or price source."}
+    ]
+  },
+  {
+    "task_id": "se2-investigation-02-malformed",
+    "topic": "malformed structured response",
+    "source_basis": ["STEPHANIE-EVOLUTION-01/INDEPENDENT-REVIEW-ATTEMPTS.json"],
+    "retrieval_query": "structured response malformed truncated output cap schema failure",
+    "prompt": "A different local review request returned JSON that ended inside a string. The request allowed 700 output tokens. The provider completion body and actual output-token count were not retained. Two explanations remain plausible: output truncation or a response that failed the requested schema. State what can be concluded and the smallest next diagnostic step. Do not repeat the inference to seek a better answer.",
+    "observations": [
+      {"evidence_id": "se2-02-o1", "source_visibility": "MODEL_VISIBLE", "integrity": "TRUSTED_SANITIZED", "text": "The saved failure says structured parsing failed with an unterminated JSON string."},
+      {"evidence_id": "se2-02-o2", "source_visibility": "MODEL_VISIBLE", "integrity": "TRUSTED_SANITIZED", "text": "The requested response limit was 700 tokens; provider response and usage details are missing."}
+    ]
+  },
+  {
+    "task_id": "se2-investigation-03-retrieval",
+    "topic": "relevance and context selection",
+    "source_basis": ["STEPHANIE-EVOLUTION-01/S5-EXPERIENCE-REUSE.md"],
+    "retrieval_query": "retrieval relevance context efficiency relevant history token selection",
+    "prompt": "A CaseBook query returned three experiences because they shared words with a new question about context efficiency. One retrieved item describes a failed structured-output review; another describes the effect of a relevant prior investigation. No relevance labels, retrieval scores, or outcome comparison were recorded. What does this establish, and what comparison would test whether retrieval helped?",
+    "observations": [
+      {"evidence_id": "se2-03-o1", "source_visibility": "MODEL_VISIBLE", "integrity": "TRUSTED_SANITIZED", "text": "The current retriever ranks lexical token overlap and can return unrelated history."},
+      {"evidence_id": "se2-03-o2", "source_visibility": "MODEL_VISIBLE", "integrity": "TRUSTED_SANITIZED", "text": "No independent relevance labels or downstream outcome comparison exist for these three results."}
+    ]
+  },
+  {
+    "task_id": "se2-investigation-04-compute-confound",
+    "topic": "additional compute attribution",
+    "source_basis": ["STEPHANIE-EVOLUTION-01/S7-QUALIFICATION-EVIDENCE.md"],
+    "retrieval_query": "additional compute matched control more tokens apparent improvement",
+    "prompt": "A candidate investigation scored 4/8 on a review checklist and the baseline scored 3/8. The candidate used a larger model and roughly twice the input-token budget. They were run on different task subsets. Is the gain attributable to the candidate approach? Identify the strongest next experiment.",
+    "observations": [
+      {"evidence_id": "se2-04-o1", "source_visibility": "MODEL_VISIBLE", "integrity": "TRUSTED_SANITIZED", "text": "The two arms used different model capability, context budgets, and task subsets."},
+      {"evidence_id": "se2-04-o2", "source_visibility": "MODEL_VISIBLE", "integrity": "TRUSTED_SANITIZED", "text": "The observed score difference is one point on a small checklist."}
+    ]
+  },
+  {
+    "task_id": "se2-investigation-05-ambiguous-cause",
+    "topic": "multiple plausible causes",
+    "source_basis": ["STEPHANIE-EVOLUTION-01/S1-AI-IMPLEMENTATION-INTEGRATION.md", "STEPHANIE-EVOLUTION-01/S7-QUALIFICATION-EVIDENCE.md"],
+    "retrieval_query": "model configuration prompt experience context quality changes causal comparison",
+    "prompt": "A new batch of investigation answers has fewer unsupported claims but also shorter prompts, a new model revision, and fewer retrieved cases. The batch contains six tasks and no randomized assignment. List plausible explanations and the smallest controlled follow-up; do not select one cause as established.",
+    "observations": [
+      {"evidence_id": "se2-05-o1", "source_visibility": "MODEL_VISIBLE", "integrity": "TRUSTED_SANITIZED", "text": "Prompt length, model revision, and experience count all changed between batches."},
+      {"evidence_id": "se2-05-o2", "source_visibility": "MODEL_VISIBLE", "integrity": "TRUSTED_SANITIZED", "text": "There are six observations and assignment was not randomized."}
+    ]
+  },
+  {
+    "task_id": "se2-investigation-06-mechanism-only",
+    "topic": "mechanism versus effectiveness",
+    "source_basis": ["HARNESS-EVOLUTION-01/H6-END-TO-END-EVIDENCE.md"],
+    "retrieval_query": "work envelope correlation independent evaluation acceptance mechanism effectiveness",
+    "prompt": "An isolated scripted run correlated a request to its Work Envelope and normalized JSON in one invocation. The episode remains established, no independent Work Evaluation exists, and acceptance is pending. Can this be called a verified task success? What evidence would be needed next?",
+    "observations": [
+      {"evidence_id": "se2-06-o1", "source_visibility": "MODEL_VISIBLE", "integrity": "TRUSTED_SANITIZED", "text": "The mechanism and correlation checks passed in one isolated execution."},
+      {"evidence_id": "se2-06-o2", "source_visibility": "MODEL_VISIBLE", "integrity": "TRUSTED_SANITIZED", "text": "Independent outcome evaluation is absent and human acceptance is pending."}
+    ]
+  },
+  {
+    "task_id": "se2-investigation-07-no-change",
+    "topic": "no supported intervention",
+    "source_basis": ["STEPHANIE-EVOLUTION-01/FINAL-REPORT.md"],
+    "retrieval_query": "no defect baseline latency single observation intervention improvement",
+    "prompt": "Five recent isolated investigations completed within their configured budgets and passed their structural checks. No user-visible defect, regression, or baseline comparison has been reported. A proposal suggests changing the prompt to reduce latency based on one observed duration. Should a candidate change be constructed now?",
+    "observations": [
+      {"evidence_id": "se2-07-o1", "source_visibility": "MODEL_VISIBLE", "integrity": "TRUSTED_SANITIZED", "text": "All five runs passed structural validation; none established a user-visible problem."},
+      {"evidence_id": "se2-07-o2", "source_visibility": "MODEL_VISIBLE", "integrity": "TRUSTED_SANITIZED", "text": "Only one latency observation exists and no baseline comparison was run."}
+    ]
+  },
+  {
+    "task_id": "se2-investigation-08-evaluator-regression",
+    "topic": "evaluator integrity and regression",
+    "source_basis": ["STEPHANIE-EVOLUTION-01/S4-EXPERIMENT-LIFECYCLE.md"],
+    "retrieval_query": "evaluator integrity weaken acceptance threshold false improvement regression",
+    "prompt": "A candidate changes the evaluation rule from requiring PASS plus explicit ACCEPTED to requiring PASS alone. All four sample records have PASS, but acceptance is pending. The candidate's displayed score rises from 0/4 to 4/4 under its changed rule. Is this an improvement? What should happen to the candidate and evaluation record?",
+    "observations": [
+      {"evidence_id": "se2-08-o1", "source_visibility": "MODEL_VISIBLE", "integrity": "TRUSTED_SANITIZED", "text": "The candidate changes the evaluator condition used to assign the score."},
+      {"evidence_id": "se2-08-o2", "source_visibility": "MODEL_VISIBLE", "integrity": "TRUSTED_SANITIZED", "text": "Every record is pending acceptance; the independent task outcome is not supplied."}
+    ]
+  }
+]

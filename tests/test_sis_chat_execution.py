@@ -161,11 +161,13 @@ class FakeChatStore:
         self.messages.append(message)
         return message
 
-    def mark_user_message_status(self, conversation_id, message_id, status, *, error_type=None):
+    def mark_user_message_status(self, conversation_id, message_id, status, *, error_type=None, error_evidence=None):
         message = next(item for item in self.messages if item.id == message_id)
         message.meta = {**message.meta, "execution_status": status}
         if error_type:
             message.meta["error_type"] = error_type
+        if error_evidence:
+            message.meta["error_evidence"] = error_evidence
         return message
 
     def complete_assistant_turn(self, conversation_id, user_message_id, request_id, text, *, meta=None):
@@ -212,6 +214,20 @@ class FakeLLM:
         if self.failure:
             raise RuntimeError("provider error containing private details")
         return {"text": "A verified test response", "model_name": "test/model", "cached": False}
+
+
+class SwitchingModelLLM:
+    def __init__(self):
+        self.calls = []
+        self.models = ["opencode-go/deepseek-v4.1-flash", "ollama/mistral-small:latest"]
+
+    async def achat(self, messages, **kwargs):
+        self.calls.append((list(messages), kwargs["context"]))
+        return {
+            "text": "The Alpha report objective remains in context.",
+            "model_name": self.models[len(self.calls) - 1],
+            "provider": self.models[len(self.calls) - 1].split("/", 1)[0],
+        }
 
 
 class FakeContainer:
@@ -312,6 +328,40 @@ def test_chat_context_is_bounded_and_excludes_tool_messages():
         {"role": "assistant", "content": "recent"},
         {"role": "user", "content": "latest"},
     ]
+
+
+@pytest.mark.long
+def test_one_conversation_continues_after_model_change_without_losing_objective():
+    store = FakeChatStore()
+    llm = SwitchingModelLLM()
+    service = ConversationExecutionService(
+        memory=SimpleNamespace(chats=store),
+        container=FakeContainer(llm),
+        cfg={"chat_runtime": {"history_limit": 10, "max_context_chars": 2000, "max_context_message_chars": 500, "system_prompt": "Keep the same assistant identity."}},
+        logger=FakeLogger(),
+    )
+
+    async def run():
+        first = await service.execute_turn(
+            conversation_id=17, username="local",
+            text="Set objective Alpha: finish the report.", request_id="model-switch-one",
+        )
+        second = await service.execute_turn(
+            conversation_id=17, username="local",
+            text="Continue the same conversation. What is the objective?", request_id="model-switch-two",
+        )
+        return first, second
+
+    first, second = asyncio.run(run())
+    assert first["conversation_id"] == second["conversation_id"] == 17
+    assert first["model"] == "opencode-go/deepseek-v4.1-flash"
+    assert second["model"] == "ollama/mistral-small:latest"
+    follow_up = llm.calls[1][0]
+    assert any(message["content"] == "Set objective Alpha: finish the report." for message in follow_up)
+    assert any(message["content"] == "The Alpha report objective remains in context." for message in follow_up)
+    assert follow_up[-1]["content"] == "Continue the same conversation. What is the objective?"
+    assert llm.calls[0][1]["data_class"] == "unknown"
+    assert llm.calls[1][1]["data_class"] == "unknown"
 
 
 def test_chat_templates_compile_with_interactive_forms():

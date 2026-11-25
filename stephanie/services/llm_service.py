@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import re
+import os
 import time
+import hashlib
 from typing import Any, Dict, Optional
 
 import litellm
@@ -12,6 +14,12 @@ from stephanie.constants import (API_BASE, API_KEY, NAME, PROMPT_PATH,
 from stephanie.services.service_protocol import Service
 from stephanie.utils.llm_utils import remove_think_blocks
 from stephanie.utils.secret_utils import redact_secrets
+
+
+class FreeFirstRouteError(RuntimeError):
+    def __init__(self, evidence: Dict[str, Any]):
+        self.evidence = evidence
+        super().__init__(f"free-first routing stopped: {evidence.get('state', 'unknown')}")
 
 
 class LLMService(Service):
@@ -38,6 +46,11 @@ class LLMService(Service):
         # config/config.yaml `model_defaults` and docs/worker-free-models.md.
         self._model_defaults: Dict[str, Any] = dict(self.cfg.get("model_defaults") or {})
         self._worker_bridge = None
+        from stephanie.services.free_first_chat import FreeFirstChatRouter
+        routing_cfg = dict((self.cfg.get("chat_runtime") or {}).get("routing") or {})
+        self._free_first_chat = FreeFirstChatRouter(
+            routing_cfg, api_key=routing_cfg.get("api_key") or os.environ.get("OPENCODE_API_KEY")
+        )
 
         # Optional rules service
         try:
@@ -210,6 +223,7 @@ class LLMService(Service):
         """
         resolved_cfg = self._resolve_cfg(agent_cfg, context)
         props = llm_cfg_override or self._llm_props(resolved_cfg)
+        self._enforce_sis_local_route(props, context)
 
         started = time.perf_counter()
         try:
@@ -242,12 +256,76 @@ class LLMService(Service):
         """Async counterpart to ``chat`` so request cancellation reaches LiteLLM."""
         resolved_cfg = self._resolve_cfg(agent_cfg, context)
         props = llm_cfg_override or self._llm_props(resolved_cfg)
+        self._enforce_sis_local_route(props, context)
         started = time.perf_counter()
         try:
+            routing_cfg = dict((self.cfg.get("chat_runtime") or {}).get("routing") or {})
+            data_class = str(context.get("data_class", "unknown"))
+            pinned = bool(llm_cfg_override or
+                          (resolved_cfg.get("model") or {}).get("pinned", False))
+            routed_response, routing = await self._free_first_chat.complete(
+                messages,
+                call=litellm.acompletion,
+                data_class=data_class,
+                required_capabilities=set(routing_cfg.get("required_capabilities", ["conversation"])),
+                pinned=pinned,
+                pinned_route=str(routing_cfg.get("pinned_route") or "") or None,
+                session_id=(
+                    "ses_" + hashlib.sha256(
+                        f"stephanie-chat:{context.get('conversation_id')}".encode("utf-8")
+                    ).hexdigest()[:24]
+                    if context.get("conversation_id") is not None else None
+                ),
+                timeout=int(props.get("timeout") or 90),
+                max_tokens=int(props.get("max_tokens") or 768),
+            )
+            if routed_response is not None:
+                route = str(routing["route"])
+                provider_id, model_id = route.split("/", 1)
+                route_cfg = next(
+                    item for item in routing_cfg.get("routes", [])
+                    if item.get("provider") == provider_id and item.get("model") == model_id
+                )
+                routed_props = {
+                    **props,
+                    NAME: "openai/" + model_id,
+                    API_BASE: route_cfg["endpoint"],
+                    API_KEY: self._free_first_chat.api_key,
+                }
+                result = self._chat_result(routed_response, routed_props, remove_think, started)
+                result["model_name"] = route
+                result["provider"] = provider_id
+                result["provider_transport"] = "openai-compatible"
+                result["routing"] = routing
+                if add_to_history:
+                    last_user = next((m["content"] for m in reversed(messages) if m.get("role") == "user"), "")
+                    self._append_prompt_history(context, agent_name, last_user, {"response": result["text"]}, preferences)
+                return result
+            if (routing.get("state") not in {"disabled", "explicitly_pinned", "no_privacy_eligible_free_route"}
+                    and not routing.get("fallback_allowed", False)):
+                evidence = {
+                    "state": routing.get("state", "unknown"),
+                    "failures": [
+                        {
+                            key: failure.get(key)
+                            for key in ("route", "state", "detail", "retry_after_seconds")
+                            if failure.get(key) is not None
+                        }
+                        for failure in routing.get("failures", [])
+                        if isinstance(failure, dict)
+                    ],
+                }
+                self.logger.log("SISChatRouteStopped", evidence)
+                raise FreeFirstRouteError(evidence)
             response = await litellm.acompletion(
                 **self._chat_call_params(props, messages)
             )
             result = self._chat_result(response, props, remove_think, started)
+            if routing.get("state") not in {"disabled", "explicitly_pinned"}:
+                result["routing"] = {
+                    "state": "local_fallback", "reason": routing,
+                    "route": result.get("model_name"),
+                }
             if add_to_history:
                 last_user = next(
                     (m["content"] for m in reversed(messages) if m.get("role") == "user"),
@@ -264,6 +342,19 @@ class LLMService(Service):
         except Exception as e:
             self.logger.log("LLMChatError", {"error_type": type(e).__name__})
             raise
+
+    @staticmethod
+    def _enforce_sis_local_route(props: Dict[str, Any], context: Dict[str, Any]) -> None:
+        """Keep SIS conversational calls from bypassing the per-turn route policy."""
+        if not context.get("sis_data_policy_enforced"):
+            return
+        model = str(props.get(NAME) or "").lower()
+        api_base = str(props.get(API_BASE) or "").lower()
+        local = model.startswith("ollama/") or any(
+            host in api_base for host in ("localhost", "127.0.0.1", "[::1]")
+        )
+        if not local:
+            raise ValueError("SIS data policy permits only the configured local fallback outside the approved route router")
 
     @staticmethod
     def _chat_call_params(props: Dict[str, Any], messages: list[dict]) -> dict:

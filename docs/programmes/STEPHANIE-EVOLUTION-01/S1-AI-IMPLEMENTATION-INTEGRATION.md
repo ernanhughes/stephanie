@@ -1,0 +1,5 @@
+# S1 — Shared AI implementation integration
+
+`stephanie.improvement.engine.ImprovementEngine.investigate_with_ai` calls `ai.inference.InferenceService.generate_structured` with `ReasoningRequest`, `InferenceProfile`, `InferenceBudget`, `OllamaReasoningProvider`, and a strict Pydantic response schema. The model may only produce an evidence-citing hypothesis. Stephanie verifies all cited IDs belong to the provided evidence; it cannot authorize an experiment or set an outcome.
+
+The eligible execution used the local `ornith-1.5:9b` Ollama model on loopback, one call, 300 output tokens, 120-second timeout, USD 0 paid-call budget, and no fallback. Latency was 11,791 ms; AI reported 1,419 input and 259 output tokens; cost is unknown/null. Its schema-valid output cited all four supplied records and retained their uncertainty. An earlier 74,542 ms invocation is retained but ineligible because its input included a fixture-oracle field; that field was removed before the eligible invocation. This was a correction for input integrity, not a favorable-result retry. No AI source changes were required.

@@ -6,7 +6,7 @@
     "customizations": {
         "vscode": {
             "settings": {
-                "python.defaultInterpreterPath": "/usr/local/bin/python"
+                "python.defaultInterpreterPath": "/venv/bin/python"
             },
             "extensions": [
                 "ms-python.python",

@@ -1,0 +1,29 @@
+[
+  {
+    "task_id": "se2q-dev-01-observation-boundary",
+    "prompt": "A local job returned an HTTP success response, but the retained artifact contains only a parser error and no provider body. Determine what is established versus unknown, and propose the smallest evidence-preserving diagnostic.",
+    "observations": [
+      {"evidence_id":"DEV1-A","text":"The transport returned an HTTP success response."},
+      {"evidence_id":"DEV1-B","text":"The retained caller record has a parser error but no response body, termination reason, or provider token counts."}
+    ],
+    "required_concepts": ["unknown", "response"]
+  },
+  {
+    "task_id": "se2q-dev-02-representation-boundary",
+    "prompt": "A response consists of one complete Markdown JSON fence whose inner body parses as a single JSON object. A proposed normalization removes only the enclosing fence and preserves the body bytes. State when that transform is safe and what should be retained.",
+    "observations": [
+      {"evidence_id":"DEV2-A","text":"The fence encloses the entire response with no surrounding prose."},
+      {"evidence_id":"DEV2-B","text":"The inner body parses as one JSON object before transformation."}
+    ],
+    "required_concepts": ["fence", "digest"]
+  },
+  {
+    "task_id": "se2q-dev-03-structural-vs-semantic",
+    "prompt": "A response is valid JSON and contains the required fields, but its explanation cites an evidence ID that was not supplied. Distinguish structural validation from Stephanie's independent evidence check and recommend the bounded outcome.",
+    "observations": [
+      {"evidence_id":"DEV3-A","text":"The response passed the declared JSON structure."},
+      {"evidence_id":"DEV3-B","text":"One cited ID is absent from the supplied evidence set."}
+    ],
+    "required_concepts": ["structure", "evidence"]
+  }
+]

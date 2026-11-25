@@ -1,0 +1,9 @@
+# Worker Execution Evidence
+
+The isolated deterministic Worker was started on an ephemeral loopback port and called through its real HTTP POST `/v1/work` and GET `/v1/executions` routes. The saved ledger contains 27 execution records. Its model provider was a deterministic scripted fixture; actual model invocations: 0. Usage/evidence ledgers were disabled, the execution ledger was isolated under the experiment root, and operational fallback was false.
+
+C1–C4 contain the frozen per-arm cohorts described in TASK-AND-PROTOCOL. C5 separately compares `structured.v1` to `corrective.v1` to measure an additional-invocation confound; it is not an efficacy test of the adaptive candidate. C6 produced Worker status `FAILED` and a preserved ledger record; provider inference status remains `UNKNOWN`. C7 was rejected before Worker execution because its strategy was outside the frozen allowlist.
+
+The bounded genuine local probe used the same Worker runtime and HTTP path with the existing `h4.local` / `h4_qwen_local` local-only route (`qwen2.5:0.5b`). It made exactly three Worker model invocations: readiness, structured baseline, adaptive candidate. Each returned `AWAITING_ACCEPTANCE`, matched the exact JSON oracle, used one model invocation, and observed six output tokens. The output digest matched between comparison arms. This one-pair observation does not establish effectiveness. Cost remains unknown. Raw outputs are preserved in the local artifact and omitted from CLI summaries. Separately, the shared AI inference service generated the candidate's structured hypothesis in one local Qwen call (109 output tokens; provider-reported cost unavailable). Total intentional local model calls across the SC3 hypothesis and Worker lanes: four.
+
+Artifacts: `data/stephanie_convergence03_final/worker-results.json`, `worker/evidence.json`, `worker-failure-c6.json`, `genuine-live-results.json`, and `genuine-live-summary.json`.

@@ -14,6 +14,7 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
 from sqlalchemy import JSON, create_engine
 from sqlalchemy.orm import configure_mappers, sessionmaker
 from hydra import compose, initialize_config_dir
@@ -97,6 +98,7 @@ def test_manifest_is_frozen_and_class_balanced():
         assert not set(entry["oracle_file_paths"]) & set(entry["workspace_file_paths"])
 
 
+@pytest.mark.long
 def test_schedule_is_stable_across_python_hash_seeds():
     code = (
         "import json;"

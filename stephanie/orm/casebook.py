@@ -21,7 +21,7 @@ class CaseBookORM(Base):
     description = Column(Text, default="")
     pipeline_run_id = Column(Integer, nullable=True, index=True)
     agent_name = Column(String, nullable=True, index=True)
-    tags = Column(JSONB, default=list)
+    tags = Column(SA_JSON().with_variant(JSONB(), "postgresql"), default=list)
     created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
     meta = Column(SA_JSON, nullable=True, default=dict)
 
@@ -153,7 +153,7 @@ class CaseAttributeORM(Base):
     value_text  = Column(Text, nullable=True, index=True)
     value_num   = Column(Float, nullable=True, index=True)
     value_bool  = Column(Boolean, nullable=True, index=True)
-    value_json  = Column(JSONB, nullable=True)
+    value_json  = Column(SA_JSON().with_variant(JSONB(), "postgresql"), nullable=True)
     created_at  = Column(DateTime(timezone=True), default=utcnow, nullable=False)
 
     case = relationship("CaseORM", backref="attributes")

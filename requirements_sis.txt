@@ -1,4 +1,4 @@
-fastapi
-uvicorn[standard]
-pydantic
-gradio
+fastapi>=0.165
+uvicorn[standard]>=0.54
+pydantic>=2.14.4
+gradio>=6.32

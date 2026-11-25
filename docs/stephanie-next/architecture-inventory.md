@@ -1,5 +1,11 @@
 # Stephanie Next — Architecture Inventory (STN00 baseline / STN01 update)
 
+> **Current amendment:** The Shared AI Foundation assessment and ownership
+> decision are recorded in `AI-SHARED-FOUNDATION-ASSESSMENT.md`,
+> `AI-CAPABILITY-OWNERSHIP-MATRIX.md` and `AI-DEPENDENCY-MAP.md`. This document's
+> dated STN00/STN01 observations below are historical evidence and were not
+> rewritten to imply later AI integration.
+
 **Audit date:** 2026-10-16  
 **Repository:** `C:\Project\stephanie`  
 **Branch / revision:** `elm` / `7584f47c9ef8acb5ee25f7b8bcd17c07d4999eee`  

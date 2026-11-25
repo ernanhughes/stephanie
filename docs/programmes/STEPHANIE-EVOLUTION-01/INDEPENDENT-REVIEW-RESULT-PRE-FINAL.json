@@ -1,0 +1,56 @@
+{
+  "input_chars": 40636,
+  "latency_ms": 82987,
+  "prompt_fingerprint": "d81c540ef1c3c664",
+  "response_fingerprint": "bf1e4c78ab7fecf1",
+  "review": {
+    "findings": [
+      {
+        "concern": "Incorrect fact control failed in the deterministic fixture evaluation.",
+        "evidence": "N1 incorrect-fact control failed",
+        "file": "HARNESS-EVOLUTION-01/H3Q-NEGATIVE-EXECUTION-EVIDENCE.md",
+        "remediation": "Ensure that the deterministic fixture evaluation includes a mechanism to check for incorrect facts.",
+        "severity": "minor"
+      },
+      {
+        "concern": "Single fixture is not effectiveness evidence.",
+        "evidence": "Single fixture is not effectiveness evidence",
+        "file": "HARNESS-EVOLUTION-01/H4-EXPERIMENT-RESULTS.md",
+        "remediation": "Consider adding more fixtures to establish general effectiveness.",
+        "severity": "minor"
+      },
+      {
+        "concern": "One sample does not establish general effectiveness or comparative latency.",
+        "evidence": "One sample does not establish general effectiveness or comparative latency",
+        "file": "HARNESS-EVOLUTION-01/H5-EXPERIMENT-RESULTS.md",
+        "remediation": "Increase the number of samples to establish general effectiveness and comparative latency.",
+        "severity": "minor"
+      },
+      {
+        "concern": "Mechanism/integration evidence is not task correctness or effectiveness evidence.",
+        "evidence": "Mechanism/integration evidence is not task correctness or effectiveness evidence",
+        "file": "HARNESS-EVOLUTION-01/H6-END-TO-END-EVIDENCE.md",
+        "remediation": "Consider adding task correctness or effectiveness evidence to the end-to-end evaluation.",
+        "severity": "minor"
+      }
+    ],
+    "fixture_limit": "4",
+    "verdict": "conditional"
+  },
+  "reviewer_model": "mistral:latest",
+  "route": "ollama/mistral:latest",
+  "source_files": {
+    "stephanie/improvement/cli.py": "cb8776b9547148ecf63731bee47346291bbbb9ee5a2e21f81c6db181a29bf62b",
+    "stephanie/improvement/engine.py": "9f2e888367dafdec554bf1962dc243622161d7fc051acbcaf8aeef7aa019b1ed",
+    "stephanie/improvement/models.py": "ff59a79e783fdb2ddd91fa0937948b0c97532dd48e4aa12a5f5a7d57bce3dfde",
+    "tests/test_improvement_engine.py": "4343c6e773080658f273fd3aba9cd3f07a41247d93aceaf02c64be02203bfcda"
+  },
+  "status": "ok",
+  "usage": {
+    "accounting": "provider_reported",
+    "cost_usd": null,
+    "input_tokens": 2051,
+    "output_tokens": 473,
+    "total_tokens": 2524
+  }
+}

@@ -1,0 +1,5 @@
+# Independent review
+
+Separate read-only Codex review identified: raw AI evidence CLI exposure; Mission episode index mislabeled as Work Outcome integration; missing evidence-to-investigation wiring; no explicit sanitized external-to-AI pathway; incomplete required AI failure scenarios; empty source windows labeled verified; citation rejection outside failure capture; and `ReasoningResult.require_ok()` dropping its result.
+
+Corrections made: metadata-only default AI evidence output with explicit `--include-raw`; renamed Mission surfaces to episodes/signals and documented no Work Outcome qualification; added `investigate-worker-issue`, `inspect-investigation`, bounded capture and proposal persistence; empty windows are inconclusive; citation failures are captured; `require_ok()` retains results; deterministic cases cover empty output, timeout and missing usage. Final independent review confirmed those code findings are closed. Still open: no live Worker execution adapter proof; Mission Work Outcome/evaluation/acceptance API integration; no matching prior experience was found; no Praxis cohort comparison. Reviewer did not modify files.

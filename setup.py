@@ -4,6 +4,7 @@ from setuptools import setup, find_packages
 setup(
     name="stephanie",
     version="0.1.0",
+    python_requires=">=3.13",
     packages=find_packages(),
     include_package_data=True,
     package_data={
@@ -19,6 +20,7 @@ setup(
         "psycopg2-binary",
         "numpy",
         "dspy",
+        "litellm>=1.111,<2",
     ],
     entry_points={
         "console_scripts": [

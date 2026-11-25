@@ -1,0 +1,98 @@
+[
+  {
+    "experience_id": "e1-oracle-contamination",
+    "reuse_status": "OWNER_REVIEWED_HISTORICAL",
+    "visibility": "MODEL_VISIBLE_HISTORY",
+    "integrity": "TRUSTED_SANITIZED",
+    "source_identity": "STEPHANIE-EVOLUTION-01/data/stephanie_evolution01/ai-executions.json",
+    "source_digest": "6f19c31ab8eb14cf9c9ca6fa98da14158bcf907b879b531a4dab58039381991e",
+    "summary": "A prior hypothesis call was retained but excluded after its serialized input contained a fixture-oracle field. The exact protected value is omitted. A later clean call was qualified.",
+    "observed_outcome": "The contaminated invocation did not qualify as evidence; the record was preserved for audit.",
+    "limitations": "Historical evidence of an input-boundary failure, not a general rate estimate.",
+    "review_basis": "Owner accepted S0-S7 within demonstrated scope and explicitly requested permanent retention of this rejected experiment."
+  },
+  {
+    "experience_id": "e1-malformed-review-output",
+    "reuse_status": "OWNER_REVIEWED_HISTORICAL",
+    "visibility": "MODEL_VISIBLE_HISTORY",
+    "integrity": "TRUSTED_SANITIZED",
+    "source_identity": "STEPHANIE-EVOLUTION-01/INDEPENDENT-REVIEW-ATTEMPTS.json",
+    "source_digest": "df09bd7eba8d0db218832553ca74096ddcc16c4e7473d2f7723d4d85bb7743d9",
+    "summary": "One local structured review response was malformed at a 700-token output cap. It was not used as a verdict; a later bounded review succeeded.",
+    "observed_outcome": "Malformed output is retained as a failed attempt, not silently retried for a favorable result.",
+    "limitations": "The provider body, exact output count, and token usage for the failed response were unavailable.",
+    "review_basis": "Owner accepted S0-S7 within demonstrated scope and called out this failure as a research opportunity."
+  },
+  {
+    "experience_id": "e1-cost-unknown",
+    "reuse_status": "OWNER_REVIEWED_HISTORICAL",
+    "visibility": "MODEL_VISIBLE_HISTORY",
+    "integrity": "TRUSTED_SANITIZED",
+    "source_identity": "STEPHANIE-EVOLUTION-01/S1-AI-IMPLEMENTATION-INTEGRATION.md",
+    "source_digest": "4973848f7d3418ac41368acf6bfd0f22058bfe9315aafafae6d860e3dfd390db",
+    "summary": "The local inference provider reported token counts but no monetary cost. The cost remains null/unknown; unknown is not zero.",
+    "observed_outcome": "No monetary savings claim was made from the local call.",
+    "limitations": "Provider token counts do not establish billable cost.",
+    "review_basis": "Owner accepted S0-S7 within demonstrated scope."
+  },
+  {
+    "experience_id": "e1-fixture-scope",
+    "reuse_status": "OWNER_REVIEWED_HISTORICAL",
+    "visibility": "MODEL_VISIBLE_HISTORY",
+    "integrity": "TRUSTED_SANITIZED",
+    "source_identity": "STEPHANIE-EVOLUTION-01/FINAL-REPORT.md",
+    "source_digest": "4973848f7d3418ac41368acf6bfd0f22058bfe9315aafafae6d860e3dfd390db",
+    "summary": "A four-record status-label fixture improved agreement from 0.0 to 1.0. The result qualified only a fixture policy and did not establish operational effectiveness.",
+    "observed_outcome": "Recommendation explicitly prohibited operational promotion.",
+    "limitations": "The fixture set was small and contained no independent system-level task outcomes.",
+    "review_basis": "Owner accepted S0-S7 only within the demonstrated experimental scope."
+  },
+  {
+    "experience_id": "e1-compute-confound",
+    "reuse_status": "OWNER_REVIEWED_HISTORICAL",
+    "visibility": "MODEL_VISIBLE_HISTORY",
+    "integrity": "TRUSTED_SANITIZED",
+    "source_identity": "STEPHANIE-EVOLUTION-01/S7-QUALIFICATION-EVIDENCE.md",
+    "source_digest": "3297ba0e1d2562719d17d26bc9ba3add26a9ea4c87e29c8277d3bb22163fe4c3",
+    "summary": "A candidate that declares additional compute receives an inconclusive result when no compute-matched control exists; the gain is not attributed to policy alone.",
+    "observed_outcome": "The P6 deterministic control checked attribution limits.",
+    "limitations": "This was a deterministic control, not a live resource-matched model comparison.",
+    "review_basis": "Owner accepted S0-S7 within demonstrated scope."
+  },
+  {
+    "experience_id": "e1-retrieval-scope",
+    "reuse_status": "OWNER_REVIEWED_HISTORICAL",
+    "visibility": "MODEL_VISIBLE_HISTORY",
+    "integrity": "TRUSTED_SANITIZED",
+    "source_identity": "STEPHANIE-EVOLUTION-01/S5-EXPERIENCE-REUSE.md",
+    "source_digest": "99bea2334374875865e5a8243582b2a46cc9d3706e4a2b7130095244e13b34f4",
+    "summary": "The first experience retriever uses bounded lexical overlap. It retrieved one relevant case and excluded a clearly unrelated query, but that does not qualify semantic relevance.",
+    "observed_outcome": "P8 and P9 lexical retrieval controls passed.",
+    "limitations": "No independently labeled relevance set or semantic retrieval comparison was used.",
+    "review_basis": "Owner accepted S0-S7 and explicitly identified experience value as an open research question."
+  },
+  {
+    "experience_id": "e1-stn06-not-run",
+    "reuse_status": "OWNER_REVIEWED_HISTORICAL",
+    "visibility": "MODEL_VISIBLE_HISTORY",
+    "integrity": "TRUSTED_SANITIZED",
+    "source_identity": "STEPHANIE/docs/stephanie-next/stn06-experiment-plan.md",
+    "source_digest": "dfe383cb50547738b2b2715bbf727668aaaeeaa826dcf3a12b5edcc1173f1317",
+    "summary": "STN06 is an eight-task held-out coding-transfer plan. Its model experiment remains NOT RUN until separate approval gates are met.",
+    "observed_outcome": "The plan and preregistration were preserved; no completed model result is claimed.",
+    "limitations": "It measures coding-task transfer, not investigation-hypothesis quality.",
+    "review_basis": "The source plan itself distinguishes planned work from execution evidence."
+  },
+  {
+    "experience_id": "e1-evaluator-protection",
+    "reuse_status": "OWNER_REVIEWED_HISTORICAL",
+    "visibility": "MODEL_VISIBLE_HISTORY",
+    "integrity": "TRUSTED_SANITIZED",
+    "source_identity": "STEPHANIE-EVOLUTION-01/tests/test_improvement_engine.py",
+    "source_digest": "28f7b2bf2aa868e3ebebbf26ca4621a7dedc563344d78a768a94b24daf838a84",
+    "summary": "The prior deterministic controls reject evaluator-digest tampering and candidate evidence drift.",
+    "observed_outcome": "P3 and P7 negative controls reject the altered candidate.",
+    "limitations": "These are fixture tests, not operational governance enforcement.",
+    "review_basis": "Owner accepted S0-S7 within demonstrated scope."
+  }
+]

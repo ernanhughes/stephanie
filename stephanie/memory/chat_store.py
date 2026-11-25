@@ -2051,6 +2051,7 @@ class ChatStore(BaseSQLAlchemyStore):
         status: str,
         *,
         error_type: Optional[str] = None,
+        error_evidence: Optional[dict] = None,
     ) -> Optional[ChatMessageORM]:
         """Record a request outcome without inventing an assistant response."""
         def op(s):
@@ -2066,9 +2067,11 @@ class ChatStore(BaseSQLAlchemyStore):
                 **(message.meta or {}),
                 "execution_status": status,
                 **({"error_type": error_type} if error_type else {}),
+                **({"error_evidence": deepcopy(error_evidence)} if error_evidence else {}),
             }
             if status == "in_progress":
                 message.meta.pop("error_type", None)
+                message.meta.pop("error_evidence", None)
             return message
 
         return self._run(op)

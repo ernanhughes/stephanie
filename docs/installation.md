@@ -6,7 +6,7 @@ This guide walks you through setting up and running the `stephanie` framework lo
 
 ## 📦 Requirements
 
-- Python **3.9+** (the version declared in `pyproject.toml`)
+- Python **3.13+** (the version declared in `pyproject.toml`)
 - PostgreSQL with **pgvector** extension
 - [Ollama](https://ollama.com) (for local LLM inference)
 - [Poetry](https://python-poetry.org/) **OR** standard `pip` + `venv`

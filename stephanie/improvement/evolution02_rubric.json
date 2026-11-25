@@ -1,0 +1,13 @@
+{
+  "version": "SE2 deterministic checklist v1",
+  "tasks": {
+    "se2-investigation-01-cost": {"abstain": false, "required_terms": ["unknown", "cost"]},
+    "se2-investigation-02-malformed": {"abstain": false, "required_terms": ["truncation", "schema"]},
+    "se2-investigation-03-retrieval": {"abstain": false, "required_terms": ["relevance", "comparison"]},
+    "se2-investigation-04-compute-confound": {"abstain": false, "required_terms": ["model", "task"]},
+    "se2-investigation-05-ambiguous-cause": {"abstain": false, "required_terms": ["plausible", "controlled"]},
+    "se2-investigation-06-mechanism-only": {"abstain": false, "required_terms": ["evaluation", "acceptance"]},
+    "se2-investigation-07-no-change": {"abstain": true, "required_terms": ["baseline", "latency"]},
+    "se2-investigation-08-evaluator-regression": {"abstain": false, "required_terms": ["acceptance", "evaluator"]}
+  }
+}

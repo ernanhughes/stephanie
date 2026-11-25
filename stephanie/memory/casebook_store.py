@@ -44,6 +44,21 @@ class CaseBookStore(BaseSQLAlchemyStore):
 
         return self._run(op)
 
+    def get_id_by_name(self, name: str) -> int | None:
+        """Return a detached-safe scalar identity for short-lived sessions."""
+        return self._run(lambda s: s.query(CaseBookORM.id).filter_by(name=name).scalar())
+
+    def list_case_summaries(self, casebook_id: int) -> list[dict]:
+        """Read small detached-safe summaries for bounded experience retrieval."""
+        def op(s):
+            rows = (s.query(CaseORM.id, CaseORM.name, CaseORM.description,
+                            CaseORM.prompt_text, CaseORM.meta)
+                    .filter(CaseORM.casebook_id == casebook_id)
+                    .order_by(CaseORM.id.asc()).all())
+            return [{"id": r.id, "name": r.name, "description": r.description,
+                     "prompt_text": r.prompt_text, "meta": r.meta or {}} for r in rows]
+        return self._run(op)
+
     def ensure_casebook(
         self,
         name: str,

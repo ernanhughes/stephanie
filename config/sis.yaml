@@ -39,6 +39,31 @@ chat_runtime:
     api_key: '${oc.env:STEPHANIE_CHAT_API_KEY,""}'
     timeout: 90
     max_tokens: 768
+  # Free-first policy is ready for the SIS chat path, but the parent chat
+  # runtime remains disabled until its separate persistence/readiness gates pass.
+  routing:
+    enabled: true
+    provider: opencode
+    endpoint: https://opencode.ai/inference/openai/v1
+    api_key: '${oc.env:OPENCODE_API_KEY,""}'
+    data_class: personal
+    required_capabilities: [conversation]
+    # Optional owner/operator preference. Must match one of the eligible free
+    # route IDs below; pinned routes do not automatically fall back.
+    pinned_route: ""
+    allow_local_fallback: true
+    default_rate_limit_cooldown_seconds: 60
+    routes:
+      - model: deepseek-v4.1-flash-free
+        provider: opencode
+        economic_tier: free
+        allowed_data_classes: [personal, public]
+        capabilities: [conversation]
+      - model: hy4-flash-free
+        provider: opencode
+        economic_tier: free
+        allowed_data_classes: [personal, public]
+        capabilities: [conversation]
 
 # Writer runtime bridge. Discovery is read-only; execution stays disabled unless
 # an operator explicitly enables it and the Writer checkout/database are ready.
