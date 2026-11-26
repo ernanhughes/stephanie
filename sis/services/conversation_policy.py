@@ -53,6 +53,7 @@ def classify_turn(
     history,
     external_approved: bool,
     has_project_context: bool = False,
+    external_project_approved: bool = False,
     retrieved_context: str = "",
 ) -> DataEligibility:
     """Classify the assembled model context, conservatively including legacy rows."""
@@ -71,12 +72,12 @@ def classify_turn(
         raise ProtectedContentError("Credential-like content is blocked before inference")
     if any(contains_protected_evaluation(text) for text in texts):
         raise ProtectedContentError("Protected evaluation content is blocked before inference")
-    if has_project_context:
-        return DataEligibility("private_project", False, "Mission project context is private")
+    if has_project_context and not external_project_approved:
+        return DataEligibility("private_project", False, "The selected project context is not approved for external inference")
 
     all_history_external = all(value == "approved_external" for value in classes)
-    if external_approved and all_history_external:
-        return DataEligibility("approved_external", True, "Owner approved this complete context for the configured external route")
+    if external_approved and all_history_external and (not has_project_context or external_project_approved):
+        return DataEligibility("approved_external", True, "Owner approved this turn and all included project categories for the configured external route")
     if classes and not all_history_external:
         return DataEligibility("unknown", False, "Conversation contains unknown or private earlier turns")
     return DataEligibility("unknown", False, "External use was not explicitly approved for this turn")

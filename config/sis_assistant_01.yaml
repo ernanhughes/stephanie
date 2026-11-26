@@ -46,8 +46,15 @@ chat_runtime:
         allowed_data_classes: [approved_external]
         endpoint: https://opencode.ai/inference/go/openai/v1
         capabilities: [conversation]
+      - model: hy4-flash-free
+        provider: opencode-go
+        economic_tier: subscription_included
+        allowed_data_classes: [approved_external]
+        endpoint: https://opencode.ai/inference/go/openai/v1
+        capabilities: [conversation]
 
 mission_context:
   enabled: true
   base_url: '${oc.env:MISSION_API_BASE_URL,http://127.0.0.1:8790}'
   timeout_seconds: 4
+  programme_docs_root: 'C:/Projects/mission/docs/programmes/publication'

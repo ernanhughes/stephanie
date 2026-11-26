@@ -32,6 +32,14 @@ class FreeFirstChatRouter:
 
     _FALLTHROUGH = {"rate_limited", "free_allocation_exhausted", "provider_unavailable", "model_unavailable"}
 
+    def _supported_route(self, route: dict[str, Any]) -> bool:
+        provider = route.get("provider")
+        endpoint = route.get("endpoint") or self.config.get("endpoint")
+        return (
+            (provider == "opencode" and endpoint == "https://opencode.ai/inference/openai/v1")
+            or (provider == "opencode-go" and endpoint == "https://opencode.ai/inference/go/openai/v1")
+        )
+
     def __init__(self, config: dict[str, Any], *, api_key: str | None):
         self.config = dict(config or {})
         self.api_key = api_key or ""
@@ -51,6 +59,8 @@ class FreeFirstChatRouter:
         required_capabilities: set[str] | None = None,
         pinned: bool = False,
         pinned_route: str | None = None,
+        requested_route: str | None = None,
+        subscription_allowed: bool = True,
         session_id: str | None = None,
         timeout: int = 90,
         max_tokens: int = 768,
@@ -66,13 +76,33 @@ class FreeFirstChatRouter:
             }
         privacy_eligible = [
             route for route in self.config.get("routes", [])
-            if route.get("economic_tier") in {"free", "subscription_included"}
-            and data_class in route.get("allowed_data_classes", [])
-            and (
-                (route.get("provider") == "opencode" and route.get("endpoint") == "https://opencode.ai/inference/openai/v1")
-                or (route.get("provider") == "opencode-go" and route.get("endpoint") == "https://opencode.ai/inference/go/openai/v1")
-            )
+            if route.get("economic_tier") == "free"
+            or (subscription_allowed and route.get("economic_tier") == "subscription_included")
         ]
+        privacy_eligible = [
+            route for route in privacy_eligible
+            if data_class in route.get("allowed_data_classes", [])
+            and self._supported_route(route)
+        ]
+        if requested_route and requested_route != "automatic":
+            provider, _, model = requested_route.partition("/")
+            match = next((route for route in self.config.get("routes", [])
+                          if route.get("provider") == provider and route.get("model") == model), None)
+            if match is None:
+                return None, {"state": "requested_route_unavailable", "fallback_allowed": False, "requested_route": requested_route}
+            if not self._supported_route(match):
+                return None, {"state": "requested_route_unavailable", "fallback_allowed": False,
+                              "requested_route": requested_route, "reason": "unsupported_transport"}
+            if match.get("economic_tier") not in {"free", "subscription_included"}:
+                state = "metered_route_disabled" if match.get("economic_tier") == "metered" else "route_economic_tier_not_approved"
+                return None, {"state": state, "fallback_allowed": False, "requested_route": requested_route}
+            if match.get("economic_tier") == "subscription_included" and not subscription_allowed:
+                return None, {"state": "subscription_route_not_authorized", "fallback_allowed": False, "requested_route": requested_route}
+            if data_class not in match.get("allowed_data_classes", []):
+                return None, {"state": "not_approved_for_data", "fallback_allowed": False, "requested_route": requested_route, "data_class": data_class}
+            if not (required_capabilities or set()).issubset(set(match.get("capabilities", []))):
+                return None, {"state": "unsupported_capability", "fallback_allowed": False, "requested_route": requested_route}
+            privacy_eligible = [match]
         if not privacy_eligible:
             return None, {"state": "no_privacy_eligible_free_route"}
         eligible = [route for route in privacy_eligible if
@@ -81,8 +111,8 @@ class FreeFirstChatRouter:
             return None, {"state": "unsupported_capability", "fallback_allowed": False,
                           "required_capabilities": sorted(required_capabilities or set())}
         if pinned_route:
-            requested = pinned_route.removeprefix("opencode/")
-            eligible = [route for route in eligible if route.get("model") == requested]
+            requested = pinned_route.split("/", 1)[-1]
+            eligible = [route for route in eligible if route.get("model") == requested and route.get("provider") == pinned_route.split("/", 1)[0]]
             if not eligible:
                 return None, {"state": "unsupported_pinned_route", "fallback_allowed": False,
                               "pinned_route": pinned_route}

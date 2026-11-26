@@ -19,6 +19,7 @@ from sis.services.chat_execution import (
     ChatInferenceFailed,
     ConversationExecutionService,
     IdempotencyConflict,
+    _eligible_external_history,
 )
 from sis.template_utils import SISTemplates
 from stephanie.memory.chat_store import ChatStore
@@ -63,6 +64,49 @@ class FakeMessage:
             "order_index": self.order_index,
             "meta": self.meta,
         }
+
+
+@pytest.mark.long
+def test_external_history_rechecks_categories_and_selected_project():
+    safe_jev = FakeMessage(1, 17, "user", "Jev question", 0, {
+        "data_class": "approved_external",
+        "mission_project_id": "jev",
+        "project_context_categories_included": ["ordinary_project_metadata"],
+    })
+    unsafe_category = FakeMessage(2, 17, "user", "Publication details", 1, {
+        "data_class": "approved_external",
+        "mission_project_id": "jev",
+        "project_context_categories_included": ["publication_status"],
+    })
+    other_project = FakeMessage(3, 17, "assistant", "Other project", 2, {
+        "data_class": "approved_external",
+        "mission_project_id": "writer",
+        "project_context_categories_included": ["ordinary_project_metadata"],
+    })
+    unknown_legacy = FakeMessage(4, 17, "assistant", "Legacy private answer", 3, {})
+    unscoped = FakeMessage(5, 17, "user", "General discussion", 4, {
+        "data_class": "approved_external",
+        "project_context_categories_included": [],
+    })
+
+    result = _eligible_external_history(
+        [safe_jev, unsafe_category, other_project, unknown_legacy, unscoped],
+        permissions={"ordinary_project_metadata": True, "publication_status": False},
+        project_id="jev",
+    )
+
+    assert result == [safe_jev]
+    assert _eligible_external_history(
+        [safe_jev, unscoped], permissions={"ordinary_project_metadata": True}, project_id=None
+    ) == [unscoped]
+
+    wrong_provider = FakeMessage(6, 17, "assistant", "Different provider", 5, {
+        "data_class": "approved_external", "mission_project_id": "jev",
+        "project_context_categories_included": ["publication_status"],
+        "requested_model": "opencode/other-model",
+    })
+    assert _eligible_external_history([safe_jev, wrong_provider], permissions={"publication_status": True},
+                                      project_id="jev", provider_id="opencode-go/deepseek-v4.1-flash") == [safe_jev]
 
 
 class FakeChatStore:
@@ -364,6 +408,7 @@ def test_one_conversation_continues_after_model_change_without_losing_objective(
     assert llm.calls[1][1]["data_class"] == "unknown"
 
 
+@pytest.mark.long
 def test_chat_templates_compile_with_interactive_forms():
     templates = Environment(loader=FileSystemLoader("sis/templates"))
     templates.filters["short_dt"] = str
@@ -481,6 +526,7 @@ def test_memory_tool_passes_flat_hydra_bus_config_without_connecting():
     assert bus.cfg == {"enabled": False, "backend": "inproc"}
 
 
+@pytest.mark.long
 def test_sis_chat_persists_user_and_assistant_messages_and_turn():
     app = make_app()
     with TestClient(app) as client:
@@ -925,6 +971,7 @@ def test_conversation_execution_uses_real_chatstore_atomic_turns_and_idempotency
         engine.dispose()
 
 
+@pytest.mark.long
 def test_failed_inference_can_retry_same_request_without_duplicate_user_message():
     engine = create_engine(
         "sqlite://",

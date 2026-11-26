@@ -140,6 +140,22 @@ class ChatStore(BaseSQLAlchemyStore):
 
         return self._run(op)
 
+    def update_sis_chat_preferences(self, conv_id: int, values: dict) -> Optional[ChatConversationORM]:
+        """Persist model/project selection with the canonical conversation."""
+        def op(s):
+            conversation = s.query(ChatConversationORM).filter_by(id=conv_id).with_for_update().one_or_none()
+            if conversation is None:
+                return None
+            meta = deepcopy(conversation.meta or {})
+            current = dict(meta.get("sis_chat_preferences") or {})
+            current.update(deepcopy(values))
+            meta["sis_chat_preferences"] = current
+            conversation.meta = meta
+            conversation.updated_at = datetime.now()
+            s.flush()
+            return conversation
+        return self._run(op)
+
     # ---------- Messages ----------
 
     def add_messages(

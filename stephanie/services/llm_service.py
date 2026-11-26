@@ -6,6 +6,7 @@ import os
 import time
 import hashlib
 from typing import Any, Dict, Optional
+from urllib.parse import urlparse
 
 import litellm
 
@@ -256,29 +257,48 @@ class LLMService(Service):
         """Async counterpart to ``chat`` so request cancellation reaches LiteLLM."""
         resolved_cfg = self._resolve_cfg(agent_cfg, context)
         props = llm_cfg_override or self._llm_props(resolved_cfg)
-        self._enforce_sis_local_route(props, context)
+        selected_route = str(context.get("selected_model") or "automatic")
+        explicit_local = selected_route.startswith("local/")
+        if explicit_local:
+            local_model = selected_route.removeprefix("local/")
+            if not local_model.startswith("ollama/"):
+                raise ValueError("Unsupported local chat model route")
+            local_model_id = local_model.removeprefix("ollama/").lower()
+            local_model_tokens = set(re.split(r"[/_:-]+", local_model_id))
+            if "cloud" in local_model_tokens:
+                raise ValueError("Cloud-tagged Ollama models are not eligible for local conversational inference")
+            if ("embed" in local_model_id or "embedding" in local_model_id
+                    or local_model_id.startswith(("all-minilm", "bge-m3"))):
+                raise ValueError("Embedding-only Ollama models are not eligible for conversational inference")
+            props = {**props, NAME: local_model}
         started = time.perf_counter()
         try:
             routing_cfg = dict((self.cfg.get("chat_runtime") or {}).get("routing") or {})
             data_class = str(context.get("data_class", "unknown"))
             pinned = bool(llm_cfg_override or
                           (resolved_cfg.get("model") or {}).get("pinned", False))
-            routed_response, routing = await self._free_first_chat.complete(
+            requested_external = selected_route if selected_route not in {"", "automatic"} and not explicit_local else None
+            if explicit_local:
+                routed_response, routing = None, {"state": "explicit_local", "route": selected_route}
+            else:
+                routed_response, routing = await self._free_first_chat.complete(
                 messages,
                 call=litellm.acompletion,
                 data_class=data_class,
                 required_capabilities=set(routing_cfg.get("required_capabilities", ["conversation"])),
                 pinned=pinned,
                 pinned_route=str(routing_cfg.get("pinned_route") or "") or None,
+                requested_route=requested_external,
+                subscription_allowed=bool(context.get("subscription_allowed", True)),
                 session_id=(
                     "ses_" + hashlib.sha256(
                         f"stephanie-chat:{context.get('conversation_id')}".encode("utf-8")
                     ).hexdigest()[:24]
                     if context.get("conversation_id") is not None else None
                 ),
-                timeout=int(props.get("timeout") or 90),
-                max_tokens=int(props.get("max_tokens") or 768),
-            )
+                timeout=min(int(props.get("timeout") or 90), 45),
+                max_tokens=min(int(props.get("max_tokens") or 768), 512),
+                )
             if routed_response is not None:
                 route = str(routing["route"])
                 provider_id, model_id = route.split("/", 1)
@@ -301,7 +321,11 @@ class LLMService(Service):
                     last_user = next((m["content"] for m in reversed(messages) if m.get("role") == "user"), "")
                     self._append_prompt_history(context, agent_name, last_user, {"response": result["text"]}, preferences)
                 return result
-            if (routing.get("state") not in {"disabled", "explicitly_pinned", "no_privacy_eligible_free_route"}
+            if requested_external and routing.get("state") != "selected":
+                evidence = {"state": routing.get("state", "unknown"), "requested_route": requested_external,
+                            "fallback_allowed": False, "failures": routing.get("failures", [])}
+                raise FreeFirstRouteError(evidence)
+            if (not explicit_local and routing.get("state") not in {"disabled", "explicitly_pinned", "no_privacy_eligible_free_route"}
                     and not routing.get("fallback_allowed", False)):
                 evidence = {
                     "state": routing.get("state", "unknown"),
@@ -317,11 +341,12 @@ class LLMService(Service):
                 }
                 self.logger.log("SISChatRouteStopped", evidence)
                 raise FreeFirstRouteError(evidence)
+            self._enforce_sis_local_route(props, context)
             response = await litellm.acompletion(
                 **self._chat_call_params(props, messages)
             )
             result = self._chat_result(response, props, remove_think, started)
-            if routing.get("state") not in {"disabled", "explicitly_pinned"}:
+            if routing.get("state") not in {"disabled", "explicitly_pinned", "explicit_local"}:
                 result["routing"] = {
                     "state": "local_fallback", "reason": routing,
                     "route": result.get("model_name"),
@@ -350,11 +375,16 @@ class LLMService(Service):
             return
         model = str(props.get(NAME) or "").lower()
         api_base = str(props.get(API_BASE) or "").lower()
-        local = model.startswith("ollama/") or any(
-            host in api_base for host in ("localhost", "127.0.0.1", "[::1]")
-        )
+        endpoint_host = urlparse(api_base).hostname
+        local = model.startswith("ollama/") and endpoint_host in {"localhost", "127.0.0.1", "::1"}
         if not local:
-            raise ValueError("SIS data policy permits only the configured local fallback outside the approved route router")
+            raise ValueError("SIS data policy permits only a loopback Ollama fallback outside the approved route router")
+        model_id = model.removeprefix("ollama/")
+        model_tokens = set(re.split(r"[/_:-]+", model_id))
+        if "cloud" in model_tokens:
+            raise ValueError("Cloud-tagged Ollama models are not eligible as a local fallback")
+        if "embed" in model_id or "embedding" in model_id or model_id.startswith(("all-minilm", "bge-m3")):
+            raise ValueError("Embedding-only Ollama models are not eligible as a conversational fallback")
 
     @staticmethod
     def _chat_call_params(props: Dict[str, Any], messages: list[dict]) -> dict:

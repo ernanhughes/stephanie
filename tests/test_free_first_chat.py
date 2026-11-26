@@ -232,6 +232,191 @@ def test_go_route_requires_and_sends_stable_opencode_session_header():
     assert calls[0]["extra_headers"] == {"x-opencode-session": "ses_stable_test"}
 
 
+def test_automatic_policy_does_not_use_subscription_route_when_disabled():
+    calls = []
+    go_config = {"enabled": True, "routes": [{
+        "model": "deepseek-v4.1-flash", "provider": "opencode-go",
+        "economic_tier": "subscription_included",
+        "endpoint": "https://opencode.ai/inference/go/openai/v1",
+        "allowed_data_classes": ["approved_external"], "capabilities": ["conversation"],
+    }]}
+
+    async def call(**kwargs):
+        calls.append(kwargs)
+        return {"ok": True}
+
+    _, blocked = asyncio.run(FreeFirstChatRouter(go_config, api_key="synthetic-test-key").complete(
+        [], call=call, data_class="approved_external", subscription_allowed=False,
+        session_id="stable-session",
+    ))
+    assert blocked["state"] == "no_privacy_eligible_free_route"
+    assert not calls
+
+
+def test_explicit_route_is_selected_exactly_and_rejects_unapproved_data():
+    calls = []
+    go_config = {"enabled": True, "routes": [{
+        "model": "deepseek-v4.1-flash", "provider": "opencode-go",
+        "economic_tier": "subscription_included",
+        "endpoint": "https://opencode.ai/inference/go/openai/v1",
+        "allowed_data_classes": ["approved_external"], "capabilities": ["conversation"],
+    }]}
+
+    async def call(**kwargs):
+        calls.append(kwargs)
+        return {"ok": True}
+
+    router = FreeFirstChatRouter(go_config, api_key="synthetic-test-key")
+    _, blocked = asyncio.run(router.complete([], call=call, data_class="private_project",
+        requested_route="opencode-go/deepseek-v4.1-flash", session_id="stable"))
+    assert blocked["state"] == "not_approved_for_data"
+    assert calls == []
+
+    _, denied = asyncio.run(router.complete([], call=call, data_class="approved_external",
+        requested_route="opencode-go/deepseek-v4.1-flash", subscription_allowed=False, session_id="stable"))
+    assert denied["state"] == "subscription_route_not_authorized"
+    assert calls == []
+
+    response, selected = asyncio.run(router.complete([], call=call, data_class="approved_external",
+        requested_route="opencode-go/deepseek-v4.1-flash", session_id="stable"))
+    assert response == {"ok": True}
+    assert selected["route"] == "opencode-go/deepseek-v4.1-flash"
+    assert len(calls) == 1
+
+
+def test_explicit_metered_route_is_rejected_even_when_configured():
+    calls = []
+    config = {"enabled": True, "routes": [{
+        "model": "gpt-6-luna", "provider": "opencode",
+        "economic_tier": "metered", "endpoint": "https://opencode.ai/inference/openai/v1",
+        "allowed_data_classes": ["approved_external"], "capabilities": ["conversation"],
+    }]}
+
+    async def call(**kwargs):
+        calls.append(kwargs)
+        return {"ok": True}
+
+    _, blocked = asyncio.run(FreeFirstChatRouter(config, api_key="synthetic-test-key").complete(
+        [], call=call, data_class="approved_external", requested_route="opencode/gpt-6-luna",
+    ))
+    assert blocked["state"] == "metered_route_disabled"
+    assert not calls
+
+
+def test_explicit_route_with_changed_transport_is_rejected():
+    calls = []
+    config = {"enabled": True, "routes": [{
+        "model": "deepseek-v4.1-flash", "provider": "opencode-go",
+        "economic_tier": "subscription_included", "endpoint": "https://example.invalid/v1",
+        "allowed_data_classes": ["approved_external"], "capabilities": ["conversation"],
+    }]}
+
+    async def call(**kwargs):
+        calls.append(kwargs)
+        return {"ok": True}
+
+    _, blocked = asyncio.run(FreeFirstChatRouter(config, api_key="synthetic-test-key").complete(
+        [], call=call, data_class="approved_external",
+        requested_route="opencode-go/deepseek-v4.1-flash", session_id="stable-session",
+    ))
+    assert blocked["state"] == "requested_route_unavailable"
+    assert blocked["reason"] == "unsupported_transport"
+    assert not calls
+
+
+def test_explicit_local_model_selection_overrides_default_without_external_routing(monkeypatch):
+    calls = []
+
+    async def completion(**kwargs):
+        calls.append(kwargs)
+        return {"model": "qwen2", "choices": [{"message": {"content": "local answer"}, "finish_reason": "stop"}]}
+
+    monkeypatch.setattr("stephanie.services.llm_service.litellm.acompletion", completion)
+
+    class Logger:
+        def log(self, *_args, **_kwargs): pass
+
+    service = LLMService(cfg={"chat_runtime": {"routing": ROUTES}}, memory=SimpleNamespace(),
+                         container=SimpleNamespace(), logger=Logger())
+    result = asyncio.run(service.achat(
+        [{"role": "user", "content": "private project question"}],
+        context={"conversation_id": 4, "data_class": "private_project", "sis_data_policy_enforced": True,
+                 "selected_model": "local/ollama/qwen2:latest"},
+        agent_cfg={"model": {"name": "ollama/qwen3", "api_base": "http://localhost:11434"}},
+        agent_name="sis_chat",
+    ))
+    assert result["text"] == "local answer"
+    assert result["model_name"] == "qwen2"
+    assert result["provider"] == "ollama"
+    assert len(calls) == 1
+    assert calls[0]["model"] == "ollama/qwen2:latest"
+    assert calls[0]["api_base"] == "http://localhost:11434"
+
+
+@pytest.mark.parametrize("model,reason", [
+    ("local/ollama/gpt-oss:20b-cloud", "Cloud-tagged"),
+    ("local/ollama/nomic-embed-text:latest", "Embedding-only"),
+])
+def test_local_cloud_and_embedding_routes_are_rejected_before_inference(model, reason):
+    service = LLMService(cfg={}, memory=SimpleNamespace(), container=SimpleNamespace(),
+                         logger=SimpleNamespace(log=lambda *_args, **_kwargs: None))
+
+    with pytest.raises(ValueError, match=reason):
+        asyncio.run(service.achat(
+            [{"role": "user", "content": "synthetic"}],
+            context={"conversation_id": 2, "selected_model": model, "sis_data_policy_enforced": True},
+            agent_cfg={"model": {"name": "ollama/mistral-small:latest", "api_base": "http://127.0.0.1:11434"}},
+            agent_name="sis_chat",
+            add_to_history=False,
+        ))
+
+
+def test_automatic_private_fallback_rejects_cloud_tagged_default_before_inference(monkeypatch):
+    calls = []
+
+    async def completion(**kwargs):
+        calls.append(kwargs)
+        return {"choices": [{"message": {"content": "must not run"}}]}
+
+    monkeypatch.setattr("stephanie.services.llm_service.litellm.acompletion", completion)
+    service = LLMService(cfg={}, memory=SimpleNamespace(), container=SimpleNamespace(),
+                         logger=SimpleNamespace(log=lambda *_args, **_kwargs: None))
+
+    with pytest.raises(ValueError, match="Cloud-tagged Ollama models are not eligible as a local fallback"):
+        asyncio.run(service.achat(
+            [{"role": "user", "content": "synthetic private project question"}],
+            context={"conversation_id": 3, "selected_model": "automatic", "data_class": "private_project",
+                     "sis_data_policy_enforced": True},
+            agent_cfg={"model": {"name": "ollama/gpt-oss:20b-cloud", "api_base": "http://127.0.0.1:11434"}},
+            agent_name="sis_chat",
+            add_to_history=False,
+        ))
+    assert not calls
+
+
+def test_automatic_private_fallback_rejects_non_loopback_ollama_endpoint(monkeypatch):
+    calls = []
+
+    async def completion(**kwargs):
+        calls.append(kwargs)
+        return {"choices": [{"message": {"content": "must not run"}}]}
+
+    monkeypatch.setattr("stephanie.services.llm_service.litellm.acompletion", completion)
+    service = LLMService(cfg={}, memory=SimpleNamespace(), container=SimpleNamespace(),
+                         logger=SimpleNamespace(log=lambda *_args, **_kwargs: None))
+
+    with pytest.raises(ValueError, match="only a loopback Ollama fallback"):
+        asyncio.run(service.achat(
+            [{"role": "user", "content": "synthetic private question"}],
+            context={"conversation_id": 4, "selected_model": "automatic", "data_class": "private_project",
+                     "sis_data_policy_enforced": True},
+            agent_cfg={"model": {"name": "ollama/mistral-small:latest", "api_base": "https://ollama.example.invalid/v1"}},
+            agent_name="sis_chat",
+            add_to_history=False,
+        ))
+    assert not calls
+
+
 def test_sis_policy_rejects_external_model_override_before_provider_call(monkeypatch):
     calls = []
 
@@ -256,7 +441,7 @@ def test_sis_policy_rejects_external_model_override_before_provider_call(monkeyp
             agent_name="sis_chat",
         ))
     except ValueError as exc:
-        assert "local fallback" in str(exc)
+        assert "loopback Ollama fallback" in str(exc)
     else:
         raise AssertionError("external model override should be rejected")
     assert calls == []

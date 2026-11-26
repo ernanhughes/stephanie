@@ -1,7 +1,7 @@
 """Bounded, role-filtered chat context construction."""
 
 
-def build_chat_messages(history, latest_text: str, settings) -> list[dict[str, str]]:
+def build_chat_messages(history, latest_text: str, settings, *, current_project_id: str | None = None) -> list[dict[str, str]]:
     """Use a bounded window of user/assistant history and the current user input."""
     system_prompt = str(settings.get("system_prompt", "")).strip()
     context_budget = max(1, int(settings.get("max_context_chars", 24000)))
@@ -27,6 +27,12 @@ def build_chat_messages(history, latest_text: str, settings) -> list[dict[str, s
     selected = []
     for message in reversed(eligible):
         content = _history_content(message, per_message_limit)
+        meta = getattr(message, "meta", None) or {}
+        prior_project_id = meta.get("mission_project_id") if isinstance(meta, dict) else None
+        if prior_project_id and prior_project_id != current_project_id:
+            selected_scope = current_project_id or "no selected project"
+            label = f"[Historical turn about Mission project {prior_project_id}; not current state for {selected_scope}]\n"
+            content = (label + content)[-per_message_limit:]
         if used_chars + len(latest_text) + len(content) > context_budget:
             continue
         selected.append({"role": message.role, "content": content})

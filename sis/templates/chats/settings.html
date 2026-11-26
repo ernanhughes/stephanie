@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container my-4" style="max-width: 850px">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <div><h2 class="mb-1">Stephanie chat settings</h2><div class="text-muted">Preferences are saved locally and take effect immediately.</div></div>
+    <a class="btn btn-outline-secondary" href="/chats">Back to chats</a>
+  </div>
+  <form id="chat-settings-form" class="card card-body shadow-sm">
+    <label class="form-label" for="preferred-model">Default model</label>
+    <select class="form-select" id="preferred-model"></select>
+    <div class="form-text mb-3">OpenCode Go is the default preference. Automatic tries configured free routes first. Changing the model does not change an existing conversation or send its history by itself.</div>
+
+    <fieldset class="mb-3">
+      <legend class="fs-6">Provider permissions</legend>
+      <div class="form-check">
+        <input class="form-check-input" type="checkbox" id="allow-subscription">
+        <label class="form-check-label" for="allow-subscription">Allow subscription-included routes, such as OpenCode Go</label>
+      </div>
+      <div class="form-check mt-2">
+        <input class="form-check-input" type="checkbox" id="allow-metered" disabled>
+        <label class="form-check-label" for="allow-metered">Allow metered inference (disabled in this release)</label>
+      </div>
+    </fieldset>
+
+    <fieldset class="mb-3">
+      <legend class="fs-6">Project information categories permitted for external models</legend>
+      {% for item in [
+        ('ordinary_project_metadata', 'Ordinary project metadata, current tasks, decisions and activity'),
+        ('repository_locations', 'Repository and book locations'),
+        ('publication_status', 'Publication programme and readiness status')
+        ,('approved_project_documentation', 'Allowlisted programme documentation excerpts with source lines')
+      ] %}
+      <div class="form-check">
+        <input class="form-check-input project-permission" type="checkbox" id="permission-{{ item[0] }}" data-category="{{ item[0] }}">
+        <label class="form-check-label" for="permission-{{ item[0] }}">{{ item[1] }}</label>
+      </div>
+      {% endfor %}
+      <div class="form-text">These legacy category switches can only supplement an explicit per-turn approval. Use the project grant below for persistent permission bound to one project and one provider. Credentials and protected evaluator material remain excluded.</div>
+    </fieldset>
+    <fieldset class="mb-3 border rounded p-3">
+      <legend class="fs-6">Remember permission for one project and provider</legend>
+      <label class="form-label" for="grant-project">Mission project ID</label>
+      <input class="form-control mb-2" id="grant-project" maxlength="120" pattern="[A-Za-z0-9._-]+" placeholder="For example, jev">
+      <label class="form-label" for="grant-provider">Provider route</label>
+      <select class="form-select mb-2" id="grant-provider"></select>
+      <div class="small mb-2">Permitted information</div>
+      {% for item in [('ordinary_project_metadata','Project metadata, recorded objectives and work'),('repository_locations','Repository and book locations'),('publication_status','Publication status and evidence'),('approved_project_documentation','Allowlisted programme documentation excerpts')] %}
+      <div class="form-check"><input class="form-check-input grant-category" type="checkbox" id="grant-{{ item[0] }}" value="{{ item[0] }}"><label class="form-check-label" for="grant-{{ item[0] }}">{{ item[1] }}</label></div>
+      {% endfor %}
+      <div class="form-text mb-2">Saving this grant is the explicit authorization. It applies only to the project ID, provider route and categories shown. New categories remain excluded. Select a local model for local-only operation.</div>
+      <button class="btn btn-outline-primary" id="grant-save" type="button">Save project permission</button>
+      <div id="grant-status" class="small mt-2" role="status"></div>
+      <h3 class="fs-6 mt-3">Active project permissions</h3>
+      <div id="grant-list" class="small"></div>
+    </fieldset>
+    <div id="settings-save-status" class="small" role="status"></div>
+    <button class="btn btn-primary align-self-start" type="submit">Save settings</button>
+  </form>
+</div>
+<script>
+  const initial = {{ preferences|tojson }};
+  const configuredModels = {{ model_options|tojson }};
+  let activeGrants = initial.project_grants || [];
+  const modelSelect = document.getElementById("preferred-model");
+  for (const model of configuredModels) {
+    const option = document.createElement("option");
+    option.value = model.id;
+    option.textContent = `${model.label} · ${model.economic_tier} · ${model.status || model.availability}${model.status_reason ? ` — ${model.status_reason}` : ""}`;
+    option.disabled = model.availability !== "available" || model.status === "blocked";
+    modelSelect.appendChild(option);
+  }
+  modelSelect.value = initial.preferred_model;
+  const grantProvider = document.getElementById("grant-provider");
+  for (const model of configuredModels.filter(m => m.provider !== "automatic" && m.provider !== "local" && m.availability === "available")) {
+    const option = document.createElement("option"); option.value = model.id; option.textContent = `${model.label} · ${model.economic_tier}`; grantProvider.appendChild(option);
+  }
+  function renderGrants() {
+    const list = document.getElementById("grant-list"); list.replaceChildren();
+    if (!activeGrants.length) { list.textContent = "No persistent project permissions."; return; }
+    for (const grant of activeGrants) {
+      const row = document.createElement("div"); row.className = "d-flex justify-content-between align-items-center border rounded p-2 mb-1";
+      const label = document.createElement("span"); label.textContent = `${grant.project_id} · ${grant.provider} · ${grant.categories.join(", ")}`;
+      const revoke = document.createElement("button"); revoke.className = "btn btn-sm btn-outline-danger"; revoke.textContent = "Revoke";
+      revoke.addEventListener("click", async () => { const response = await fetch(`/chats/project-grants?project_id=${encodeURIComponent(grant.project_id)}&provider=${encodeURIComponent(grant.provider)}`, {method:"DELETE"}); if (response.ok) { const data = await response.json(); activeGrants = data.project_grants || []; renderGrants(); } });
+      row.append(label, revoke); list.append(row);
+    }
+  }
+  renderGrants();
+  document.getElementById("grant-save").addEventListener("click", async () => {
+    const status = document.getElementById("grant-status");
+    const categories = [...document.querySelectorAll(".grant-category:checked")].map(item => item.value);
+    const response = await fetch("/chats/project-grants", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({project_id:document.getElementById("grant-project").value, provider:grantProvider.value, categories})});
+    const data = await response.json();
+    if (!response.ok) { status.className="small mt-2 text-danger"; status.textContent=data.detail || "Permission could not be saved."; return; }
+    activeGrants = data.project_grants || []; renderGrants(); status.className="small mt-2 text-success"; status.textContent="Project permission saved.";
+  });
+  document.getElementById("allow-subscription").checked = initial.allow_subscription_models;
+  for (const input of document.querySelectorAll(".project-permission")) {
+    input.checked = Boolean(initial.external_permissions?.[input.dataset.category]);
+  }
+  document.getElementById("chat-settings-form").addEventListener("submit", async event => {
+    event.preventDefault();
+    const status = document.getElementById("settings-save-status");
+    const external_permissions = {};
+    for (const input of document.querySelectorAll(".project-permission")) external_permissions[input.dataset.category] = input.checked;
+    const response = await fetch("/chats/preferences", {
+      method: "PUT", headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({
+        preferred_model: modelSelect.value,
+        policy: modelSelect.value === "automatic" ? "free_first" : "specific",
+        allow_subscription_models: document.getElementById("allow-subscription").checked,
+        allow_metered_models: false,
+        external_permissions
+      })
+    });
+    const result = await response.json();
+    if (!response.ok) { status.className = "small text-danger"; status.textContent = result.detail || "Settings could not be saved."; return; }
+    status.className = "small text-success";
+    status.textContent = "Saved. New conversations will use the preferred model. Existing conversations keep their current selection.";
+  });
+</script>
+{% endblock %}
