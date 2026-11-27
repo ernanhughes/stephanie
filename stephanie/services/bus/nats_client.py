@@ -1,8 +1,8 @@
 """
-Unified JetStream client facade for Stephanie.
+Legacy NATS-shaped compatibility facade over Stephanie's ZeroMQ event bus.
 
-- Prefers NATS via HybridKnowledgeBus; falls back to in-proc when allowed.
-- Presents a tiny NATS-like interface expected by JAS and dashboards:
+This adapter preserves the older API expected by JAS and dashboards, but it
+does not connect to NATS or provide JetStream durability:
     await js.publish(subject, payload)        # payload: dict OR bytes
     await js.subscribe(subject)               # -> async iterator yielding Msg(data, subject)
     await js.subscribe(subject, handler=cb)   # handler(payload_dict)
@@ -12,11 +12,9 @@ Unified JetStream client facade for Stephanie.
     await js.close()
     js.health_check()
 
-Env overrides (optional):
+Environment overrides (optional):
   STEPH_BUS_ENABLED=1|0
-  STEPH_BUS_BACKEND=nats|inproc
-  STEPH_BUS_SERVERS=nats://localhost:4222,nats://other:4222
-  STEPH_BUS_STREAM=stephanie
+  STEPH_BUS_BACKEND=zmq
   STEPH_BUS_REQUIRED=0|1
   STEPH_BUS_FALLBACK=inproc|none
   STEPH_BUS_CONNECT_TIMEOUT=2.0
@@ -254,12 +252,6 @@ def _env_float(name: str, default: float) -> float:
     except Exception:
         return default
 
-def _env_list(name: str, default: list) -> list:
-    raw = os.getenv(name)
-    if not raw:
-        return default
-    return [p.strip() for p in raw.split(",") if p.strip()]
-
 async def get_js(cfg: Optional[Dict[str, Any]] = None) -> _JSFacade:
     """
     Return a process-wide singleton facade connected via HybridKnowledgeBus.
@@ -276,19 +268,18 @@ async def get_js(cfg: Optional[Dict[str, Any]] = None) -> _JSFacade:
         # Build effective config (env -> overrides -> defaults)
         eff = dict(cfg or {})
         eff.setdefault("enabled", _env_bool("STEPH_BUS_ENABLED", True))
-        eff.setdefault("backend", os.getenv("STEPH_BUS_BACKEND", "nats"))
-        eff.setdefault("servers", _env_list("STEPH_BUS_SERVERS", ["nats://localhost:4222"]))
-        eff.setdefault("stream", os.getenv("STEPH_BUS_STREAM", "stephanie"))
+        eff.setdefault("backend", os.getenv("STEPH_BUS_BACKEND", "zmq"))
+        eff.setdefault("stream", "stephanie")
         eff.setdefault("required", _env_bool("STEPH_BUS_REQUIRED", False))
         eff.setdefault("strict", eff["required"])
         eff.setdefault("connect_timeout_s", _env_float("STEPH_BUS_CONNECT_TIMEOUT", 2.0))
-        eff.setdefault("fallback", os.getenv("STEPH_BUS_FALLBACK", "inproc"))
+        eff.setdefault("fallback", "none")
 
         bus = HybridKnowledgeBus(eff, logger=log)
 
         ok = await bus.connect(timeout=eff.get("connect_timeout_s"))
         if not ok and eff.get("required", False):
-            raise RuntimeError("JetStream bus required but unavailable")
+            raise RuntimeError("Stephanie ZeroMQ event bus is required but unavailable")
 
         _JS_SINGLETON = _JSFacade(bus)
         return _JS_SINGLETON

@@ -113,9 +113,12 @@ docker run --name coai-db -p 5432:5432 \
 **Option C: Run the entire stack with Docker Compose (recommended)**
 
 `docker-compose.yml` starts the full system — the Stephanie + SIS app,
-PostgreSQL with pgvector, NATS, SearXNG and Ollama — and applies the reviewed
+PostgreSQL with pgvector, SearXNG and Ollama — and applies the reviewed
 `schema_raw.sql` once via a `db-init` job. This replaces the older
 search-only compose file.
+
+Stephanie's configured event bus is ZeroMQ, with a broker managed by the
+Stephanie process. NATS is not started by Compose or used as the default bus.
 
 ```bash
 cp .env.docker.example .env.docker    # edit secrets; NOT .env (see docs/docker.md)

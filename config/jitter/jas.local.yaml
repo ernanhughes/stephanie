@@ -1,12 +1,12 @@
 # Local dev config for JAS
 bus:
   enabled: true
-  backend: nats            # nats | inproc
-  servers: ["nats://127.0.0.1:4222"]
-  stream: stephanie
+  backend: zmq
+  endpoint: '${oc.env:STEPH_BROKER_FE,tcp://127.0.0.1:5555}'
+  backend_endpoint: '${oc.env:STEPH_BROKER_BE,tcp://127.0.0.1:5556}'
   required: false
   connect_timeout_s: 2.0
-  fallback: inproc
+  fallback: none
 
 jitter:
   tick_interval: 0.25      # seconds

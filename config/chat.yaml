@@ -9,7 +9,7 @@ defaults:
   - _self_
   - db: postgres
   - plan_monitor: disabled
-  - bus: nats   
+  - bus: zmq
   - logging/json_logger
   - mars/default
   - services/all
@@ -24,8 +24,9 @@ embeddings:
   backend: hnet
 
 bus:
-  backend: nats
-  servers: "nats://127.0.0.1:4222"
+  backend: zmq
+  endpoint: '${oc.env:STEPH_BROKER_FE,tcp://127.0.0.1:5555}'
+  backend_endpoint: '${oc.env:STEPH_BROKER_BE,tcp://127.0.0.1:5556}'
   stream: stephanie
   strict: true
 

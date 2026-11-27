@@ -22,14 +22,14 @@ class HybridKnowledgeBus(BusProtocol):
     cfg example (flat dict):
       {
         "enabled": true,
-        "backend": "nats",                # "nats" | "inproc" | "none"
-        "servers": "nats://localhost:4222" or ["nats://..."],
-        "stream": "stephanie",
-        "required": false,                # if true and nats fails, do NOT fallback (but we still won't raise on first-use ops)
+        "backend": "zmq",                 # Stephanie's supported event transport
         "strict": false,                  # alias for required
         "connect_timeout_s": 2.0,
-        "fallback": "inproc"              # "inproc" | "none"
+        "fallback": "none"
       }
+
+    ZeroMQ's broker is managed locally by ZmqBrokerGuard. This class does not
+    select NATS from configuration; NATS-specific legacy clients are separate.
     """
 
     def __init__(self, cfg: Dict[str, Any], logger: Optional[logging.Logger] = None):
@@ -38,7 +38,7 @@ class HybridKnowledgeBus(BusProtocol):
         self.logger = logger or log
 
         self._bus: Optional[BusProtocol] = None
-        self._backend: str = "none"           # "nats" | "inproc" | "none"
+        self._backend: str = "none"           # "zmq" | "none"
         self._disabled: bool = False
         self._idem_store: Optional[InMemoryIdempotencyStore] = None
         self._pending_middlewares: list[callable] = []
@@ -47,26 +47,14 @@ class HybridKnowledgeBus(BusProtocol):
 
     # ---------------------- helpers ----------------------
 
-    def _norm_servers(self, servers: Any) -> List[str]:
-        if servers is None:
-            return ["nats://localhost:4222"]
-        if isinstance(servers, str):
-            return [servers]
-        if isinstance(servers, (list, tuple)):
-            return [str(s) for s in servers]
-        return ["nats://localhost:4222"]
-
     def _norm(self) -> Dict[str, Any]:
         enabled = bool(self.cfg.get("enabled", True))
-        required = bool(self.cfg.get("required", False) or self.cfg.get("strict", False))
         return {
             "enabled": enabled,
-            "backend": (self.cfg.get("backend") or "nats").lower(),   # nats|inproc|none
-            "servers": self._norm_servers(self.cfg.get("servers")),
-            "stream": self.cfg.get("stream", "stephanie"),
-            "required": required,
+            "backend": (self.cfg.get("backend") or "zmq").lower(),
             "timeout": float(self.cfg.get("connect_timeout_s", 2.0)),
-            "fallback": (self.cfg.get("fallback", "inproc") or "inproc").lower(),  # inproc|none
+            "frontend": self.cfg.get("endpoint", "tcp://127.0.0.1:5555"),
+            "backend_endpoint": self.cfg.get("backend_endpoint", "tcp://127.0.0.1:5556"),
         }
 
     async def _with_timeout(self, coro, timeout: float) -> Any:
@@ -104,24 +92,35 @@ class HybridKnowledgeBus(BusProtocol):
 
         timeout = cfg["timeout"] if timeout is None else float(timeout)
 
+        if cfg["backend"] != "zmq":
+            self._backend = "none"
+            log.error(
+                "HybridKnowledgeBus supports ZeroMQ only; configured backend %r is not selected",
+                cfg["backend"],
+            )
+            return False
+
         try:
-            await ZmqBrokerGuard.ensure_started()
-            zmq_bus = ZmqKnowledgeBus(logger=self.logger)
+            await ZmqBrokerGuard.ensure_started(
+                fe=cfg["frontend"], be=cfg["backend_endpoint"])
+            zmq_bus = ZmqKnowledgeBus(
+                fe_addr=cfg["frontend"], be_addr=cfg["backend_endpoint"],
+                logger=self.logger)
             ok = await self._with_timeout(zmq_bus.connect(), timeout)
             if ok:
                 self._bus = zmq_bus
                 self._backend = "zmq"
                 self._idem_store = getattr(zmq_bus, "idempotency_store", None)
-                log.debug("Hybrid bus using ZMQ fallback (broker auto-started).")
+                log.debug("Stephanie event bus connected over ZeroMQ (local broker ready).")
                 self.attach_bus(zmq_bus)
                 return True
         except Exception as e:
-            log.error("Hybrid bus: ZMQ fallback connect error: %s", e)
+            log.error("Stephanie ZeroMQ bus connection failed: %s", e)
             # No usable backend
             self._bus = None
             self._backend = "none"
             self._idem_store = None
-            log.error("Hybrid bus: no backend available (NATS down, fallback disabled).")
+            log.error("Stephanie ZeroMQ bus is unavailable.")
             return False
 
 
@@ -304,29 +303,6 @@ class HybridKnowledgeBus(BusProtocol):
                         **details,
                         "frontend": "tcp://127.0.0.1:5555",
                         "backend":  "tcp://127.0.0.1:5556",
-                    },
-                }
-
-            if self._backend == "nats":
-                nats_connected = bool(getattr(self._bus, "_connected", False))
-                nats_closed = bool(getattr(self._bus, "is_closed", True))
-                conn_details = {}
-                if hasattr(self._bus, "debug_connection_status"):
-                    conn_details = self._bus.debug_connection_status()
-
-                return {
-                    "is_healthy": nats_connected and not nats_closed,
-                    "bus_type": "nats",
-                    "backend": "nats",
-                    "status": "connected" if nats_connected else "disconnected",
-                    "details": {
-                        "connected": nats_connected,
-                        "closed": nats_closed,
-                        "servers": getattr(self._bus, "servers", []),
-                        "stream": getattr(self._bus, "stream", ""),
-                        "connection_uptime": conn_details.get("connection_uptime", 0),
-                        "reconnect_attempts": conn_details.get("reconnect_attempts", 0),
-                        "debug_mode": conn_details.get("debug_mode", False),
                     },
                 }
 

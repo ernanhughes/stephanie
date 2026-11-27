@@ -23,6 +23,7 @@ from sis.routes import codecheck as codecheck_routes
 from sis.routes import auth as auth_routes
 from sis.routes import health as health_routes
 from sis.routes import writer as writer_routes
+from sis.routes import stephanie as stephanie_routes
 from sis.security import SISAuthMiddleware, SessionStore, load_auth_settings
 from sis.services.chat_execution import ConversationExecutionService
 from sis.services.worker_execution import WorkerExecutionService
@@ -203,6 +204,7 @@ app.include_router(overnight_ui.router)
 app.include_router(nexus.router)
 app.include_router(codecheck_routes.router)
 app.include_router(writer_routes.router)
+app.include_router(stephanie_routes.router)
 
 # # After app = FastAPI(...)
 # class SISContainer:

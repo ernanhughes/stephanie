@@ -2,8 +2,9 @@
 """
 Event Bus Protocol Definition (v2)
 
-Unifies the interface across NATS / In-Process backends and adds readiness
-and JetStream-style helpers with safe defaults.
+Defines Stephanie's common event API. The current standard transport is
+ZeroMQ; durable-stream helpers remain optional compatibility methods and may
+be no-ops on the ZeroMQ implementation.
 
 Abstract (must implement):
 - connect()
@@ -83,7 +84,7 @@ class BusProtocol(ABC):
 
     @abstractmethod
     def get_backend(self) -> str:
-        """Return backend identifier (e.g., 'nats', 'inproc')."""
+        """Return backend identifier (currently 'zmq' or 'none')."""
         raise NotImplementedError
 
     @property

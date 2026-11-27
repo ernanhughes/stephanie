@@ -1,8 +1,9 @@
 enabled: true
-backend: nats            # "nats" | "inproc"
-servers: "nats://127.0.0.1:4222"
-stream: stephanie
-required: true          # if true (or strict true), fail instead of fallback
-strict: false            # legacy alias for required
-connect_timeout_s: 1.5   # fail fast if NATS isn’t up
-fallback: none         # "inproc" | "none"
+backend: zmq
+endpoint: '${oc.env:STEPH_BROKER_FE,tcp://127.0.0.1:5555}'
+backend_endpoint: '${oc.env:STEPH_BROKER_BE,tcp://127.0.0.1:5556}'
+pattern: dealer-router
+required: true
+strict: true
+connect_timeout_s: 1.5
+fallback: none

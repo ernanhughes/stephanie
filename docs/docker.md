@@ -1,8 +1,9 @@
 # 🐳 Docker — Full System Stack
 
 `docker compose up` starts the **whole Stephanie system**, not only web search.
-The application tier is built from this repository; the backing services
-(database, message bus, search, model runtime) are pinned companion images.
+The application tier is built from this repository; PostgreSQL, search and the
+model runtime are companion services. Stephanie's ZeroMQ broker is managed by
+the application process; there is no separate NATS or ZeroMQ broker container.
 
 This supersedes the earlier root `docker-compose.yml`, which started a single
 SearXNG container and nothing else.
@@ -16,12 +17,16 @@ SearXNG container and nothing else.
 | `app` | built from `Dockerfile` | Stephanie engine + SIS web app | `127.0.0.1:8000` | `config/sis.yaml`, `config/config.yaml` |
 | `db` | `pgvector/pgvector:pg16` | PostgreSQL + `pgvector` for MemoryTool | `127.0.0.1:5432` | `config/db/postgres.yaml` |
 | `db-init` | `pgvector/pgvector:pg16` | One-shot schema loader (`schema_raw.sql`) | — | — |
-| `nats` | `nats:2.10-alpine` | JetStream message bus | `127.0.0.1:4222` (monitor `8222`) | `config/bus/nats.yaml` |
 | `searxng` | `searxng/searxng:latest` | Web-search backend | `127.0.0.1:8080` | `web_search` node |
 | `ollama` | `ollama/ollama:latest` | Local LLM + embedding runtime | `127.0.0.1:11434` | `chat_runtime.model`, `embeddings` |
 
 Startup order is enforced with health/completion gates:
-`db` (healthy) and `nats` (healthy) and `db-init` (completed) → `app`.
+`db` (healthy) and `db-init` (completed) → `app`.
+
+**Stephanie's configured event bus is ZeroMQ. NATS is not part of the default
+Stephanie bus or this Compose stack.** The current ZeroMQ broker is local to
+the Stephanie process/container and is not a shared cross-application broker;
+other applications need an explicit adapter/bridge before exchanging events.
 
 Every host port binds to `127.0.0.1` by default to match Stephanie's local-first
 security posture. Set the matching `*_BIND` variable to expose a port elsewhere,
@@ -101,7 +106,6 @@ Hydra config, so no values are hardcoded:
 | Environment variable | Used by | Config key |
 |---|---|---|
 | `STEPHANIE_DB_HOST` / `_PORT` / `_NAME` / `_USER` / `_PASSWORD` | app, db-init | `db.*` (`config/db/postgres.yaml`) |
-| `STEPHANIE_NATS_SERVERS` | app | `bus.servers` (`config/bus/nats.yaml`) |
 | `STEPHANIE_OLLAMA_URL` | app | `chat_runtime.model.api_base`, `embeddings.endpoint` |
 | `STEPHANIE_SEARXNG_URL` | app | `web_search.instance_url` |
 | `SIS_HOST` / `SIS_PORT` | app | SIS bind address |
@@ -109,14 +113,14 @@ Hydra config, so no values are hardcoded:
 | `SIS_AUTH_PASSWORD_HASH` / `SIS_SESSION_SECRET` | app | SIS credentials (`.env.sis`; double every `$` as `$$`) |
 
 Each base config keeps its original default, so the same files work for local
-runs (`localhost`) and inside Compose (service names like `db`, `nats`,
-`ollama`, `searxng`). Verify the resolved values:
+runs and inside Compose (service names like `db`, `ollama`, `searxng`). Verify
+the resolved bus selection:
 
 ```bash
 docker compose run --rm app python -c \
   "from hydra import compose, initialize_config_dir; \
    initialize_config_dir(version_base=None, config_dir='/app/config').__enter__(); \
-   c=compose(config_name='sis'); print(c.db.host, c.bus.servers, c.chat_runtime.model.api_base)"
+   c=compose(config_name='sis'); print(c.db.host, c.bus.backend, c.chat_runtime.model.api_base)"
 ```
 
 ---
@@ -193,8 +197,8 @@ docker compose run --rm app bash
 docker compose run --rm app python -m pytest tests/test_stn06_preregistration.py -q
 ```
 
-Inside the compose network the config automatically points at `db`, `nats`,
-`ollama` and `searxng`, so no overrides are needed.
+Inside the compose network the config automatically points at `db`, `ollama`
+and `searxng`; Stephanie manages its local ZeroMQ broker itself.
 
 ---
 
@@ -248,7 +252,7 @@ and start with `docker compose -f docker-compose.yml -f docker-compose.gpu.yml u
 | `bind: Only one usage of each socket address` on `docker compose up` | A local service already owns that host port (common with a host PostgreSQL on 5432 or Ollama on 11434). Set the matching `*_FORWARD_PORT` / `*_PORT` in `.env.docker` to a free port; container-internal ports are unchanged. |
 | SIS login always fails | The password hash may have been truncated by `$` interpolation - ensure **every `$` in `.env.sis` is doubled as `$$`**, and that the compose values live in `.env.docker`. |
 | `app` restarts with a database error | `docker compose ps` — is `db` healthy? Is `db-init` `Exited (0)`? |
-| `app` logs `KnowledgeBus` connect failures | `docker compose logs nats`; confirm `STEPHANIE_NATS_SERVERS=nats://nats:4222`. |
+| `app` logs `KnowledgeBus` connect failures | Check the app logs for the ZeroMQ broker startup and port conflicts on `STEPH_BROKER_FE` / `STEPH_BROKER_BE` (defaults `127.0.0.1:5555` / `127.0.0.1:5556`). |
 | `/healthz` reports auth or model not ready | Set `SIS_AUTH_*`; pull the Ollama models. |
 | Schema errors mentioning missing tables | Re-run `docker compose up db-init` after checking `schema_raw.sql` loaded. |
 | Build runs out of memory | Build with more Docker memory or `DOCKER_BUILDKIT=1 docker build --memory=8g`. |

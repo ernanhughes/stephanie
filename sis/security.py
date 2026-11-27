@@ -57,6 +57,20 @@ def _normalize_origin(value: str) -> str | None:
         return None
 
 
+def load_context_origins() -> tuple[str, ...]:
+    """Exact loopback origins allowed to embed the Stephanie prompt panel."""
+    origins=[]
+    for value in _csv_env("STEPHANIE_CONTEXT_ORIGINS", ("http://127.0.0.1:5173",)):
+        origin=_normalize_origin(value)
+        if origin is None:
+            raise RuntimeError("STEPHANIE_CONTEXT_ORIGINS must contain exact origins without paths")
+        host=urlsplit(origin).hostname
+        if _normalize_host(host or "") not in {"localhost", "127.0.0.1", "::1"}:
+            raise RuntimeError("STEPHANIE_CONTEXT_ORIGINS is restricted to loopback hosts")
+        origins.append(origin)
+    return tuple(dict.fromkeys(origins))
+
+
 @dataclass(frozen=True)
 class AuthSettings:
     username: str
@@ -334,11 +348,18 @@ class SISAuthMiddleware:
         except ValueError:
             host = None
         path = request.url.path
+        context_origins=load_context_origins()
+        # The login form must be reachable in the same explicitly allowed
+        # local host panel as Stephanie; otherwise the redirect is blocked by
+        # SAMEORIGIN before the user can establish a session.
+        embeddable=path in {"/stephanie", "/login"} and bool(context_origins)
         public = path in {"/login", "/healthz", "/health"} or path.startswith("/static/")
 
         async def immediate(response):
             response.headers.setdefault("Cache-Control", "no-store")
             response.headers.setdefault("X-Content-Type-Options", "nosniff")
+            if embeddable:
+                response.headers["Content-Security-Policy"]="frame-ancestors 'self' " + " ".join(context_origins)
             response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
             response.headers.setdefault("Referrer-Policy", "same-origin")
             await response(scope, receive, send)
@@ -426,9 +447,11 @@ class SISAuthMiddleware:
                 present = {key.lower() for key, _value in headers}
                 defaults = [
                     (b"x-content-type-options", b"nosniff"),
-                    (b"x-frame-options", b"SAMEORIGIN"),
                     (b"referrer-policy", b"same-origin"),
                 ]
+                if embeddable:
+                    defaults.append((b"content-security-policy", ("frame-ancestors 'self' " + " ".join(context_origins)).encode("latin1")))
+                defaults.append((b"x-frame-options", b"SAMEORIGIN"))
                 if not path.startswith("/static/"):
                     defaults.append((b"cache-control", b"no-store"))
                 if request.url.scheme == "https":

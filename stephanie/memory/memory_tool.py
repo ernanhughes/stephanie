@@ -256,7 +256,7 @@ class MemoryTool:
 
     def _setup_knowledge_bus(self) -> KnowledgeBus:
         # HybridKnowledgeBus accepts the flat Hydra bus node directly.
-        bus_cfg = self.cfg.get("bus", {"backend": "nats"})
+        bus_cfg = self.cfg.get("bus", {"backend": "zmq"})
         bus = HybridKnowledgeBus(bus_cfg, self.logger)
         return bus
 
@@ -279,7 +279,8 @@ class MemoryTool:
                     raise RuntimeError("Knowledge bus failed to connect")
                 return  # continue without a bus
 
-            # 2) Ensure stream FIRST (so wait_ready() health publish won’t 404)
+            # 2) Prepare the shared bus namespace. ZeroMQ treats the legacy
+            # stream/consumer calls below as compatibility no-ops.
             # Prefer a wide wildcard to avoid future subject drift.
             subjects = [
                 f"{BUS_STREAM}.>",                              # catch-all
@@ -294,8 +295,8 @@ class MemoryTool:
                 log.error("KnowledgeBusEnsureStreamFailed: %s", e)
                 if required:
                     raise
-                # Let HybridBus fall back (if configured); we still proceed to set the flag
-                # so callers that don't strictly require NATS can run.
+                # Continue with the connected ZeroMQ bus; it has no durable
+                # stream/consumer primitive.
 
             # 3) Now wait_ready (does a JS health publish). One quick retry helps after stream add/update.
             try:
@@ -305,7 +306,7 @@ class MemoryTool:
                     await asyncio.sleep(0.25)
                     ready = await self.bus.wait_ready(timeout=5.0)
                 if not ready:
-                    log.warning("KnowledgeBusWaitReadyFalse (continuing; Hybrid may be inproc)")
+                    log.warning("KnowledgeBusWaitReadyFalse (continuing; backend=%s)", self.bus.get_backend())
             except Exception as e:
                 log.warning("KnowledgeBusWaitReadyError: %s (continuing)", e)
 
@@ -315,7 +316,7 @@ class MemoryTool:
                     stream="stephanie",
                     subject="blossom.prompt.responses.available",
                     durable="d_blossom_resp_ready",
-                    ack_wait=30,        # seconds; NATS bus converts to timedelta
+                    ack_wait=30,        # compatibility option; ZeroMQ has no durable ack timer
                     max_deliver=5,
                     deliver_group=None, # advisory (subscribe should pass queue group)
                     deliver_policy=None,

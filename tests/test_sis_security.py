@@ -48,6 +48,11 @@ def make_secure_app(*, secure_cookies=False, session_ttl=3600):
     def private(request: Request):
         return {"username": request.state.username, "csrf_token": request.state.csrf_token}
 
+    @app.get("/stephanie")
+    def embedded_panel():
+        from fastapi.responses import HTMLResponse
+        return HTMLResponse("<main>Stephanie fixture</main>")
+
     @app.post("/private/mutate")
     def mutate(request: Request):
         return {"updated": True, "username": request.state.username}
@@ -86,6 +91,26 @@ def test_private_sis_routes_redirect_pages_and_reject_api_mutations_until_login(
     assert static.status_code == 200
     assert health.status_code == 200
     assert health.json()["chat_enabled"] is False
+
+
+def test_login_can_be_framed_only_by_the_configured_loopback_host(monkeypatch):
+    monkeypatch.setenv("STEPHANIE_CONTEXT_ORIGINS", "http://127.0.0.1:5173")
+    app = make_secure_app()
+    with TestClient(app, base_url="http://127.0.0.1:8000") as client:
+        login = client.get("/login")
+        accepted = _sign_in(client)
+        panel = client.get("/stephanie")
+        private = client.get("/private")
+
+    assert login.status_code == 200
+    assert accepted.status_code == 303
+    assert login.headers["content-security-policy"] == "frame-ancestors 'self' http://127.0.0.1:5173"
+    assert login.headers["x-frame-options"] == "SAMEORIGIN"
+    assert panel.status_code == 200
+    assert panel.headers["content-security-policy"] == login.headers["content-security-policy"]
+    assert panel.headers["x-frame-options"] == "SAMEORIGIN"
+    assert private.status_code == 200
+    assert private.headers["x-frame-options"] == "SAMEORIGIN"
 
 
 def test_login_rejects_bad_credentials_and_rotates_to_an_http_only_session():

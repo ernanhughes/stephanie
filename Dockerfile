@@ -3,7 +3,7 @@
 # Stephanie — full-system image
 #
 # Builds the Stephanie reasoning engine and the SIS web application. The
-# companion services (PostgreSQL+pgvector, NATS, SearXNG, Ollama) are defined in
+# companion services (PostgreSQL+pgvector, SearXNG, Ollama) are defined in
 # docker-compose.yml; this image is the application tier.
 #
 # See docs/docker.md for the full guide.

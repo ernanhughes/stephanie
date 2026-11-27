@@ -4,7 +4,7 @@
 # Brings up the whole system, not just web search:
 #   db        PostgreSQL + pgvector (MemoryTool / SQLAlchemy)
 #   db-init   one-shot loader for schema_raw.sql
-#   nats      JetStream message bus (config/bus/nats.yaml)
+#   ZeroMQ    Stephanie's in-process event bus (broker managed by the app)
 #   searxng   web-search backend (config web_search.engine)
 #   ollama    local model + embedding runtime
 #   app       Stephanie engine + SIS web app (this repository, Dockerfile)
@@ -72,21 +72,6 @@ services:
         fi
     restart: "no"
 
-  nats:
-    image: nats:2.10-alpine
-    restart: unless-stopped
-    command: ["-js", "-m", "8222", "-sd", "/data"]
-    ports:
-      - "${STEPHANIE_NATS_BIND:-127.0.0.1}:${STEPHANIE_NATS_PORT:-4222}:4222"
-      - "${STEPHANIE_NATS_MONITOR_BIND:-127.0.0.1}:${STEPHANIE_NATS_MONITOR_PORT:-8222}:8222"
-    volumes:
-      - stephanie-nats:/data
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8222/healthz >/dev/null 2>&1 || exit 1"]
-      interval: 5s
-      timeout: 3s
-      retries: 20
-
   searxng:
     image: searxng/searxng:latest
     restart: unless-stopped
@@ -117,8 +102,6 @@ services:
     depends_on:
       db:
         condition: service_healthy
-      nats:
-        condition: service_healthy
       db-init:
         condition: service_completed_successfully
     # Secrets are delivered verbatim from .env.sis so that PBKDF2 hashes (which
@@ -129,7 +112,6 @@ services:
         required: false
     environment:
       <<: *db-environment
-      STEPHANIE_NATS_SERVERS: nats://nats:4222
       STEPHANIE_OLLAMA_URL: http://ollama:11434
       STEPHANIE_SEARXNG_URL: http://searxng:8080
       SIS_HOST: 0.0.0.0
@@ -148,6 +130,5 @@ services:
 
 volumes:
   stephanie-pgdata:
-  stephanie-nats:
   stephanie-searxng:
   stephanie-ollama:

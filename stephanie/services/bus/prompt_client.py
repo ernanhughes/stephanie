@@ -106,7 +106,8 @@ def _looks_like_job_echo(d: Dict[str, Any]) -> bool:
 class PromptClient:
     """
     Offload prompts to the bus, and (optionally) wait for results.
-    Compatible with InProc, NATS, and ZMQ (topic or RPC).
+    Uses Stephanie's ZeroMQ-backed HybridKnowledgeBus (topic or RPC). Durable
+    delivery is not provided by this transport.
     """
 
     def __init__(self, cfg, memory, container, logger):

@@ -1,0 +1,172 @@
+{% extends "base.html" %}
+{% block title %}Stephanie · Generate prompt{% endblock %}
+{% block content %}
+<div class="row justify-content-center"><div class="col-xl-10">
+  <div class="d-flex justify-content-between align-items-start mb-3"><div><h1>Stephanie</h1><p class="text-muted">Contextual prompt preparation · deterministic Capsule process</p></div><span class="badge text-bg-primary">Generate prompt</span></div>
+  {% if error %}<div class="alert alert-warning">{{ error }}</div>{% endif %}
+  <div id="context-card" class="card mb-3" hidden><div class="card-body"><h2 class="h5">Attached host context</h2><pre id="context-json" class="mb-0 text-wrap"></pre></div></div>
+  <div class="card"><div class="card-body">
+    <p class="small text-muted">Operations come from Capsule's executable process catalogue and are filtered by attached context. Generate prepares a prompt only; no inference is run or prompt sent to another service.</p>
+    <form id="prepare-form"><div class="row g-3">
+      <div class="col-md-6"><label for="subject" class="form-label">Repository</label><select id="subject" class="form-select" required>{% for subject in subjects %}<option value="{{ subject.id }}" data-name="{{ subject.name }}" data-class="{{ subject.data_class }}">{{ subject.name }} ({{ subject.id }}) · {{ subject.data_class }}</option>{% endfor %}</select></div>
+      <div class="col-md-6"><label for="revision" class="form-label">Revision or scope</label><input id="revision" class="form-control" value="latest" maxlength="160" required><div class="form-text">Use an exact commit, deliberately selected <code>latest</code>, or <code>working-tree</code> to include the explicitly bounded current changes.</div></div>
+      <div class="col-md-4"><label for="destination" class="form-label">Handoff destination</label><select id="destination" class="form-select"><option value="codex">Codex · local workspace</option><option value="opencode">OpenCode · local workspace</option><option value="claude_code">Claude Code · local workspace</option><option value="chatgpt_web">ChatGPT web · self-contained</option><option value="claude_web">Claude web · self-contained</option><option value="worker">Worker · structured only, no dispatch</option><option value="local">Local model · capacity unverified</option></select></div>
+      <div class="col-md-4"><label for="size-profile" class="form-label">Context size</label><select id="size-profile" class="form-select"><option value="compact">Compact · 8,000</option><option value="standard" selected>Standard · 32,000</option><option value="detailed">Detailed · 64,000</option><option value="custom">Custom · up to 1,000,000</option></select></div>
+      <div class="col-md-4" id="custom-budget-wrap" hidden><label for="custom-budget" class="form-label">Custom estimated token budget</label><input id="custom-budget" type="number" min="1" max="1000000" step="1" value="100000" class="form-control"></div>
+      <div class="col-12"><label for="operation" class="form-label">Operation</label><select id="operation" class="form-select"></select><div class="form-text">Only executable processes applicable to the attached context are listed. Prompt preparation does not execute the requested work.</div></div>
+      <div class="col-12"><label for="instructions" class="form-label">Additional instructions</label><textarea id="instructions" class="form-control" rows="3" maxlength="8000"></textarea></div>
+    </div>
+    <div class="form-check my-3" id="external-confirm-wrap" hidden><input class="form-check-input" id="external-confirm" type="checkbox"><label class="form-check-label" for="external-confirm">I reviewed the classification and explicitly approve copying this prompt package to an external AI provider.</label></div>
+    <button id="generate" class="btn btn-primary" type="submit" {% if not subjects %}disabled{% endif %}>Generate prompt</button><span id="status" class="ms-2 text-muted" role="status"></span></form>
+  </div></div>
+  <section id="result" class="mt-3" hidden>
+    <div class="alert alert-info"><strong>Generated locally; not dispatched.</strong> External submission is unverified. Review data classification and provider policy before copying.</div>
+    <div id="export-block" class="mb-3 d-flex gap-2 flex-wrap"><button class="btn btn-outline-primary" id="copy-md">Copy Markdown</button><button class="btn btn-outline-secondary" id="download-md">Download Markdown</button><button class="btn btn-outline-secondary" id="download-json">Download JSON</button></div>
+    <div class="card"><div class="card-header">Rendered prompt</div><pre id="prompt-output" class="card-body text-wrap mb-0" style="white-space:pre-wrap"></pre></div>
+    <details class="mt-3"><summary>Inspect provenance and context measurement</summary><pre id="package-output" class="border rounded p-3 mt-2" style="white-space:pre-wrap;max-height:32rem;overflow:auto"></pre></details>
+  </section>
+</div></div>
+<script>
+(() => {
+  const allowedOrigins = new Set({{ allowed_context_origins|tojson }});
+  const processCatalogue = {{ processes|tojson }};
+  const card = document.getElementById('context-card'), contextBox = document.getElementById('context-json');
+  const form = document.getElementById('prepare-form'), status = document.getElementById('status');
+  const selector = document.getElementById('subject'), confirmWrap = document.getElementById('external-confirm-wrap'), confirmBox = document.getElementById('external-confirm');
+  const sizeSelect = document.getElementById('size-profile'), customBudgetWrap = document.getElementById('custom-budget-wrap');
+  let context = null, result = null, generation = 0, activeController = null;
+  const uuid = () => crypto.randomUUID();
+  const operationLabel = row => `${row.verb.replaceAll('_',' ')} · ${row.id} v${row.version}`;
+  const setOperations = rows => {
+    const op = document.getElementById('operation');
+    op.replaceChildren(...rows.map(row => new Option(operationLabel(row), row.id)));
+    op.disabled = rows.length === 0;
+  };
+  const repositoryProcesses = () => processCatalogue.filter(row => row.status === 'executable' && row.context === 'repository');
+  const documentProcesses = doc => processCatalogue.filter(row => row.status === 'executable'
+    && row.document_types.split(',').includes(doc.document_type) && row.scopes.split(',').includes(doc.scope));
+  const clearResult = () => {
+    result = null;
+    document.getElementById('result').hidden = true;
+    document.getElementById('prompt-output').textContent = '';
+    document.getElementById('package-output').textContent = '';
+    if (/^(Markdown copied|Clipboard write failed)/.test(status.textContent)) status.textContent = '';
+  };
+  const invalidateResult = () => {
+    generation += 1;
+    if (activeController) activeController.abort();
+    activeController = null;
+    delete form.dataset.busy;
+    document.getElementById('generate').disabled = false;
+    clearResult();
+  };
+  const validContext = raw => !!raw && raw.schema_version === 'stephanie.context.v1' && raw.event_type === 'stephanie.open'
+    && ['mission','workbench','writer','other'].includes(raw.application) && ['repository','book.technical','book.fiction','document','selection'].includes(raw.context_type)
+    && typeof raw.event_id === 'string' && /^[A-Za-z0-9._:-]{1,120}$/.test(raw.event_id)
+    && typeof raw.correlation_id === 'string' && /^[A-Za-z0-9._:-]{1,120}$/.test(raw.correlation_id)
+    && typeof raw.subject === 'string' && /^[A-Za-z0-9._-]{1,120}$/.test(raw.subject)
+    && (raw.revision === null || typeof raw.revision === 'string' && /^(latest|working-tree|[0-9a-fA-F]{7,64})$/.test(raw.revision))
+    && (raw.view === undefined || raw.view === null || typeof raw.view === 'string' && raw.view.length <= 120)
+    && (raw.requested_mode === undefined || ['generate_prompt','chat','process','inspect'].includes(raw.requested_mode))
+    && (raw.application !== 'workbench' || !!raw.document_context && raw.document_context.schema_version === 'stephanie.document-context.v1'
+      && typeof raw.document_context.content === 'string' && raw.document_context.content.length <= 1000000
+      && /^[A-Za-z0-9._-]{1,120}$/.test(raw.document_context.document_id || '')
+      && ['document','book','chapter','section','selection'].includes(raw.document_context.scope)
+      && (raw.document_context.document_state !== 'unsaved' || raw.document_context.scope === 'selection'));
+  const acceptContext = raw => {
+    invalidateResult();
+    confirmBox.checked = false;
+    if (!validContext(raw)) {
+      context = null; card.hidden = true; selector.disabled = false;
+      document.getElementById('revision').value = '';
+      document.getElementById('revision').readOnly = false;
+      status.textContent = 'Host context rejected. Select a repository and enter an exact commit or deliberately type latest.';
+      return;
+    }
+    if(raw.application==='workbench'){
+      let hostOption=[...selector.options].find(option=>option.value===raw.subject);
+      if(!hostOption){hostOption=document.createElement('option');hostOption.value=raw.subject;hostOption.textContent=raw.document_context.document_title||raw.subject;hostOption.dataset.class=raw.document_context.classification||'internal';selector.add(hostOption);}
+      context=raw;card.hidden=false;contextBox.textContent=JSON.stringify({...raw,document_context:{...raw.document_context,content:`[attached ${raw.document_context.content.length} characters]`}},null,2);
+      selector.value=raw.subject;selector.disabled=true;document.getElementById('revision').value='';document.getElementById('revision').readOnly=true;
+      const options=documentProcesses(raw.document_context); setOperations(options);
+      updateClass();status.textContent=`Attached ${raw.document_context.document_title||raw.subject} · ${raw.document_context.scope} · ${raw.document_context.content.length.toLocaleString()} characters. Generate when ready.`;return;
+    }
+    const match = [...selector.options].find(option => option.value === raw.subject || option.dataset.name === raw.subject);
+    if (!match) {
+      context = null; card.hidden = true; selector.disabled = false;
+      document.getElementById('revision').value = '';
+      document.getElementById('revision').readOnly = false;
+      status.textContent = 'Host repository is not registered in Capsule. No previous prompt is available to copy.';
+      return;
+    }
+    context = raw; card.hidden = false; contextBox.textContent = JSON.stringify(context, null, 2);
+    setOperations(repositoryProcesses());
+    selector.value = match.value;
+    selector.disabled = context.application === 'mission';
+    document.getElementById('revision').value = context.revision || '';
+    document.getElementById('revision').readOnly = context.application === 'mission' && !!context.revision;
+    updateClass();
+    status.textContent = context.application === 'mission' && !context.revision
+      ? 'Mission did not resolve a commit. Enter an exact commit or deliberately type latest.'
+      : `Attached ${match.value} at ${context.revision || 'no revision'}. Generate when ready.`;
+  };
+  window.addEventListener('stephanie.open', event => acceptContext(event.detail));
+  window.addEventListener('message', event => { if (event.source === window.parent && allowedOrigins.has(event.origin)) acceptContext(event.data); });
+  const updateClass = () => { const row = selector.selectedOptions[0], needs = row && ['internal','personal'].includes(row.dataset.class); confirmWrap.hidden = !needs; if (!needs) confirmBox.checked = false; };
+  selector.addEventListener('change', () => {
+    invalidateResult();
+    confirmBox.checked = false;
+    if (!context) { document.getElementById('revision').value = ''; status.textContent = 'Repository changed. Enter its exact commit or deliberately type latest.'; }
+    updateClass();
+  }); updateClass();
+  setOperations(repositoryProcesses());
+  sizeSelect.addEventListener('change', () => { customBudgetWrap.hidden = sizeSelect.value !== 'custom'; invalidateResult(); });
+  ['revision','destination','operation','instructions','custom-budget'].forEach(id =>
+    document.getElementById(id).addEventListener('input', invalidateResult));
+  const download = (name, data, type) => { const link = document.createElement('a'); link.href = URL.createObjectURL(new Blob([data], {type})); link.download = name; link.click(); URL.revokeObjectURL(link.href); };
+  form.addEventListener('submit', async event => {
+    event.preventDefault(); if (form.dataset.busy) return;
+    const row = selector.selectedOptions[0];
+    if (row && ['internal','personal'].includes(row.dataset.class) && !confirmBox.checked) { status.textContent = 'Confirm external handoff eligibility before preparing an export.'; return; }
+    form.dataset.busy = '1'; document.getElementById('generate').disabled = true; status.textContent = 'Preparing prompt locally…';
+    const thisGeneration = ++generation;
+    const controller = new AbortController(); activeController = controller;
+    const activeContext = context || {schema_version:'stephanie.context.v1',event_type:'stephanie.open',event_id:uuid(),correlation_id:uuid(),application:'other',context_type:'repository',subject:selector.value,revision:document.getElementById('revision').value,requested_mode:'generate_prompt'};
+    try {
+      const custom = sizeSelect.value === 'custom' ? Number(document.getElementById('custom-budget').value) : null;
+      const response = await fetch('/stephanie/prepare-prompt', {method:'POST',headers:{'Content-Type':'application/json'},signal:controller.signal,body:JSON.stringify({request_id:uuid(),context:{...activeContext,subject:selector.value,revision:document.getElementById('revision').value},document_context:activeContext.document_context||null,operation:document.getElementById('operation').value,instructions:document.getElementById('instructions').value,external_handoff_confirmed:confirmBox.checked,destination:document.getElementById('destination').value,size_profile:sizeSelect.value,custom_token_budget:custom})});
+      const payload = await response.json(); if (!response.ok) throw new Error(payload.detail || 'Prompt preparation failed');
+      if (thisGeneration !== generation) return;
+      if (activeContext.application === 'mission' && activeContext.revision && payload.package?.subject?.revision !== activeContext.revision) throw new Error('Prepared prompt revision does not match the pinned Mission commit.');
+      result = payload; document.getElementById('result').hidden = false; document.getElementById('prompt-output').textContent = payload.package.prompt; document.getElementById('package-output').textContent = JSON.stringify(payload.package, null, 2);
+      const measurement = payload.package.context_measurement;
+      status.textContent = `Prepared for ${payload.subject.id} at ${payload.package.subject.revision}; ${measurement.estimated_rendered_prompt_tokens} estimated prompt tokens (${measurement.estimated_projection_tokens} projection); ${measurement.incomplete_context ? 'context incomplete' : 'no projection omissions'}; not dispatched.`;
+      document.getElementById('export-block').hidden = payload.subject.data_class === 'protected_evaluation';
+    } catch (error) { if (thisGeneration === generation && error.name !== 'AbortError') status.textContent = error.message || 'Prompt preparation failed. Try again or check the service status.'; }
+    finally { if (thisGeneration === generation) { delete form.dataset.busy; document.getElementById('generate').disabled = false; if (activeController === controller) activeController = null; } }
+  });
+  const copyButton = document.getElementById('copy-md');
+  copyButton.addEventListener('click', async () => {
+    const copiedResult = result;
+    if (!copiedResult) return;
+    const copiedGeneration = generation;
+    copyButton.disabled = true;
+    try {
+      await navigator.clipboard.writeText(copiedResult.markdown);
+      if (result === copiedResult && generation === copiedGeneration) status.textContent = 'Markdown copied; not submitted.';
+    } catch (error) {
+      const detail = error && typeof error.message === 'string' && error.message.trim()
+        ? ` (${error.name || 'Error'}: ${error.message.trim()})` : '';
+      if (result === copiedResult && generation === copiedGeneration) {
+        status.textContent = `Clipboard write failed${detail}. Select the rendered prompt and copy it manually; nothing was submitted.`;
+      }
+    } finally {
+      copyButton.disabled = false;
+    }
+  });
+  document.getElementById('download-md').addEventListener('click', () => { if (result) download('capsule-prompt.md',result.markdown,'text/markdown'); });
+  document.getElementById('download-json').addEventListener('click', () => { if (result) download('capsule-prompt.json',JSON.stringify(result.package,null,2),'application/json'); });
+  const initial = {{ context_event|default('')|tojson }}; if (initial) { try { acceptContext(JSON.parse(initial)); } catch (_) {} }
+})();
+</script>
+{% endblock %}

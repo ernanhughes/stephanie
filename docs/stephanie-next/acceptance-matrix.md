@@ -2,6 +2,11 @@
 
 “Pass” applies only to the named check; it does not imply broad production readiness. The initial rows preserve the STN00/STN01 baseline; current STN02 status is recorded below.
 
+**Bus clarification (current architecture):** Stephanie's configured event bus is
+ZeroMQ (`ZmqKnowledgeBus` with `ZmqBrokerGuard`). The NATS TCP probe below is a
+historical STN00 check, not the bus used by Stephanie; the current Docker Compose
+stack does not start NATS.
+
 | Area / acceptance | Check and result | Status / evidence |
 |---|---|---|
 | Repository state | `git status --short --branch`, HEAD and branch | **Pass:** branch `elm`, revision `7584f47c9ef8acb5ee25f7b8bcd17c07d4999eee`; initially clean |

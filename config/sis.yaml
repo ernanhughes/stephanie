@@ -1,10 +1,11 @@
 # Compose-time entrypoint for SIS
+# Stephanie's configured event transport is ZeroMQ (`bus: zmq`).
 
 defaults:
   - _self_
   - db: postgres
   - plan_monitor: disabled
-  - bus: nats
+  - bus: zmq
   - logging/json_logger
   - services/default
   - scorer: all

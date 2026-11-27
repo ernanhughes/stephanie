@@ -31,7 +31,7 @@ class ToolRegistryService(Service):
     def _is_service_up(self, name: str) -> bool:
         info = (self._service_facts.get(name) or {}).copy()
         # e.g., HybridKnowledgeBus health & backend
-        # Expect shape like {"is_healthy": bool, "backend": "nats|inproc|none", ...}
+        # Expect shape like {"is_healthy": bool, "backend": "zmq|none", ...}
         return bool(info.get("is_healthy") or info.get("status") in {"healthy"})
 
     def _enabled(self, spec: ToolSpec) -> Tuple[bool, Dict[str, Any]]:

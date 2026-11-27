@@ -27,6 +27,9 @@ dependencies = [
     # Database / storage
     "psycopg2-binary>=2.9.13",
     "pgvector>=0.5.1",
+    # NER-backed semantic retrieval is enabled by the full SIS embedding stores.
+    # Keep it in the managed package metadata; prompt-only mode does not need it.
+    "hnswlib>=0.8",
 
     # Web search / scraping
     "requests>=2.34.2",

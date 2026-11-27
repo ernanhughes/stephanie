@@ -1,8 +1,12 @@
+# Standard Stephanie event bus configuration. The broker is managed locally by
+# ZmqBrokerGuard; this does not configure an external or system-wide broker.
 enabled: true
-backend: zmq              # "zmq" | "nats" | "inproc"
+backend: zmq              # Stephanie's standard event bus transport
 
-# ZeroMQ endpoint(s). For a simple single-node setup, one endpoint is enough.
-endpoint: "tcp://127.0.0.1:5555"
+# Local ZeroMQ broker endpoints. A shared external fabric broker/bridge is a
+# separate integration milestone.
+endpoint: '${oc.env:STEPH_BROKER_FE,tcp://127.0.0.1:5555}'
+backend_endpoint: '${oc.env:STEPH_BROKER_BE,tcp://127.0.0.1:5556}'
 
 # Messaging pattern used by your ZMQ bus implementation:
 # - "dealer-router" for request/reply via a broker
@@ -12,7 +16,7 @@ pattern: "dealer-router"
 # If true, treat bus as mandatory (fail fast if cannot connect)
 required: true
 
-# Legacy alias, keep behaviour consistent with NATS config
+# Legacy alias for required
 strict: true
 
 # Connection / socket behaviour

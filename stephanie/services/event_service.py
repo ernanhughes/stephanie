@@ -90,7 +90,7 @@ class EventService(Service):
             "metrics": {
                 **self._metrics,
                 "uptime_sec": round(up, 1),
-                "bus_backend": "nats" if getattr(self.memory.bus, "is_nats", False) else "local",
+                "bus_backend": self.memory.bus.get_backend(),
                 "routes_registered": len(self._subscriptions),
                 "rpc_routes": len(self._rpc_handlers),
                 "starter_running": bool(self._starter and not self._starter.done()),

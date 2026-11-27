@@ -30,7 +30,7 @@ The long-term vision is a **live, purposeful AI** that can be deployed with a sm
     dsn: ${env:DB_URL}
   bus:
     enabled: true
-    driver: nats       # future: inproc fallback
+    driver: zmq        # Stephanie's current event transport
   goals:
     task: "summarize conversations and propose next actions"
   ```
@@ -45,7 +45,7 @@ The long-term vision is a **live, purposeful AI** that can be deployed with a sm
 
 * **Role:** Stephanie’s memory. A unified interface over **databases + filesystem**, plus the **event bus**.
 * **Today:** SQLAlchemy stores (tables wrapped in base classes). Backends: Postgres now; **SQLite/DuckDB/file** when local-first.
-* **Also:** Contains the **bus** (usually NATS; in-process fallback) and a simple **retriever** utility for domain/entity lookups.
+* **Also:** Contains the **ZeroMQ event bus** (managed by Stephanie's local broker guard) and a simple **retriever** utility for domain/entity lookups. NATS is not Stephanie's configured/default bus.
 * **Contract:** Stores expose consistent verbs (`insert/create/upsert/list_recent/annotation_progress/...`). Bus exposes `publish/subscribe` (or no-op if disabled).
 
 ### 4) Container
@@ -58,7 +58,7 @@ The long-term vision is a **live, purposeful AI** that can be deployed with a sm
 
 ## Design Principles (how we build)
 
-* **Local-first trajectory:** Works great with Postgres/NATS **today**, but target **SQLite/DuckDB + in-proc bus + filesystem** so anyone can run in a shell/notebook.
+* **Local-first trajectory:** Works with Postgres and Stephanie's ZeroMQ bus today; the target remains **SQLite/DuckDB + in-proc bus + filesystem** so anyone can run in a shell/notebook.
 * **Config-in, outputs-as-logs:** Every job takes `cfg`, emits JSONL; downstream steps read logs to learn/improve.
 * **Graceful degradation:** If a backend/tool isn’t present, we **fallback** (no crashes).
 * **Idempotent & resumable:** Reruns don’t corrupt state; outputs are versioned.

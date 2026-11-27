@@ -15,7 +15,8 @@ log = logging.getLogger(__name__)
 class PromptDispatcherWorker:
     """
     Bus worker that consumes PromptJob messages and returns results to job.return_topic.
-    Works with HybridBus (NATS or ZMQ backends). No acks are required for ZMQ; HybridBus handles differences.
+    Uses Stephanie's ZeroMQ-backed HybridKnowledgeBus. Delivery is not durable
+    and this worker does not claim NATS-style acknowledgements.
     """
 
     def __init__(self, cfg, memory, container, logger):
@@ -34,7 +35,7 @@ class PromptDispatcherWorker:
     async def start(self) -> None:
         bus = self.memory.bus
         self.logger.info("[PromptWorker] ensure_stream → %s", BUS_STREAM)
-        # Also register the results wildcard so publish() never hits a missing subject on NATS
+        # Register result subjects before publishing for consistent bus behavior.
         await bus.ensure_stream(BUS_STREAM, subjects=[PROMPT_SUBMIT, "results.prompts.>"])
 
         self.logger.info("[PromptWorker] subscribing (before) → %s", PROMPT_SUBMIT)
@@ -133,7 +134,7 @@ class PromptDispatcherWorker:
     async def _publish_result(self, job: PromptJob, result: Dict[str, Any]) -> None:
         bus = self.memory.bus
         subject = job.return_topic or f"results.prompts.{job.job_id}"
-        await bus.ensure_stream(BUS_STREAM, subjects=[subject])  # NATS-safe; ZMQ no-op
+        await bus.ensure_stream(BUS_STREAM, subjects=[subject])  # compatibility no-op for ZeroMQ
 
         payload = dumps_safe(result, ensure_ascii=False)
         # Use the same calling convention your HybridBus uses elsewhere:
@@ -183,7 +184,7 @@ class PromptDispatcherWorker:
     async def _publish_result(self, job: PromptJob, result: Dict[str, Any]) -> None:
         bus = self.memory.bus
         subject = job.return_topic or f"results.prompts.{job.job_id}"
-        # Ensure stream exists for the dynamic subject on NATS; ZMQ path is fine
+        # Preserve the compatibility call; ZeroMQ does not provide durable streams.
         await bus.ensure_stream(BUS_STREAM, subjects=[subject])
 
         payload = dumps_safe(result, ensure_ascii=False)

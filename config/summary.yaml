@@ -57,9 +57,9 @@ goal:
     - reasoning_trace_summary
 
 bus:
-  backend: nats
-  servers:
-    - nats://127.0.0.1:4222
+  backend: zmq
+  endpoint: '${oc.env:STEPH_BROKER_FE,tcp://127.0.0.1:5555}'
+  backend_endpoint: '${oc.env:STEPH_BROKER_BE,tcp://127.0.0.1:5556}'
 
 knowledge_graph:
   enabled: true

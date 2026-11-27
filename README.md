@@ -64,7 +64,8 @@ docker compose up -d --build
 ```
 
 This brings up the whole system — the Stephanie + SIS app, PostgreSQL with
-pgvector, NATS, SearXNG and Ollama — not just web search. See
+pgvector, SearXNG and Ollama. Stephanie's configured event bus is ZeroMQ; its
+broker is managed by the app and no NATS service is started. See
 [`docs/docker.md`](docs/docker.md) for configuration, secrets and troubleshooting.
 
 Prefer a local PostgreSQL with pgvector? Apply the reviewed schema directly:
@@ -172,7 +173,9 @@ docker compose --env-file .env.docker logs -f app
 ```
 
 Services: `app` (Stephanie + SIS), `db` (PostgreSQL + pgvector), `db-init`
-(schema loader), `nats` (bus), `searxng` (search), `ollama` (models). All host
+(schema loader), `searxng` (search), `ollama` (models). Stephanie uses its
+ZeroMQ event bus inside the application process; NATS is not its configured
+bus. All host
 ports bind to `127.0.0.1` by default. See [`docs/docker.md`](docs/docker.md).
 
 ---
